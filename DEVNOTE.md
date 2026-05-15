@@ -2,6 +2,25 @@
 
 This note is for the next chat so we can continue quickly without rebuilding context from scratch.
 
+## Crucial Memory
+
+These are the things the next chat should not rediscover or change casually.
+
+* Presto Markets is a separate product and repo. Do not merge it back into Presto DEX.
+* Keep the Presto brand family: dark navy, cyan, rounded cards, strong typography, and clean plain copy.
+* The product is public by default. Opportunity markets do not need privacy on Arc.
+* Use USDC first. Do not introduce USYC yield until the accounting and redemption math is separately reviewed.
+* The first real implementation path should be contract tests, Arc Testnet deployment, then live UI wiring.
+* Do not replace market contracts with Arc App Kit. App Kit is a rail layer for funding, sending, bridging, wallets, and paymaster flows.
+* Always use Arc MCP before making major Arc specific architecture decisions.
+* Keep V1 simple: manual resolver, clear source of truth, evidence URI, public settlement, claim and refund flows.
+* Do not add autonomous AI resolution until disputes, bonds, failed agent behavior, and override rules are designed.
+* Do not add AMM pricing until fixed share markets work safely.
+* Market creation should support prediction, opinion, and opportunity markets.
+* The copy should stay humane, precise, and straightforward. Avoid hype and avoid unnecessary hyphens.
+* GitHub repo is `https://github.com/Emperoar07/PrestoMarkets`.
+* Local repo is `C:\Users\bolaj\presto-markets`.
+
 ## Current State
 
 Presto Markets is a separate repo from Presto DEX.
@@ -264,4 +283,3 @@ Use this:
 ```text
 We are in C:\Users\bolaj\presto-markets. Read DEVNOTE.md and README.md first. Continue Presto Markets from Phase 2 and Phase 3. Use Arc MCP for Arc specific decisions. Start by adding contract tests and a safe Arc Testnet deployment path before wiring the UI to live contracts.
 ```
-
