@@ -11,6 +11,13 @@ These contracts are Phase 3 scaffolds for a public Arc Testnet market pilot.
 - Canceled market refunds
 - Resolution evidence URI
 - Protocol fee scaffold with a 5 percent maximum
+- Hardhat tests for market buying, settlement, claims, refunds, fees, factory creation, and owner controls
+
+## Testing
+
+```bash
+npm run test:contracts
+```
 
 ## Not Included Yet
 

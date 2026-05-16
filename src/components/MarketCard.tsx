@@ -7,6 +7,14 @@ const typeStyle: Record<Market['type'], string> = {
   Opportunity: 'border-blue-300/25 bg-blue-300/10 text-blue-200',
 };
 
+const statusStyle: Record<Market['status'], string> = {
+  Open: 'text-mint',
+  'Closing soon': 'text-yellow-200',
+  Resolved: 'text-cyan',
+  Canceled: 'text-red-200',
+  Draft: 'text-muted',
+};
+
 export function MarketCard({ market }: { market: Market }) {
   const yesOutcome = market.outcomes.find((outcome) => outcome.label === 'YES') ?? market.outcomes[0];
 
@@ -19,7 +27,7 @@ export function MarketCard({ market }: { market: Market }) {
         <span className={`rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.18em] ${typeStyle[market.type]}`}>
           {market.type}
         </span>
-        <span className="text-sm font-semibold text-muted">{market.closeLabel}</span>
+        <span className={`text-sm font-semibold ${statusStyle[market.status]}`}>{market.status}</span>
       </div>
       <h3 className="mt-5 text-xl font-black leading-snug text-white">{market.title}</h3>
       <p className="mt-3 min-h-12 text-sm leading-6 text-muted">{market.description}</p>

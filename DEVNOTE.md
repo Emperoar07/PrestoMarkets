@@ -79,7 +79,7 @@ Use Arc MCP for major Arc design work.
 MCP server:
 
 ```text
-https://docs.arc.network/mcp
+https://docs.arc.io/mcp
 ```
 
 Cursor config:
@@ -88,7 +88,7 @@ Cursor config:
 {
   "mcpServers": {
     "arc-docs": {
-      "url": "https://docs.arc.network/mcp"
+      "url": "https://docs.arc.io/mcp"
     }
   }
 }
@@ -156,6 +156,10 @@ Already started:
 * Templates for macro, policy, governance, product, and builder opportunity markets
 * UI copy based on Arc prediction market positioning
 * Roadmap and rail planning pages
+* Shared client side app state for local market creation, demo trading, and portfolio review
+* Local draft market creation
+* Market filters for prediction, opinion, opportunity, open, closing soon, resolved, canceled, draft, and created markets
+* App phase readiness checks for Arc chain, USDC address, market factory address, demo wallet connection, and demo USDC allowance
 
 Next work:
 
@@ -182,16 +186,12 @@ Already started:
 * Claim preview helpers exist
 * Refund preview helpers exist
 * Factory owner controls exist
+* Hardhat test harness exists
+* `PrestoMarket.sol` tests cover setup, buy YES and NO, buyFor, invalid buys, resolver-only resolution, claim math, protocol fees, cancellation, refunds, and constructor guards
+* `PrestoMarketFactory.sol` tests cover setup, market creation, fee controls, ownership controls, and zero collateral guard
 
 Next work:
 
-* Write Hardhat tests for market creation
-* Test buy YES and buy NO
-* Test cancellation
-* Test resolution
-* Test claim math
-* Test protocol fee math
-* Test edge cases for zero amount, expired market, invalid side, and duplicate claims
 * Add deployment scripts for Arc Testnet
 * Add contract addresses to `.env.example`
 * Add contract audit notes before real value

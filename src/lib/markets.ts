@@ -1,5 +1,5 @@
 export type MarketType = 'Prediction' | 'Opinion' | 'Opportunity';
-export type MarketStatus = 'Active' | 'Closing soon' | 'Resolved';
+export type MarketStatus = 'Open' | 'Closing soon' | 'Resolved' | 'Canceled' | 'Draft';
 export type ResolutionMode = 'Human resolver' | 'Community resolver' | 'Agent assisted';
 
 export type MarketOutcome = {
@@ -45,7 +45,7 @@ export const markets: Market[] = [
     volume: '$18.4K',
     liquidity: '$9.2K',
     closeLabel: '22 days',
-    status: 'Active',
+    status: 'Open',
     collateral: 'USDC',
     chain: 'Arc Testnet',
     resolver: 'Presto council',
@@ -73,7 +73,7 @@ export const markets: Market[] = [
     volume: '$6.1K',
     liquidity: '$3.8K',
     closeLabel: '9 days',
-    status: 'Active',
+    status: 'Open',
     collateral: 'USDC',
     chain: 'Arc Testnet',
     resolver: 'Community steward',
