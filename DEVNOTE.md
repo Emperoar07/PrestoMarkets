@@ -189,12 +189,21 @@ Already started:
 * Hardhat test harness exists
 * `PrestoMarket.sol` tests cover setup, buy YES and NO, buyFor, invalid buys, resolver-only resolution, claim math, protocol fees, cancellation, refunds, and constructor guards
 * `PrestoMarketFactory.sol` tests cover setup, market creation, fee controls, ownership controls, and zero collateral guard
+* Arc Testnet deploy script exists
+* Arc Testnet factory deployment exists
+* Arc Testnet factory and USDC addresses are in `.env.example`
 
 Next work:
 
-* Add deployment scripts for Arc Testnet
-* Add contract addresses to `.env.example`
 * Add contract audit notes before real value
+* Wire create and market read flows to the deployed factory
+
+Latest Arc Testnet deployment:
+
+* `PrestoMarketFactory`: `0xB5FA65ae7c76b2DeecA1906848e8805df6dCF807`
+* USDC collateral: `0x3600000000000000000000000000000000000000`
+* Deployer: same local Presto deployer used by `C:\Users\bolaj\tempo-mini-dex`
+* Deployment record: `data/arc-testnet.json`
 
 ## Recommended Next Scope
 

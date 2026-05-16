@@ -135,7 +135,21 @@ Contract tests:
 npm run test:contracts
 ```
 
+Deploy factory to Arc Testnet:
+
+```bash
+npm run deploy:arc
+```
+
 Copy `.env.example` to `.env.local` when deployment addresses are available.
+
+Arc Testnet deployment:
+
+```text
+PrestoMarketFactory: 0xB5FA65ae7c76b2DeecA1906848e8805df6dCF807
+USDC collateral: 0x3600000000000000000000000000000000000000
+Deployment record: data/arc-testnet.json
+```
 
 ## Safety Notes
 
