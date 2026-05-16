@@ -2,11 +2,9 @@
 
 Presto Markets is a public Arc Testnet market platform for predictions, opinions, and opportunity discovery.
 
-Product line:
+Product line: > Your opinions. Your opportunities. Your predictions.
 
-> Your opinions. Your opportunities. Your predictions.
-
-This repository is separate from Presto DEX. It keeps the same dark navy and cyan brand language, but the product is focused on markets rather than swaps, liquidity, bridging, deployment, and direct transfers.
+This repository is separate from Presto DEX. It keeps the same dark navy and cyan brand language, but the product is focused on markets 
 
 ## Arc Blueprint Positioning
 
