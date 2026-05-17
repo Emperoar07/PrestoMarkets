@@ -14,7 +14,7 @@ const statusStyle: Record<MarketStatus, string> = {
 };
 
 export function MarketDetailClient({ marketId }: { marketId: string }) {
-  const { getMarket, placeTrade, resolveMarket, cancelMarket, claimMarket, refundMarket } = useAppState();
+  const { accountPreviews, connectedWallet, getMarket, placeTrade, resolveMarket, cancelMarket, claimMarket, refundMarket } = useAppState();
   const market = getMarket(marketId);
   const [selectedOutcome, setSelectedOutcome] = useState<'YES' | 'NO'>('YES');
   const [amount, setAmount] = useState('25');
@@ -43,6 +43,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const entryPrice = activeOutcome.odds / 100;
   const estimatedShares = amountValue > 0 ? amountValue / entryPrice : 0;
   const canTrade = market.status === 'Open' || market.status === 'Closing soon';
+  const accountPreview = accountPreviews[market.id];
+  const claimableAmount = Number(accountPreview?.claimable.replace(/[$,]/g, '') || 0);
+  const refundableAmount = Number(accountPreview?.refundable.replace(/[$,]/g, '') || 0);
+  const canClaim = claimableAmount > 0 && !accountPreview?.hasClaimed;
+  const canRefund = refundableAmount > 0 && !accountPreview?.hasClaimed;
 
   async function runAction(action: () => Promise<{ ok: boolean; message: string; txHash?: string }>) {
     setIsSubmitting(true);
@@ -176,6 +181,31 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <span className="font-black text-white">{estimatedShares.toFixed(2)}</span>
               </div>
             </div>
+            <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-4">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Your position</p>
+              {connectedWallet ? (
+                <>
+                  <div className="mt-3 flex items-center justify-between text-sm text-muted">
+                    <span>YES shares</span>
+                    <span className="font-black text-white">{accountPreview?.yesShares ?? '0.00'}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-sm text-muted">
+                    <span>NO shares</span>
+                    <span className="font-black text-white">{accountPreview?.noShares ?? '0.00'}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-sm text-muted">
+                    <span>Claimable</span>
+                    <span className="font-black text-mint">{accountPreview?.claimable ?? '$0.00'}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-sm text-muted">
+                    <span>Refundable</span>
+                    <span className="font-black text-cyan">{accountPreview?.refundable ?? '$0.00'}</span>
+                  </div>
+                </>
+              ) : (
+                <p className="mt-3 text-sm leading-6 text-muted">Connect a wallet to read your shares and settlement availability.</p>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => void runAction(() => placeTrade({ marketId, outcome: selectedOutcome, amount: amountValue }))}
@@ -212,7 +242,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <button
                   type="button"
                   onClick={() => void runAction(() => claimMarket(marketId))}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !canClaim}
                   className="rounded-xl border border-white/[0.06] bg-panel2 px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Claim
@@ -220,7 +250,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <button
                   type="button"
                   onClick={() => void runAction(() => refundMarket(marketId))}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !canRefund}
                   className="rounded-xl border border-white/[0.06] bg-panel2 px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Refund

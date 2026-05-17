@@ -124,6 +124,13 @@ export const prestoMarketAbi = [
   },
   {
     type: 'function',
+    name: 'claimed',
+    stateMutability: 'view',
+    inputs: [{ name: '', type: 'address' }],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    type: 'function',
     name: 'previewClaim',
     stateMutability: 'view',
     inputs: [{ name: 'user', type: 'address' }],

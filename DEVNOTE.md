@@ -170,15 +170,17 @@ Already started:
 * Live market transactions for USDC approval, buy, resolve, claim, and refund flows
 * Market filters for prediction, opinion, opportunity, open, closing soon, resolved, canceled, draft, and onchain markets
 * Circle User-Controlled Wallet endpoint scaffolding for user sessions, device tokens, initialization challenges, and wallet listing
+* Branded Circle wallet onboarding panel with external wallet fallback
 * Circle Web SDK challenge execution for user initialization
 * External EOA wallet fallback while Circle credentials and onboarding settings are configured
+* Connected-account share reads for portfolio positions
+* Claim and refund availability reads per connected account
+* Recent account activity from Arc market logs
 
 Next work:
 
-* Add connected-account share reads for the portfolio
-* Add indexed activity history for account-level market actions
 * Add resolver-only affordances once account ownership is read in the UI
-* Replace the temporary Circle user ID prompt with a branded email/social/PIN onboarding panel
+* Expand recent event reads into a persistent indexed account history
 
 ## Phase 3 Started
 

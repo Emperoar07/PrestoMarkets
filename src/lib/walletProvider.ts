@@ -8,6 +8,8 @@ export type ConnectedWallet = {
 };
 
 const ARC_CHAIN_HEX = '0x4cef52';
+const connectedWalletStorageKey = 'presto.connectedWallet';
+const connectedWalletEventName = 'presto:wallet';
 
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -21,6 +23,38 @@ declare global {
 
 export function shortAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+export function getStoredConnectedWallet(): ConnectedWallet | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const stored = window.localStorage.getItem(connectedWalletStorageKey);
+    return stored ? JSON.parse(stored) as ConnectedWallet : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredConnectedWallet(wallet: ConnectedWallet | null) {
+  if (typeof window === 'undefined') return;
+
+  if (wallet) {
+    window.localStorage.setItem(connectedWalletStorageKey, JSON.stringify(wallet));
+  } else {
+    window.localStorage.removeItem(connectedWalletStorageKey);
+  }
+
+  window.dispatchEvent(new CustomEvent<ConnectedWallet | null>(connectedWalletEventName, { detail: wallet }));
+}
+
+export function subscribeConnectedWallet(listener: (wallet: ConnectedWallet | null) => void) {
+  function handleWalletEvent(event: Event) {
+    listener((event as CustomEvent<ConnectedWallet | null>).detail);
+  }
+
+  window.addEventListener(connectedWalletEventName, handleWalletEvent);
+  return () => window.removeEventListener(connectedWalletEventName, handleWalletEvent);
 }
 
 async function ensureArc(provider: EthereumProvider) {
@@ -50,13 +84,13 @@ async function ensureArc(provider: EthereumProvider) {
 
 export async function getExistingExternalWallet(): Promise<ConnectedWallet | null> {
   if (!window.ethereum) {
-    return null;
+    return getStoredConnectedWallet();
   }
 
   const accounts = await window.ethereum.request({ method: 'eth_accounts' }) as string[];
   const [address] = accounts;
 
-  return address ? { address, mode: 'external-eoa' } : null;
+  return address ? { address, mode: 'external-eoa' } : getStoredConnectedWallet();
 }
 
 export async function disconnectExternalWallet() {
@@ -72,25 +106,30 @@ export async function disconnectExternalWallet() {
   } catch {
     // Some injected wallets do not expose programmatic disconnect.
   }
+
+  setStoredConnectedWallet(null);
 }
 
-export async function connectOfficialWalletProvider(): Promise<ConnectedWallet> {
-  const circleWallet = await connectCircleUserControlledWalletProvider();
+export async function connectOfficialWalletProvider(input?: { userId?: string }): Promise<ConnectedWallet> {
+  const circleWallet = await connectCircleUserControlledWalletProvider(input);
   if (circleWallet) {
+    setStoredConnectedWallet(circleWallet);
     return circleWallet;
   }
 
-  return connectExternalWalletProvider();
+  const externalWallet = await connectExternalWalletProvider();
+  setStoredConnectedWallet(externalWallet);
+  return externalWallet;
 }
 
-async function connectCircleUserControlledWalletProvider(): Promise<ConnectedWallet | null> {
+async function connectCircleUserControlledWalletProvider(input?: { userId?: string }): Promise<ConnectedWallet | null> {
   const enabled = process.env.NEXT_PUBLIC_CIRCLE_WALLETS_ENABLED === 'true';
 
   if (!enabled) {
     return null;
   }
 
-  const userId = window.prompt('Enter your Presto Circle wallet email or user ID.');
+  const userId = input?.userId?.trim();
 
   if (!userId) {
     return null;

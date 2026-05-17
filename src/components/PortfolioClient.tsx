@@ -21,7 +21,7 @@ function formatUsd(value: number) {
 }
 
 export function PortfolioClient() {
-  const { markets, positions, activity } = useAppState();
+  const { markets, positions, activity, connectedWallet, isLoadingAccount } = useAppState();
   const positionValue = positions.reduce((sum, position) => sum + parseUsd(position.value), 0);
   const claimableValue = positions
     .filter((position) => position.status === 'Claimable')
@@ -35,14 +35,17 @@ export function PortfolioClient() {
         <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Portfolio</p>
         <h1 className="mt-3 text-[clamp(34px,5vw,54px)] font-black tracking-tight text-white">Your market positions</h1>
         <p className="mt-3 max-w-2xl text-[14px] leading-[1.7] text-muted">
-          Portfolio rows now stay empty until per-wallet share reads are connected. Live trading, claim, and refund actions happen from each market detail page.
+          Portfolio rows are read from live Arc market contracts for the connected wallet.
         </p>
+        <div className="mt-5 w-fit rounded-full border border-white/[0.06] bg-[#141e30] px-4 py-2 text-sm font-bold text-muted">
+          {connectedWallet ? `Connected ${connectedWallet.address.slice(0, 6)}...${connectedWallet.address.slice(-4)}` : 'Connect a wallet to load positions'}
+        </div>
 
         <section className="mt-9 grid gap-4 md:grid-cols-3">
           <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
             <p className="text-sm text-muted">Position value</p>
             <p className="mt-2 text-3xl font-black text-white">{formatUsd(positionValue)}</p>
-            <p className="mt-1 text-sm font-bold text-mint">{positions.length} tracked positions</p>
+            <p className="mt-1 text-sm font-bold text-mint">{isLoadingAccount ? 'Loading account reads' : `${positions.length} tracked positions`}</p>
           </div>
           <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
             <p className="text-sm text-muted">Claimable</p>
@@ -89,7 +92,7 @@ export function PortfolioClient() {
               </div>
             )) : (
               <div className="p-6 text-sm leading-6 text-muted">
-                No wallet-scoped positions are displayed yet. This page will populate after the next live read pass adds `sharesOf` queries for the connected account.
+                {connectedWallet ? 'No YES or NO shares were found for this wallet across the live factory markets.' : 'Connect a wallet to load YES and NO shares from live Arc market contracts.'}
               </div>
             )}
           </div>
@@ -116,7 +119,7 @@ export function PortfolioClient() {
               </div>
             )) : (
               <div className="p-6 text-sm leading-6 text-muted">
-                No local activity log is shown. Use wallet history or the Arc explorer for transaction-level activity until indexed account activity is added.
+                {connectedWallet ? 'No recent account activity was found in the latest Arc log window.' : 'Connect a wallet to load recent buy, claim, and refund events.'}
               </div>
             )}
           </div>
