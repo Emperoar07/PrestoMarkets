@@ -280,6 +280,7 @@ Current:
 Partially wired:
 
 * Wallets
+* Circle App Kit API key is stored as `CIRCLE_APP_KIT_API_KEY` for future Circle App Kit rail work
 
 Planned:
 
