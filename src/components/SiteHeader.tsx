@@ -31,10 +31,15 @@ export function SiteHeader() {
         </nav>
         {isLandingPage ? (
           <Link href="/markets" className="rounded-lg bg-[#25c0f4] px-[18px] py-2 text-[13px] font-bold text-[#090e1a] transition-opacity hover:opacity-90">
-            Launch App
+            Explore Markets
           </Link>
         ) : (
-          <WalletConnectButton />
+          <div className="flex items-center gap-3">
+            <Link href="/markets" className="rounded-lg bg-[#25c0f4] px-[18px] py-2 text-[13px] font-bold text-[#090e1a] transition-opacity hover:opacity-90">
+              Explore Markets
+            </Link>
+            <WalletConnectButton />
+          </div>
         )}
       </div>
     </header>
