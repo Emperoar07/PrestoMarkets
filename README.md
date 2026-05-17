@@ -48,12 +48,12 @@ Phase 1 is intentionally conservative. It does not include AMM pricing, autonomo
 * A roadmap page for product and protocol phases.
 * Arc focused positioning around market signals and information discovery.
 * Templates for macro, policy, governance, product, and builder opportunity markets.
-* Shared client side app state for local market creation, demo trading, and portfolio review before wallet reads are connected.
-* App phase readiness checks for Arc chain, USDC address, market factory address, demo wallet connection, and demo USDC allowance.
-* Market filters for prediction, opinion, opportunity, open, closing soon, resolved, canceled, draft, and locally created markets.
-* Draft market creation and local market status review controls.
-* Read-only Arc Testnet factory integration for live market discovery.
-* Mock portfolio positions and activity states for review before wallet reads are connected.
+* Live Arc factory reads for deployed market discovery.
+* Live Arc factory writes for market creation.
+* Live market transactions for USDC approval, buy, resolve, claim, and refund flows.
+* App phase readiness checks for Arc chain, USDC address, and market factory address.
+* Market filters for prediction, opinion, opportunity, open, closing soon, resolved, canceled, draft, and onchain markets.
+* Portfolio page kept data-honest until per-wallet share indexing is added.
 
 ## Phase 3
 
@@ -66,7 +66,7 @@ Phase 1 is intentionally conservative. It does not include AMM pricing, autonomo
 * Settlement records that support auditability and higher trust market workflows.
 * Hardhat contract test harness for market and factory behavior.
 
-Phase 3 is still a scaffold. It prepares the repo for deployment planning, but the contracts still need tests and audit before live value.
+Phase 3 contract tests are in place for market and factory behavior. Audit and dispute design are still future hardening work before real value beyond testnet.
 
 ## Later Scope
 

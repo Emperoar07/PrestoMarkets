@@ -156,18 +156,17 @@ Already started:
 * Templates for macro, policy, governance, product, and builder opportunity markets
 * UI copy based on Arc prediction market positioning
 * Roadmap and rail planning pages
-* Shared client side app state for local market creation, demo trading, and portfolio review
-* Local draft market creation
-* Market filters for prediction, opinion, opportunity, open, closing soon, resolved, canceled, draft, and created markets
-* App phase readiness checks for Arc chain, USDC address, market factory address, demo wallet connection, and demo USDC allowance
-* Read-only Arc Testnet factory integration loads live market addresses and public market fields
+* Live Arc factory reads for deployed market discovery
+* Live Arc factory writes for market creation
+* Live market transactions for USDC approval, buy, resolve, claim, and refund flows
+* Market filters for prediction, opinion, opportunity, open, closing soon, resolved, canceled, draft, and onchain markets
+* App phase readiness checks for Arc chain, USDC address, and market factory address
 
 Next work:
 
-* Convert the create form into a real deploy flow
-* Add wallet connection
-* Add USDC allowance flow
-* Add market creation transaction flow
+* Add connected-account share reads for the portfolio
+* Add indexed activity history for account-level market actions
+* Add resolver-only affordances once account ownership is read in the UI
 
 ## Phase 3 Started
 

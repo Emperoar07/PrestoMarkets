@@ -2,7 +2,7 @@ import Link from 'next/link';
 import type { Market } from '@/lib/markets';
 
 type MarketCardMarket = Market & {
-  source?: 'seed' | 'created' | 'onchain';
+  source?: 'onchain';
 };
 
 const typeStyle: Record<Market['type'], string> = {

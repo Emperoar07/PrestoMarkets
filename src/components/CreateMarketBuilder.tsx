@@ -8,7 +8,7 @@ import { ArcReadinessPanel } from './ArcReadinessPanel';
 import { currentRails, plannedRails } from '@/lib/productRails';
 import { marketTemplates } from '@/lib/marketTemplates';
 import type { MarketTemplate } from '@/lib/marketTemplates';
-import type { MarketStatus, MarketType } from '@/lib/markets';
+import type { MarketType } from '@/lib/markets';
 import { useAppState } from '@/lib/appState';
 
 const marketTypes: MarketType[] = ['Prediction', 'Opinion', 'Opportunity'];
@@ -36,10 +36,10 @@ export function CreateMarketBuilder() {
   const [rules, setRules] = useState(marketTemplates[0].rules);
   const [sourceOfTruth, setSourceOfTruth] = useState(marketTemplates[0].sourceOfTruth);
   const [closeDate, setCloseDate] = useState(toDatetimeLocalValue(10));
-  const [seedLiquidity, setSeedLiquidity] = useState(marketTemplates[0].seedLiquidity);
-  const [resolver, setResolver] = useState(marketTemplates[0].resolver);
+  const [resolver, setResolver] = useState('');
   const [showReview, setShowReview] = useState(false);
-  const [marketStatus, setMarketStatus] = useState<MarketStatus>('Open');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
 
   const visibleTemplates = marketTemplates.filter((template) => template.type === selectedType);
   const activeTemplate: MarketTemplate = visibleTemplates.find((template) => template.id === selectedTemplateId) ?? visibleTemplates[0];
@@ -50,9 +50,8 @@ export function CreateMarketBuilder() {
     setDescription(`${template.title} market for ${template.category.toLowerCase()} signals on Arc.`);
     setRules(template.rules);
     setSourceOfTruth(template.sourceOfTruth);
-    setResolver(template.resolver);
-    setSeedLiquidity(template.seedLiquidity);
     setShowReview(false);
+    setStatusMessage('');
   }
 
   function chooseType(type: MarketType) {
@@ -61,8 +60,11 @@ export function CreateMarketBuilder() {
     applyTemplate(nextTemplate);
   }
 
-  function launchMarket(status: MarketStatus) {
-    const marketId = createMarket({
+  async function launchMarket() {
+    setIsSubmitting(true);
+    setStatusMessage('Submitting market creation to Arc...');
+
+    const result = await createMarket({
       type: selectedType,
       title,
       description,
@@ -72,11 +74,14 @@ export function CreateMarketBuilder() {
       sourceOfTruth,
       resolver,
       resolutionMode: activeTemplate.resolutionMode,
-      seedLiquidity: Number(seedLiquidity) || 0,
-      status,
     });
 
-    router.push(`/markets/${marketId}`);
+    setIsSubmitting(false);
+    setStatusMessage(result.message);
+
+    if (result.ok) {
+      router.push('/markets');
+    }
   }
 
   return (
@@ -86,7 +91,7 @@ export function CreateMarketBuilder() {
         <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Create</p>
         <h1 className="mt-3 text-[clamp(34px,5vw,54px)] font-black tracking-tight text-white">Launch a public market</h1>
         <p className="mt-3 max-w-3xl text-[14px] leading-[1.7] text-muted">
-          The app phase now supports a full local review flow. You can choose a template, customize the market, review the rules, and launch it back into the shared market explorer and portfolio.
+          Create a live market through the deployed Presto factory on Arc. Your wallet signs the transaction, and the market appears after the factory read refreshes.
         </p>
 
         <div className="mt-9 grid gap-6 lg:grid-cols-[360px_1fr]">
@@ -183,7 +188,7 @@ export function CreateMarketBuilder() {
                     className="mt-2 min-h-24 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
                   />
                 </div>
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <label className="text-sm font-bold text-muted">Close date</label>
                     <input
@@ -194,20 +199,12 @@ export function CreateMarketBuilder() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-bold text-muted">Seed liquidity USDC</label>
-                    <input
-                      value={seedLiquidity}
-                      onChange={(event) => setSeedLiquidity(event.target.value)}
-                      className="mt-2 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
-                      inputMode="decimal"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-bold text-muted">Resolver</label>
+                    <label className="text-sm font-bold text-muted">Resolver address</label>
                     <input
                       value={resolver}
                       onChange={(event) => setResolver(event.target.value)}
                       className="mt-2 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
+                      placeholder="0x..."
                     />
                   </div>
                 </div>
@@ -215,7 +212,7 @@ export function CreateMarketBuilder() {
                 <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                   <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Funding rails</p>
                   <p className="mt-2 text-sm leading-6 text-muted">
-                    V1 creation uses USDC and Presto market contracts. Paymaster, Wallets, Bridge Kit, CCTP, and Gateway stay planned until their flows are wired and tested.
+                    V1 creation uses the deployed Presto factory and USDC market contracts on Arc. Paymaster, Bridge Kit, CCTP, and Gateway stay planned until each flow is live-tested.
                   </p>
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     <div>
@@ -241,26 +238,8 @@ export function CreateMarketBuilder() {
                   </div>
                 </div>
 
-                <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-                  <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Market status</p>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    {(['Open', 'Draft'] as MarketStatus[]).map((status) => (
-                      <button
-                        key={status}
-                        type="button"
-                        onClick={() => setMarketStatus(status)}
-                        className={`rounded-2xl border px-4 py-3 text-left text-sm font-black transition-colors ${
-                          marketStatus === status ? 'border-cyan/50 bg-cyan/10 text-cyan' : 'border-white/[0.06] bg-[#141e30] text-white hover:border-cyan/30'
-                        }`}
-                      >
-                        {status}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 <button type="button" onClick={() => setShowReview(true)} className="w-full rounded-[10px] bg-cyan px-6 py-4 font-black text-ink transition-opacity hover:opacity-90">
-                  Review Market
+                  Review Live Market
                 </button>
               </div>
             </form>
@@ -273,19 +252,15 @@ export function CreateMarketBuilder() {
                     <h2 className="mt-2 text-2xl font-black text-white">{title}</h2>
                     <p className="mt-3 max-w-3xl leading-7 text-muted">{description}</p>
                   </div>
-                  <span className="rounded-full border border-white/[0.06] bg-[#0f172a] px-3 py-1 text-xs font-black text-muted">
-                    {marketStatus}
+                  <span className="rounded-full border border-cyan/30 bg-cyan/10 px-3 py-1 text-xs font-black text-cyan">
+                    Live Arc transaction
                   </span>
                 </div>
 
-                <div className="mt-6 grid gap-4 md:grid-cols-3">
-                  <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Seed liquidity</p>
-                    <p className="mt-2 text-2xl font-black text-white">{seedLiquidity} USDC</p>
-                  </div>
+                <div className="mt-6 grid gap-4 md:grid-cols-2">
                   <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Resolver</p>
-                    <p className="mt-2 text-lg font-black text-white">{resolver}</p>
+                    <p className="mt-2 break-all text-lg font-black text-white">{resolver || 'Set a resolver address before launching'}</p>
                   </div>
                   <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Close date</p>
@@ -305,18 +280,23 @@ export function CreateMarketBuilder() {
                 </div>
 
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                  <button type="button" onClick={() => launchMarket(marketStatus)} className="rounded-[10px] bg-cyan px-6 py-4 font-black text-ink transition-opacity hover:opacity-90">
-                    {marketStatus === 'Draft' ? 'Save Draft Market' : 'Launch Mock Market'}
+                  <button
+                    type="button"
+                    onClick={() => void launchMarket()}
+                    disabled={isSubmitting}
+                    className="rounded-[10px] bg-cyan px-6 py-4 font-black text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSubmitting ? 'Submitting...' : 'Launch Live Market'}
                   </button>
-                  {marketStatus !== 'Draft' ? (
-                    <button type="button" onClick={() => launchMarket('Draft')} className="rounded-[10px] border border-white/10 bg-[#0f172a] px-6 py-4 font-black text-white">
-                      Save Draft
-                    </button>
-                  ) : null}
                   <button type="button" onClick={() => setShowReview(false)} className="rounded-[10px] border border-white/10 bg-[#0f172a] px-6 py-4 font-black text-white">
                     Keep Editing
                   </button>
                 </div>
+                {statusMessage ? (
+                  <p className={`mt-4 rounded-[14px] border px-4 py-3 text-sm font-bold ${statusMessage.includes('failed') || statusMessage.includes('valid') || statusMessage.includes('required') ? 'border-red-400/25 bg-red-400/10 text-red-200' : 'border-cyan/25 bg-cyan/10 text-cyan'}`}>
+                    {statusMessage}
+                  </p>
+                ) : null}
               </section>
             ) : null}
           </div>

@@ -13,6 +13,18 @@ export const prestoMarketFactoryAbi = [
     inputs: [{ name: '', type: 'uint256' }],
     outputs: [{ name: '', type: 'address' }],
   },
+  {
+    type: 'function',
+    name: 'createMarket',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'resolver', type: 'address' },
+      { name: 'closeTime', type: 'uint256' },
+      { name: 'metadataURI', type: 'string' },
+      { name: 'marketKind', type: 'uint8' },
+    ],
+    outputs: [{ name: 'market', type: 'address' }],
+  },
 ] as const;
 
 export const prestoMarketAbi = [
@@ -99,5 +111,96 @@ export const prestoMarketAbi = [
     stateMutability: 'view',
     inputs: [{ name: '', type: 'uint8' }],
     outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'sharesOf',
+    stateMutability: 'view',
+    inputs: [
+      { name: '', type: 'uint8' },
+      { name: '', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'previewClaim',
+    stateMutability: 'view',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [
+      { name: 'payout', type: 'uint256' },
+      { name: 'fee', type: 'uint256' },
+    ],
+  },
+  {
+    type: 'function',
+    name: 'previewRefund',
+    stateMutability: 'view',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'buy',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'outcome', type: 'uint8' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'resolve',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'outcome', type: 'uint8' },
+      { name: 'resolutionURI_', type: 'string' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'cancel',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'claim',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'refund',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [],
+  },
+] as const;
+
+export const erc20Abi = [
+  {
+    type: 'function',
+    name: 'allowance',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'approve',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
   },
 ] as const;

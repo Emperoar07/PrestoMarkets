@@ -72,6 +72,27 @@ function getOdds(yesShares: bigint, noShares: bigint) {
   return { yes, no: 100 - yes };
 }
 
+function parseMetadata(metadataURI: string) {
+  if (!metadataURI.startsWith('data:application/json,')) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(decodeURIComponent(metadataURI.slice('data:application/json,'.length))) as Partial<{
+      name: string;
+      description: string;
+      category: string;
+      rules: string;
+      sourceOfTruth: string;
+      resolutionMode: ResolutionMode;
+    }>;
+
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 async function readMarket(client: ReturnType<typeof createPublicClient>, address: Address, index: number): Promise<AppMarket> {
   const [
     creator,
@@ -109,13 +130,14 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
   const marketType = getMarketType(kind);
   const collateralValue = status === 'Resolved' ? resolvedCollateral : totalCollateral;
   const titleSource = metadataURI.trim().length > 0 ? metadataURI : `Market ${index + 1}`;
+  const metadata = parseMetadata(metadataURI);
 
   return {
     id: address.toLowerCase(),
     type: marketType,
-    title: `Arc market ${index + 1}`,
-    description: `Onchain ${marketType.toLowerCase()} market created from metadata ${titleSource}.`,
-    category: 'Onchain',
+    title: metadata?.name || `Arc market ${index + 1}`,
+    description: metadata?.description || `Onchain ${marketType.toLowerCase()} market created from metadata ${titleSource}.`,
+    category: metadata?.category || 'Onchain',
     volume: formatOnchainUsd(totalCollateral),
     liquidity: formatOnchainUsd(collateralValue),
     closeLabel: getCloseLabel(status, closeTime),
@@ -123,11 +145,11 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     collateral: 'USDC',
     chain: 'Arc Testnet',
     resolver: truncateAddress(resolver),
-    resolutionMode: getResolutionMode(kind),
-    sourceOfTruth: metadataURI || 'Metadata URI was not set at creation.',
+    resolutionMode: metadata?.resolutionMode || getResolutionMode(kind),
+    sourceOfTruth: metadata?.sourceOfTruth || metadataURI || 'Metadata URI was not set at creation.',
     rules: resolutionURI
       ? `Resolved with evidence: ${resolutionURI}. Winning outcome: ${winningOutcome === 0 ? 'YES' : 'NO'}.`
-      : 'Rules live in the market metadata URI. Resolver evidence is published after settlement.',
+      : metadata?.rules || 'Rules live in the market metadata URI. Resolver evidence is published after settlement.',
     createdBy: truncateAddress(creator),
     feeMode: Number(protocolFeeBps) > 0 ? `${protocolFeeBps} bps protocol fee` : 'No protocol fee',
     outcomes: [
@@ -142,7 +164,6 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     source: 'onchain',
     closeDate: new Date(Number(closeTime) * 1000).toISOString(),
     createdAt: new Date(Number(closeTime) * 1000).toISOString(),
-    seedLiquidityValue: Number(formatUnits(totalCollateral, 6)),
   };
 }
 

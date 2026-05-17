@@ -26,7 +26,7 @@ export function PortfolioClient() {
   const claimableValue = positions
     .filter((position) => position.status === 'Claimable')
     .reduce((sum, position) => sum + parseUsd(position.value), 0);
-  const createdMarkets = markets.filter((market) => market.source === 'created').length;
+  const liveMarkets = markets.length;
 
   return (
     <>
@@ -35,7 +35,7 @@ export function PortfolioClient() {
         <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Portfolio</p>
         <h1 className="mt-3 text-[clamp(34px,5vw,54px)] font-black tracking-tight text-white">Your market positions</h1>
         <p className="mt-3 max-w-2xl text-[14px] leading-[1.7] text-muted">
-          The portfolio now reflects your local trades and created markets, so the whole product loop is reviewable before live wallet reads and Arc contract data are connected.
+          Portfolio rows now stay empty until per-wallet share reads are connected. Live trading, claim, and refund actions happen from each market detail page.
         </p>
 
         <section className="mt-9 grid gap-4 md:grid-cols-3">
@@ -47,12 +47,12 @@ export function PortfolioClient() {
           <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
             <p className="text-sm text-muted">Claimable</p>
             <p className="mt-2 text-3xl font-black text-white">{formatUsd(claimableValue)}</p>
-            <p className="mt-1 text-sm font-bold text-muted">Resolution remains mock-safe for now</p>
+            <p className="mt-1 text-sm font-bold text-muted">Claim from resolved market pages</p>
           </div>
           <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
-            <p className="text-sm text-muted">Markets created</p>
-            <p className="mt-2 text-3xl font-black text-white">{createdMarkets}</p>
-            <p className="mt-1 text-sm font-bold text-yellow-200">Shared back into the market explorer</p>
+            <p className="text-sm text-muted">Factory markets</p>
+            <p className="mt-2 text-3xl font-black text-white">{liveMarkets}</p>
+            <p className="mt-1 text-sm font-bold text-yellow-200">Read from Arc factory state</p>
           </div>
         </section>
 
@@ -61,7 +61,7 @@ export function PortfolioClient() {
             <h2 className="text-xl font-black text-white">Positions</h2>
           </div>
           <div className="divide-y divide-line">
-            {positions.map((position) => (
+            {positions.length > 0 ? positions.map((position) => (
               <div key={`${position.marketId}-${position.outcome}-${position.shares}`} className="grid gap-4 p-6 md:grid-cols-[1.5fr_repeat(4,1fr)_auto] md:items-center">
                 <div>
                   <p className="font-black text-white">{position.title}</p>
@@ -87,7 +87,11 @@ export function PortfolioClient() {
                   {position.status}
                 </span>
               </div>
-            ))}
+            )) : (
+              <div className="p-6 text-sm leading-6 text-muted">
+                No wallet-scoped positions are displayed yet. This page will populate after the next live read pass adds `sharesOf` queries for the connected account.
+              </div>
+            )}
           </div>
         </section>
 
@@ -96,7 +100,7 @@ export function PortfolioClient() {
             <h2 className="text-xl font-black text-white">Activity</h2>
           </div>
           <div className="divide-y divide-line">
-            {activity.map((item) => (
+            {activity.length > 0 ? activity.map((item) => (
               <div key={`${item.label}-${item.market}-${item.time}-${item.detail}`} className="flex flex-col justify-between gap-4 p-6 md:flex-row md:items-center">
                 <div>
                   <p className="font-black text-white">{item.label}</p>
@@ -110,7 +114,11 @@ export function PortfolioClient() {
                   <span className="text-sm font-bold text-muted">{item.time}</span>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="p-6 text-sm leading-6 text-muted">
+                No local activity log is shown. Use wallet history or the Arc explorer for transaction-level activity until indexed account activity is added.
+              </div>
+            )}
           </div>
         </section>
       </main>

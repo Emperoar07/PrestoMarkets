@@ -8,9 +8,7 @@ export type MarketTemplate = {
   question: string;
   rules: string;
   sourceOfTruth: string;
-  resolver: string;
   resolutionMode: ResolutionMode;
-  seedLiquidity: string;
   closeHint: string;
 };
 
@@ -23,9 +21,7 @@ export const marketTemplates: MarketTemplate[] = [
     question: 'Will the next US CPI print come in above consensus?',
     rules: 'YES wins if the official CPI print is higher than the published consensus estimate at release time. NO wins otherwise.',
     sourceOfTruth: 'Official government release and a named public consensus source.',
-    resolver: 'Presto council',
     resolutionMode: 'Human resolver',
-    seedLiquidity: '1000',
     closeHint: 'Close before the scheduled data release.',
   },
   {
@@ -36,9 +32,7 @@ export const marketTemplates: MarketTemplate[] = [
     question: 'Will a named policy decision be announced before the deadline?',
     rules: 'YES wins if the named institution publicly announces the decision before the close time. NO wins if no qualifying announcement is made.',
     sourceOfTruth: 'Official policy announcement, regulator publication, or verified public statement.',
-    resolver: 'Presto council',
     resolutionMode: 'Human resolver',
-    seedLiquidity: '750',
     closeHint: 'Close after the expected announcement window.',
   },
   {
@@ -49,9 +43,7 @@ export const marketTemplates: MarketTemplate[] = [
     question: 'Should Presto prioritize creator tools over analytics next?',
     rules: 'YES means creator tools should be prioritized first. NO means analytics and portfolio depth should be prioritized first.',
     sourceOfTruth: 'Final public roadmap update or governance summary.',
-    resolver: 'Community steward',
     resolutionMode: 'Community resolver',
-    seedLiquidity: '500',
     closeHint: 'Close after the feedback window.',
   },
   {
@@ -62,9 +54,7 @@ export const marketTemplates: MarketTemplate[] = [
     question: 'Will this proposal receive majority support?',
     rules: 'YES wins if the proposal receives more support than opposition in the final public vote or signal poll.',
     sourceOfTruth: 'Final vote, forum poll, or signed governance result.',
-    resolver: 'Community steward',
     resolutionMode: 'Community resolver',
-    seedLiquidity: '500',
     closeHint: 'Close at the end of the vote.',
   },
   {
@@ -74,10 +64,8 @@ export const marketTemplates: MarketTemplate[] = [
     title: 'Builder gap',
     question: 'Is consumer payments the biggest Arc builder opportunity this quarter?',
     rules: 'YES wins if consumer payments receives the most verified opportunity submissions and builder commitments by close.',
-    sourceOfTruth: 'Public Arc ecosystem submissions, builder demos, and confirmed launch announcements.',
-    resolver: 'Presto council',
+    sourceOfTruth: 'Public Arc ecosystem submissions, builder releases, and confirmed launch announcements.',
     resolutionMode: 'Agent assisted',
-    seedLiquidity: '1000',
     closeHint: 'Close at the end of the quarter or campaign.',
   },
   {
@@ -88,9 +76,7 @@ export const marketTemplates: MarketTemplate[] = [
     question: 'Will a public Arc app in this category launch before the deadline?',
     rules: 'YES wins if a qualifying public app launches on Arc Testnet before close. NO wins otherwise.',
     sourceOfTruth: 'Public deployment, launch announcement, and verifiable contract or app link.',
-    resolver: 'Presto council',
     resolutionMode: 'Agent assisted',
-    seedLiquidity: '800',
     closeHint: 'Close after the expected launch window.',
   },
 ];

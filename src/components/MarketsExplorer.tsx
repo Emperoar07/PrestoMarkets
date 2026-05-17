@@ -5,7 +5,7 @@ import { MarketCard } from './MarketCard';
 import { useAppState } from '@/lib/appState';
 import { marketCategories } from '@/lib/marketTemplates';
 
-const filters = ['All', 'Prediction', 'Opinion', 'Opportunity', 'Open', 'Closing soon', 'Resolved', 'Canceled', 'Draft', 'Onchain', 'Created'];
+const filters = ['All', 'Prediction', 'Opinion', 'Opportunity', 'Open', 'Closing soon', 'Resolved', 'Canceled', 'Draft', 'Onchain'];
 
 function formatUsd(value: number) {
   if (value >= 1_000) {
@@ -50,10 +50,6 @@ export function MarketsExplorer() {
 
     if (activeFilter === 'All') {
       return true;
-    }
-
-    if (activeFilter === 'Created') {
-      return market.source === 'created';
     }
 
     if (activeFilter === 'Onchain') {
@@ -137,7 +133,7 @@ export function MarketsExplorer() {
         <div className="mt-9 rounded-[16px] border border-dashed border-white/[0.08] bg-[#141e30] p-10 text-center">
           <h2 className="text-2xl font-black text-white">No markets match that view</h2>
           <p className="mt-3 text-muted">
-            Try another filter or search term. Created markets will appear here as soon as you launch them.
+            Try another filter or search term. Live markets will appear here as soon as the deployed Arc factory returns them.
           </p>
         </div>
       )}

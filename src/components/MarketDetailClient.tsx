@@ -13,14 +13,14 @@ const statusStyle: Record<MarketStatus, string> = {
   Draft: 'border-line bg-ink text-muted',
 };
 
-const demoStatuses: MarketStatus[] = ['Open', 'Resolved', 'Canceled', 'Draft'];
-
 export function MarketDetailClient({ marketId }: { marketId: string }) {
-  const { getMarket, placeTrade, updateMarketStatus } = useAppState();
+  const { getMarket, placeTrade, resolveMarket, cancelMarket, claimMarket, refundMarket } = useAppState();
   const market = getMarket(marketId);
   const [selectedOutcome, setSelectedOutcome] = useState<'YES' | 'NO'>('YES');
   const [amount, setAmount] = useState('25');
+  const [resolutionURI, setResolutionURI] = useState('');
   const [message, setMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!market) {
     return (
@@ -29,7 +29,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
         <main className="mx-auto max-w-4xl px-4 pb-16 pt-28 md:px-7">
           <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-8 text-center">
             <h1 className="text-3xl font-black text-white">Market not found</h1>
-            <p className="mt-3 text-muted">This route is ready for locally created markets and seeded demos, but that market does not exist.</p>
+            <p className="mt-3 text-muted">This market was not returned by the deployed Arc factory.</p>
           </div>
         </main>
       </>
@@ -44,8 +44,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const estimatedShares = amountValue > 0 ? amountValue / entryPrice : 0;
   const canTrade = market.status === 'Open' || market.status === 'Closing soon';
 
-  function handleTrade() {
-    const result = placeTrade({ marketId, outcome: selectedOutcome, amount: amountValue });
+  async function runAction(action: () => Promise<{ ok: boolean; message: string; txHash?: string }>) {
+    setIsSubmitting(true);
+    setMessage('Waiting for wallet confirmation...');
+    const result = await action();
+    setIsSubmitting(false);
     setMessage(result.message);
   }
 
@@ -62,11 +65,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               <span className={`rounded-full border px-3 py-1 text-xs font-black ${statusStyle[market.status]}`}>
                 {market.status}
               </span>
-              {market.source === 'created' ? (
-                <span className="rounded-full border border-mint/25 bg-mint/10 px-3 py-1 text-xs font-black text-mint">
-                  Created in app
-                </span>
-              ) : null}
+              <span className="rounded-full border border-mint/25 bg-mint/10 px-3 py-1 text-xs font-black text-mint">
+                Onchain
+              </span>
             </div>
             <h1 className="mt-5 text-[clamp(32px,4vw,48px)] font-black leading-tight tracking-tight text-white">{market.title}</h1>
             <p className="mt-4 text-[15px] leading-[1.8] text-muted">{market.description}</p>
@@ -119,7 +120,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
           <aside className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
             <h2 className="text-xl font-black text-white">Trade outcome</h2>
             <p className="mt-2 text-sm leading-6 text-muted">
-              Demo mode is live for the app phase. Trades update prices, volume, and your portfolio locally so the full flow is reviewable before wallet wiring.
+              Trades execute against this live Arc market. If your USDC allowance is too low, Presto will ask for approval before submitting the buy.
             </p>
             <div className="mt-5 grid gap-3">
               <button
@@ -170,24 +171,55 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <span className="font-black text-white">{estimatedShares.toFixed(2)}</span>
               </div>
             </div>
-            <button type="button" onClick={handleTrade} className="mt-5 w-full rounded-[10px] bg-cyan px-6 py-4 font-black text-ink transition-opacity hover:opacity-90">
-              {canTrade ? `Simulate Buy ${selectedOutcome}` : 'Market Not Open'}
+            <button
+              type="button"
+              onClick={() => void runAction(() => placeTrade({ marketId, outcome: selectedOutcome, amount: amountValue }))}
+              disabled={!canTrade || isSubmitting}
+              className="mt-5 w-full rounded-[10px] bg-cyan px-6 py-4 font-black text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {canTrade ? `${isSubmitting ? 'Submitting...' : `Buy ${selectedOutcome} on Arc`}` : 'Market Not Open'}
             </button>
             <div className="mt-5 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-4">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Demo status</p>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Settlement actions</p>
+              <input
+                value={resolutionURI}
+                onChange={(event) => setResolutionURI(event.target.value)}
+                placeholder="Resolution evidence URI"
+                className="mt-3 w-full rounded-[10px] border border-white/[0.06] bg-[#141e30] px-3 py-2 text-sm text-white outline-none focus:border-cyan/50"
+              />
               <div className="mt-3 grid grid-cols-2 gap-2">
-                {demoStatuses.map((status) => (
-                  <button
-                    key={status}
-                    type="button"
-                    onClick={() => updateMarketStatus(market.id, status)}
-                    className={`rounded-xl border px-3 py-2 text-xs font-black transition-colors ${
-                      market.status === status ? 'border-cyan/45 bg-cyan/10 text-cyan' : 'border-line bg-panel2 text-muted hover:border-cyan/30'
-                    }`}
-                  >
-                    {status}
-                  </button>
-                ))}
+                <button
+                  type="button"
+                  onClick={() => void runAction(() => resolveMarket({ marketId, outcome: selectedOutcome, resolutionURI }))}
+                  disabled={isSubmitting}
+                  className="rounded-xl border border-white/[0.06] bg-panel2 px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Resolve {selectedOutcome}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void runAction(() => cancelMarket(marketId))}
+                  disabled={isSubmitting}
+                  className="rounded-xl border border-white/[0.06] bg-panel2 px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void runAction(() => claimMarket(marketId))}
+                  disabled={isSubmitting}
+                  className="rounded-xl border border-white/[0.06] bg-panel2 px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Claim
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void runAction(() => refundMarket(marketId))}
+                  disabled={isSubmitting}
+                  className="rounded-xl border border-white/[0.06] bg-panel2 px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Refund
+                </button>
               </div>
             </div>
             {message ? (
