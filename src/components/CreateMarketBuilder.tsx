@@ -82,16 +82,16 @@ export function CreateMarketBuilder() {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-7xl px-6 py-12">
-        <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan">Create</p>
-        <h1 className="mt-3 text-4xl font-black text-white">Launch a public market</h1>
-        <p className="mt-3 max-w-3xl text-muted">
+      <main className="mx-auto max-w-[1140px] px-4 pb-16 pt-28 md:px-7">
+        <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Create</p>
+        <h1 className="mt-3 text-[clamp(34px,5vw,54px)] font-black tracking-tight text-white">Launch a public market</h1>
+        <p className="mt-3 max-w-3xl text-[14px] leading-[1.7] text-muted">
           The app phase now supports a full local review flow. You can choose a template, customize the market, review the rules, and launch it back into the shared market explorer and portfolio.
         </p>
 
         <div className="mt-9 grid gap-6 lg:grid-cols-[360px_1fr]">
           <aside className="space-y-5">
-            <section className="rounded-3xl border border-line bg-panel p-5">
+            <section className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-5">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Market family</p>
               <div className="mt-4 grid gap-3">
                 {marketTypes.map((type) => (
@@ -99,8 +99,8 @@ export function CreateMarketBuilder() {
                     key={type}
                     type="button"
                     onClick={() => chooseType(type)}
-                    className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
-                      selectedType === type ? 'border-cyan/50 bg-cyan/10 text-cyan' : 'border-line bg-ink text-white hover:border-cyan/30'
+                    className={`rounded-[14px] border px-4 py-4 text-left transition-colors ${
+                      selectedType === type ? 'border-cyan/50 bg-cyan/10 text-cyan' : 'border-white/[0.06] bg-[#0f172a] text-white hover:border-cyan/30'
                     }`}
                   >
                     <span className="block font-black">{type}</span>
@@ -110,7 +110,7 @@ export function CreateMarketBuilder() {
               </div>
             </section>
 
-            <section className="rounded-3xl border border-line bg-panel p-5">
+            <section className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-5">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Templates</p>
               <div className="mt-4 grid gap-3">
                 {visibleTemplates.map((template) => (
@@ -118,8 +118,8 @@ export function CreateMarketBuilder() {
                     key={template.id}
                     type="button"
                     onClick={() => applyTemplate(template)}
-                    className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition-colors ${
-                      activeTemplate.id === template.id ? 'border-cyan/50 bg-cyan/10' : 'border-line bg-ink hover:border-cyan/30'
+                    className={`flex items-center justify-between rounded-[14px] border px-4 py-3 text-left transition-colors ${
+                      activeTemplate.id === template.id ? 'border-cyan/50 bg-cyan/10' : 'border-white/[0.06] bg-[#0f172a] hover:border-cyan/30'
                     }`}
                   >
                     <span>
@@ -136,7 +136,7 @@ export function CreateMarketBuilder() {
           </aside>
 
           <div className="space-y-6">
-            <form className="rounded-3xl border border-line bg-panel">
+            <form className="rounded-[16px] border border-white/[0.06] bg-[#141e30]">
               <div className="border-b border-line p-6">
                 <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
                   <div>
@@ -144,7 +144,7 @@ export function CreateMarketBuilder() {
                     <h2 className="mt-2 text-2xl font-black text-white">{activeTemplate.title}</h2>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{activeTemplate.closeHint}</p>
                   </div>
-                  <span className="w-fit rounded-full border border-line bg-ink px-3 py-1 text-xs font-black text-muted">
+                  <span className="w-fit rounded-full border border-white/[0.06] bg-[#0f172a] px-3 py-1 text-xs font-black text-muted">
                     {activeTemplate.resolutionMode}
                   </span>
                 </div>
@@ -156,7 +156,7 @@ export function CreateMarketBuilder() {
                   <input
                     value={title}
                     onChange={(event) => setTitle(event.target.value)}
-                    className="mt-2 w-full rounded-2xl border border-line bg-ink px-4 py-4 text-white outline-none focus:border-cyan/50"
+                    className="mt-2 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
                   />
                 </div>
                 <div>
@@ -164,7 +164,7 @@ export function CreateMarketBuilder() {
                   <textarea
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
-                    className="mt-2 min-h-28 w-full rounded-2xl border border-line bg-ink px-4 py-4 text-white outline-none focus:border-cyan/50"
+                    className="mt-2 min-h-28 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
                   />
                 </div>
                 <div>
@@ -172,7 +172,7 @@ export function CreateMarketBuilder() {
                   <textarea
                     value={rules}
                     onChange={(event) => setRules(event.target.value)}
-                    className="mt-2 min-h-32 w-full rounded-2xl border border-line bg-ink px-4 py-4 text-white outline-none focus:border-cyan/50"
+                    className="mt-2 min-h-32 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
                   />
                 </div>
                 <div>
@@ -180,7 +180,7 @@ export function CreateMarketBuilder() {
                   <textarea
                     value={sourceOfTruth}
                     onChange={(event) => setSourceOfTruth(event.target.value)}
-                    className="mt-2 min-h-24 w-full rounded-2xl border border-line bg-ink px-4 py-4 text-white outline-none focus:border-cyan/50"
+                    className="mt-2 min-h-24 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
                   />
                 </div>
                 <div className="grid gap-4 md:grid-cols-3">
@@ -190,7 +190,7 @@ export function CreateMarketBuilder() {
                       type="datetime-local"
                       value={closeDate}
                       onChange={(event) => setCloseDate(event.target.value)}
-                      className="mt-2 w-full rounded-2xl border border-line bg-ink px-4 py-4 text-white outline-none focus:border-cyan/50"
+                      className="mt-2 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
                     />
                   </div>
                   <div>
@@ -198,7 +198,7 @@ export function CreateMarketBuilder() {
                     <input
                       value={seedLiquidity}
                       onChange={(event) => setSeedLiquidity(event.target.value)}
-                      className="mt-2 w-full rounded-2xl border border-line bg-ink px-4 py-4 text-white outline-none focus:border-cyan/50"
+                      className="mt-2 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
                       inputMode="decimal"
                     />
                   </div>
@@ -207,12 +207,12 @@ export function CreateMarketBuilder() {
                     <input
                       value={resolver}
                       onChange={(event) => setResolver(event.target.value)}
-                      className="mt-2 w-full rounded-2xl border border-line bg-ink px-4 py-4 text-white outline-none focus:border-cyan/50"
+                      className="mt-2 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
                     />
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-line bg-ink p-5">
+                <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                   <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Funding rails</p>
                   <p className="mt-2 text-sm leading-6 text-muted">
                     V1 creation uses USDC and Presto market contracts. Paymaster, Wallets, Bridge Kit, CCTP, and Gateway stay planned until their flows are wired and tested.
@@ -241,7 +241,7 @@ export function CreateMarketBuilder() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-line bg-ink p-5">
+                <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                   <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Market status</p>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     {(['Open', 'Draft'] as MarketStatus[]).map((status) => (
@@ -250,7 +250,7 @@ export function CreateMarketBuilder() {
                         type="button"
                         onClick={() => setMarketStatus(status)}
                         className={`rounded-2xl border px-4 py-3 text-left text-sm font-black transition-colors ${
-                          marketStatus === status ? 'border-cyan/50 bg-cyan/10 text-cyan' : 'border-line bg-panel2 text-white hover:border-cyan/30'
+                          marketStatus === status ? 'border-cyan/50 bg-cyan/10 text-cyan' : 'border-white/[0.06] bg-[#141e30] text-white hover:border-cyan/30'
                         }`}
                       >
                         {status}
@@ -259,61 +259,61 @@ export function CreateMarketBuilder() {
                   </div>
                 </div>
 
-                <button type="button" onClick={() => setShowReview(true)} className="w-full rounded-2xl bg-cyan px-6 py-4 font-black text-ink">
+                <button type="button" onClick={() => setShowReview(true)} className="w-full rounded-[10px] bg-cyan px-6 py-4 font-black text-ink transition-opacity hover:opacity-90">
                   Review Market
                 </button>
               </div>
             </form>
 
             {showReview ? (
-              <section className="rounded-3xl border border-line bg-panel p-6">
+              <section className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
                 <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
                   <div>
                     <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Review</p>
                     <h2 className="mt-2 text-2xl font-black text-white">{title}</h2>
                     <p className="mt-3 max-w-3xl leading-7 text-muted">{description}</p>
                   </div>
-                  <span className="rounded-full border border-line bg-ink px-3 py-1 text-xs font-black text-muted">
+                  <span className="rounded-full border border-white/[0.06] bg-[#0f172a] px-3 py-1 text-xs font-black text-muted">
                     {marketStatus}
                   </span>
                 </div>
 
                 <div className="mt-6 grid gap-4 md:grid-cols-3">
-                  <div className="rounded-2xl border border-line bg-ink p-5">
+                  <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Seed liquidity</p>
                     <p className="mt-2 text-2xl font-black text-white">{seedLiquidity} USDC</p>
                   </div>
-                  <div className="rounded-2xl border border-line bg-ink p-5">
+                  <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Resolver</p>
                     <p className="mt-2 text-lg font-black text-white">{resolver}</p>
                   </div>
-                  <div className="rounded-2xl border border-line bg-ink p-5">
+                  <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Close date</p>
                     <p className="mt-2 text-lg font-black text-white">{new Date(closeDate).toLocaleString()}</p>
                   </div>
                 </div>
 
                 <div className="mt-6 grid gap-4 md:grid-cols-2">
-                  <div className="rounded-2xl border border-line bg-ink p-5">
+                  <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Resolution rules</p>
                     <p className="mt-3 text-sm leading-6 text-white">{rules}</p>
                   </div>
-                  <div className="rounded-2xl border border-line bg-ink p-5">
+                  <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Source of truth</p>
                     <p className="mt-3 text-sm leading-6 text-white">{sourceOfTruth}</p>
                   </div>
                 </div>
 
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                  <button type="button" onClick={() => launchMarket(marketStatus)} className="rounded-2xl bg-cyan px-6 py-4 font-black text-ink">
+                  <button type="button" onClick={() => launchMarket(marketStatus)} className="rounded-[10px] bg-cyan px-6 py-4 font-black text-ink transition-opacity hover:opacity-90">
                     {marketStatus === 'Draft' ? 'Save Draft Market' : 'Launch Mock Market'}
                   </button>
                   {marketStatus !== 'Draft' ? (
-                    <button type="button" onClick={() => launchMarket('Draft')} className="rounded-2xl border border-line bg-ink px-6 py-4 font-black text-white">
+                    <button type="button" onClick={() => launchMarket('Draft')} className="rounded-[10px] border border-white/10 bg-[#0f172a] px-6 py-4 font-black text-white">
                       Save Draft
                     </button>
                   ) : null}
-                  <button type="button" onClick={() => setShowReview(false)} className="rounded-2xl border border-line bg-ink px-6 py-4 font-black text-white">
+                  <button type="button" onClick={() => setShowReview(false)} className="rounded-[10px] border border-white/10 bg-[#0f172a] px-6 py-4 font-black text-white">
                     Keep Editing
                   </button>
                 </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, BrainCircuit, Sparkles, TrendingUp } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { SiteHeader } from './SiteHeader';
 import { MarketCard } from './MarketCard';
 import { currentRails, plannedRails } from '@/lib/productRails';
@@ -9,17 +9,14 @@ import { useAppState } from '@/lib/appState';
 
 const pillars = [
   {
-    icon: TrendingUp,
     title: 'Prediction markets',
     copy: 'Forecast objective outcomes with USDC-backed YES and NO positions.',
   },
   {
-    icon: BrainCircuit,
     title: 'Opinion markets',
     copy: 'Turn sentiment, taste, and community conviction into visible market signals.',
   },
   {
-    icon: Sparkles,
     title: 'Opportunity markets',
     copy: 'Surface public Arc opportunities and let builders vote with capital.',
   },
@@ -33,68 +30,79 @@ export function HomeExperience() {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-7xl px-6 py-16">
-        <section className="mx-auto max-w-4xl text-center">
-          <div className="mx-auto w-fit rounded-full border border-cyan/25 bg-cyan/10 px-4 py-2 text-sm font-bold text-cyan">
-            Public Arc Testnet markets
-          </div>
-          <h1 className="mt-8 text-5xl font-black tracking-tight text-white md:text-7xl">
-            Your opinions. Your opportunities. Your predictions.
-          </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-muted">
-            Create and trade public markets on Arc. Forecast outcomes, surface opportunities, and turn conviction into stablecoin native market signals.
-          </p>
-          <div className="mt-9 flex flex-wrap justify-center gap-4">
-            <Link href="/markets" className="rounded-2xl bg-cyan px-6 py-4 font-black text-ink">
-              Explore Markets
-            </Link>
-            <Link href="/markets/create" className="rounded-2xl border border-line bg-panel px-6 py-4 font-black text-white">
-              Create Market
-            </Link>
-          </div>
-        </section>
+      <main className="overflow-hidden">
+        <section className="relative flex min-h-screen items-center pb-20 pt-[120px]">
+          <div className="relative z-10 mx-auto w-full max-w-[1140px] px-4 text-center md:px-7">
+            <div className="mb-7 inline-flex items-center gap-2 rounded-[20px] border border-white/10 bg-white/[0.03] px-3.5 py-1.5 text-[11.5px] font-semibold text-[#94a3b8]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#22c55e]" />
+              Arc Testnet
+            </div>
+            <h1
+              className="mb-6 font-black leading-none tracking-tight text-white"
+              style={{ fontSize: 'clamp(44px,7vw,80px)', letterSpacing: '-0.045em' }}
+            >
+              Presto
+              <span className="block presto-outline-text">Predict. Signal. Resolve.</span>
+              <span className="block presto-gradient-text">Markets.</span>
+            </h1>
+            <p className="mx-auto mb-10 max-w-[560px] text-[16px] leading-[1.7] text-[#94a3b8]">
+              A clean, fast prediction market surface built on Arc testnet. Create public markets, trade stablecoin-backed outcomes, and track transparent resolution signals.
+            </p>
+            <div className="mb-16 flex flex-wrap justify-center gap-3">
+              <Link
+                href="/markets"
+                className="inline-flex items-center gap-2 rounded-[10px] bg-[#25c0f4] px-8 py-3.5 text-[14px] font-extrabold text-[#090e1a] transition-all hover:-translate-y-px hover:opacity-90"
+                style={{ boxShadow: '0 8px 28px rgba(37,192,244,0.20)' }}
+              >
+                Launch App
+              </Link>
+              <Link
+                href="/markets/create"
+                className="inline-flex items-center rounded-[10px] border border-white/10 px-6 py-3.5 text-[14px] font-semibold text-[#94a3b8] transition-all hover:border-white/20 hover:text-[#f1f5f9]"
+              >
+                Create Market
+              </Link>
+            </div>
 
-        <section className="mt-20 grid gap-5 md:grid-cols-3">
-          {pillars.map((pillar) => (
-            <div key={pillar.title} className="rounded-3xl border border-line bg-panel p-6">
-              <pillar.icon className="h-8 w-8 text-cyan" />
-              <h2 className="mt-5 text-xl font-black text-white">{pillar.title}</h2>
-              <p className="mt-3 leading-7 text-muted">{pillar.copy}</p>
-            </div>
-          ))}
-        </section>
-
-        <section className="mt-12 rounded-3xl border border-line bg-panel p-6">
-          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan">Why Arc</p>
-              <h2 className="mt-2 text-2xl font-black text-white">Built for credible stablecoin markets</h2>
-            </div>
-            <div className="rounded-2xl border border-mint/25 bg-mint/10 px-4 py-3 text-left">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-mint">App phase progress</p>
-              <p className="mt-1 text-xl font-black text-white">{createdCount} locally created markets</p>
-            </div>
-          </div>
-          <div className="mt-5 grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl border border-line bg-ink p-5">
-              <h3 className="font-black text-white">Predictable participation</h3>
-              <p className="mt-2 text-sm leading-6 text-muted">Stablecoin gas and USDC collateral make small trades and public signals easier to reason about.</p>
-            </div>
-            <div className="rounded-2xl border border-line bg-ink p-5">
-              <h3 className="font-black text-white">Auditable settlement</h3>
-              <p className="mt-2 text-sm leading-6 text-muted">Every market needs clear rules, resolver evidence, and claimable outcomes that can be checked onchain.</p>
-            </div>
-            <div className="rounded-2xl border border-line bg-ink p-5">
-              <h3 className="font-black text-white">Multi currency path</h3>
-              <p className="mt-2 text-sm leading-6 text-muted">USDC comes first, with EURC and other stable settlement paths planned after V1 is safe.</p>
+            <div className="mx-auto grid max-w-[600px] grid-cols-3 overflow-hidden rounded-[14px] border border-white/10 bg-[#141e30]">
+              {[
+                { value: markets.length.toLocaleString(), label: 'Live Markets' },
+                { value: createdCount.toLocaleString(), label: 'Created Locally' },
+                { value: 'USDC', label: 'First Settlement' },
+              ].map((stat, index) => (
+                <div key={stat.label} className={`px-4 py-4 text-center ${index < 2 ? 'border-r border-white/[0.06]' : ''}`}>
+                  <div className="text-[17px] font-extrabold tracking-tight text-[#25c0f4] md:text-[20px]">{stat.value}</div>
+                  <div className="mt-1 text-[10px] font-medium text-[#4b6280] md:text-[11px]">{stat.label}</div>
+                </div>
+              ))}
             </div>
           </div>
         </section>
 
-        <section className="mt-12">
+        <section className="mx-auto max-w-[1140px] px-4 py-20 md:px-7">
+          <div className="mb-2.5 text-[10.5px] font-bold uppercase tracking-[0.12em] text-[#25c0f4]">What you get</div>
+          <div className="mb-2 text-[clamp(24px,3.5vw,38px)] font-extrabold tracking-tight text-white">Prediction markets with the Presto feel.</div>
+          <div className="mb-10 max-w-[520px] text-[14px] leading-[1.65] text-[#94a3b8]">
+            The Markets app now follows the DEX visual system: compact cyan actions, quiet dark surfaces, and readable Arc-native market data.
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            {pillars.map((pillar) => (
+              <div key={pillar.title} className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6 transition-transform hover:-translate-y-1">
+                <div className="mb-5 flex size-10 items-center justify-center rounded-xl bg-[#25c0f4]/10 text-[18px] font-black text-[#25c0f4]">
+                  {pillar.title.slice(0, 1)}
+                </div>
+                <h2 className="text-[17px] font-extrabold tracking-tight text-[#f1f5f9]">{pillar.title}</h2>
+                <p className="mt-3 text-[14px] leading-[1.7] text-[#94a3b8]">{pillar.copy}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-[1140px] px-4 py-6 md:px-7">
           <div className="mb-5 flex items-center justify-between">
-            <h2 className="text-2xl font-black text-white">Featured markets</h2>
-            <Link href="/markets" className="flex items-center gap-2 font-bold text-cyan">
+            <h2 className="text-[24px] font-extrabold tracking-tight text-white">Featured markets</h2>
+            <Link href="/markets" className="flex items-center gap-2 text-[13px] font-bold text-cyan">
               View all <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -103,21 +111,21 @@ export function HomeExperience() {
           </div>
         </section>
 
-        <section className="mt-12 rounded-3xl border border-line bg-panel p-6">
+        <section className="mx-auto mb-20 mt-12 max-w-[1140px] rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6 md:px-7">
           <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
             <div>
-              <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan">Build rails</p>
-              <h2 className="mt-2 text-2xl font-black text-white">USDC markets first, richer rails when ready</h2>
-              <p className="mt-3 max-w-3xl leading-7 text-muted">
+              <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-[#25c0f4]">Build rails</p>
+              <h2 className="mt-2 text-[24px] font-extrabold tracking-tight text-white">USDC markets first, richer rails when ready</h2>
+              <p className="mt-3 max-w-3xl text-[14px] leading-[1.7] text-muted">
                 Presto Markets starts with USDC and custom market contracts. Paymaster, Wallets, Bridge Kit, CCTP, and Gateway stay on the roadmap until each flow is live-tested.
               </p>
             </div>
-            <Link href="/roadmap" className="flex items-center gap-2 font-bold text-cyan">
+            <Link href="/roadmap" className="flex items-center gap-2 text-[13px] font-bold text-cyan">
               View roadmap <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-line bg-ink p-5">
+            <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Current</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {currentRails.map((rail) => (
@@ -127,7 +135,7 @@ export function HomeExperience() {
                 ))}
               </div>
             </div>
-            <div className="rounded-2xl border border-line bg-ink p-5">
+            <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Planned</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {plannedRails.map((rail) => (

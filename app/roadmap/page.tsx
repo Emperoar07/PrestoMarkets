@@ -57,16 +57,16 @@ export default function RoadmapPage() {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-7xl px-6 py-12">
-        <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan">Roadmap</p>
-        <h1 className="mt-3 text-4xl font-black text-white">Phase 2 and Phase 3 plan</h1>
-        <p className="mt-3 max-w-3xl text-muted">
+      <main className="mx-auto max-w-[1140px] px-4 pb-16 pt-28 md:px-7">
+        <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Roadmap</p>
+        <h1 className="mt-3 text-[clamp(34px,5vw,54px)] font-black tracking-tight text-white">Phase 2 and Phase 3 plan</h1>
+        <p className="mt-3 max-w-3xl text-[14px] leading-[1.7] text-muted">
           Presto Markets is being built as a public Arc market layer first. The market contracts remain the core product, while Circle and Arc rails are added only where they improve funding, onboarding, or settlement.
         </p>
 
         <section className="mt-9 grid gap-5 lg:grid-cols-4">
           {phases.map((phase) => (
-            <div key={phase.title} className="rounded-3xl border border-line bg-panel p-6">
+            <div key={phase.title} className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
               <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">{phase.title}</p>
               <h2 className="mt-3 text-2xl font-black text-white">{phase.label}</h2>
               <ul className="mt-5 space-y-3 text-sm leading-6 text-muted">
@@ -78,14 +78,14 @@ export default function RoadmapPage() {
           ))}
         </section>
 
-        <section className="mt-10 rounded-3xl border border-line bg-panel">
+        <section className="mt-10 rounded-[16px] border border-white/[0.06] bg-[#141e30]">
           <div className="border-b border-line p-6">
             <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Circle product rails</p>
             <h2 className="mt-2 text-2xl font-black text-white">Current and planned integrations</h2>
           </div>
           <div className="grid gap-4 p-6 md:grid-cols-2">
             {productRails.map((rail) => (
-              <div key={rail.name} className="rounded-2xl border border-line bg-ink p-5">
+              <div key={rail.name} className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h3 className="text-lg font-black text-white">{rail.name}</h3>

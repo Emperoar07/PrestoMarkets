@@ -6,19 +6,20 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        ink: '#0f172a',
-        panel: '#1e293b',
-        panel2: '#263347',
-        line: 'rgba(148, 163, 184, 0.18)',
+        ink: '#090e1a',
+        panel: '#141e30',
+        panel2: '#0f172a',
+        line: 'rgba(255, 255, 255, 0.06)',
         cyan: '#25c0f4',
         mint: '#2ff0a2',
         muted: '#94a3b8',
+        deepmuted: '#4b6280',
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
-        cyan: '0 18px 60px rgba(37, 192, 244, 0.14)',
+        cyan: '0 8px 28px rgba(37, 192, 244, 0.20)',
       },
     },
   },

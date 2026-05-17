@@ -31,32 +31,32 @@ export function PortfolioClient() {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-7xl px-6 py-12">
-        <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan">Portfolio</p>
-        <h1 className="mt-3 text-4xl font-black text-white">Your market positions</h1>
-        <p className="mt-3 max-w-2xl text-muted">
+      <main className="mx-auto max-w-[1140px] px-4 pb-16 pt-28 md:px-7">
+        <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Portfolio</p>
+        <h1 className="mt-3 text-[clamp(34px,5vw,54px)] font-black tracking-tight text-white">Your market positions</h1>
+        <p className="mt-3 max-w-2xl text-[14px] leading-[1.7] text-muted">
           The portfolio now reflects your local trades and created markets, so the whole product loop is reviewable before live wallet reads and Arc contract data are connected.
         </p>
 
         <section className="mt-9 grid gap-4 md:grid-cols-3">
-          <div className="rounded-3xl border border-line bg-panel p-6">
+          <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
             <p className="text-sm text-muted">Position value</p>
             <p className="mt-2 text-3xl font-black text-white">{formatUsd(positionValue)}</p>
             <p className="mt-1 text-sm font-bold text-mint">{positions.length} tracked positions</p>
           </div>
-          <div className="rounded-3xl border border-line bg-panel p-6">
+          <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
             <p className="text-sm text-muted">Claimable</p>
             <p className="mt-2 text-3xl font-black text-white">{formatUsd(claimableValue)}</p>
             <p className="mt-1 text-sm font-bold text-muted">Resolution remains mock-safe for now</p>
           </div>
-          <div className="rounded-3xl border border-line bg-panel p-6">
+          <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
             <p className="text-sm text-muted">Markets created</p>
             <p className="mt-2 text-3xl font-black text-white">{createdMarkets}</p>
             <p className="mt-1 text-sm font-bold text-yellow-200">Shared back into the market explorer</p>
           </div>
         </section>
 
-        <section className="mt-8 rounded-3xl border border-line bg-panel">
+        <section className="mt-8 rounded-[16px] border border-white/[0.06] bg-[#141e30]">
           <div className="border-b border-line p-6">
             <h2 className="text-xl font-black text-white">Positions</h2>
           </div>
@@ -91,7 +91,7 @@ export function PortfolioClient() {
           </div>
         </section>
 
-        <section className="mt-8 rounded-3xl border border-line bg-panel">
+        <section className="mt-8 rounded-[16px] border border-white/[0.06] bg-[#141e30]">
           <div className="border-b border-line p-6">
             <h2 className="text-xl font-black text-white">Activity</h2>
           </div>

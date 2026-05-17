@@ -1,12 +1,20 @@
 import Link from 'next/link';
 
+function LogoMark({ size = 34 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <circle cx="16" cy="16" r="15" stroke="#25c0f4" strokeWidth="1.5" strokeOpacity="0.5" fill="#25c0f4" fillOpacity="0.08" />
+      <circle cx="16" cy="16" r="10" stroke="#25c0f4" strokeWidth="1.5" strokeOpacity="0.7" fill="none" />
+      <circle cx="16" cy="16" r="4.5" fill="#25c0f4" />
+    </svg>
+  );
+}
+
 export function BrandMark() {
   return (
-    <Link href="/" className="flex items-center gap-3">
-      <span className="grid h-10 w-10 place-items-center rounded-2xl border border-cyan/40 bg-cyan/10">
-        <span className="h-4 w-4 rounded-full border-[5px] border-cyan" />
-      </span>
-      <span className="text-xl font-black tracking-tight text-white">Presto Markets</span>
+    <Link href="/" className="mr-auto flex select-none items-center gap-2.5">
+      <LogoMark size={34} />
+      <span className="text-[15px] font-extrabold tracking-tight text-[#f1f5f9]">Presto</span>
     </Link>
   );
 }

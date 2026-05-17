@@ -25,7 +25,7 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
   return (
     <Link
       href={`/markets/${market.id}`}
-      className="block rounded-3xl border border-line bg-panel p-6 transition-transform hover:-translate-y-1 hover:border-cyan/35"
+      className="block rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6 transition-all hover:-translate-y-1 hover:border-cyan/35"
     >
       <div className="flex items-start justify-between gap-4">
         <span className="flex flex-wrap gap-2">
@@ -40,14 +40,14 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
         </span>
         <span className={`text-sm font-semibold ${statusStyle[market.status]}`}>{market.status}</span>
       </div>
-      <h3 className="mt-5 text-xl font-black leading-snug text-white">{market.title}</h3>
-      <p className="mt-3 min-h-12 text-sm leading-6 text-muted">{market.description}</p>
-      <div className="mt-6 grid grid-cols-3 overflow-hidden rounded-2xl border border-line">
+      <h3 className="mt-5 text-[17px] font-extrabold leading-snug tracking-tight text-white">{market.title}</h3>
+      <p className="mt-3 min-h-12 text-[14px] leading-[1.7] text-muted">{market.description}</p>
+      <div className="mt-6 grid grid-cols-3 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#0f172a]">
         <div className="p-4">
           <p className="text-xs text-muted">Yes</p>
           <p className="mt-1 text-2xl font-black text-cyan">{yesOutcome.odds}%</p>
         </div>
-        <div className="border-x border-line p-4">
+        <div className="border-x border-white/[0.06] p-4">
           <p className="text-xs text-muted">Volume</p>
           <p className="mt-1 font-black text-white">{market.volume}</p>
         </div>

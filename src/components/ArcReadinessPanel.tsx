@@ -1,23 +1,15 @@
 'use client';
 
-import { CheckCircle2, Circle, PlugZap, ShieldCheck, Wallet } from 'lucide-react';
-import { useState } from 'react';
+import { CheckCircle2, Circle, PlugZap, ShieldCheck } from 'lucide-react';
 import { getArcReadinessItems } from '@/lib/arcConfig';
 
 export function ArcReadinessPanel() {
   const readinessItems = getArcReadinessItems();
-  const [walletConnected, setWalletConnected] = useState(false);
-  const [allowanceReady, setAllowanceReady] = useState(false);
 
   const steps = [
     {
-      label: 'Wallet connection',
-      ready: walletConnected,
-      icon: Wallet,
-    },
-    {
       label: 'USDC allowance',
-      ready: allowanceReady,
+      ready: false,
       icon: ShieldCheck,
     },
     {
@@ -28,11 +20,11 @@ export function ArcReadinessPanel() {
   ];
 
   return (
-    <section className="rounded-3xl border border-line bg-panel p-5">
+    <section className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-5">
       <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan">Arc readiness</p>
       <div className="mt-4 grid gap-3">
         {readinessItems.map((item) => (
-          <div key={item.label} className="rounded-2xl border border-line bg-ink p-4">
+          <div key={item.label} className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-black text-white">{item.label}</p>
@@ -46,7 +38,7 @@ export function ArcReadinessPanel() {
 
       <div className="mt-5 grid gap-3">
         {steps.map((step) => (
-          <div key={step.label} className="flex items-center justify-between rounded-2xl border border-line bg-ink px-4 py-3">
+          <div key={step.label} className="flex items-center justify-between rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-3">
             <span className="flex items-center gap-3 text-sm font-bold text-white">
               <step.icon className="h-4 w-4 text-cyan" />
               {step.label}
@@ -56,23 +48,6 @@ export function ArcReadinessPanel() {
             </span>
           </div>
         ))}
-      </div>
-
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={() => setWalletConnected(true)}
-          className="rounded-2xl border border-line bg-ink px-4 py-3 text-sm font-black text-white transition-colors hover:border-cyan/35"
-        >
-          Connect Demo Wallet
-        </button>
-        <button
-          type="button"
-          onClick={() => setAllowanceReady(true)}
-          className="rounded-2xl border border-line bg-ink px-4 py-3 text-sm font-black text-white transition-colors hover:border-cyan/35"
-        >
-          Approve Demo USDC
-        </button>
       </div>
     </section>
   );

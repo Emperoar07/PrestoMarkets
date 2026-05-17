@@ -5,18 +5,26 @@ const dexUrl = process.env.NEXT_PUBLIC_PRESTO_DEX_URL ?? 'https://prestodex-arc.
 
 export function SiteHeader() {
   return (
-    <header className="sticky top-0 z-20 border-b border-line bg-ink/95">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
+    <header className="fixed left-0 right-0 top-0 z-50 border-b border-white/[0.06] bg-[#090e1a]/90 backdrop-blur-xl">
+      <div className="mx-auto flex h-[66px] max-w-[1140px] items-center px-4 md:px-7">
         <BrandMark />
-        <nav className="hidden items-center gap-7 text-sm font-semibold text-muted md:flex">
-          <Link href="/markets" className="transition-colors hover:text-cyan">Markets</Link>
-          <Link href="/markets/create" className="transition-colors hover:text-cyan">Create</Link>
-          <Link href="/portfolio" className="transition-colors hover:text-cyan">Portfolio</Link>
-          <Link href="/roadmap" className="transition-colors hover:text-cyan">Roadmap</Link>
-          <a href={dexUrl} className="rounded-2xl bg-cyan px-5 py-3 font-black text-ink transition-opacity hover:opacity-90">
-            Launch DEX
+        <nav className="mr-5 hidden gap-0.5 md:flex">
+          <a href={`${dexUrl}/swap`} className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-[#94a3b8] transition-all hover:bg-white/[0.04] hover:text-[#f1f5f9]">
+            Swap
           </a>
+          <a href={`${dexUrl}/liquidity`} className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-[#94a3b8] transition-all hover:bg-white/[0.04] hover:text-[#f1f5f9]">
+            Pools
+          </a>
+          <a href={`${dexUrl}/bridge`} className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-[#94a3b8] transition-all hover:bg-white/[0.04] hover:text-[#f1f5f9]">
+            Bridge
+          </a>
+          <Link href="/markets" className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-[#94a3b8] transition-all hover:bg-white/[0.04] hover:text-[#f1f5f9]">
+            Markets
+          </Link>
         </nav>
+        <Link href="/markets" className="rounded-lg bg-[#25c0f4] px-[18px] py-2 text-[13px] font-bold text-[#090e1a] transition-opacity hover:opacity-90">
+          Launch App
+        </Link>
       </div>
     </header>
   );

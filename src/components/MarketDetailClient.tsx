@@ -26,8 +26,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     return (
       <>
         <SiteHeader />
-        <main className="mx-auto max-w-4xl px-6 py-16">
-          <div className="rounded-3xl border border-line bg-panel p-8 text-center">
+        <main className="mx-auto max-w-4xl px-4 pb-16 pt-28 md:px-7">
+          <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-8 text-center">
             <h1 className="text-3xl font-black text-white">Market not found</h1>
             <p className="mt-3 text-muted">This route is ready for locally created markets and seeded demos, but that market does not exist.</p>
           </div>
@@ -52,9 +52,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-7xl px-6 py-12">
+      <main className="mx-auto max-w-[1140px] px-4 pb-16 pt-28 md:px-7">
         <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-          <section className="rounded-3xl border border-line bg-panel p-7">
+          <section className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-7">
             <div className="flex flex-wrap items-center gap-3">
               <span className="rounded-full border border-cyan/30 bg-cyan/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-cyan">
                 {market.type}
@@ -68,46 +68,46 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </span>
               ) : null}
             </div>
-            <h1 className="mt-5 text-4xl font-black leading-tight text-white">{market.title}</h1>
-            <p className="mt-4 text-lg leading-8 text-muted">{market.description}</p>
+            <h1 className="mt-5 text-[clamp(32px,4vw,48px)] font-black leading-tight tracking-tight text-white">{market.title}</h1>
+            <p className="mt-4 text-[15px] leading-[1.8] text-muted">{market.description}</p>
             <div className="mt-8 grid gap-4 md:grid-cols-4">
-              <div className="rounded-2xl border border-line bg-ink p-5">
+              <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                 <p className="text-sm text-muted">Volume</p>
                 <p className="mt-2 text-2xl font-black text-white">{market.volume}</p>
               </div>
-              <div className="rounded-2xl border border-line bg-ink p-5">
+              <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                 <p className="text-sm text-muted">Liquidity</p>
                 <p className="mt-2 text-2xl font-black text-white">{market.liquidity}</p>
               </div>
-              <div className="rounded-2xl border border-line bg-ink p-5">
+              <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                 <p className="text-sm text-muted">Close</p>
                 <p className="mt-2 text-2xl font-black text-white">{market.closeLabel}</p>
               </div>
-              <div className="rounded-2xl border border-line bg-ink p-5">
+              <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                 <p className="text-sm text-muted">Collateral</p>
                 <p className="mt-2 text-2xl font-black text-white">{market.collateral}</p>
               </div>
             </div>
-            <div className="mt-8 rounded-2xl border border-line bg-ink p-6">
+            <div className="mt-8 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-6">
               <h2 className="text-xl font-black text-white">Resolution rules</h2>
               <p className="mt-3 leading-7 text-muted">{market.rules}</p>
               <div className="mt-5 grid gap-3 md:grid-cols-2">
-                <div className="rounded-2xl border border-line bg-panel2 p-4">
+                <div className="rounded-[14px] border border-white/[0.06] bg-[#141e30] p-4">
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Source of truth</p>
                   <p className="mt-2 text-sm leading-6 text-white">{market.sourceOfTruth}</p>
                 </div>
-                <div className="rounded-2xl border border-line bg-panel2 p-4">
+                <div className="rounded-[14px] border border-white/[0.06] bg-[#141e30] p-4">
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Resolver</p>
                   <p className="mt-2 text-sm leading-6 text-white">{market.resolver}</p>
                   <p className="mt-1 text-sm text-cyan">{market.resolutionMode}</p>
                 </div>
               </div>
             </div>
-            <div className="mt-8 rounded-2xl border border-line bg-ink p-6">
+            <div className="mt-8 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-6">
               <h2 className="text-xl font-black text-white">Market activity</h2>
               <div className="mt-4 grid gap-3 md:grid-cols-3">
                 {market.activity.map((item) => (
-                  <div key={item.label} className="rounded-2xl border border-line bg-panel2 p-4">
+                  <div key={item.label} className="rounded-[14px] border border-white/[0.06] bg-[#141e30] p-4">
                     <p className="text-sm text-muted">{item.label}</p>
                     <p className="mt-1 text-2xl font-black text-white">{item.value}</p>
                   </div>
@@ -116,7 +116,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             </div>
           </section>
 
-          <aside className="rounded-3xl border border-line bg-panel p-6">
+          <aside className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
             <h2 className="text-xl font-black text-white">Trade outcome</h2>
             <p className="mt-2 text-sm leading-6 text-muted">
               Demo mode is live for the app phase. Trades update prices, volume, and your portfolio locally so the full flow is reviewable before wallet wiring.
@@ -125,8 +125,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               <button
                 type="button"
                 onClick={() => setSelectedOutcome('YES')}
-                className={`rounded-2xl border p-5 text-left transition-colors ${
-                  selectedOutcome === 'YES' ? 'border-cyan/35 bg-cyan/10' : 'border-line bg-ink'
+                className={`rounded-[14px] border p-5 text-left transition-colors ${
+                  selectedOutcome === 'YES' ? 'border-cyan/35 bg-cyan/10' : 'border-white/[0.06] bg-[#0f172a]'
                 }`}
               >
                 <span className="text-sm font-bold text-muted">Buy YES</span>
@@ -136,8 +136,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               <button
                 type="button"
                 onClick={() => setSelectedOutcome('NO')}
-                className={`rounded-2xl border p-5 text-left transition-colors ${
-                  selectedOutcome === 'NO' ? 'border-cyan/35 bg-cyan/10' : 'border-line bg-ink'
+                className={`rounded-[14px] border p-5 text-left transition-colors ${
+                  selectedOutcome === 'NO' ? 'border-cyan/35 bg-cyan/10' : 'border-white/[0.06] bg-[#0f172a]'
                 }`}
               >
                 <span className="text-sm font-bold text-muted">Buy NO</span>
@@ -145,7 +145,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <span className="mt-1 block text-sm text-muted">{noOutcome.liquidity} liquidity</span>
               </button>
             </div>
-            <div className="mt-5 rounded-2xl border border-line bg-ink p-4">
+            <div className="mt-5 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-4">
               <label className="text-sm font-bold text-muted">Amount USDC</label>
               <input
                 value={amount}
@@ -155,7 +155,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 inputMode="decimal"
               />
             </div>
-            <div className="mt-4 rounded-2xl border border-line bg-ink p-4">
+            <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-4">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Trade preview</p>
               <div className="mt-3 flex items-center justify-between text-sm text-muted">
                 <span>Selected outcome</span>
@@ -170,10 +170,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <span className="font-black text-white">{estimatedShares.toFixed(2)}</span>
               </div>
             </div>
-            <button type="button" onClick={handleTrade} className="mt-5 w-full rounded-2xl bg-cyan px-6 py-4 font-black text-ink">
+            <button type="button" onClick={handleTrade} className="mt-5 w-full rounded-[10px] bg-cyan px-6 py-4 font-black text-ink transition-opacity hover:opacity-90">
               {canTrade ? `Simulate Buy ${selectedOutcome}` : 'Market Not Open'}
             </button>
-            <div className="mt-5 rounded-2xl border border-line bg-ink p-4">
+            <div className="mt-5 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-4">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Demo status</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 {demoStatuses.map((status) => (
