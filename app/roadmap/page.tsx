@@ -1,5 +1,6 @@
 import { SiteHeader } from '@/components/SiteHeader';
 import { productRails } from '@/lib/productRails';
+import { auditReadiness, failurePathDesign, laterHardening, type HardeningStatus } from '@/lib/productionHardening';
 
 const phases = [
   {
@@ -53,6 +54,12 @@ const statusStyle = {
   Later: 'border-line bg-panel2 text-muted',
 };
 
+const hardeningStatusStyle: Record<HardeningStatus, string> = {
+  Current: 'border-mint/25 bg-mint/10 text-mint',
+  Required: 'border-amber-300/25 bg-amber-300/10 text-amber-100',
+  Later: 'border-line bg-panel2 text-muted',
+};
+
 export default function RoadmapPage() {
   return (
     <>
@@ -100,7 +107,47 @@ export default function RoadmapPage() {
             ))}
           </div>
         </section>
+
+        <section className="mt-10 rounded-[16px] border border-white/[0.06] bg-[#141e30]">
+          <div className="border-b border-line p-6">
+            <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Production hardening</p>
+            <h2 className="mt-2 text-2xl font-black text-white">Required before real-value markets</h2>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">
+              Arc finality makes settlement clear once a transaction is final, so Presto needs strong market rules before settlement, resolver evidence, and a reviewed failure path before moving beyond testnet value.
+            </p>
+          </div>
+
+          <div className="grid gap-6 p-6 lg:grid-cols-3">
+            <HardeningGroup title="Audit readiness" items={auditReadiness} />
+            <HardeningGroup title="Failure paths" items={failurePathDesign} />
+            <HardeningGroup title="Later hardening" items={laterHardening} />
+          </div>
+        </section>
       </main>
     </>
+  );
+}
+
+function HardeningGroup(input: {
+  title: string;
+  items: Array<{ title: string; status: HardeningStatus; summary: string }>;
+}) {
+  return (
+    <div>
+      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-[#94a3b8]">{input.title}</h3>
+      <div className="mt-4 grid gap-3">
+        {input.items.map((item) => (
+          <div key={item.title} className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-4">
+            <div className="flex items-start justify-between gap-3">
+              <h4 className="text-sm font-black text-white">{item.title}</h4>
+              <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black ${hardeningStatusStyle[item.status]}`}>
+                {item.status}
+              </span>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-muted">{item.summary}</p>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

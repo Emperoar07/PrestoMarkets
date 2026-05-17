@@ -190,7 +190,7 @@ Next work:
 
 * Configure production Google OAuth and Apple Firebase settings for Circle social sign-in if social buttons should be live
 * Expand recent event reads into a persistent indexed account history
-* Add production hardening notes for audit, dispute, bond, and failure paths
+* Expand production hardening notes into reviewed audit findings and approved dispute or bond design
 
 ## Phase 3 Started
 
@@ -215,8 +215,8 @@ Already started:
 
 Next work:
 
-* Add contract audit notes before real value
-* Design dispute and bond flows before any real-value launch
+* Review `docs/PRODUCTION_HARDENING.md` before real value
+* Turn the dispute and bond placeholder into a concrete protocol design before real-value launch
 
 Latest Arc Testnet deployment:
 
@@ -233,7 +233,7 @@ Order:
 
 1. Configure Circle social provider settings in Circle Console and deployment env vars if Google or Apple sign-in should be enabled.
 2. Expand recent event reads into a persistent indexed account history.
-3. Add audit notes and dispute or bond design before real value beyond testnet.
+3. Review the production hardening gate and turn dispute or bond placeholders into a concrete protocol design before real value beyond testnet.
 
 Circle User-Controlled Wallet note:
 

@@ -126,3 +126,4 @@ Deployment record: data/arc-testnet.json
 * Use USDC collateral first.
 * Do not add USYC yield accounting until reward and redemption math is separately audited.
 * Do not add autonomous AI resolution until resolver bonds, disputes, and failure paths are designed.
+* Treat `docs/PRODUCTION_HARDENING.md` as the release gate before real-value markets.
