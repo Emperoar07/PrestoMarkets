@@ -6,12 +6,13 @@ const progressItems = [
   'Live Arc factory reads and market creation are wired.',
   'Live buy, resolve, claim, refund, and USDC approval flows are wired.',
   'Circle email OTP and Google wallet onboarding are in the sign-in modal.',
+  'Production Google Web Client ID is configured locally and in Vercel environments.',
   'RainbowKit external EVM wallets render inline in the same modal.',
   'Production hardening gate is documented before real-value markets.',
 ];
 
 const remainingItems = [
-  'Configure production Google Web Client ID and verify Circle Email OTP settings.',
+  'Verify Circle Email OTP settings in Circle Console.',
   'Add persistent indexed account history beyond recent log-window reads.',
   'Improve realized and unrealized portfolio accounting.',
   'Turn hardening notes into reviewed audit findings and dispute or bond design.',

@@ -1,6 +1,7 @@
 'use client';
 
 import { SiteHeader } from './SiteHeader';
+import { SiteFooter } from './SiteFooter';
 import { useAppState } from '@/lib/appState';
 
 const statusStyle = {
@@ -125,6 +126,7 @@ export function PortfolioClient() {
           </div>
         </section>
       </main>
+      <SiteFooter />
     </>
   );
 }

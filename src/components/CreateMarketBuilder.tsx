@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { SiteHeader } from './SiteHeader';
+import { SiteFooter } from './SiteFooter';
 import type { MarketType, ResolutionMode } from '@/lib/markets';
 import { useAppState } from '@/lib/appState';
 
@@ -330,6 +331,7 @@ export function CreateMarketBuilder() {
           </div>
         </div>
       </main>
+      <SiteFooter />
     </>
   );
 }

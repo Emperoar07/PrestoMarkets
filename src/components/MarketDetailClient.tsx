@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { SiteHeader } from './SiteHeader';
+import { SiteFooter } from './SiteFooter';
 import { formatUsd, useAppState } from '@/lib/appState';
 import type { MarketStatus } from '@/lib/markets';
 
@@ -32,6 +33,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             <p className="mt-3 text-muted">This market was not returned by the deployed Arc factory.</p>
           </div>
         </main>
+        <SiteFooter />
       </>
     );
   }
@@ -276,6 +278,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
           </aside>
         </div>
       </main>
+      <SiteFooter />
     </>
   );
 }

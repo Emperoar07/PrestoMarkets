@@ -178,7 +178,7 @@ Already started:
 * Market filters for prediction, opinion, opportunity, open, closing soon, resolved, canceled, draft, and onchain markets
 * Circle User-Controlled Wallet endpoint scaffolding for user sessions, email/social device tokens, initialization challenges, and wallet listing
 * Branded Circle wallet onboarding panel with official Circle email OTP flow and external wallet fallback
-* Google social login hook through Circle Web SDK when the OAuth Web Client ID is configured in Circle Console and public env vars
+* Google social login hook through Circle Web SDK with the OAuth Web Client ID configured locally and in Vercel envs
 * RainbowKit external EVM wallet provider under the Circle onboarding modal
 * Circle Web SDK challenge execution for user initialization
 * External EOA wallet fallback while Circle credentials and onboarding settings are configured
@@ -189,7 +189,7 @@ Already started:
 
 Next work:
 
-* Configure the production Google OAuth Web Client ID in deployment env vars if Google sign-in should be live
+* Verify Circle Email OTP settings in Circle Console
 * Configure `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` if WalletConnect QR should be live in RainbowKit
 * Expand recent event reads into a persistent indexed account history
 * Expand production hardening notes into reviewed audit findings and approved dispute or bond design
@@ -233,7 +233,7 @@ The safest next scope is account-aware live app depth.
 
 Order:
 
-1. Configure Circle social provider settings in Circle Console and deployment env vars if Google sign-in should be enabled.
+1. Verify Circle Email OTP settings in Circle Console.
 2. Expand recent event reads into a persistent indexed account history.
 3. Review the production hardening gate and turn dispute or bond placeholders into a concrete protocol design before real value beyond testnet.
 

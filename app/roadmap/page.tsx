@@ -1,4 +1,5 @@
 import { SiteHeader } from '@/components/SiteHeader';
+import { SiteFooter } from '@/components/SiteFooter';
 import { productRails } from '@/lib/productRails';
 import { auditReadiness, failurePathDesign, laterHardening, type HardeningStatus } from '@/lib/productionHardening';
 
@@ -127,6 +128,7 @@ export default function RoadmapPage() {
           </div>
         </section>
       </main>
+      <SiteFooter />
     </>
   );
 }
