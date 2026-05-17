@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, Copy, LogOut, X } from 'lucide-react';
+import { useAccount, useConnect, useDisconnect, useSwitchChain } from 'wagmi';
 import {
   completePendingCircleSocialLogin,
   connectOfficialWalletProvider,
@@ -14,9 +15,12 @@ import {
   type CircleWalletLoginInput,
   type ConnectedWallet,
 } from '@/lib/walletProvider';
+import { arcTestnetChain, walletConnectProjectId } from '@/lib/rainbowConfig';
 
 export function WalletConnectButton() {
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { address: rainbowAddress, isConnected: isRainbowConnected } = useAccount();
+  const { disconnect } = useDisconnect();
   const [wallet, setWallet] = useState<ConnectedWallet | null>(null);
   const [status, setStatus] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -42,6 +46,21 @@ export function WalletConnectButton() {
         setStatus(error instanceof Error ? error.message : 'Circle sign in failed.');
       });
   }, []);
+
+  useEffect(() => {
+    if (!isRainbowConnected || !rainbowAddress) {
+      return;
+    }
+
+    const externalWallet: ConnectedWallet = {
+      address: rainbowAddress,
+      mode: 'external-eoa',
+    };
+    setWallet(externalWallet);
+    setStoredConnectedWallet(externalWallet);
+    setShowConnectPanel(false);
+    setStatus('');
+  }, [isRainbowConnected, rainbowAddress]);
 
   useEffect(() => {
     function closeOnOutsideClick(event: MouseEvent) {
@@ -96,6 +115,7 @@ export function WalletConnectButton() {
   }
 
   async function disconnectWallet() {
+    disconnect();
     await disconnectExternalWallet();
     setWallet(null);
     setIsOpen(false);
@@ -152,7 +172,7 @@ export function WalletConnectButton() {
 
   const signInModal = showConnectPanel ? (
     <div
-      className="fixed inset-0 z-[9999] grid place-items-center overflow-hidden bg-[#050b14]/82 px-4 py-8 backdrop-blur-md"
+      className="fixed inset-0 z-[9999] grid place-items-center overflow-hidden bg-[#050b14]/88 px-4 py-8 backdrop-blur-md"
       role="dialog"
       aria-modal="true"
       aria-label="Sign in to Presto"
@@ -167,32 +187,33 @@ export function WalletConnectButton() {
           <X className="h-4 w-4" />
         </button>
 
-        <div className="relative overflow-hidden rounded-[22px] border border-white/[0.12] bg-[radial-gradient(circle_at_82%_24%,rgba(37,192,244,0.48),transparent_24%),radial-gradient(circle_at_64%_58%,rgba(37,192,244,0.22),transparent_30%),linear-gradient(145deg,#ddf7ff_0%,#effaff_48%,#ffcdb8_100%)] p-4 shadow-2xl shadow-black/35 sm:min-h-[380px] sm:p-6">
-          <div className="absolute -right-5 top-8 hidden h-44 w-44 rounded-full border-[26px] border-white/45 bg-[#25c0f4]/35 shadow-2xl shadow-cyan/25 sm:block" />
-          <div className="absolute right-16 top-28 hidden h-24 w-32 rotate-[-18deg] rounded-[999px] bg-[#95d7ff]/45 blur-[1px] sm:block" />
-          <div className="absolute right-10 top-48 hidden h-7 w-7 rounded-full bg-[#25c0f4]/60 sm:block" />
+        <div className="relative overflow-hidden rounded-[22px] border border-cyan/15 bg-[radial-gradient(circle_at_82%_20%,rgba(37,192,244,0.24),transparent_22%),linear-gradient(145deg,#0b1322_0%,#111b2d_56%,#132536_100%)] p-4 shadow-2xl shadow-black/45 sm:min-h-[380px] sm:p-6">
+          <div className="absolute -right-5 top-8 hidden h-44 w-44 rounded-full border-[26px] border-cyan/10 bg-[#25c0f4]/14 shadow-xl shadow-cyan/10 sm:block" />
+          <div className="absolute right-16 top-28 hidden h-24 w-32 rotate-[-18deg] rounded-[999px] bg-[#25c0f4]/10 blur-[1px] sm:block" />
+          <div className="absolute right-10 top-48 hidden h-7 w-7 rounded-full bg-[#25c0f4]/45 sm:block" />
+          <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#25c0f4]/10 to-transparent" />
 
-          <div className="relative w-full max-w-[365px] rounded-[18px] border border-white/70 bg-white/90 p-5 text-[#101827] shadow-2xl shadow-[#294360]/20 backdrop-blur">
+          <div className="relative w-full max-w-[365px] rounded-[18px] border border-white/[0.08] bg-[#101a2c]/95 p-5 text-[#f8fafc] shadow-2xl shadow-black/20 backdrop-blur">
             <div className="flex items-center gap-2">
               <PrestoIcon />
-              <p className="text-xs font-black uppercase tracking-[0.16em]">Presto</p>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#f8fafc]">Presto</p>
             </div>
-            <h2 className="mt-5 text-[26px] font-black leading-none">
+            <h2 className="mt-5 text-[26px] font-black leading-none text-white">
               {authMode === 'signup' ? 'Sign up' : 'Log in'}
             </h2>
-            <p className="mt-1 text-[10px] font-semibold text-[#8a9ab0]">
+            <p className="mt-1 text-[10px] font-semibold text-[#94a3b8]">
               {authMode === 'signup' ? 'Already have an account?' : "Don't have an account?"}{' '}
               <button
                 type="button"
                 onClick={() => setAuthMode((mode) => (mode === 'signup' ? 'login' : 'signup'))}
-                className="font-black text-[#0b83d9] hover:text-[#25c0f4]"
+                className="font-black text-[#25c0f4] hover:text-[#7ddfff]"
               >
                 {authMode === 'signup' ? 'Log in' : 'Sign up'}
               </button>
             </p>
-            <p className="mt-2 text-xs font-semibold text-[#64748b]">Create or access your app wallet.</p>
+            <p className="mt-2 text-xs font-semibold text-[#9fb0c8]">Create or access your app wallet.</p>
 
-            <label className="mt-5 block text-[11px] font-black text-[#1f2937]">
+            <label className="mt-5 block text-[11px] font-black text-[#dbeafe]">
               Email address
             </label>
             <input
@@ -200,9 +221,9 @@ export function WalletConnectButton() {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="Email"
-              className="mt-2 w-full rounded-[8px] border border-[#dbe5ef] bg-white px-3 py-2.5 text-xs font-semibold text-[#0f172a] outline-none focus:border-[#25c0f4]"
+              className="mt-2 w-full rounded-[8px] border border-white/[0.08] bg-[#0b1322] px-3 py-2.5 text-xs font-semibold text-white outline-none transition-colors placeholder:text-[#64748b] focus:border-[#25c0f4]"
             />
-            <p className="mt-3 text-[11px] font-semibold leading-4 text-[#64748b]">
+            <p className="mt-3 text-[11px] font-semibold leading-4 text-[#94a3b8]">
               We will send an email with a verification code.
             </p>
 
@@ -210,39 +231,33 @@ export function WalletConnectButton() {
               type="button"
               onClick={() => void connectWallet({ method: 'email', email })}
               disabled={isPending}
-              className="mt-5 w-full rounded-[999px] bg-[#0b83d9] px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.08em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-5 w-full rounded-[999px] bg-[#25c0f4] px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.08em] text-[#090e1a] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {authMode === 'signup' ? 'Sign up' : 'Log in'}
             </button>
 
             <div className="my-4 flex items-center gap-3">
-              <div className="h-px flex-1 bg-[#dbe5ef]" />
+              <div className="h-px flex-1 bg-white/[0.08]" />
               <span className="text-[11px] font-bold text-[#94a3b8]">or</span>
-              <div className="h-px flex-1 bg-[#dbe5ef]" />
+              <div className="h-px flex-1 bg-white/[0.08]" />
             </div>
 
             <div className="grid gap-2">
               <SocialButton provider="google" label="Continue with Google" onClick={() => signInWithSocial('google')} disabled={isPending} />
             </div>
 
-            <p className="mt-4 text-[9px] font-semibold leading-4 text-[#64748b]">
+            <p className="mt-4 text-[9px] font-semibold leading-4 text-[#94a3b8]">
               By continuing, you use Circle-powered app-native onboarding.
             </p>
           </div>
 
           {status && !isPending ? (
-            <p className="relative mt-4 rounded-[12px] border border-red-400/25 bg-[#101827]/85 px-3 py-2 text-xs font-bold text-red-100">
+            <p className="relative mt-4 rounded-[12px] border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs font-bold text-red-100">
               {status}
             </p>
           ) : null}
 
-          <button
-            type="button"
-            onClick={() => void connectWallet()}
-            className="relative mt-3 w-full rounded-[11px] border border-white/30 bg-[#0f172a]/85 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-black/15 transition-colors hover:border-cyan/50"
-          >
-            Use external wallet
-          </button>
+          <RainbowExternalWalletRow />
         </div>
       </div>
     </div>
@@ -264,11 +279,84 @@ export function WalletConnectButton() {
   );
 }
 
+function RainbowExternalWalletRow() {
+  const { address, chainId, isConnected } = useAccount();
+  const { connect, connectors, error, isPending, variables } = useConnect();
+  const { switchChain, isPending: isSwitching } = useSwitchChain();
+  const needsArcSwitch = isConnected && chainId !== arcTestnetChain.id;
+  const uniqueConnectors = connectors.filter((connector, index, list) => (
+    list.findIndex((item) => item.name === connector.name) === index
+  ));
+
+  return (
+    <div className="relative mt-3 rounded-[12px] border border-white/[0.08] bg-[#0d1627]/92 p-3 text-white shadow-lg shadow-black/20">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#94a3b8]">External EVM wallets</p>
+          <p className="mt-1 text-[10px] font-bold text-[#64748b]">Connect directly here. No second modal.</p>
+        </div>
+
+        {needsArcSwitch ? (
+          <button
+            type="button"
+            onClick={() => switchChain({ chainId: arcTestnetChain.id })}
+            disabled={isSwitching}
+            className="rounded-[10px] bg-[#25c0f4] px-4 py-2 text-xs font-black text-[#090e1a] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Switch to Arc
+          </button>
+        ) : null}
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {uniqueConnectors.map((connector) => {
+          const walletConnector = connector as typeof connector & { icon?: string };
+          const pendingConnector = isPending && variables?.connector?.name === connector.name;
+          return (
+            <button
+              key={connector.name}
+              type="button"
+              onClick={() => connect({ connector, chainId: arcTestnetChain.id })}
+              disabled={isPending}
+              className="flex min-h-[46px] items-center gap-2 rounded-[10px] border border-cyan/15 bg-cyan/5 px-3 py-2 text-left text-xs font-black text-[#e2e8f0] transition-colors hover:border-cyan/45 hover:bg-cyan/10 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {walletConnector.icon ? (
+                <img src={walletConnector.icon} alt="" className="h-5 w-5 rounded-full" />
+              ) : (
+                <span className="h-5 w-5 rounded-full border border-cyan/30 bg-cyan/15" />
+              )}
+              <span className="truncate">{pendingConnector ? 'Connecting...' : connector.name}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {isConnected && address ? (
+        <p className="mt-2 text-[10px] font-bold leading-4 text-[#94a3b8]">
+          Connected external wallet: {shortAddress(address)}
+        </p>
+      ) : null}
+
+      {error ? (
+        <p className="mt-2 text-[10px] font-bold leading-4 text-red-200">
+          {error.message}
+        </p>
+      ) : null}
+
+      {!walletConnectProjectId ? (
+        <p className="mt-2 text-[10px] font-bold leading-4 text-[#94a3b8]">
+          WalletConnect QR needs `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function PrestoIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 32 32" fill="none" aria-hidden="true">
       <circle cx="16" cy="16" r="15" stroke="#25c0f4" strokeWidth="1.8" strokeOpacity="0.55" fill="#25c0f4" fillOpacity="0.08" />
-      <circle cx="16" cy="16" r="10" stroke="#090e1a" strokeWidth="1.8" strokeOpacity="0.92" fill="none" />
+      <circle cx="16" cy="16" r="10" stroke="#f8fafc" strokeWidth="1.8" strokeOpacity="0.92" fill="none" />
       <circle cx="16" cy="16" r="4.5" fill="#25c0f4" />
     </svg>
   );
@@ -296,7 +384,7 @@ function SocialButton(input: {
       type="button"
       onClick={input.onClick}
       disabled={input.disabled}
-      className="flex w-full items-center justify-center gap-2 rounded-[7px] border border-[#dbe5ef] bg-white px-3 py-2 text-[11px] font-black text-[#334155] shadow-sm transition-colors hover:border-[#25c0f4] disabled:cursor-not-allowed disabled:opacity-60"
+      className="flex w-full items-center justify-center gap-2 rounded-[7px] border border-white/[0.08] bg-[#0b1322] px-3 py-2 text-[11px] font-black text-[#e2e8f0] shadow-sm transition-colors hover:border-[#25c0f4] disabled:cursor-not-allowed disabled:opacity-60"
     >
       <span className="flex h-5 min-w-5 items-center justify-center">
         <GoogleIcon />

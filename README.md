@@ -105,6 +105,7 @@ NEXT_PUBLIC_CIRCLE_WALLETS_ENABLED=true
 NEXT_PUBLIC_CIRCLE_APP_ID=<circle-user-controlled-wallet-app-id>
 NEXT_PUBLIC_CIRCLE_GOOGLE_CLIENT_ID=<optional-google-oauth-client-id>
 NEXT_PUBLIC_CIRCLE_SOCIAL_REDIRECT_URI=<optional-social-redirect-uri>
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=<optional-walletconnect-project-id-for-rainbowkit>
 CIRCLE_API_KEY=<circle-api-key>
 ```
 
