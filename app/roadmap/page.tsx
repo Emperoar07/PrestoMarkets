@@ -22,7 +22,7 @@ const phases = [
       'Public rules and source of truth metadata',
       'Creator workflow and market detail views',
       'Live Arc factory reads, creation, trading, resolution, claims, and refunds',
-      'Circle email OTP and Google wallet onboarding',
+      'Circle email OTP, Google, and PIN wallet onboarding',
       'Inline RainbowKit external EVM wallet connectors',
     ],
   },

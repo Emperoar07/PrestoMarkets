@@ -26,10 +26,12 @@ export function WalletConnectButton() {
   const [isOpen, setIsOpen] = useState(false);
   const [showConnectPanel, setShowConnectPanel] = useState(false);
   const [email, setEmail] = useState('');
+  const [pinUserId, setPinUserId] = useState('');
+  const [circleMethod, setCircleMethod] = useState<'email' | 'pin'>('email');
   const [authMode, setAuthMode] = useState<'signup' | 'login'>('signup');
   const [copied, setCopied] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const isPending = status === 'Connecting...' || status === 'Opening Circle email verification...';
+  const isPending = status === 'Connecting...' || status.startsWith('Opening Circle');
 
   useEffect(() => {
     setIsMounted(true);
@@ -89,7 +91,14 @@ export function WalletConnectButton() {
   }, [showConnectPanel]);
 
   async function connectWallet(input?: CircleWalletLoginInput) {
-    setStatus(input?.method === 'email' ? 'Opening Circle email verification...' : 'Connecting...');
+    const nextStatus = input?.method === 'email'
+      ? 'Opening Circle email verification...'
+      : input?.method === 'pin'
+        ? 'Opening Circle PIN challenge...'
+        : input?.method === 'social'
+          ? 'Opening Circle social sign in...'
+          : 'Connecting...';
+    setStatus(nextStatus);
 
     try {
       const connectedWallet = await connectOfficialWalletProvider(input);
@@ -104,6 +113,17 @@ export function WalletConnectButton() {
 
   function signInWithSocial(provider: CircleSocialProvider) {
     void connectWallet({ method: 'social', provider });
+  }
+
+  function continueWithCircleMethod() {
+    if (circleMethod === 'email') {
+      void connectWallet({ method: 'email', email });
+      return;
+    }
+
+    if (circleMethod === 'pin') {
+      void connectWallet({ method: 'pin', userId: pinUserId });
+    }
   }
 
   async function copyAddress() {
@@ -213,27 +233,68 @@ export function WalletConnectButton() {
             </p>
             <p className="mt-2 text-xs font-semibold text-[#9fb0c8]">Create or access your app wallet.</p>
 
-            <label className="mt-5 block text-[11px] font-black text-[#dbeafe]">
-              Email address
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="Email"
-              className="mt-2 w-full rounded-[8px] border border-white/[0.08] bg-[#0b1322] px-3 py-2.5 text-xs font-semibold text-white outline-none transition-colors placeholder:text-[#64748b] focus:border-[#25c0f4]"
-            />
-            <p className="mt-3 text-[11px] font-semibold leading-4 text-[#94a3b8]">
-              We will send an email with a verification code.
-            </p>
+            <div className="mt-4 grid grid-cols-2 gap-1 rounded-[10px] border border-white/[0.08] bg-[#0b1322] p-1">
+              {(['email', 'pin'] as const).map((method) => (
+                <button
+                  key={method}
+                  type="button"
+                  onClick={() => setCircleMethod(method)}
+                  className={`rounded-[8px] px-2 py-2 text-[10px] font-black uppercase tracking-[0.08em] transition-colors ${
+                    circleMethod === method
+                      ? 'bg-[#25c0f4] text-[#090e1a]'
+                      : 'text-[#94a3b8] hover:text-white'
+                  }`}
+                >
+                  {method === 'pin' ? 'PIN' : method}
+                </button>
+              ))}
+            </div>
+
+            {circleMethod === 'email' ? (
+              <>
+                <label className="mt-4 block text-[11px] font-black text-[#dbeafe]">
+                  Email address
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="Email"
+                  className="mt-2 w-full rounded-[8px] border border-white/[0.08] bg-[#0b1322] px-3 py-2.5 text-xs font-semibold text-white outline-none transition-colors placeholder:text-[#64748b] focus:border-[#25c0f4]"
+                />
+                <p className="mt-3 text-[11px] font-semibold leading-4 text-[#94a3b8]">
+                  We will send an email with a verification code.
+                </p>
+              </>
+            ) : null}
+
+            {circleMethod === 'pin' ? (
+              <>
+                <label className="mt-4 block text-[11px] font-black text-[#dbeafe]">
+                  User ID or email
+                </label>
+                <input
+                  type="text"
+                  value={pinUserId}
+                  onChange={(event) => setPinUserId(event.target.value)}
+                  placeholder="Enter your app ID"
+                  className="mt-2 w-full rounded-[8px] border border-white/[0.08] bg-[#0b1322] px-3 py-2.5 text-xs font-semibold text-white outline-none transition-colors placeholder:text-[#64748b] focus:border-[#25c0f4]"
+                />
+                <p className="mt-3 text-[11px] font-semibold leading-4 text-[#94a3b8]">
+                  Circle will open a secure PIN and recovery challenge for this app wallet.
+                </p>
+              </>
+            ) : null}
 
             <button
               type="button"
-              onClick={() => void connectWallet({ method: 'email', email })}
+              onClick={() => continueWithCircleMethod()}
               disabled={isPending}
               className="mt-5 w-full rounded-[999px] bg-[#25c0f4] px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.08em] text-[#090e1a] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {authMode === 'signup' ? 'Sign up' : 'Log in'}
+              {circleMethod === 'pin'
+                ? 'Continue with PIN'
+                : authMode === 'signup' ? 'Sign up' : 'Log in'}
             </button>
 
             <div className="my-4 flex items-center gap-3">

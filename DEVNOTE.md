@@ -177,7 +177,7 @@ Already started:
 * Live market transactions for USDC approval, buy, resolve, claim, and refund flows
 * Market filters for prediction, opinion, opportunity, open, closing soon, resolved, canceled, draft, and onchain markets
 * Circle User-Controlled Wallet endpoint scaffolding for user sessions, email/social device tokens, initialization challenges, and wallet listing
-* Branded Circle wallet onboarding panel with official Circle email OTP flow and external wallet fallback
+* Branded Circle wallet onboarding panel with official Circle email OTP, Google, and PIN flows plus external wallet fallback
 * Google social login hook through Circle Web SDK with the OAuth Web Client ID configured locally and in Vercel envs
 * RainbowKit external EVM wallet provider under the Circle onboarding modal
 * Circle Web SDK challenge execution for user initialization

@@ -218,7 +218,11 @@ async function connectCircleUserControlledWalletProvider(input?: CircleWalletLog
   const userId = input.userId.trim();
 
   if (!userId) {
-    return null;
+    throw new Error('Enter a user ID or email to continue with Circle PIN.');
+  }
+
+  if (userId.length < 5) {
+    throw new Error('Circle PIN user ID must be at least 5 characters.');
   }
 
   const config = await getCircleConfig();

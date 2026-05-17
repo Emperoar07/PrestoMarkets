@@ -5,7 +5,7 @@ import { currentRails, plannedRails } from '@/lib/productRails';
 const progressItems = [
   'Live Arc factory reads and market creation are wired.',
   'Live buy, resolve, claim, refund, and USDC approval flows are wired.',
-  'Circle email OTP and Google wallet onboarding are in the sign-in modal.',
+  'Circle email OTP, Google, and PIN wallet onboarding are in the sign-in modal.',
   'Production Google Web Client ID is configured locally and in Vercel environments.',
   'RainbowKit external EVM wallets render inline in the same modal.',
   'Production hardening gate is documented before real-value markets.',
