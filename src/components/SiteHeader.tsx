@@ -9,14 +9,8 @@ export function SiteHeader() {
       <div className="mx-auto flex h-[66px] max-w-[1140px] items-center px-4 md:px-7">
         <BrandMark />
         <nav className="mr-5 hidden gap-0.5 md:flex">
-          <a href={`${dexUrl}/swap`} className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-[#94a3b8] transition-all hover:bg-white/[0.04] hover:text-[#f1f5f9]">
-            Swap
-          </a>
-          <a href={`${dexUrl}/liquidity`} className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-[#94a3b8] transition-all hover:bg-white/[0.04] hover:text-[#f1f5f9]">
-            Pools
-          </a>
-          <a href={`${dexUrl}/bridge`} className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-[#94a3b8] transition-all hover:bg-white/[0.04] hover:text-[#f1f5f9]">
-            Bridge
+          <a href={dexUrl} className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-[#94a3b8] transition-all hover:bg-white/[0.04] hover:text-[#f1f5f9]">
+            DEX
           </a>
           <Link href="/markets" className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-[#94a3b8] transition-all hover:bg-white/[0.04] hover:text-[#f1f5f9]">
             Markets
