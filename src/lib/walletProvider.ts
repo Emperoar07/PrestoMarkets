@@ -12,7 +12,7 @@ const connectedWalletStorageKey = 'presto.connectedWallet';
 const connectedWalletEventName = 'presto:wallet';
 const pendingCircleSocialLoginKey = 'presto.circle.pendingSocialLogin';
 
-export type CircleSocialProvider = 'google' | 'facebook';
+export type CircleSocialProvider = 'google' | 'apple';
 
 export type CircleWalletLoginInput =
   | { method: 'email'; email: string }
@@ -282,7 +282,7 @@ async function connectCircleSocialWallet(provider: CircleSocialProvider): Promis
     },
   }));
 
-  await sdk.performLogin((provider === 'google' ? 'Google' : 'Facebook') as Parameters<typeof sdk.performLogin>[0]);
+  await sdk.performLogin((provider === 'google' ? 'Google' : 'Apple') as Parameters<typeof sdk.performLogin>[0]);
 
   return new Promise<ConnectedWallet>(() => undefined);
 }
@@ -491,16 +491,31 @@ function getCircleSocialConfig(provider: CircleSocialProvider, redirectUri = get
     } : null;
   }
 
-  const appId = process.env.NEXT_PUBLIC_CIRCLE_FACEBOOK_APP_ID;
-  return appId ? {
+  const appleConfig = getCircleAppleConfig();
+  return appleConfig ? {
     redirectUri,
     loginConfigs: {
-      facebook: {
-        appId,
-        redirectUri,
-      },
+      apple: appleConfig,
     },
   } : null;
+}
+
+function getCircleAppleConfig() {
+  const apiKey = process.env.NEXT_PUBLIC_CIRCLE_APPLE_FIREBASE_API_KEY;
+  const authDomain = process.env.NEXT_PUBLIC_CIRCLE_APPLE_FIREBASE_AUTH_DOMAIN;
+  const projectId = process.env.NEXT_PUBLIC_CIRCLE_APPLE_FIREBASE_PROJECT_ID;
+  const appId = process.env.NEXT_PUBLIC_CIRCLE_APPLE_FIREBASE_APP_ID;
+
+  if (!apiKey || !authDomain || !projectId || !appId) {
+    return null;
+  }
+
+  return {
+    apiKey,
+    authDomain,
+    projectId,
+    appId,
+  };
 }
 
 function getCircleSocialRedirectUri() {
@@ -521,7 +536,7 @@ function getPendingCircleSocialLogin() {
 }
 
 function providerLabel(provider: CircleSocialProvider) {
-  return provider === 'google' ? 'Google' : 'Facebook';
+  return provider === 'google' ? 'Google' : 'Apple';
 }
 
 async function connectExternalWalletProvider(): Promise<ConnectedWallet> {

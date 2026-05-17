@@ -140,55 +140,58 @@ export function WalletConnectButton() {
       </button>
 
       {showConnectPanel ? (
-        <div className="absolute right-0 mt-3 w-[340px] rounded-[16px] border border-white/[0.08] bg-[#141e30] p-4 shadow-2xl shadow-black/30">
-          <h2 className="text-lg font-black text-white">Sign in to Presto</h2>
-          <p className="mt-2 text-sm leading-6 text-[#94a3b8]">
-            Uses Circle User-Controlled Wallets for app-native onboarding
-          </p>
+        <div className="absolute right-0 mt-3 w-[430px] overflow-hidden rounded-[24px] border border-white/[0.08] bg-[#101827] p-3 shadow-2xl shadow-black/30">
+          <div className="relative overflow-hidden rounded-[18px] border border-white/[0.06] bg-[radial-gradient(circle_at_88%_12%,rgba(37,192,244,0.34),transparent_34%),linear-gradient(145deg,#d8f4ff_0%,#edf8ff_45%,#ffcdb8_100%)] p-5">
+            <div className="absolute -right-12 top-4 h-44 w-44 rounded-full border-[24px] border-white/45 bg-cyan/35 shadow-2xl shadow-cyan/25" />
+            <div className="absolute right-10 top-20 h-28 w-36 rotate-[-18deg] rounded-[999px] bg-[#95d7ff]/45 blur-[1px]" />
+            <div className="absolute right-7 top-40 h-6 w-6 rounded-full bg-cyan/60" />
 
-          <label className="mt-4 block text-xs font-black uppercase tracking-[0.16em] text-[#94a3b8]">
-            Email
-          </label>
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="you@example.com"
-            className="mt-2 w-full rounded-[12px] border border-white/[0.06] bg-[#0f172a] px-3 py-3 text-sm text-white outline-none focus:border-cyan/50"
-          />
+            <div className="relative w-[250px] rounded-[18px] border border-white/70 bg-white/85 p-5 text-[#101827] shadow-2xl shadow-[#294360]/20 backdrop-blur">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-[#25c0f4]" />
+                <p className="text-xs font-black uppercase tracking-[0.14em]">Presto</p>
+              </div>
+              <h2 className="mt-5 text-2xl font-black">Sign up</h2>
+              <p className="mt-1 text-[11px] font-semibold text-[#64748b]">Create or access your app wallet.</p>
 
-          <button
-            type="button"
-            onClick={() => void connectWallet({ method: 'email', email })}
-            disabled={isPending}
-            className="mt-4 w-full rounded-[10px] bg-[#25c0f4] px-5 py-3 text-sm font-black text-[#090e1a] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Continue with email
-          </button>
+              <label className="mt-4 block text-[11px] font-black text-[#1f2937]">
+                Email address
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="Email"
+                className="mt-2 w-full rounded-[7px] border border-[#dbe5ef] bg-white px-3 py-2.5 text-xs font-semibold text-[#0f172a] outline-none focus:border-[#25c0f4]"
+              />
+              <p className="mt-3 text-[10px] font-semibold leading-4 text-[#64748b]">
+                We will send an email with a verification code.
+              </p>
 
-          <div className="my-4 flex items-center gap-3">
-            <div className="h-px flex-1 bg-white/[0.06]" />
-            <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#64748b]">or</span>
-            <div className="h-px flex-1 bg-white/[0.06]" />
-          </div>
+              <button
+                type="button"
+                onClick={() => void connectWallet({ method: 'email', email })}
+                disabled={isPending}
+                className="mt-4 w-full rounded-[999px] bg-[#0b83d9] px-5 py-2.5 text-[11px] font-black uppercase tracking-[0.08em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Sign up
+              </button>
 
-          <div className="grid gap-2">
-            <button
-              type="button"
-              onClick={() => signInWithSocial('google')}
-              disabled={isPending}
-              className="w-full rounded-[10px] border border-white/[0.06] bg-[#0f172a] px-5 py-3 text-sm font-black text-white transition-colors hover:border-cyan/30 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Continue with Google
-            </button>
-            <button
-              type="button"
-              onClick={() => signInWithSocial('facebook')}
-              disabled={isPending}
-              className="w-full rounded-[10px] border border-white/[0.06] bg-[#0f172a] px-5 py-3 text-sm font-black text-white transition-colors hover:border-cyan/30 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Continue with Facebook
-            </button>
+              <div className="my-4 flex items-center gap-3">
+                <div className="h-px flex-1 bg-[#dbe5ef]" />
+                <span className="text-[10px] font-bold text-[#94a3b8]">or</span>
+                <div className="h-px flex-1 bg-[#dbe5ef]" />
+              </div>
+
+              <div className="grid gap-2">
+                <SocialButton label="Continue with Google" mark="G" onClick={() => signInWithSocial('google')} disabled={isPending} />
+                <SocialButton label="Continue with Apple" mark="Apple" onClick={() => signInWithSocial('apple')} disabled={isPending} />
+              </div>
+
+              <p className="mt-4 text-[9px] font-semibold leading-4 text-[#64748b]">
+                By continuing, you use Circle-powered app-native onboarding.
+              </p>
+            </div>
           </div>
 
           {status && !isPending ? (
@@ -208,5 +211,26 @@ export function WalletConnectButton() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function SocialButton(input: {
+  label: string;
+  mark: string;
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={input.onClick}
+      disabled={input.disabled}
+      className="flex w-full items-center justify-center gap-2 rounded-[7px] border border-[#dbe5ef] bg-white px-3 py-2.5 text-[11px] font-black text-[#334155] shadow-sm transition-colors hover:border-[#25c0f4] disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      <span className={`flex h-4 min-w-4 items-center justify-center text-[11px] font-black ${input.mark === 'G' ? 'text-[#4285f4]' : 'text-black'}`}>
+        {input.mark}
+      </span>
+      {input.label}
+    </button>
   );
 }
