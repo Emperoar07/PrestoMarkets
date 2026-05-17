@@ -30,14 +30,14 @@ export function SiteHeader() {
           <Link href="/markets" className={navLinkClass(isExplorePage && !isCreatePage)}>
             Explore Markets
           </Link>
-          <a href={dexUrl} className={navLinkClass()}>
-            DEX
-          </a>
           {!isLandingPage ? (
             <Link href="/markets/create" className={navLinkClass(isCreatePage)}>
               Create Market
             </Link>
           ) : null}
+          <a href={dexUrl} className={navLinkClass()}>
+            DEX
+          </a>
           {showWallet ? <WalletConnectButton /> : null}
         </nav>
       </div>

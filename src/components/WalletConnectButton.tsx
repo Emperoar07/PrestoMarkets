@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, Copy, LogOut } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Check, ChevronDown, Copy, LogOut, X } from 'lucide-react';
 import {
   completePendingCircleSocialLogin,
   connectOfficialWalletProvider,
@@ -22,7 +23,12 @@ export function WalletConnectButton() {
   const [showConnectPanel, setShowConnectPanel] = useState(false);
   const [email, setEmail] = useState('');
   const [copied, setCopied] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
   const isPending = status === 'Connecting...' || status === 'Opening Circle email verification...';
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     completePendingCircleSocialLogin()
@@ -46,6 +52,21 @@ export function WalletConnectButton() {
     document.addEventListener('mousedown', closeOnOutsideClick);
     return () => document.removeEventListener('mousedown', closeOnOutsideClick);
   }, []);
+
+  useEffect(() => {
+    if (!showConnectPanel) {
+      return undefined;
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setShowConnectPanel(false);
+      }
+    }
+
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [showConnectPanel]);
 
   async function connectWallet(input?: CircleWalletLoginInput) {
     setStatus(input?.method === 'email' ? 'Opening Circle email verification...' : 'Connecting...');
@@ -128,6 +149,93 @@ export function WalletConnectButton() {
     );
   }
 
+  const signInModal = showConnectPanel ? (
+    <div
+      className="fixed inset-0 z-[9999] grid place-items-center overflow-y-auto bg-[#050b14]/82 px-4 py-8 backdrop-blur-md"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Sign in to Presto"
+    >
+      <div className="relative my-auto w-full max-w-[760px]">
+        <button
+          type="button"
+          onClick={() => setShowConnectPanel(false)}
+          className="absolute right-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-[#0f172a]/75 text-white shadow-lg shadow-black/20 transition-colors hover:border-cyan/40"
+          aria-label="Close sign in modal"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
+        <div className="relative max-h-[calc(100dvh-4rem)] overflow-y-auto rounded-[24px] border border-white/[0.12] bg-[radial-gradient(circle_at_82%_24%,rgba(37,192,244,0.48),transparent_24%),radial-gradient(circle_at_64%_58%,rgba(37,192,244,0.22),transparent_30%),linear-gradient(145deg,#ddf7ff_0%,#effaff_48%,#ffcdb8_100%)] p-5 shadow-2xl shadow-black/35 sm:min-h-[540px] sm:p-8">
+          <div className="absolute -right-6 top-10 hidden h-64 w-64 rounded-full border-[38px] border-white/45 bg-[#25c0f4]/35 shadow-2xl shadow-cyan/25 sm:block" />
+          <div className="absolute right-24 top-36 hidden h-36 w-48 rotate-[-18deg] rounded-[999px] bg-[#95d7ff]/45 blur-[1px] sm:block" />
+          <div className="absolute right-12 top-64 hidden h-9 w-9 rounded-full bg-[#25c0f4]/60 sm:block" />
+
+          <div className="relative w-full max-w-[340px] rounded-[22px] border border-white/70 bg-white/90 p-6 text-[#101827] shadow-2xl shadow-[#294360]/20 backdrop-blur">
+            <div className="flex items-center gap-2">
+              <PrestoIcon />
+              <p className="text-sm font-black uppercase tracking-[0.16em]">Presto</p>
+            </div>
+            <h2 className="mt-7 text-3xl font-black">Sign up</h2>
+            <p className="mt-2 text-sm font-semibold text-[#64748b]">Create or access your app wallet.</p>
+
+            <label className="mt-6 block text-xs font-black text-[#1f2937]">
+              Email address
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="Email"
+              className="mt-2 w-full rounded-[9px] border border-[#dbe5ef] bg-white px-4 py-3 text-sm font-semibold text-[#0f172a] outline-none focus:border-[#25c0f4]"
+            />
+            <p className="mt-3 text-xs font-semibold leading-5 text-[#64748b]">
+              We will send an email with a verification code.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => void connectWallet({ method: 'email', email })}
+              disabled={isPending}
+              className="mt-6 w-full rounded-[999px] bg-[#0b83d9] px-5 py-3 text-xs font-black uppercase tracking-[0.08em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Sign up
+            </button>
+
+            <div className="my-5 flex items-center gap-3">
+              <div className="h-px flex-1 bg-[#dbe5ef]" />
+              <span className="text-xs font-bold text-[#94a3b8]">or</span>
+              <div className="h-px flex-1 bg-[#dbe5ef]" />
+            </div>
+
+            <div className="grid gap-2.5">
+              <SocialButton provider="google" label="Continue with Google" onClick={() => signInWithSocial('google')} disabled={isPending} />
+              <SocialButton provider="apple" label="Continue with Apple" onClick={() => signInWithSocial('apple')} disabled={isPending} />
+            </div>
+
+            <p className="mt-5 text-[10px] font-semibold leading-4 text-[#64748b]">
+              By continuing, you use Circle-powered app-native onboarding.
+            </p>
+          </div>
+
+          {status && !isPending ? (
+            <p className="relative mt-4 rounded-[12px] border border-red-400/25 bg-[#101827]/85 px-3 py-2 text-xs font-bold text-red-100">
+              {status}
+            </p>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={() => void connectWallet()}
+            className="relative mt-4 w-full rounded-[12px] border border-white/30 bg-[#0f172a]/85 px-5 py-3 text-sm font-black text-white shadow-lg shadow-black/15 transition-colors hover:border-cyan/50"
+          >
+            Use external wallet
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div ref={dropdownRef} className="relative">
       <button
@@ -139,84 +247,44 @@ export function WalletConnectButton() {
         {isPending ? 'Signing in...' : 'Sign In'}
       </button>
 
-      {showConnectPanel ? (
-        <div className="absolute right-0 mt-3 w-[430px] overflow-hidden rounded-[24px] border border-white/[0.08] bg-[#101827] p-3 shadow-2xl shadow-black/30">
-          <div className="relative overflow-hidden rounded-[18px] border border-white/[0.06] bg-[radial-gradient(circle_at_88%_12%,rgba(37,192,244,0.34),transparent_34%),linear-gradient(145deg,#d8f4ff_0%,#edf8ff_45%,#ffcdb8_100%)] p-5">
-            <div className="absolute -right-12 top-4 h-44 w-44 rounded-full border-[24px] border-white/45 bg-cyan/35 shadow-2xl shadow-cyan/25" />
-            <div className="absolute right-10 top-20 h-28 w-36 rotate-[-18deg] rounded-[999px] bg-[#95d7ff]/45 blur-[1px]" />
-            <div className="absolute right-7 top-40 h-6 w-6 rounded-full bg-cyan/60" />
-
-            <div className="relative w-[250px] rounded-[18px] border border-white/70 bg-white/85 p-5 text-[#101827] shadow-2xl shadow-[#294360]/20 backdrop-blur">
-              <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full bg-[#25c0f4]" />
-                <p className="text-xs font-black uppercase tracking-[0.14em]">Presto</p>
-              </div>
-              <h2 className="mt-5 text-2xl font-black">Sign up</h2>
-              <p className="mt-1 text-[11px] font-semibold text-[#64748b]">Create or access your app wallet.</p>
-
-              <label className="mt-4 block text-[11px] font-black text-[#1f2937]">
-                Email address
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="Email"
-                className="mt-2 w-full rounded-[7px] border border-[#dbe5ef] bg-white px-3 py-2.5 text-xs font-semibold text-[#0f172a] outline-none focus:border-[#25c0f4]"
-              />
-              <p className="mt-3 text-[10px] font-semibold leading-4 text-[#64748b]">
-                We will send an email with a verification code.
-              </p>
-
-              <button
-                type="button"
-                onClick={() => void connectWallet({ method: 'email', email })}
-                disabled={isPending}
-                className="mt-4 w-full rounded-[999px] bg-[#0b83d9] px-5 py-2.5 text-[11px] font-black uppercase tracking-[0.08em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Sign up
-              </button>
-
-              <div className="my-4 flex items-center gap-3">
-                <div className="h-px flex-1 bg-[#dbe5ef]" />
-                <span className="text-[10px] font-bold text-[#94a3b8]">or</span>
-                <div className="h-px flex-1 bg-[#dbe5ef]" />
-              </div>
-
-              <div className="grid gap-2">
-                <SocialButton label="Continue with Google" mark="G" onClick={() => signInWithSocial('google')} disabled={isPending} />
-                <SocialButton label="Continue with Apple" mark="Apple" onClick={() => signInWithSocial('apple')} disabled={isPending} />
-              </div>
-
-              <p className="mt-4 text-[9px] font-semibold leading-4 text-[#64748b]">
-                By continuing, you use Circle-powered app-native onboarding.
-              </p>
-            </div>
-          </div>
-
-          {status && !isPending ? (
-            <p className="mt-2 rounded-[10px] border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs font-bold text-red-200">
-              {status}
-            </p>
-          ) : null}
-
-          <div className="my-4 h-px bg-white/[0.06]" />
-          <button
-            type="button"
-            onClick={() => void connectWallet()}
-            className="w-full rounded-[10px] border border-white/[0.06] bg-[#0f172a] px-5 py-3 text-sm font-black text-white transition-colors hover:border-cyan/30"
-          >
-            Use external wallet
-          </button>
-        </div>
-      ) : null}
+      {isMounted && signInModal ? createPortal(signInModal, document.body) : null}
     </div>
+  );
+}
+
+function PrestoIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <circle cx="16" cy="16" r="15" stroke="#25c0f4" strokeWidth="1.8" strokeOpacity="0.55" fill="#25c0f4" fillOpacity="0.08" />
+      <circle cx="16" cy="16" r="10" stroke="#090e1a" strokeWidth="1.8" strokeOpacity="0.92" fill="none" />
+      <circle cx="16" cy="16" r="4.5" fill="#25c0f4" />
+    </svg>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+      <path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z" />
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06L5.84 9.9C6.71 7.3 9.14 5.38 12 5.38z" />
+    </svg>
+  );
+}
+
+function AppleIcon() {
+  return (
+    <svg width="15" height="18" viewBox="0 0 20 24" fill="none" aria-hidden="true">
+      <path fill="#111827" d="M16.5 12.78c-.02-2.29 1.86-3.39 1.95-3.45-1.06-1.56-2.72-1.77-3.31-1.79-1.41-.14-2.75.83-3.46.83-.72 0-1.83-.81-3.01-.79-1.55.02-2.98.9-3.78 2.29-1.61 2.79-.41 6.92 1.16 9.18.77 1.11 1.68 2.36 2.88 2.31 1.16-.05 1.59-.75 2.99-.75 1.39 0 1.79.75 3.01.72 1.24-.02 2.03-1.13 2.79-2.25.88-1.29 1.24-2.54 1.26-2.6-.03-.01-2.43-.93-2.48-3.7z" />
+      <path fill="#111827" d="M14.21 6.05c.63-.76 1.06-1.83.94-2.89-.91.04-2.02.61-2.67 1.37-.59.68-1.1 1.76-.96 2.8 1.02.08 2.06-.52 2.69-1.28z" />
+    </svg>
   );
 }
 
 function SocialButton(input: {
   label: string;
-  mark: string;
+  provider: 'google' | 'apple';
   onClick: () => void;
   disabled: boolean;
 }) {
@@ -227,8 +295,8 @@ function SocialButton(input: {
       disabled={input.disabled}
       className="flex w-full items-center justify-center gap-2 rounded-[7px] border border-[#dbe5ef] bg-white px-3 py-2.5 text-[11px] font-black text-[#334155] shadow-sm transition-colors hover:border-[#25c0f4] disabled:cursor-not-allowed disabled:opacity-60"
     >
-      <span className={`flex h-4 min-w-4 items-center justify-center text-[11px] font-black ${input.mark === 'G' ? 'text-[#4285f4]' : 'text-black'}`}>
-        {input.mark}
+      <span className="flex h-5 min-w-5 items-center justify-center">
+        {input.provider === 'google' ? <GoogleIcon /> : <AppleIcon />}
       </span>
       {input.label}
     </button>
