@@ -32,7 +32,7 @@ export function WalletConnectButton() {
   if (wallet) {
     return (
       <button type="button" className="rounded-lg border border-white/10 px-[14px] py-2 text-[13px] font-bold text-[#f1f5f9]">
-        {wallet.mode === 'circle-aa' ? 'Circle ' : ''}{shortAddress(wallet.address)}
+        {wallet.mode === 'circle-user-controlled' ? 'Circle ' : ''}{shortAddress(wallet.address)}
       </button>
     );
   }
@@ -41,10 +41,10 @@ export function WalletConnectButton() {
     <button
       type="button"
       onClick={() => void connectWallet()}
-      title={status || 'Connect through the official Circle/Arc wallet provider'}
+      title={status || 'Connect with Circle User-Controlled Wallets'}
       className="rounded-lg bg-[#25c0f4] px-[18px] py-2 text-[13px] font-bold text-[#090e1a] transition-opacity hover:opacity-90"
     >
-      {status === 'Connecting...' ? 'Connecting...' : 'Connect Wallet'}
+      {status === 'Connecting...' ? 'Connecting...' : 'Connect Circle Wallet'}
     </button>
   );
 }

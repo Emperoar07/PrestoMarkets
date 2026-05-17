@@ -1,4 +1,4 @@
-export type WalletProviderMode = 'circle-aa' | 'external-eoa';
+export type WalletProviderMode = 'circle-user-controlled' | 'external-eoa';
 
 export type ConnectedWallet = {
   address: string;
@@ -58,7 +58,7 @@ export async function getExistingExternalWallet(): Promise<ConnectedWallet | nul
 }
 
 export async function connectOfficialWalletProvider(): Promise<ConnectedWallet> {
-  const circleWallet = await connectCircleWalletProvider();
+  const circleWallet = await connectCircleUserControlledWalletProvider();
   if (circleWallet) {
     return circleWallet;
   }
@@ -66,7 +66,7 @@ export async function connectOfficialWalletProvider(): Promise<ConnectedWallet> 
   return connectExternalWalletProvider();
 }
 
-async function connectCircleWalletProvider(): Promise<ConnectedWallet | null> {
+async function connectCircleUserControlledWalletProvider(): Promise<ConnectedWallet | null> {
   const enabled = process.env.NEXT_PUBLIC_CIRCLE_WALLETS_ENABLED === 'true';
 
   if (!enabled) {
@@ -81,21 +81,21 @@ async function connectCircleWalletProvider(): Promise<ConnectedWallet | null> {
 
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { error?: string } | null;
-    throw new Error(body?.error || 'Circle Wallet provider failed.');
+    throw new Error(body?.error || 'Circle User-Controlled Wallet provider failed.');
   }
 
   const wallet = await response.json() as { address?: string };
 
   if (!wallet.address) {
-    throw new Error('Circle Wallet provider did not return an address.');
+    throw new Error('Circle User-Controlled Wallet provider did not return an address.');
   }
 
-  return { address: wallet.address, mode: 'circle-aa' };
+  return { address: wallet.address, mode: 'circle-user-controlled' };
 }
 
 async function connectExternalWalletProvider(): Promise<ConnectedWallet> {
   if (!window.ethereum) {
-    throw new Error('Circle Wallets are not configured and no browser wallet was found.');
+    throw new Error('Circle User-Controlled Wallets are not configured and no browser wallet was found.');
   }
 
   const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' }) as string[];
