@@ -47,6 +47,8 @@ The app is a Next.js project with the Presto dark navy and cyan brand style. It 
 * Roadmap page
 * Product rail notes for USDC, Paymaster, Wallets, Bridge Kit, CCTP, and Gateway
 * Contract scaffold for a simple USDC binary market and market factory
+* Live Arc factory reads and writes
+* Live market actions for approval, buy, resolve, claim, and refund
 
 The last confirmed build passed with:
 
@@ -153,20 +155,22 @@ Already started:
 * Market kind support for prediction, opinion, and opportunity markets
 * Public rules fields
 * Source of truth fields
-* Templates for macro, policy, governance, product, and builder opportunity markets
 * UI copy based on Arc prediction market positioning
 * Roadmap and rail planning pages
 * Live Arc factory reads for deployed market discovery
 * Live Arc factory writes for market creation
 * Live market transactions for USDC approval, buy, resolve, claim, and refund flows
 * Market filters for prediction, opinion, opportunity, open, closing soon, resolved, canceled, draft, and onchain markets
-* App phase readiness checks for Arc chain, USDC address, and market factory address
+* Circle User-Controlled Wallet endpoint scaffolding for user sessions, device tokens, initialization challenges, and wallet listing
+* Circle Web SDK challenge execution for user initialization
+* External EOA wallet fallback while Circle credentials and onboarding settings are configured
 
 Next work:
 
 * Add connected-account share reads for the portfolio
 * Add indexed activity history for account-level market actions
 * Add resolver-only affordances once account ownership is read in the UI
+* Replace the temporary Circle user ID prompt with a branded email/social/PIN onboarding panel
 
 ## Phase 3 Started
 
@@ -192,7 +196,7 @@ Already started:
 Next work:
 
 * Add contract audit notes before real value
-* Wire create flow to call `createMarket(...)` on the deployed factory
+* Add account-aware UI guards for resolver and claimant actions
 
 Latest Arc Testnet deployment:
 
@@ -203,20 +207,16 @@ Latest Arc Testnet deployment:
 
 ## Recommended Next Scope
 
-The safest next scope is to finish the contract test and deployment layer before building more UI.
+The safest next scope is account-aware live app depth.
 
 Order:
 
-1. Add Hardhat or Foundry setup.
-2. Add tests for `PrestoMarket.sol`.
-3. Add tests for `PrestoMarketFactory.sol`.
-4. Deploy factory to Arc Testnet.
-5. Add deployed addresses to environment variables.
-6. Wire the create page to deploy real markets.
-7. Wire the markets page to read markets from the factory.
-8. Wire the detail page to buy shares, resolve, cancel, claim, and refund.
-
-This keeps the UI honest because the app starts reading real contract state early.
+1. Finish Circle User-Controlled Wallet onboarding UI beyond the current endpoint and SDK challenge path.
+2. Add connected-wallet share reads for portfolio positions.
+3. Add account-level activity indexing.
+4. Read creator and resolver ownership into the UI.
+5. Hide or disable resolver-only actions for non-resolvers.
+6. Add audit notes and dispute or bond design before real value beyond testnet.
 
 ## Design Rules
 
@@ -259,10 +259,13 @@ Current:
 * USDC
 * Contracts
 
+Partially wired:
+
+* Wallets
+
 Planned:
 
 * Paymaster
-* Wallets
 * Bridge Kit
 * CCTP
 * Gateway

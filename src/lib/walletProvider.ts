@@ -3,6 +3,8 @@ export type WalletProviderMode = 'circle-user-controlled' | 'external-eoa';
 export type ConnectedWallet = {
   address: string;
   mode: WalletProviderMode;
+  walletId?: string;
+  userId?: string;
 };
 
 const ARC_CHAIN_HEX = '0x4cef52';
@@ -88,24 +90,94 @@ async function connectCircleUserControlledWalletProvider(): Promise<ConnectedWal
     return null;
   }
 
-  const response = await fetch('/api/circle/wallet/provider', { method: 'POST' });
+  const userId = window.prompt('Enter your Presto Circle wallet email or user ID.');
 
-  if (response.status === 404 || response.status === 501) {
+  if (!userId) {
     return null;
   }
 
+  const config = await callCircleWalletProvider<{ appId: string; blockchain: string; accountType: string }>({ action: 'config' });
+  await callCircleWalletProvider({ action: 'createUser', userId });
+  const session = await callCircleWalletProvider<{ userToken: string; encryptionKey: string }>({ action: 'session', userId });
+  let wallet = await getFirstCircleWallet(session.userToken, config.blockchain);
+
+  if (!wallet) {
+    const challenge = await callCircleWalletProvider<{ challengeId: string }>({
+      action: 'initialize',
+      userToken: session.userToken,
+    });
+
+    await executeCircleChallenge({
+      appId: config.appId,
+      userToken: session.userToken,
+      encryptionKey: session.encryptionKey,
+      challengeId: challenge.challengeId,
+    });
+    wallet = await getFirstCircleWallet(session.userToken, config.blockchain);
+  }
+
+  if (!wallet?.address) {
+    throw new Error('Circle User-Controlled Wallets did not return an Arc wallet address.');
+  }
+
+  return {
+    address: wallet.address,
+    walletId: wallet.id,
+    userId,
+    mode: 'circle-user-controlled',
+  };
+}
+
+async function callCircleWalletProvider<T>(body: Record<string, unknown>): Promise<T> {
+  const response = await fetch('/api/circle/wallet/provider', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => null) as { error?: string } | T | null;
+
   if (!response.ok) {
-    const body = await response.json().catch(() => null) as { error?: string } | null;
-    throw new Error(body?.error || 'Circle User-Controlled Wallet provider failed.');
+    throw new Error((data as { error?: string } | null)?.error || 'Circle User-Controlled Wallet provider failed.');
   }
 
-  const wallet = await response.json() as { address?: string };
+  return data as T;
+}
 
-  if (!wallet.address) {
-    throw new Error('Circle User-Controlled Wallet provider did not return an address.');
-  }
+async function getFirstCircleWallet(userToken: string, blockchain: string) {
+  const data = await callCircleWalletProvider<{ wallets?: Array<{ id: string; address: string; blockchain?: string }> }>({
+    action: 'wallets',
+    userToken,
+  });
+  const wallets = data.wallets || [];
 
-  return { address: wallet.address, mode: 'circle-user-controlled' };
+  return wallets.find((wallet) => wallet.blockchain === blockchain) || wallets[0] || null;
+}
+
+async function executeCircleChallenge(input: {
+  appId: string;
+  userToken: string;
+  encryptionKey: string;
+  challengeId: string;
+}) {
+  const { W3SSdk } = await import('@circle-fin/w3s-pw-web-sdk');
+  const sdk = new W3SSdk({
+    appSettings: { appId: input.appId },
+    authentication: {
+      userToken: input.userToken,
+      encryptionKey: input.encryptionKey,
+    },
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    sdk.execute(input.challengeId, (error) => {
+      if (error) {
+        reject(new Error(error.message || 'Circle wallet challenge failed.'));
+        return;
+      }
+
+      resolve();
+    });
+  });
 }
 
 async function connectExternalWalletProvider(): Promise<ConnectedWallet> {
