@@ -176,11 +176,12 @@ Already started:
 * Connected-account share reads for portfolio positions
 * Claim and refund availability reads per connected account
 * Recent account activity from Arc market logs
+* Resolver-aware UI that locks resolve and cancel actions to the configured resolver wallet
 
 Next work:
 
-* Add resolver-only affordances once account ownership is read in the UI
 * Expand recent event reads into a persistent indexed account history
+* Add production hardening notes for audit, dispute, bond, and failure paths
 
 ## Phase 3 Started
 
@@ -206,7 +207,7 @@ Already started:
 Next work:
 
 * Add contract audit notes before real value
-* Add account-aware UI guards for resolver and claimant actions
+* Design dispute and bond flows before any real-value launch
 
 Latest Arc Testnet deployment:
 

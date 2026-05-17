@@ -148,12 +148,14 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     collateral: 'USDC',
     chain: 'Arc Testnet',
     resolver: truncateAddress(resolver),
+    resolverAddress: resolver,
     resolutionMode: metadata?.resolutionMode || getResolutionMode(kind),
     sourceOfTruth: metadata?.sourceOfTruth || metadataURI || 'Metadata URI was not set at creation.',
     rules: resolutionURI
       ? `Resolved with evidence: ${resolutionURI}. Winning outcome: ${winningOutcome === 0 ? 'YES' : 'NO'}.`
       : metadata?.rules || 'Rules live in the market metadata URI. Resolver evidence is published after settlement.',
     createdBy: truncateAddress(creator),
+    creatorAddress: creator,
     feeMode: Number(protocolFeeBps) > 0 ? `${protocolFeeBps} bps protocol fee` : 'No protocol fee',
     outcomes: [
       { label: 'YES', odds: odds.yes, liquidity: formatOnchainUsd(yesShares) },

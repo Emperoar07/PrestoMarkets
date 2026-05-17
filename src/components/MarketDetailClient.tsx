@@ -48,6 +48,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const refundableAmount = Number(accountPreview?.refundable.replace(/[$,]/g, '') || 0);
   const canClaim = claimableAmount > 0 && !accountPreview?.hasClaimed;
   const canRefund = refundableAmount > 0 && !accountPreview?.hasClaimed;
+  const connectedAddress = connectedWallet?.address.toLowerCase();
+  const resolverAddress = market.resolverAddress?.toLowerCase();
+  const isResolver = Boolean(connectedAddress && resolverAddress && connectedAddress === resolverAddress);
+  const canUseResolverActions = isResolver && (market.status === 'Open' || market.status === 'Closing soon');
 
   async function runAction(action: () => Promise<{ ok: boolean; message: string; txHash?: string }>) {
     setIsSubmitting(true);
@@ -109,7 +113,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
                 <div className="rounded-[14px] border border-white/[0.06] bg-[#141e30] p-4">
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Resolver</p>
-                  <p className="mt-2 text-sm leading-6 text-white">{market.resolver}</p>
+                  <p className="mt-2 break-all text-sm leading-6 text-white">{market.resolverAddress || market.resolver}</p>
                   <p className="mt-1 text-sm text-cyan">{market.resolutionMode}</p>
                 </div>
               </div>
@@ -216,6 +220,13 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             </button>
             <div className="mt-5 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-4">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Settlement actions</p>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                {connectedWallet
+                  ? isResolver
+                    ? 'This wallet is the market resolver.'
+                    : 'Resolver actions are locked to the configured resolver wallet.'
+                  : 'Connect the resolver wallet to resolve or cancel this market.'}
+              </p>
               <input
                 value={resolutionURI}
                 onChange={(event) => setResolutionURI(event.target.value)}
@@ -226,7 +237,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <button
                   type="button"
                   onClick={() => void runAction(() => resolveMarket({ marketId, outcome: selectedOutcome, resolutionURI }))}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !canUseResolverActions || !resolutionURI.trim()}
                   className="rounded-xl border border-white/[0.06] bg-panel2 px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Resolve {selectedOutcome}
@@ -234,7 +245,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <button
                   type="button"
                   onClick={() => void runAction(() => cancelMarket(marketId))}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !canUseResolverActions}
                   className="rounded-xl border border-white/[0.06] bg-panel2 px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Cancel

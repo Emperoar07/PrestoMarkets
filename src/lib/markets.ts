@@ -27,10 +27,12 @@ export type Market = {
   collateral: 'USDC';
   chain: 'Arc Testnet';
   resolver: string;
+  resolverAddress?: string;
   resolutionMode: ResolutionMode;
   sourceOfTruth: string;
   rules: string;
   createdBy: string;
+  creatorAddress?: string;
   feeMode: string;
   outcomes: MarketOutcome[];
   activity: MarketActivity[];
