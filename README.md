@@ -52,6 +52,7 @@ Phase 1 is intentionally conservative. It does not include AMM pricing, autonomo
 * App phase readiness checks for Arc chain, USDC address, market factory address, demo wallet connection, and demo USDC allowance.
 * Market filters for prediction, opinion, opportunity, open, closing soon, resolved, canceled, draft, and locally created markets.
 * Draft market creation and local market status review controls.
+* Read-only Arc Testnet factory integration for live market discovery.
 * Mock portfolio positions and activity states for review before wallet reads are connected.
 
 ## Phase 3

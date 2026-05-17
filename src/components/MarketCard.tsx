@@ -1,6 +1,10 @@
 import Link from 'next/link';
 import type { Market } from '@/lib/markets';
 
+type MarketCardMarket = Market & {
+  source?: 'seed' | 'created' | 'onchain';
+};
+
 const typeStyle: Record<Market['type'], string> = {
   Prediction: 'border-cyan/30 bg-cyan/10 text-cyan',
   Opinion: 'border-mint/25 bg-mint/10 text-mint',
@@ -15,7 +19,7 @@ const statusStyle: Record<Market['status'], string> = {
   Draft: 'text-muted',
 };
 
-export function MarketCard({ market }: { market: Market }) {
+export function MarketCard({ market }: { market: MarketCardMarket }) {
   const yesOutcome = market.outcomes.find((outcome) => outcome.label === 'YES') ?? market.outcomes[0];
 
   return (
@@ -24,8 +28,15 @@ export function MarketCard({ market }: { market: Market }) {
       className="block rounded-3xl border border-line bg-panel p-6 transition-transform hover:-translate-y-1 hover:border-cyan/35"
     >
       <div className="flex items-start justify-between gap-4">
-        <span className={`rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.18em] ${typeStyle[market.type]}`}>
-          {market.type}
+        <span className="flex flex-wrap gap-2">
+          <span className={`rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.18em] ${typeStyle[market.type]}`}>
+            {market.type}
+          </span>
+          {market.source === 'onchain' ? (
+            <span className="rounded-full border border-mint/25 bg-mint/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-mint">
+              Onchain
+            </span>
+          ) : null}
         </span>
         <span className={`text-sm font-semibold ${statusStyle[market.status]}`}>{market.status}</span>
       </div>

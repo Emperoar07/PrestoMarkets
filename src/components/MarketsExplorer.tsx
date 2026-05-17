@@ -5,7 +5,7 @@ import { MarketCard } from './MarketCard';
 import { useAppState } from '@/lib/appState';
 import { marketCategories } from '@/lib/marketTemplates';
 
-const filters = ['All', 'Prediction', 'Opinion', 'Opportunity', 'Open', 'Closing soon', 'Resolved', 'Canceled', 'Draft', 'Created'];
+const filters = ['All', 'Prediction', 'Opinion', 'Opportunity', 'Open', 'Closing soon', 'Resolved', 'Canceled', 'Draft', 'Onchain', 'Created'];
 
 function formatUsd(value: number) {
   if (value >= 1_000) {
@@ -54,6 +54,10 @@ export function MarketsExplorer() {
 
     if (activeFilter === 'Created') {
       return market.source === 'created';
+    }
+
+    if (activeFilter === 'Onchain') {
+      return market.source === 'onchain';
     }
 
     if (activeFilter === market.type || activeFilter === market.status) {

@@ -9,12 +9,13 @@ import {
 } from 'react';
 import { marketTemplates } from './marketTemplates';
 import { markets as seededMarkets, type Market, type MarketStatus, type MarketType, type ResolutionMode } from './markets';
+import { fetchOnchainMarkets } from './onchainMarkets';
 import { mockActivity, mockPositions, type PortfolioActivity, type Position } from './portfolio';
 
 type OutcomeLabel = 'YES' | 'NO';
 
 export type AppMarket = Market & {
-  source: 'seed' | 'created';
+  source: 'seed' | 'created' | 'onchain';
   closeDate?: string;
   createdAt: string;
   seedLiquidityValue: number;
@@ -245,15 +246,20 @@ function buildActivityFromTrade(trade: TradeRecord): PortfolioActivity {
 }
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  const [markets, setMarkets] = useState<AppMarket[]>(buildInitialMarkets);
+  const [localMarkets, setLocalMarkets] = useState<AppMarket[]>(buildInitialMarkets);
+  const [onchainMarkets, setOnchainMarkets] = useState<AppMarket[]>([]);
   const [trades, setTrades] = useState<TradeRecord[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
+  const markets = [
+    ...onchainMarkets,
+    ...localMarkets.filter((market) => !onchainMarkets.some((onchainMarket) => onchainMarket.id === market.id)),
+  ];
 
   useEffect(() => {
     const stored = readStoredState();
 
     if (stored) {
-      setMarkets(stored.markets);
+      setLocalMarkets(stored.markets);
       setTrades(stored.trades);
     }
 
@@ -261,12 +267,30 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    let isActive = true;
+
+    fetchOnchainMarkets()
+      .then((nextMarkets) => {
+        if (isActive) {
+          setOnchainMarkets(nextMarkets);
+        }
+      })
+      .catch((error) => {
+        console.warn('Unable to load onchain markets', error);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof window === 'undefined' || !isHydrated) {
       return;
     }
 
-    writeStoredState({ markets, trades });
-  }, [isHydrated, markets, trades]);
+    writeStoredState({ markets: localMarkets, trades });
+  }, [isHydrated, localMarkets, trades]);
 
   function createMarket(input: CreateMarketInput) {
     const id = `${slugify(input.title)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -308,7 +332,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       createdMarket.description = `${template.title} market for ${template.category.toLowerCase()} signals on Arc.`;
     }
 
-    setMarkets((current) => [createdMarket, ...current]);
+    setLocalMarkets((current) => [createdMarket, ...current]);
 
     return id;
   }
@@ -348,7 +372,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     };
 
     setTrades((current) => [trade, ...current]);
-    setMarkets((current) => current.map((item) => {
+    setLocalMarkets((current) => current.map((item) => {
       if (item.id !== market.id) {
         return item;
       }
@@ -394,7 +418,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   function updateMarketStatus(marketId: string, status: MarketStatus) {
-    setMarkets((current) => current.map((market) => {
+    setLocalMarkets((current) => current.map((market) => {
       if (market.id !== marketId) {
         return market;
       }

@@ -10,11 +10,13 @@ function publicEnv(value: string | undefined) {
 
 export function getArcConfig() {
   const chainId = publicEnv(process.env.NEXT_PUBLIC_ARC_CHAIN_ID);
+  const rpcUrl = publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_URL) || publicEnv(process.env.ARC_RPC_URL);
   const usdcAddress = publicEnv(process.env.NEXT_PUBLIC_USDC_ADDRESS);
   const factoryAddress = publicEnv(process.env.NEXT_PUBLIC_MARKET_FACTORY_ADDRESS);
 
   return {
     chainId,
+    rpcUrl,
     usdcAddress,
     factoryAddress,
     circlePaymasterEnabled: process.env.NEXT_PUBLIC_CIRCLE_PAYMASTER_ENABLED === 'true',
@@ -30,8 +32,8 @@ export function getArcReadinessItems(): ArcReadinessItem[] {
   return [
     {
       label: 'Arc chain',
-      value: config.chainId || 'Missing chain id',
-      ready: config.chainId.length > 0,
+      value: config.chainId && config.rpcUrl ? `${config.chainId} RPC ready` : 'Missing chain id or RPC',
+      ready: config.chainId.length > 0 && config.rpcUrl.length > 0,
     },
     {
       label: 'USDC collateral',

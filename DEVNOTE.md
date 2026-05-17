@@ -160,17 +160,14 @@ Already started:
 * Local draft market creation
 * Market filters for prediction, opinion, opportunity, open, closing soon, resolved, canceled, draft, and created markets
 * App phase readiness checks for Arc chain, USDC address, market factory address, demo wallet connection, and demo USDC allowance
+* Read-only Arc Testnet factory integration loads live market addresses and public market fields
 
 Next work:
 
 * Convert the create form into a real deploy flow
 * Add wallet connection
 * Add USDC allowance flow
-* Add factory deployment address support
 * Add market creation transaction flow
-* Show created markets from contract reads instead of mock data
-* Add market filters by prediction, opinion, and opportunity
-* Add market status filters for open, resolved, canceled, and draft
 
 ## Phase 3 Started
 
@@ -196,7 +193,7 @@ Already started:
 Next work:
 
 * Add contract audit notes before real value
-* Wire create and market read flows to the deployed factory
+* Wire create flow to call `createMarket(...)` on the deployed factory
 
 Latest Arc Testnet deployment:
 
