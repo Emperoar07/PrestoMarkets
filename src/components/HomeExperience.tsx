@@ -46,7 +46,7 @@ export function HomeExperience() {
               <span className="block presto-gradient-text">Markets.</span>
             </h1>
             <p className="mx-auto mb-10 max-w-[560px] text-[16px] leading-[1.7] text-[#94a3b8]">
-              A clean, fast prediction market surface built on Arc testnet. Create public markets, trade stablecoin-backed outcomes, and track transparent resolution signals.
+              A fast prediction market on Arc testnet. Create public markets, trade stablecoin-backed outcomes, and track transparent resolution signals.
             </p>
             <div className="mb-16 flex flex-wrap justify-center gap-3">
               <Link
