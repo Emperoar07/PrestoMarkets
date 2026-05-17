@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { SiteHeader } from './SiteHeader';
+import { SiteFooter } from './SiteFooter';
 import { MarketCard } from './MarketCard';
-import { currentRails, plannedRails } from '@/lib/productRails';
 import { useAppState } from '@/lib/appState';
 
 const pillars = [
@@ -103,44 +103,8 @@ export function HomeExperience() {
             {featuredMarkets.map((market) => <MarketCard key={market.id} market={market} />)}
           </div>
         </section>
-
-        <section className="mx-auto mb-20 mt-12 max-w-[1140px] rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6 md:px-7">
-          <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
-            <div>
-              <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-[#25c0f4]">Build rails</p>
-              <h2 className="mt-2 text-[24px] font-extrabold tracking-tight text-white">USDC markets first, richer rails when ready</h2>
-              <p className="mt-3 max-w-3xl text-[14px] leading-[1.7] text-muted">
-                Presto Markets now reads from the deployed Arc factory and submits live transactions for creation, trading, resolution, claims, and refunds.
-              </p>
-            </div>
-            <Link href="/roadmap" className="flex items-center gap-2 text-[13px] font-bold text-cyan">
-              View roadmap <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Current</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {currentRails.map((rail) => (
-                  <span key={rail.name} className="rounded-full border border-mint/25 bg-mint/10 px-3 py-1 text-xs font-black text-mint">
-                    {rail.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Planned</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {plannedRails.map((rail) => (
-                  <span key={rail.name} className="rounded-full border border-line bg-panel2 px-3 py-1 text-xs font-black text-muted">
-                    {rail.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
       </main>
+      <SiteFooter />
     </>
   );
 }
