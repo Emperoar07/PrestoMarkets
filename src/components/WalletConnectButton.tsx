@@ -47,7 +47,6 @@ async function ensureArc(provider: EthereumProvider) {
 export function WalletConnectButton() {
   const [address, setAddress] = useState('');
   const [status, setStatus] = useState('');
-  const circleEnabled = process.env.NEXT_PUBLIC_CIRCLE_WALLETS_ENABLED === 'true';
 
   useEffect(() => {
     if (!window.ethereum) {
@@ -75,12 +74,6 @@ export function WalletConnectButton() {
     setStatus('');
   }
 
-  function connectCircle() {
-    setStatus(circleEnabled
-      ? 'Circle embedded wallet requires the server-side user-token/session flow before activation.'
-      : 'Set NEXT_PUBLIC_CIRCLE_WALLETS_ENABLED=true after Circle Wallets session endpoints are configured.');
-  }
-
   if (address) {
     return (
       <button type="button" className="rounded-lg border border-white/10 px-[14px] py-2 text-[13px] font-bold text-[#f1f5f9]">
@@ -90,19 +83,13 @@ export function WalletConnectButton() {
   }
 
   return (
-    <div className="group relative">
-      <button type="button" className="rounded-lg bg-[#25c0f4] px-[18px] py-2 text-[13px] font-bold text-[#090e1a] transition-opacity hover:opacity-90">
-        Connect Wallet
-      </button>
-      <div className="invisible absolute right-0 top-11 z-50 w-56 rounded-[14px] border border-white/[0.08] bg-[#141e30] p-2 opacity-0 shadow-2xl transition-all group-hover:visible group-hover:opacity-100">
-        <button type="button" onClick={() => void connectWeb3()} className="w-full rounded-[10px] px-3 py-2 text-left text-[13px] font-bold text-[#f1f5f9] hover:bg-white/[0.04]">
-          Web3 wallet
-        </button>
-        <button type="button" onClick={connectCircle} className="w-full rounded-[10px] px-3 py-2 text-left text-[13px] font-bold text-[#94a3b8] hover:bg-white/[0.04]">
-          Circle Web2 wallet
-        </button>
-        {status ? <p className="px-3 py-2 text-[11px] leading-5 text-[#94a3b8]">{status}</p> : null}
-      </div>
-    </div>
+    <button
+      type="button"
+      onClick={() => void connectWeb3()}
+      title={status || 'Connect an Arc-compatible wallet'}
+      className="rounded-lg bg-[#25c0f4] px-[18px] py-2 text-[13px] font-bold text-[#090e1a] transition-opacity hover:opacity-90"
+    >
+      {status ? 'Connecting...' : 'Connect Wallet'}
+    </button>
   );
 }
