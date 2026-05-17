@@ -25,8 +25,6 @@ const pillars = [
 export function HomeExperience() {
   const { markets } = useAppState();
   const featuredMarkets = markets.slice(0, 3);
-  const activeCount = markets.filter((market) => market.status === 'Open' || market.status === 'Closing soon').length;
-
   return (
     <>
       <SiteHeader />
@@ -64,18 +62,6 @@ export function HomeExperience() {
               </Link>
             </div>
 
-            <div className="mx-auto grid max-w-[600px] grid-cols-3 overflow-hidden rounded-[14px] border border-white/10 bg-[#141e30]">
-              {[
-                { value: markets.length.toLocaleString(), label: 'Factory Markets' },
-                { value: activeCount.toLocaleString(), label: 'Active Markets' },
-                { value: 'USDC', label: 'First Settlement' },
-              ].map((stat, index) => (
-                <div key={stat.label} className={`px-4 py-4 text-center ${index < 2 ? 'border-r border-white/[0.06]' : ''}`}>
-                  <div className="text-[17px] font-extrabold tracking-tight text-[#25c0f4] md:text-[20px]">{stat.value}</div>
-                  <div className="mt-1 text-[10px] font-medium text-[#4b6280] md:text-[11px]">{stat.label}</div>
-                </div>
-              ))}
-            </div>
           </div>
         </section>
 

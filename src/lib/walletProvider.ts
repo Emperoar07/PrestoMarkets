@@ -57,6 +57,21 @@ export async function getExistingExternalWallet(): Promise<ConnectedWallet | nul
   return address ? { address, mode: 'external-eoa' } : null;
 }
 
+export async function disconnectExternalWallet() {
+  if (!window.ethereum) {
+    return;
+  }
+
+  try {
+    await window.ethereum.request({
+      method: 'wallet_revokePermissions',
+      params: [{ eth_accounts: {} }],
+    });
+  } catch {
+    // Some injected wallets do not expose programmatic disconnect.
+  }
+}
+
 export async function connectOfficialWalletProvider(): Promise<ConnectedWallet> {
   const circleWallet = await connectCircleUserControlledWalletProvider();
   if (circleWallet) {

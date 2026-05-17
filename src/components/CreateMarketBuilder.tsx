@@ -2,12 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2 } from 'lucide-react';
 import { SiteHeader } from './SiteHeader';
-import { ArcReadinessPanel } from './ArcReadinessPanel';
-import { currentRails, plannedRails } from '@/lib/productRails';
-import { marketTemplates } from '@/lib/marketTemplates';
-import type { MarketTemplate } from '@/lib/marketTemplates';
 import type { MarketType, ResolutionMode } from '@/lib/markets';
 import { useAppState } from '@/lib/appState';
 
@@ -25,7 +20,6 @@ export function CreateMarketBuilder() {
   const router = useRouter();
   const { createMarket } = useAppState();
   const [selectedType, setSelectedType] = useState<MarketType>('Prediction');
-  const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
@@ -39,25 +33,8 @@ export function CreateMarketBuilder() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
 
-  const visibleTemplates = marketTemplates.filter((template) => template.type === selectedType);
-  const activeTemplate = visibleTemplates.find((template) => template.id === selectedTemplateId);
-
-  function applyTemplate(template: MarketTemplate) {
-    setSelectedTemplateId(template.id);
-    setSelectedType(template.type);
-    setTitle(template.question);
-    setDescription(`${template.title} market for ${template.category.toLowerCase()} signals on Arc.`);
-    setCategory(template.category);
-    setRules(template.rules);
-    setSourceOfTruth(template.sourceOfTruth);
-    setResolutionMode(template.resolutionMode);
-    setShowReview(false);
-    setStatusMessage('');
-  }
-
   function chooseType(type: MarketType) {
     setSelectedType(type);
-    setSelectedTemplateId('');
     setShowReview(false);
     setStatusMessage('');
   }
@@ -139,8 +116,8 @@ export function CreateMarketBuilder() {
           Create a live market through the deployed Presto factory on Arc. Your wallet signs the transaction, and the market appears after the factory read refreshes.
         </p>
 
-        <div className="mt-9 grid gap-6 lg:grid-cols-[360px_1fr]">
-          <aside className="space-y-5">
+        <div className="mt-9 grid gap-6 lg:grid-cols-[320px_1fr]">
+          <aside>
             <section className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-5">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Market family</p>
               <div className="mt-4 grid gap-3">
@@ -159,30 +136,6 @@ export function CreateMarketBuilder() {
                 ))}
               </div>
             </section>
-
-            <section className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-5">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Templates</p>
-              <div className="mt-4 grid gap-3">
-                {visibleTemplates.map((template) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    onClick={() => applyTemplate(template)}
-                    className={`flex items-center justify-between rounded-[14px] border px-4 py-3 text-left transition-colors ${
-                      activeTemplate?.id === template.id ? 'border-cyan/50 bg-cyan/10' : 'border-white/[0.06] bg-[#0f172a] hover:border-cyan/30'
-                    }`}
-                  >
-                    <span>
-                      <span className="block font-black text-white">{template.title}</span>
-                      <span className="text-sm text-muted">{template.category}</span>
-                    </span>
-                    {activeTemplate?.id === template.id ? <CheckCircle2 className="h-5 w-5 text-cyan" /> : null}
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <ArcReadinessPanel />
           </aside>
 
           <div className="space-y-6">
@@ -305,35 +258,6 @@ export function CreateMarketBuilder() {
                       <img src={imageURI} alt="Market preview" className="h-48 w-full object-cover" />
                     </div>
                   ) : null}
-                </div>
-
-                <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-                  <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Funding rails</p>
-                  <p className="mt-2 text-sm leading-6 text-muted">
-                    V1 creation uses the deployed Presto factory and USDC market contracts on Arc. Paymaster, Bridge Kit, CCTP, and Gateway stay planned until each flow is live-tested.
-                  </p>
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Current</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {currentRails.map((rail) => (
-                          <span key={rail.name} className="rounded-full border border-mint/25 bg-mint/10 px-3 py-1 text-xs font-black text-mint">
-                            {rail.name}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Planned</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {plannedRails.map((rail) => (
-                          <span key={rail.name} className="rounded-full border border-line bg-panel2 px-3 py-1 text-xs font-black text-muted">
-                            {rail.name}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
                 </div>
 
                 <button type="button" onClick={() => setShowReview(true)} className="w-full rounded-[10px] bg-cyan px-6 py-4 font-black text-ink transition-opacity hover:opacity-90">
