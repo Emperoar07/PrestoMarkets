@@ -21,6 +21,18 @@ export const productRails: ProductRail[] = [
     note: 'Presto Markets keeps its own contracts for market creation, settlement, claims, and refunds.',
   },
   {
+    name: 'Circle Wallets',
+    status: 'Current',
+    purpose: 'App-native onboarding',
+    note: 'Email OTP and Google entry points are wired through Circle User-Controlled Wallets. Production Google still needs the public Web Client ID configured.',
+  },
+  {
+    name: 'RainbowKit',
+    status: 'Current',
+    purpose: 'External EVM wallets',
+    note: 'External wallet connectors render directly inside the Presto sign-in modal, with WalletConnect project ID configured for QR support.',
+  },
+  {
     name: 'Paymaster',
     status: 'Planned',
     purpose: 'Gas paid in USDC',
@@ -28,9 +40,9 @@ export const productRails: ProductRail[] = [
   },
   {
     name: 'Wallets',
-    status: 'Planned',
-    purpose: 'Embedded onboarding',
-    note: 'Circle Wallets can support smoother consumer onboarding once custody and account model decisions are final.',
+    status: 'Current',
+    purpose: 'Wallet abstraction',
+    note: 'The app supports Circle embedded wallets plus RainbowKit external wallets without replacing the market contracts.',
   },
   {
     name: 'Bridge Kit',

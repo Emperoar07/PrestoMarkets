@@ -290,13 +290,8 @@ function RainbowExternalWalletRow() {
 
   return (
     <div className="relative mt-3 rounded-[12px] border border-white/[0.08] bg-[#0d1627]/92 p-3 text-white shadow-lg shadow-black/20">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#94a3b8]">External EVM wallets</p>
-          <p className="mt-1 text-[10px] font-bold text-[#64748b]">Connect directly here. No second modal.</p>
-        </div>
-
-        {needsArcSwitch ? (
+      {needsArcSwitch ? (
+        <div className="mb-3 flex justify-end">
           <button
             type="button"
             onClick={() => switchChain({ chainId: arcTestnetChain.id })}
@@ -305,10 +300,10 @@ function RainbowExternalWalletRow() {
           >
             Switch to Arc
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {uniqueConnectors.map((connector) => {
           const walletConnector = connector as typeof connector & { icon?: string };
           const pendingConnector = isPending && variables?.connector?.name === connector.name;
@@ -323,7 +318,7 @@ function RainbowExternalWalletRow() {
               {walletConnector.icon ? (
                 <img src={walletConnector.icon} alt="" className="h-5 w-5 rounded-full" />
               ) : (
-                <span className="h-5 w-5 rounded-full border border-cyan/30 bg-cyan/15" />
+                <WalletFallbackIcon name={connector.name} />
               )}
               <span className="truncate">{pendingConnector ? 'Connecting...' : connector.name}</span>
             </button>
@@ -349,6 +344,71 @@ function RainbowExternalWalletRow() {
         </p>
       ) : null}
     </div>
+  );
+}
+
+function WalletFallbackIcon({ name }: { name: string }) {
+  const normalizedName = name.toLowerCase();
+
+  if (normalizedName.includes('walletconnect')) {
+    return (
+      <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect width="32" height="32" rx="9" fill="#3B99FC" />
+        <path d="M9 13.25c3.86-3.76 10.13-3.76 14 0l.47.46a.5.5 0 0 1 0 .72l-1.61 1.57a.5.5 0 0 1-.69 0l-.65-.63a6.4 6.4 0 0 0-9.03 0l-.69.67a.5.5 0 0 1-.69 0l-1.58-1.55a.5.5 0 0 1 0-.72L9 13.25Z" fill="white" />
+        <path d="m13.03 17.06 1.26-1.23a2.43 2.43 0 0 1 3.42 0l1.26 1.23a.5.5 0 0 1 0 .72l-2.62 2.55a.5.5 0 0 1-.7 0l-2.62-2.55a.5.5 0 0 1 0-.72Z" fill="white" />
+      </svg>
+    );
+  }
+
+  if (normalizedName.includes('base')) {
+    return (
+      <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect width="32" height="32" rx="9" fill="#0052FF" />
+        <path d="M16.05 25.5c5.25 0 9.5-4.25 9.5-9.5s-4.25-9.5-9.5-9.5c-4.98 0-9.06 3.84-9.45 8.72h12.56v1.56H6.6c.39 4.88 4.47 8.72 9.45 8.72Z" fill="white" />
+      </svg>
+    );
+  }
+
+  if (normalizedName.includes('safe')) {
+    return (
+      <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect width="32" height="32" rx="9" fill="#12FF80" />
+        <path d="M10 11.5A3.5 3.5 0 0 1 13.5 8H22v4h-8.5a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 .5.5H22v4h-8.5A3.5 3.5 0 0 1 10 20.5v-9Z" fill="#0B1322" />
+        <path d="M16 14h6v4h-6v-4Z" fill="#0B1322" />
+      </svg>
+    );
+  }
+
+  if (normalizedName.includes('rabby')) {
+    return (
+      <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect width="32" height="32" rx="9" fill="#7C8CFF" />
+        <path d="M8 17.8c0-4.5 3.58-8.15 8-8.15s8 3.65 8 8.15c0 3.58-2.5 5.55-5.1 5.55-1.38 0-2.22-.43-2.9-1.1-.68.67-1.52 1.1-2.9 1.1C10.5 23.35 8 21.38 8 17.8Z" fill="white" />
+        <path d="M12.1 13.4c1.35-.95 2.2-1.1 3.9-1.1s2.55.15 3.9 1.1c-.65.72-1.13 1.42-1.43 2.12-.83-.5-1.52-.72-2.47-.72-.95 0-1.64.22-2.47.72-.3-.7-.78-1.4-1.43-2.12Z" fill="#4D5CEB" />
+        <path d="M12.8 18.1c.72 0 1.3-.58 1.3-1.3s-.58-1.3-1.3-1.3-1.3.58-1.3 1.3.58 1.3 1.3 1.3ZM19.2 18.1c.72 0 1.3-.58 1.3-1.3s-.58-1.3-1.3-1.3-1.3.58-1.3 1.3.58 1.3 1.3 1.3Z" fill="#0B1322" />
+      </svg>
+    );
+  }
+
+  if (normalizedName.includes('meta')) {
+    return (
+      <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect width="32" height="32" rx="9" fill="#F6851B" />
+        <path d="m8.5 9 5.7 4.25-1.05-2.7L8.5 9ZM23.5 9l-5.7 4.25 1.05-2.7L23.5 9Z" fill="#E2761B" />
+        <path d="m10.2 22.3 3.5 1-.8-2.47-2.7 1.47ZM18.3 23.3l3.5-1-2.7-1.47-.8 2.47Z" fill="#E2761B" />
+        <path d="m13.5 15.7-.95 1.45 3.37.15-.12-3.62-2.3 2.02ZM18.5 15.7l-2.3-2.02-.12 3.62 3.37-.15-.95-1.45Z" fill="#E2761B" />
+        <path d="m13.7 23.3 2.3-1.12 2.3 1.12-.62-2.15h-3.36l-.62 2.15Z" fill="#D7C1B3" />
+        <path d="m14.32 21.15 1.68.82 1.68-.82-.38-1.32h-2.6l-.38 1.32Z" fill="#233447" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <rect width="32" height="32" rx="9" fill="#13324a" />
+      <circle cx="16" cy="16" r="10" stroke="#25c0f4" strokeWidth="2" strokeOpacity="0.75" />
+      <circle cx="16" cy="16" r="4" fill="#25c0f4" />
+    </svg>
   );
 }
 
