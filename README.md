@@ -19,65 +19,6 @@ Core scope:
 * EURC and other stable settlement paths can come later once the USDC version is safe.
 * Higher trust civic, enterprise, and institutional markets should be possible later with stronger controls.
 
-## Phase 0
-
-* Separate Next.js app scaffold.
-* Presto branded landing page.
-* Explore markets page.
-* Create market page.
-* Market detail page.
-* Portfolio placeholder.
-* Arc environment placeholders.
-
-## Phase 1
-
-* Minimal binary USDC market contracts.
-* Market factory contract.
-* Fixed share accounting.
-* Explicit resolver based settlement.
-* Winner redemption and canceled market refunds.
-
-Phase 1 is intentionally conservative. It does not include AMM pricing, autonomous AI resolution, disputes, or USYC yield accounting yet.
-
-## Phase 2
-
-* Richer market metadata for prediction, opinion, and opportunity markets.
-* Public rule fields and source of truth fields.
-* Market activity fields for the UI and future indexing.
-* A create flow that separates current rails from planned rails.
-* A roadmap page for product and protocol phases.
-* Arc focused positioning around market signals and information discovery.
-* Templates for macro, policy, governance, product, and builder opportunity markets.
-* Live Arc factory reads for deployed market discovery.
-* Live Arc factory writes for market creation.
-* Live market transactions for USDC approval, buy, resolve, claim, and refund flows.
-* Wallet provider abstraction aligned with Arc account abstraction and Circle User-Controlled Wallets. Circle Web SDK social/email/PIN onboarding is the primary path once server-side Circle device-token, user-initialization, challenge, and wallet-listing endpoints are configured; external EOA wallets remain the fallback.
-* App phase readiness checks for Arc chain, USDC address, and market factory address.
-* Market filters for prediction, opinion, opportunity, open, closing soon, resolved, canceled, draft, and onchain markets.
-* Portfolio page kept data-honest until per-wallet share indexing is added.
-
-## Phase 3
-
-* Market kind stored at contract creation.
-* Protocol fee recipient and fee cap scaffolding.
-* Resolution evidence URI on settlement.
-* Resolved collateral snapshot for stable winner payouts.
-* Claim and refund preview helpers.
-* Factory owner controls for fee configuration.
-* Settlement records that support auditability and higher trust market workflows.
-* Hardhat contract test harness for market and factory behavior.
-
-Phase 3 contract tests are in place for market and factory behavior. Audit and dispute design are still future hardening work before real value beyond testnet.
-
-## Later Scope
-
-* EURC settled markets for European and FX sensitive outcomes.
-* Multi currency market creation and settlement after V1 is stable.
-* Paymaster support so users can pay participation costs in stablecoin terms.
-* Bridge Kit and CCTP funding paths for users arriving from other supported chains.
-* Wallet onboarding for less crypto native users.
-* Agent assisted resolution after dispute, bond, and failure paths are designed.
-
 ## Arc App Kit
 
 Arc App Kit is product infrastructure for movement and funding rails. It can help with USDC sends, bridge flows, swap or funding flows, and unified balance later.
