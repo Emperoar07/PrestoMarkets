@@ -41,10 +41,64 @@ function formatShares(value: bigint) {
   return Number(formatUnits(value, 6)).toFixed(2);
 }
 
-function getPositionStatus(market: AppMarket, claimable: bigint, refundable: bigint): Position['status'] {
+function toUsdcNumber(value: bigint) {
+  return Number(formatUnits(value, 6));
+}
+
+function getPositionStatus(market: AppMarket, claimable: bigint, refundable: bigint, hasClaimed: boolean): Position['status'] {
+  if (hasClaimed && (market.status === 'Resolved' || market.status === 'Canceled')) return 'Realized';
   if (claimable > BigInt(0) || refundable > BigInt(0)) return 'Claimable';
   if (market.status === 'Open' || market.status === 'Closing soon') return 'Open';
   return 'Watching';
+}
+
+function getPositionValuation(input: {
+  market: AppMarket;
+  outcome: 'YES' | 'NO';
+  shares: bigint;
+  claimable: bigint;
+  refundable: bigint;
+  hasClaimed: boolean;
+}) {
+  const costBasis = toUsdcNumber(input.shares);
+  const outcomeOdds = (input.market.outcomes.find((item) => item.label === input.outcome)?.odds ?? 50) / 100;
+
+  if (input.claimable > BigInt(0)) {
+    const value = toUsdcNumber(input.claimable);
+    return {
+      value,
+      costBasis,
+      valuationLabel: input.hasClaimed ? 'Realized payout' : 'Claim preview',
+      pnl: value - costBasis,
+    };
+  }
+
+  if (input.refundable > BigInt(0)) {
+    const value = toUsdcNumber(input.refundable);
+    return {
+      value,
+      costBasis,
+      valuationLabel: input.hasClaimed ? 'Realized refund' : 'Refund preview',
+      pnl: value - costBasis,
+    };
+  }
+
+  if (input.market.status === 'Open' || input.market.status === 'Closing soon') {
+    const value = costBasis * outcomeOdds;
+    return {
+      value,
+      costBasis,
+      valuationLabel: 'Signal mark',
+      pnl: value - costBasis,
+    };
+  }
+
+  return {
+    value: 0,
+    costBasis,
+    valuationLabel: 'Settled',
+    pnl: -costBasis,
+  };
 }
 
 function createClient() {
@@ -110,6 +164,14 @@ export async function fetchAccountPortfolio(markets: AppMarket[], accountAddress
       ['NO', noShares],
     ] as const).forEach(([outcome, shares]) => {
       if (shares === BigInt(0)) return;
+      const valuation = getPositionValuation({
+        market,
+        outcome,
+        shares,
+        claimable: market.winningOutcomeLabel === outcome ? claimable : BigInt(0),
+        refundable: market.status === 'Canceled' ? shares : BigInt(0),
+        hasClaimed,
+      });
 
       positions.push({
         marketId: market.id,
@@ -120,8 +182,16 @@ export async function fetchAccountPortfolio(markets: AppMarket[], accountAddress
         currentPrice: outcome === 'YES'
           ? `$${((market.outcomes.find((item) => item.label === 'YES')?.odds ?? 50) / 100).toFixed(2)}`
           : `$${((market.outcomes.find((item) => item.label === 'NO')?.odds ?? 50) / 100).toFixed(2)}`,
-        value: formatUsdc(outcome === 'YES' ? (claimable || refundable || shares) : (refundable || shares)),
-        status: getPositionStatus(market, claimable, refundable),
+        value: formatUsdNumber(valuation.value),
+        costBasis: formatUsdNumber(valuation.costBasis),
+        pnl: formatSignedUsd(valuation.pnl),
+        valuationLabel: valuation.valuationLabel,
+        status: getPositionStatus(
+          market,
+          market.winningOutcomeLabel === outcome ? claimable : BigInt(0),
+          market.status === 'Canceled' ? shares : BigInt(0),
+          hasClaimed,
+        ),
       });
     });
   }));
@@ -129,6 +199,15 @@ export async function fetchAccountPortfolio(markets: AppMarket[], accountAddress
   const activity = await fetchRecentAccountActivity(client, markets, account);
 
   return { positions, activity, previews };
+}
+
+function formatUsdNumber(value: number) {
+  return `$${value.toFixed(2)}`;
+}
+
+function formatSignedUsd(value: number) {
+  const prefix = value > 0 ? '+' : '';
+  return `${prefix}$${value.toFixed(2)}`;
 }
 
 async function fetchRecentAccountActivity(

@@ -6,7 +6,10 @@ export type Position = {
   averagePrice: string;
   currentPrice: string;
   value: string;
-  status: 'Open' | 'Claimable' | 'Watching';
+  costBasis: string;
+  pnl: string;
+  valuationLabel: string;
+  status: 'Open' | 'Claimable' | 'Realized' | 'Watching';
 };
 
 export type PortfolioActivity = {

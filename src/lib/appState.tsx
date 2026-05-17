@@ -35,6 +35,8 @@ export type AppMarket = Market & {
   source: 'onchain';
   closeDate?: string;
   createdAt: string;
+  winningOutcomeLabel?: 'YES' | 'NO';
+  resolutionURI?: string;
 };
 
 type CreateMarketInput = {

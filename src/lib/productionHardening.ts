@@ -6,6 +6,46 @@ export type HardeningItem = {
   summary: string;
 };
 
+export type AuditFinding = {
+  area: string;
+  severity: 'High' | 'Medium' | 'Low';
+  finding: string;
+  requiredAction: string;
+};
+
+export const contractAuditFindings: AuditFinding[] = [
+  {
+    area: 'Settlement finality',
+    severity: 'High',
+    finding: 'Resolution is final once the configured resolver calls resolve, and there is no dispute, appeal, or correction path in the current contract.',
+    requiredAction: 'Keep real-value markets disabled until dispute windows, resolver escalation, and cancellation fallback rules are approved.',
+  },
+  {
+    area: 'Resolver key risk',
+    severity: 'High',
+    finding: 'A single resolver address controls resolution and cancellation after close. A compromised or unavailable resolver can finalize a bad outcome or leave markets stuck.',
+    requiredAction: 'Define resolver custody, rotation, monitoring, and emergency operating procedures before production value.',
+  },
+  {
+    area: 'Fixed-share economics',
+    severity: 'Medium',
+    finding: 'Shares are fixed 1:1 against deposited USDC and there is no sell path or AMM. UI odds are signal ratios, not executable exit prices.',
+    requiredAction: 'Keep portfolio copy explicit about signal marks and settlement previews so users do not read odds as liquid mark-to-market value.',
+  },
+  {
+    area: 'Metadata integrity',
+    severity: 'Medium',
+    finding: 'Market rules, source of truth, image, and evidence are URI/string based. Ambiguous or broken metadata can undermine settlement trust.',
+    requiredAction: 'Require creation-time validation, durable metadata storage, and evidence standards before higher-trust markets.',
+  },
+  {
+    area: 'Indexing dependence',
+    severity: 'Low',
+    finding: 'Portfolio activity currently reads recent logs from Arc RPC and can miss older account history. Contract balances remain authoritative.',
+    requiredAction: 'Add persistent indexing before relying on activity history as a complete statement view.',
+  },
+];
+
 export const auditReadiness: HardeningItem[] = [
   {
     title: 'Fixed-share accounting review',

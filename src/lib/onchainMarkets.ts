@@ -154,6 +154,8 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     rules: resolutionURI
       ? `Resolved with evidence: ${resolutionURI}. Winning outcome: ${winningOutcome === 0 ? 'YES' : 'NO'}.`
       : metadata?.rules || 'Rules live in the market metadata URI. Resolver evidence is published after settlement.',
+    winningOutcomeLabel: status === 'Resolved' ? (winningOutcome === 0 ? 'YES' : 'NO') : undefined,
+    resolutionURI: resolutionURI || undefined,
     createdBy: truncateAddress(creator),
     creatorAddress: creator,
     feeMode: Number(protocolFeeBps) > 0 ? `${protocolFeeBps} bps protocol fee` : 'No protocol fee',

@@ -50,6 +50,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const refundableAmount = Number(accountPreview?.refundable.replace(/[$,]/g, '') || 0);
   const canClaim = claimableAmount > 0 && !accountPreview?.hasClaimed;
   const canRefund = refundableAmount > 0 && !accountPreview?.hasClaimed;
+  const hasSettlementRecord = market.status === 'Resolved' || market.status === 'Canceled';
   const connectedAddress = connectedWallet?.address.toLowerCase();
   const resolverAddress = market.resolverAddress?.toLowerCase();
   const isResolver = Boolean(connectedAddress && resolverAddress && connectedAddress === resolverAddress);
@@ -131,6 +132,60 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 ))}
               </div>
             </div>
+            {hasSettlementRecord ? (
+              <div className="mt-8 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-6">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan">Settlement record</p>
+                    <h2 className="mt-2 text-xl font-black text-white">
+                      {market.status === 'Resolved'
+                        ? `${market.winningOutcomeLabel ?? 'Winning outcome'} resolved`
+                        : 'Market canceled'}
+                    </h2>
+                  </div>
+                  <span className={`rounded-full border px-3 py-1 text-xs font-black ${statusStyle[market.status]}`}>
+                    {market.status}
+                  </span>
+                </div>
+                <div className="mt-5 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-[14px] border border-white/[0.06] bg-[#141e30] p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Evidence URI</p>
+                    {market.resolutionURI ? (
+                      <a
+                        href={market.resolutionURI}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 block break-all text-sm font-bold leading-6 text-cyan hover:text-[#7ddfff]"
+                      >
+                        {market.resolutionURI}
+                      </a>
+                    ) : (
+                      <p className="mt-2 text-sm leading-6 text-muted">No resolver evidence URI was recorded.</p>
+                    )}
+                  </div>
+                  <div className="rounded-[14px] border border-white/[0.06] bg-[#141e30] p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Connected wallet</p>
+                    <p className="mt-2 text-sm leading-6 text-white">
+                      {connectedWallet
+                        ? accountPreview?.hasClaimed
+                          ? 'Settlement already claimed or refunded.'
+                          : canClaim
+                            ? `${accountPreview?.claimable} claimable`
+                            : canRefund
+                              ? `${accountPreview?.refundable} refundable`
+                              : 'No settlement action available.'
+                        : 'Connect a wallet to check claim or refund status.'}
+                    </p>
+                  </div>
+                  <div className="rounded-[14px] border border-white/[0.06] bg-[#141e30] p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Audit trail</p>
+                    <p className="mt-2 text-sm leading-6 text-muted">
+                      The final outcome, evidence URI, claim preview, and refund preview are read from the live Arc market contract.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </section>
 
           <aside className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">

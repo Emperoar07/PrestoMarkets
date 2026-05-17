@@ -1,7 +1,14 @@
 import { SiteHeader } from '@/components/SiteHeader';
 import { SiteFooter } from '@/components/SiteFooter';
 import { productRails } from '@/lib/productRails';
-import { auditReadiness, failurePathDesign, laterHardening, type HardeningStatus } from '@/lib/productionHardening';
+import {
+  auditReadiness,
+  contractAuditFindings,
+  failurePathDesign,
+  laterHardening,
+  type AuditFinding,
+  type HardeningStatus,
+} from '@/lib/productionHardening';
 
 const phases = [
   {
@@ -64,6 +71,12 @@ const hardeningStatusStyle: Record<HardeningStatus, string> = {
   Later: 'border-line bg-panel2 text-muted',
 };
 
+const severityStyle: Record<AuditFinding['severity'], string> = {
+  High: 'border-red-400/25 bg-red-400/10 text-red-100',
+  Medium: 'border-amber-300/25 bg-amber-300/10 text-amber-100',
+  Low: 'border-cyan/25 bg-cyan/10 text-cyan',
+};
+
 export default function RoadmapPage() {
   return (
     <>
@@ -119,6 +132,24 @@ export default function RoadmapPage() {
             <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">
               Arc finality makes settlement clear once a transaction is final, so Presto needs strong market rules before settlement, resolver evidence, and a reviewed failure path before moving beyond testnet value.
             </p>
+          </div>
+
+          <div className="border-b border-line p-6">
+            <h3 className="text-sm font-black uppercase tracking-[0.18em] text-[#94a3b8]">Internal contract review findings</h3>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {contractAuditFindings.map((item) => (
+                <div key={item.area} className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <h4 className="text-sm font-black text-white">{item.area}</h4>
+                    <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black ${severityStyle[item.severity]}`}>
+                      {item.severity}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-muted">{item.finding}</p>
+                  <p className="mt-3 text-sm font-bold leading-6 text-[#dbeafe]">{item.requiredAction}</p>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="grid gap-6 p-6 lg:grid-cols-3">

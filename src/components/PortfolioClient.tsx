@@ -7,6 +7,7 @@ import { useAppState } from '@/lib/appState';
 const statusStyle = {
   Open: 'border-cyan/25 bg-cyan/10 text-cyan',
   Claimable: 'border-mint/25 bg-mint/10 text-mint',
+  Realized: 'border-white/10 bg-white/[0.04] text-[#dbeafe]',
   Watching: 'border-line bg-ink text-muted',
   Pending: 'border-yellow-400/25 bg-yellow-400/10 text-yellow-200',
   Confirmed: 'border-mint/25 bg-mint/10 text-mint',
@@ -66,7 +67,7 @@ export function PortfolioClient() {
           </div>
           <div className="divide-y divide-line">
             {positions.length > 0 ? positions.map((position) => (
-              <div key={`${position.marketId}-${position.outcome}-${position.shares}`} className="grid gap-4 p-6 md:grid-cols-[1.5fr_repeat(4,1fr)_auto] md:items-center">
+              <div key={`${position.marketId}-${position.outcome}-${position.shares}`} className="grid gap-4 p-6 md:grid-cols-[1.5fr_repeat(5,1fr)_auto] md:items-center">
                 <div>
                   <p className="font-black text-white">{position.title}</p>
                   <p className="mt-1 text-sm text-muted">{position.outcome} shares</p>
@@ -86,6 +87,14 @@ export function PortfolioClient() {
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Value</p>
                   <p className="mt-1 font-black text-white">{position.value}</p>
+                  <p className="mt-1 text-xs font-bold text-muted">{position.valuationLabel}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">P/L</p>
+                  <p className={`mt-1 font-black ${position.pnl.startsWith('-') ? 'text-red-200' : 'text-mint'}`}>
+                    {position.pnl}
+                  </p>
+                  <p className="mt-1 text-xs font-bold text-muted">{position.costBasis} cost</p>
                 </div>
                 <span className={`w-fit rounded-full border px-3 py-1 text-xs font-black ${statusStyle[position.status]}`}>
                   {position.status}

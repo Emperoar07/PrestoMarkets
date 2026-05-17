@@ -38,6 +38,16 @@ export function SiteHeader() {
           <a href={dexUrl} className={navLinkClass()}>
             DEX
           </a>
+          {showWallet ? (
+            <a
+              href="https://faucet.circle.com"
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-lg border border-cyan/30 bg-cyan/10 px-3 py-1.5 text-[13px] font-bold text-cyan transition-colors hover:border-cyan/50 hover:bg-cyan/15"
+            >
+              Faucet
+            </a>
+          ) : null}
           {showWallet ? <WalletConnectButton /> : null}
         </nav>
       </div>
