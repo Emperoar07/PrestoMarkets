@@ -81,6 +81,8 @@ function parseMetadata(metadataURI: string) {
     const parsed = JSON.parse(decodeURIComponent(metadataURI.slice('data:application/json,'.length))) as Partial<{
       name: string;
       description: string;
+      image: string;
+      imageURI: string;
       category: string;
       rules: string;
       sourceOfTruth: string;
@@ -137,6 +139,7 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     type: marketType,
     title: metadata?.name || `Arc market ${index + 1}`,
     description: metadata?.description || `Onchain ${marketType.toLowerCase()} market created from metadata ${titleSource}.`,
+    imageURI: metadata?.imageURI || metadata?.image,
     category: metadata?.category || 'Onchain',
     volume: formatOnchainUsd(totalCollateral),
     liquidity: formatOnchainUsd(collateralValue),

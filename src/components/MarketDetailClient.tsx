@@ -71,6 +71,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             </div>
             <h1 className="mt-5 text-[clamp(32px,4vw,48px)] font-black leading-tight tracking-tight text-white">{market.title}</h1>
             <p className="mt-4 text-[15px] leading-[1.8] text-muted">{market.description}</p>
+            {market.imageURI ? (
+              <div className="mt-7 overflow-hidden rounded-[16px] border border-white/[0.06] bg-[#0f172a]">
+                <img src={market.imageURI} alt={market.title} className="h-[320px] w-full object-cover" />
+              </div>
+            ) : null}
             <div className="mt-8 grid gap-4 md:grid-cols-4">
               <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                 <p className="text-sm text-muted">Volume</p>

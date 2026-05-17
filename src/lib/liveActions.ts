@@ -50,6 +50,7 @@ export type CreateLiveMarketInput = {
   sourceOfTruth: string;
   resolver: string;
   resolutionMode: string;
+  imageURI?: string;
 };
 
 function requireConfig() {
@@ -85,6 +86,7 @@ function buildMetadataURI(input: CreateLiveMarketInput) {
     name: input.title,
     description: input.description,
     category: input.category,
+    imageURI: input.imageURI,
     rules: input.rules,
     sourceOfTruth: input.sourceOfTruth,
     resolutionMode: input.resolutionMode,

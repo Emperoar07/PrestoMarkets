@@ -27,6 +27,11 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
       href={`/markets/${market.id}`}
       className="block rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6 transition-all hover:-translate-y-1 hover:border-cyan/35"
     >
+      {market.imageURI ? (
+        <div className="mb-5 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#0f172a]">
+          <img src={market.imageURI} alt={market.title} className="h-44 w-full object-cover" />
+        </div>
+      ) : null}
       <div className="flex items-start justify-between gap-4">
         <span className="flex flex-wrap gap-2">
           <span className={`rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.18em] ${typeStyle[market.type]}`}>

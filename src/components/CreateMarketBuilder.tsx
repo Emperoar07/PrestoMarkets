@@ -8,10 +8,12 @@ import { ArcReadinessPanel } from './ArcReadinessPanel';
 import { currentRails, plannedRails } from '@/lib/productRails';
 import { marketTemplates } from '@/lib/marketTemplates';
 import type { MarketTemplate } from '@/lib/marketTemplates';
-import type { MarketType } from '@/lib/markets';
+import type { MarketType, ResolutionMode } from '@/lib/markets';
 import { useAppState } from '@/lib/appState';
 
 const marketTypes: MarketType[] = ['Prediction', 'Opinion', 'Opportunity'];
+const resolutionModes: ResolutionMode[] = ['Human resolver', 'Community resolver', 'Agent assisted'];
+const maxInlineImageBytes = 300_000;
 
 const typeCopy: Record<MarketType, string> = {
   Prediction: 'Objective future outcomes with clear sources of truth.',
@@ -19,48 +21,90 @@ const typeCopy: Record<MarketType, string> = {
   Opportunity: 'Public signals for where builders and capital should focus.',
 };
 
-function toDatetimeLocalValue(daysAhead: number) {
-  const date = new Date(Date.now() + daysAhead * 86_400_000);
-  const offset = date.getTimezoneOffset();
-  const local = new Date(date.getTime() - offset * 60_000);
-  return local.toISOString().slice(0, 16);
-}
-
 export function CreateMarketBuilder() {
   const router = useRouter();
   const { createMarket } = useAppState();
   const [selectedType, setSelectedType] = useState<MarketType>('Prediction');
-  const [selectedTemplateId, setSelectedTemplateId] = useState('macro-release');
-  const [title, setTitle] = useState('Will the next US CPI print come in above consensus?');
-  const [description, setDescription] = useState('A public forecast market for the next macro release with clear rules and a named source of truth.');
-  const [rules, setRules] = useState(marketTemplates[0].rules);
-  const [sourceOfTruth, setSourceOfTruth] = useState(marketTemplates[0].sourceOfTruth);
-  const [closeDate, setCloseDate] = useState(toDatetimeLocalValue(10));
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
+  const [rules, setRules] = useState('');
+  const [sourceOfTruth, setSourceOfTruth] = useState('');
+  const [closeDate, setCloseDate] = useState('');
   const [resolver, setResolver] = useState('');
+  const [resolutionMode, setResolutionMode] = useState<ResolutionMode>('Human resolver');
+  const [imageURI, setImageURI] = useState('');
   const [showReview, setShowReview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
 
   const visibleTemplates = marketTemplates.filter((template) => template.type === selectedType);
-  const activeTemplate: MarketTemplate = visibleTemplates.find((template) => template.id === selectedTemplateId) ?? visibleTemplates[0];
+  const activeTemplate = visibleTemplates.find((template) => template.id === selectedTemplateId);
 
   function applyTemplate(template: MarketTemplate) {
     setSelectedTemplateId(template.id);
+    setSelectedType(template.type);
     setTitle(template.question);
     setDescription(`${template.title} market for ${template.category.toLowerCase()} signals on Arc.`);
+    setCategory(template.category);
     setRules(template.rules);
     setSourceOfTruth(template.sourceOfTruth);
+    setResolutionMode(template.resolutionMode);
     setShowReview(false);
     setStatusMessage('');
   }
 
   function chooseType(type: MarketType) {
     setSelectedType(type);
-    const nextTemplate = marketTemplates.find((template) => template.type === type) ?? marketTemplates[0];
-    applyTemplate(nextTemplate);
+    setSelectedTemplateId('');
+    setShowReview(false);
+    setStatusMessage('');
+  }
+
+  function handleImageFile(file: File | undefined) {
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setStatusMessage('Choose an image file for the market picture.');
+      return;
+    }
+
+    if (file.size > maxInlineImageBytes) {
+      setStatusMessage('Choose an image under 300 KB or use a hosted image URL.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImageURI(String(reader.result ?? ''));
+      setStatusMessage('');
+    };
+    reader.onerror = () => setStatusMessage('Unable to read that image file.');
+    reader.readAsDataURL(file);
+  }
+
+  function getCloseDateLabel() {
+    if (!closeDate) return 'Set a close date before launching';
+
+    const parsedDate = new Date(closeDate);
+    if (Number.isNaN(parsedDate.getTime())) return 'Choose a valid close date';
+
+    return parsedDate.toLocaleString();
   }
 
   async function launchMarket() {
+    if (!title || !description || !category || !rules || !sourceOfTruth || !closeDate || !resolver) {
+      setStatusMessage('Complete all required fields before launching.');
+      return;
+    }
+
+    const parsedCloseDate = new Date(closeDate);
+    if (Number.isNaN(parsedCloseDate.getTime()) || parsedCloseDate.getTime() <= Date.now()) {
+      setStatusMessage('Choose a future close date.');
+      return;
+    }
+
     setIsSubmitting(true);
     setStatusMessage('Submitting market creation to Arc...');
 
@@ -68,12 +112,13 @@ export function CreateMarketBuilder() {
       type: selectedType,
       title,
       description,
-      category: activeTemplate.category,
-      closeDate: new Date(closeDate).toISOString(),
+      category,
+      closeDate: parsedCloseDate.toISOString(),
       rules,
       sourceOfTruth,
       resolver,
-      resolutionMode: activeTemplate.resolutionMode,
+      resolutionMode,
+      imageURI: imageURI.trim() || undefined,
     });
 
     setIsSubmitting(false);
@@ -124,14 +169,14 @@ export function CreateMarketBuilder() {
                     type="button"
                     onClick={() => applyTemplate(template)}
                     className={`flex items-center justify-between rounded-[14px] border px-4 py-3 text-left transition-colors ${
-                      activeTemplate.id === template.id ? 'border-cyan/50 bg-cyan/10' : 'border-white/[0.06] bg-[#0f172a] hover:border-cyan/30'
+                      activeTemplate?.id === template.id ? 'border-cyan/50 bg-cyan/10' : 'border-white/[0.06] bg-[#0f172a] hover:border-cyan/30'
                     }`}
                   >
                     <span>
                       <span className="block font-black text-white">{template.title}</span>
                       <span className="text-sm text-muted">{template.category}</span>
                     </span>
-                    {activeTemplate.id === template.id ? <CheckCircle2 className="h-5 w-5 text-cyan" /> : null}
+                    {activeTemplate?.id === template.id ? <CheckCircle2 className="h-5 w-5 text-cyan" /> : null}
                   </button>
                 ))}
               </div>
@@ -145,12 +190,14 @@ export function CreateMarketBuilder() {
               <div className="border-b border-line p-6">
                 <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
                   <div>
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan">{activeTemplate.category}</p>
-                    <h2 className="mt-2 text-2xl font-black text-white">{activeTemplate.title}</h2>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{activeTemplate.closeHint}</p>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan">{category || selectedType}</p>
+                    <h2 className="mt-2 text-2xl font-black text-white">Market details</h2>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+                      Fill the metadata that will be written into the live Arc market metadata URI.
+                    </p>
                   </div>
                   <span className="w-fit rounded-full border border-white/[0.06] bg-[#0f172a] px-3 py-1 text-xs font-black text-muted">
-                    {activeTemplate.resolutionMode}
+                    {resolutionMode}
                   </span>
                 </div>
               </div>
@@ -163,6 +210,30 @@ export function CreateMarketBuilder() {
                     onChange={(event) => setTitle(event.target.value)}
                     className="mt-2 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
                   />
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="text-sm font-bold text-muted">Category</label>
+                    <input
+                      value={category}
+                      onChange={(event) => setCategory(event.target.value)}
+                      className="mt-2 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-bold text-muted">Resolution mode</label>
+                    <select
+                      value={resolutionMode}
+                      onChange={(event) => setResolutionMode(event.target.value as ResolutionMode)}
+                      className="mt-2 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
+                    >
+                      {resolutionModes.map((mode) => (
+                        <option key={mode} value={mode}>
+                          {mode}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <div>
                   <label className="text-sm font-bold text-muted">Description</label>
@@ -204,9 +275,36 @@ export function CreateMarketBuilder() {
                       value={resolver}
                       onChange={(event) => setResolver(event.target.value)}
                       className="mt-2 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
-                      placeholder="0x..."
                     />
                   </div>
+                </div>
+
+                <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
+                  <label className="text-sm font-bold text-muted">Market picture</label>
+                  <div className="mt-3 grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
+                    <input
+                      value={imageURI}
+                      onChange={(event) => setImageURI(event.target.value)}
+                      className="w-full rounded-[14px] border border-white/[0.06] bg-[#141e30] px-4 py-4 text-white outline-none focus:border-cyan/50"
+                    />
+                    <label className="cursor-pointer rounded-[10px] border border-cyan/30 bg-cyan/10 px-5 py-4 text-center text-sm font-black text-cyan transition-colors hover:bg-cyan/15">
+                      Upload image
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        onChange={(event) => handleImageFile(event.target.files?.[0])}
+                      />
+                    </label>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    Use a hosted image URL, or upload a small image that can travel inside the market metadata.
+                  </p>
+                  {imageURI ? (
+                    <div className="mt-4 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#141e30]">
+                      <img src={imageURI} alt="Market preview" className="h-48 w-full object-cover" />
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
@@ -257,6 +355,12 @@ export function CreateMarketBuilder() {
                   </span>
                 </div>
 
+                {imageURI ? (
+                  <div className="mt-6 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#0f172a]">
+                    <img src={imageURI} alt={title || 'Market picture'} className="h-64 w-full object-cover" />
+                  </div>
+                ) : null}
+
                 <div className="mt-6 grid gap-4 md:grid-cols-2">
                   <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Resolver</p>
@@ -264,7 +368,7 @@ export function CreateMarketBuilder() {
                   </div>
                   <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Close date</p>
-                    <p className="mt-2 text-lg font-black text-white">{new Date(closeDate).toLocaleString()}</p>
+                    <p className="mt-2 text-lg font-black text-white">{getCloseDateLabel()}</p>
                   </div>
                 </div>
 

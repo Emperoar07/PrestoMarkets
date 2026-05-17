@@ -18,6 +18,7 @@ export type Market = {
   type: MarketType;
   title: string;
   description: string;
+  imageURI?: string;
   category: string;
   volume: string;
   liquidity: string;

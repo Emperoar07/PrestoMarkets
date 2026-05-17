@@ -41,6 +41,7 @@ type CreateMarketInput = {
   sourceOfTruth: string;
   resolver: string;
   resolutionMode: ResolutionMode;
+  imageURI?: string;
 };
 
 type AppStateValue = {
