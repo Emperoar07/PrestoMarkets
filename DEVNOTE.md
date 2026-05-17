@@ -76,12 +76,18 @@ Opportunity markets should be public on Arc. They do not need private execution.
 
 ## Arc MCP
 
-Use Arc MCP for major Arc design work.
+Use Arc MCP for every Arc-specific design or implementation decision before making code changes.
 
 MCP server:
 
 ```text
 https://docs.arc.io/mcp
+```
+
+Setup guide:
+
+```text
+https://docs.arc.io/ai/mcp
 ```
 
 Cursor config:
@@ -96,7 +102,9 @@ Cursor config:
 }
 ```
 
-Use MCP before implementing anything that depends on Arc App Kit, Paymaster, Gateway, Wallets, CCTP, Bridge Kit, or Arc AI agent standards.
+VS Code MCP config is also checked into `.vscode/mcp.json`.
+
+Use MCP before implementing anything that depends on Arc App Kit, Paymaster, Gateway, Wallets, CCTP, Bridge Kit, Arc account abstraction, Arc chain behavior, or Arc AI agent standards.
 
 ## What App Kit Means Here
 

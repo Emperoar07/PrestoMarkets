@@ -43,12 +43,18 @@ These planned rails should only be marked live after wallet, funding, and settle
 
 ## Arc MCP
 
-Use Arc MCP for major Arc specific design decisions.
+Use Arc MCP for every Arc-specific design or implementation decision before making code changes.
 
 MCP server:
 
 ```text
 https://docs.arc.io/mcp
+```
+
+Setup guide:
+
+```text
+https://docs.arc.io/ai/mcp
 ```
 
 Cursor config:
@@ -62,6 +68,8 @@ Cursor config:
   }
 }
 ```
+
+VS Code config is checked into `.vscode/mcp.json`.
 
 ## Development
 
