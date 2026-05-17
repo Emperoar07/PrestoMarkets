@@ -13,6 +13,7 @@ These are the things the next chat should not rediscover or change casually.
 * The first real implementation path should be contract tests, Arc Testnet deployment, then live UI wiring.
 * Do not replace market contracts with Arc App Kit. App Kit is a rail layer for funding, sending, bridging, wallets, and paymaster flows.
 * Always use Arc MCP before making major Arc specific architecture decisions.
+* Always use Circle MCP before making Circle wallet, paymaster, bridge, gateway, or USDC rail decisions.
 * Keep V1 simple: manual resolver, clear source of truth, evidence URI, public settlement, claim and refund flows.
 * Do not add autonomous AI resolution until disputes, bonds, failed agent behavior, and override rules are designed.
 * Do not add AMM pricing until fixed share markets work safely.
@@ -76,12 +77,18 @@ Opportunity markets should be public on Arc. They do not need private execution.
 
 ## Arc MCP
 
-Use Arc MCP for every Arc-specific design or implementation decision before making code changes.
+Use Arc MCP for every Arc-specific design or implementation decision before making code changes. Use Circle MCP for every Circle-specific wallet, paymaster, bridge, gateway, or USDC rail decision before making code changes.
 
 MCP server:
 
 ```text
 https://docs.arc.io/mcp
+```
+
+Circle MCP server:
+
+```text
+https://api.circle.com/v1/codegen/mcp
 ```
 
 Setup guide:
@@ -104,7 +111,7 @@ Cursor config:
 
 VS Code MCP config is also checked into `.vscode/mcp.json`.
 
-Use MCP before implementing anything that depends on Arc App Kit, Paymaster, Gateway, Wallets, CCTP, Bridge Kit, Arc account abstraction, Arc chain behavior, or Arc AI agent standards.
+Use MCP before implementing anything that depends on Arc App Kit, Paymaster, Gateway, Wallets, CCTP, Bridge Kit, Arc account abstraction, Arc chain behavior, Circle User-Controlled Wallets, Circle Paymaster, Circle Gateway, Circle Bridge Kit, Circle CCTP, or Arc AI agent standards.
 
 ## What App Kit Means Here
 
@@ -300,5 +307,5 @@ Keep V1 simple:
 Use this:
 
 ```text
-We are in C:\Users\bolaj\presto-markets. Read DEVNOTE.md and README.md first. Continue Presto Markets from Phase 2 and Phase 3. Use Arc MCP for Arc specific decisions. Start by adding contract tests and a safe Arc Testnet deployment path before wiring the UI to live contracts.
+We are in C:\Users\bolaj\presto-markets. Read DEVNOTE.md and README.md first. Continue Presto Markets from Phase 2 and Phase 3. Use Arc MCP for Arc specific decisions and Circle MCP for Circle wallet or rail decisions. Keep live contract wiring honest and do not add AMM, AI resolution, USYC, or later rails without MCP-backed design.
 ```

@@ -43,12 +43,18 @@ These planned rails should only be marked live after wallet, funding, and settle
 
 ## Arc MCP
 
-Use Arc MCP for every Arc-specific design or implementation decision before making code changes.
+Use Arc MCP for every Arc-specific design or implementation decision before making code changes. Use Circle MCP for every Circle-specific wallet, paymaster, bridge, gateway, or USDC rail decision before making code changes.
 
 MCP server:
 
 ```text
 https://docs.arc.io/mcp
+```
+
+Circle MCP server:
+
+```text
+https://api.circle.com/v1/codegen/mcp
 ```
 
 Setup guide:

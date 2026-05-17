@@ -2,6 +2,9 @@
   "mcpServers": {
     "arc-docs": {
       "url": "https://docs.arc.io/mcp"
+    },
+    "circle": {
+      "url": "https://api.circle.com/v1/codegen/mcp"
     }
   }
 }
