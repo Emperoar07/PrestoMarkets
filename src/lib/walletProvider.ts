@@ -12,7 +12,7 @@ const connectedWalletStorageKey = 'presto.connectedWallet';
 const connectedWalletEventName = 'presto:wallet';
 const pendingCircleSocialLoginKey = 'presto.circle.pendingSocialLogin';
 
-export type CircleSocialProvider = 'google' | 'apple';
+export type CircleSocialProvider = 'google';
 
 export type CircleWalletLoginInput =
   | { method: 'email'; email: string }
@@ -282,7 +282,7 @@ async function connectCircleSocialWallet(provider: CircleSocialProvider): Promis
     },
   }));
 
-  await sdk.performLogin((provider === 'google' ? 'Google' : 'Apple') as Parameters<typeof sdk.performLogin>[0]);
+  await sdk.performLogin('Google' as Parameters<typeof sdk.performLogin>[0]);
 
   return new Promise<ConnectedWallet>(() => undefined);
 }
@@ -331,10 +331,11 @@ async function callCircleWalletProvider<T>(body: Record<string, unknown>): Promi
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const data = await response.json().catch(() => null) as { error?: string } | T | null;
+  const data = await response.json().catch(() => null) as { error?: string; message?: string } | T | null;
 
   if (!response.ok) {
-    throw new Error((data as { error?: string } | null)?.error || 'Circle User-Controlled Wallet provider failed.');
+    const errorData = data as { error?: string; message?: string } | null;
+    throw new Error(errorData?.error || errorData?.message || 'Circle User-Controlled Wallet provider failed.');
   }
 
   return data as T;
@@ -477,45 +478,17 @@ function createStyledCircleSdk<T extends {
 }
 
 function getCircleSocialConfig(provider: CircleSocialProvider, redirectUri = getCircleSocialRedirectUri()) {
-  if (provider === 'google') {
-    const clientId = process.env.NEXT_PUBLIC_CIRCLE_GOOGLE_CLIENT_ID;
-    return clientId ? {
-      redirectUri,
-      loginConfigs: {
-        google: {
-          clientId,
-          redirectUri,
-          selectAccountPrompt: true,
-        },
-      },
-    } : null;
-  }
-
-  const appleConfig = getCircleAppleConfig();
-  return appleConfig ? {
+  const clientId = process.env.NEXT_PUBLIC_CIRCLE_GOOGLE_CLIENT_ID;
+  return clientId ? {
     redirectUri,
     loginConfigs: {
-      apple: appleConfig,
+      google: {
+        clientId,
+        redirectUri,
+        selectAccountPrompt: true,
+      },
     },
   } : null;
-}
-
-function getCircleAppleConfig() {
-  const apiKey = process.env.NEXT_PUBLIC_CIRCLE_APPLE_FIREBASE_API_KEY;
-  const authDomain = process.env.NEXT_PUBLIC_CIRCLE_APPLE_FIREBASE_AUTH_DOMAIN;
-  const projectId = process.env.NEXT_PUBLIC_CIRCLE_APPLE_FIREBASE_PROJECT_ID;
-  const appId = process.env.NEXT_PUBLIC_CIRCLE_APPLE_FIREBASE_APP_ID;
-
-  if (!apiKey || !authDomain || !projectId || !appId) {
-    return null;
-  }
-
-  return {
-    apiKey,
-    authDomain,
-    projectId,
-    appId,
-  };
 }
 
 function getCircleSocialRedirectUri() {
@@ -536,7 +509,7 @@ function getPendingCircleSocialLogin() {
 }
 
 function providerLabel(provider: CircleSocialProvider) {
-  return provider === 'google' ? 'Google' : 'Apple';
+  return 'Google';
 }
 
 async function connectExternalWalletProvider(): Promise<ConnectedWallet> {

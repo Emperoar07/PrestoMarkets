@@ -223,7 +223,6 @@ export function WalletConnectButton() {
 
             <div className="grid gap-2">
               <SocialButton provider="google" label="Continue with Google" onClick={() => signInWithSocial('google')} disabled={isPending} />
-              <SocialButton provider="apple" label="Continue with Apple" onClick={() => signInWithSocial('apple')} disabled={isPending} />
             </div>
 
             <p className="mt-4 text-[9px] font-semibold leading-4 text-[#64748b]">
@@ -286,18 +285,9 @@ function GoogleIcon() {
   );
 }
 
-function AppleIcon() {
-  return (
-    <svg width="15" height="18" viewBox="0 0 20 24" fill="none" aria-hidden="true">
-      <path fill="#111827" d="M16.5 12.78c-.02-2.29 1.86-3.39 1.95-3.45-1.06-1.56-2.72-1.77-3.31-1.79-1.41-.14-2.75.83-3.46.83-.72 0-1.83-.81-3.01-.79-1.55.02-2.98.9-3.78 2.29-1.61 2.79-.41 6.92 1.16 9.18.77 1.11 1.68 2.36 2.88 2.31 1.16-.05 1.59-.75 2.99-.75 1.39 0 1.79.75 3.01.72 1.24-.02 2.03-1.13 2.79-2.25.88-1.29 1.24-2.54 1.26-2.6-.03-.01-2.43-.93-2.48-3.7z" />
-      <path fill="#111827" d="M14.21 6.05c.63-.76 1.06-1.83.94-2.89-.91.04-2.02.61-2.67 1.37-.59.68-1.1 1.76-.96 2.8 1.02.08 2.06-.52 2.69-1.28z" />
-    </svg>
-  );
-}
-
 function SocialButton(input: {
   label: string;
-  provider: 'google' | 'apple';
+  provider: 'google';
   onClick: () => void;
   disabled: boolean;
 }) {
@@ -309,7 +299,7 @@ function SocialButton(input: {
       className="flex w-full items-center justify-center gap-2 rounded-[7px] border border-[#dbe5ef] bg-white px-3 py-2 text-[11px] font-black text-[#334155] shadow-sm transition-colors hover:border-[#25c0f4] disabled:cursor-not-allowed disabled:opacity-60"
     >
       <span className="flex h-5 min-w-5 items-center justify-center">
-        {input.provider === 'google' ? <GoogleIcon /> : <AppleIcon />}
+        <GoogleIcon />
       </span>
       {input.label}
     </button>

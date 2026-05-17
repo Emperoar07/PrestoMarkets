@@ -178,7 +178,7 @@ Already started:
 * Market filters for prediction, opinion, opportunity, open, closing soon, resolved, canceled, draft, and onchain markets
 * Circle User-Controlled Wallet endpoint scaffolding for user sessions, email/social device tokens, initialization challenges, and wallet listing
 * Branded Circle wallet onboarding panel with official Circle email OTP flow and external wallet fallback
-* Google and Apple social login hooks through Circle Web SDK when OAuth/Firebase settings are configured in Circle Console and public env vars
+* Google social login hook through Circle Web SDK when the OAuth Web Client ID is configured in Circle Console and public env vars
 * Circle Web SDK challenge execution for user initialization
 * External EOA wallet fallback while Circle credentials and onboarding settings are configured
 * Connected-account share reads for portfolio positions
@@ -188,7 +188,7 @@ Already started:
 
 Next work:
 
-* Configure production Google OAuth and Apple Firebase settings for Circle social sign-in if social buttons should be live
+* Configure the production Google OAuth Web Client ID in deployment env vars if Google sign-in should be live
 * Expand recent event reads into a persistent indexed account history
 * Expand production hardening notes into reviewed audit findings and approved dispute or bond design
 
@@ -231,7 +231,7 @@ The safest next scope is account-aware live app depth.
 
 Order:
 
-1. Configure Circle social provider settings in Circle Console and deployment env vars if Google or Apple sign-in should be enabled.
+1. Configure Circle social provider settings in Circle Console and deployment env vars if Google sign-in should be enabled.
 2. Expand recent event reads into a persistent indexed account history.
 3. Review the production hardening gate and turn dispute or bond placeholders into a concrete protocol design before real value beyond testnet.
 

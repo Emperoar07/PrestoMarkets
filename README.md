@@ -104,10 +104,6 @@ Circle wallet sign-in:
 NEXT_PUBLIC_CIRCLE_WALLETS_ENABLED=true
 NEXT_PUBLIC_CIRCLE_APP_ID=<circle-user-controlled-wallet-app-id>
 NEXT_PUBLIC_CIRCLE_GOOGLE_CLIENT_ID=<optional-google-oauth-client-id>
-NEXT_PUBLIC_CIRCLE_APPLE_FIREBASE_API_KEY=<optional-apple-firebase-api-key>
-NEXT_PUBLIC_CIRCLE_APPLE_FIREBASE_AUTH_DOMAIN=<optional-apple-firebase-auth-domain>
-NEXT_PUBLIC_CIRCLE_APPLE_FIREBASE_PROJECT_ID=<optional-apple-firebase-project-id>
-NEXT_PUBLIC_CIRCLE_APPLE_FIREBASE_APP_ID=<optional-apple-firebase-app-id>
 NEXT_PUBLIC_CIRCLE_SOCIAL_REDIRECT_URI=<optional-social-redirect-uri>
 CIRCLE_API_KEY=<circle-api-key>
 ```

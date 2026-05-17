@@ -21,8 +21,28 @@ type CircleRequestBody = {
   loginMethod?: 'email' | 'social';
 };
 
+type CircleErrorBody = {
+  error?: string;
+  message?: string;
+  code?: string | number;
+  errors?: Array<{ message?: string; error?: string; code?: string | number }>;
+};
+
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
+}
+
+function normalizeCircleError(data: unknown, fallback: string) {
+  if (!data || typeof data !== 'object') {
+    return fallback;
+  }
+
+  const body = data as CircleErrorBody;
+  const nestedError = body.errors?.find((item) => item.message || item.error);
+  const message = body.message || body.error || nestedError?.message || nestedError?.error || fallback;
+  const code = body.code || nestedError?.code;
+
+  return code ? `${message} (${code})` : message;
 }
 
 function requireCircleConfig() {
@@ -63,7 +83,7 @@ async function circleFetch(path: string, input: RequestInit & { userToken?: stri
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    return NextResponse.json(data, { status: response.status });
+    return jsonError(normalizeCircleError(data, 'Circle wallet request failed.'), response.status);
   }
 
   return NextResponse.json(data.data ?? data, { status: response.status });
@@ -98,7 +118,7 @@ export async function POST(request: Request) {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok && response.status !== 409) {
-        return NextResponse.json(data, { status: response.status });
+        return jsonError(normalizeCircleError(data, 'Circle user creation failed.'), response.status);
       }
 
       return NextResponse.json(data.data ?? { userId: body.userId });
