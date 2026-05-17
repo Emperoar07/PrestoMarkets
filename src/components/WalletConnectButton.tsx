@@ -3,11 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, Copy, LogOut } from 'lucide-react';
 import {
+  completePendingCircleSocialLogin,
   connectOfficialWalletProvider,
   disconnectExternalWallet,
   getExistingExternalWallet,
   setStoredConnectedWallet,
   shortAddress,
+  type CircleSocialProvider,
+  type CircleWalletLoginInput,
   type ConnectedWallet,
 } from '@/lib/walletProvider';
 
@@ -17,16 +20,20 @@ export function WalletConnectButton() {
   const [status, setStatus] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [showConnectPanel, setShowConnectPanel] = useState(false);
-  const [circleUserId, setCircleUserId] = useState('');
+  const [email, setEmail] = useState('');
   const [copied, setCopied] = useState(false);
+  const isPending = status === 'Connecting...' || status === 'Opening Circle email verification...';
 
   useEffect(() => {
-    getExistingExternalWallet()
+    completePendingCircleSocialLogin()
+      .then((circleWallet) => circleWallet || getExistingExternalWallet())
       .then((existingWallet) => {
         setWallet(existingWallet);
         setStoredConnectedWallet(existingWallet);
       })
-      .catch(() => undefined);
+      .catch((error) => {
+        setStatus(error instanceof Error ? error.message : 'Circle sign in failed.');
+      });
   }, []);
 
   useEffect(() => {
@@ -40,11 +47,11 @@ export function WalletConnectButton() {
     return () => document.removeEventListener('mousedown', closeOnOutsideClick);
   }, []);
 
-  async function connectWallet(userId?: string) {
-    setStatus('Connecting...');
+  async function connectWallet(input?: CircleWalletLoginInput) {
+    setStatus(input?.method === 'email' ? 'Opening Circle email verification...' : 'Connecting...');
 
     try {
-      const connectedWallet = await connectOfficialWalletProvider({ userId });
+      const connectedWallet = await connectOfficialWalletProvider(input);
       setWallet(connectedWallet);
       setStoredConnectedWallet(connectedWallet);
       setStatus('');
@@ -52,6 +59,10 @@ export function WalletConnectButton() {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Wallet connection failed.');
     }
+  }
+
+  function signInWithSocial(provider: CircleSocialProvider) {
+    void connectWallet({ method: 'social', provider });
   }
 
   async function copyAddress() {
@@ -87,7 +98,7 @@ export function WalletConnectButton() {
               <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#94a3b8]">Connected wallet</p>
               <p className="mt-2 break-all text-sm font-bold text-white">{wallet.address}</p>
               <p className="mt-1 text-xs text-[#94a3b8]">
-                {wallet.mode === 'circle-user-controlled' ? 'Circle User-Controlled Wallets' : 'External wallet'}
+                {wallet.mode === 'circle-user-controlled' ? 'App wallet' : 'External wallet'}
               </p>
             </div>
 
@@ -122,10 +133,10 @@ export function WalletConnectButton() {
       <button
         type="button"
         onClick={() => setShowConnectPanel((value) => !value)}
-        title={status || 'Connect with Circle User-Controlled Wallets'}
+        title={status || 'Sign in with Circle User-Controlled Wallets'}
         className="rounded-lg bg-[#25c0f4] px-[18px] py-2 text-[13px] font-bold text-[#090e1a] transition-opacity hover:opacity-90"
       >
-        {status === 'Connecting...' ? 'Connecting...' : 'Connect Wallet'}
+        {isPending ? 'Signing in...' : 'Sign In'}
       </button>
 
       {showConnectPanel ? (
@@ -136,23 +147,51 @@ export function WalletConnectButton() {
           </p>
 
           <label className="mt-4 block text-xs font-black uppercase tracking-[0.16em] text-[#94a3b8]">
-            Email or user ID
+            Email
           </label>
           <input
-            value={circleUserId}
-            onChange={(event) => setCircleUserId(event.target.value)}
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="you@example.com"
             className="mt-2 w-full rounded-[12px] border border-white/[0.06] bg-[#0f172a] px-3 py-3 text-sm text-white outline-none focus:border-cyan/50"
           />
 
           <button
             type="button"
-            onClick={() => void connectWallet(circleUserId)}
-            disabled={status === 'Connecting...'}
+            onClick={() => void connectWallet({ method: 'email', email })}
+            disabled={isPending}
             className="mt-4 w-full rounded-[10px] bg-[#25c0f4] px-5 py-3 text-sm font-black text-[#090e1a] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Continue with Circle
+            Continue with email
           </button>
-          {status && status !== 'Connecting...' ? (
+
+          <div className="my-4 flex items-center gap-3">
+            <div className="h-px flex-1 bg-white/[0.06]" />
+            <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#64748b]">or</span>
+            <div className="h-px flex-1 bg-white/[0.06]" />
+          </div>
+
+          <div className="grid gap-2">
+            <button
+              type="button"
+              onClick={() => signInWithSocial('google')}
+              disabled={isPending}
+              className="w-full rounded-[10px] border border-white/[0.06] bg-[#0f172a] px-5 py-3 text-sm font-black text-white transition-colors hover:border-cyan/30 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Continue with Google
+            </button>
+            <button
+              type="button"
+              onClick={() => signInWithSocial('facebook')}
+              disabled={isPending}
+              className="w-full rounded-[10px] border border-white/[0.06] bg-[#0f172a] px-5 py-3 text-sm font-black text-white transition-colors hover:border-cyan/30 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Continue with Facebook
+            </button>
+          </div>
+
+          {status && !isPending ? (
             <p className="mt-2 rounded-[10px] border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs font-bold text-red-200">
               {status}
             </p>

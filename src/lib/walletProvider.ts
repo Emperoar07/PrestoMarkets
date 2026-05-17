@@ -10,6 +10,46 @@ export type ConnectedWallet = {
 const ARC_CHAIN_HEX = '0x4cef52';
 const connectedWalletStorageKey = 'presto.connectedWallet';
 const connectedWalletEventName = 'presto:wallet';
+const pendingCircleSocialLoginKey = 'presto.circle.pendingSocialLogin';
+
+export type CircleSocialProvider = 'google' | 'facebook';
+
+export type CircleWalletLoginInput =
+  | { method: 'email'; email: string }
+  | { method: 'social'; provider: CircleSocialProvider }
+  | { method: 'pin'; userId: string };
+
+type CircleConfig = {
+  appId: string;
+  blockchain: string;
+  accountType: string;
+};
+
+type CircleDeviceToken = {
+  deviceToken: string;
+  deviceEncryptionKey: string;
+  otpToken?: string;
+};
+
+type CircleLoginResult = {
+  userToken: string;
+  encryptionKey: string;
+  refreshToken?: string;
+  userID?: string;
+  userId?: string;
+  oAuthInfo?: {
+    socialUserInfo?: {
+      email?: string;
+    };
+  };
+};
+
+type PendingCircleSocialLogin = CircleDeviceToken & {
+  appId: string;
+  blockchain: string;
+  provider: CircleSocialProvider;
+  redirectUri: string;
+};
 
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -110,7 +150,7 @@ export async function disconnectExternalWallet() {
   setStoredConnectedWallet(null);
 }
 
-export async function connectOfficialWalletProvider(input?: { userId?: string }): Promise<ConnectedWallet> {
+export async function connectOfficialWalletProvider(input?: CircleWalletLoginInput): Promise<ConnectedWallet> {
   const circleWallet = await connectCircleUserControlledWalletProvider(input);
   if (circleWallet) {
     setStoredConnectedWallet(circleWallet);
@@ -122,37 +162,151 @@ export async function connectOfficialWalletProvider(input?: { userId?: string })
   return externalWallet;
 }
 
-async function connectCircleUserControlledWalletProvider(input?: { userId?: string }): Promise<ConnectedWallet | null> {
+export async function completePendingCircleSocialLogin(): Promise<ConnectedWallet | null> {
+  if (typeof window === 'undefined' || !window.location.hash) {
+    return null;
+  }
+
+  const pending = getPendingCircleSocialLogin();
+  if (!pending) {
+    return null;
+  }
+
+  try {
+    const login = await runCircleSocialVerification(pending);
+    const wallet = await finishCircleWalletLogin({
+      config: {
+        appId: pending.appId,
+        blockchain: pending.blockchain,
+        accountType: '',
+      },
+      login,
+      userHint: login.userID || login.userId || login.oAuthInfo?.socialUserInfo?.email || pending.provider,
+    });
+
+    setStoredConnectedWallet(wallet);
+    return wallet;
+  } finally {
+    window.localStorage.removeItem(pendingCircleSocialLoginKey);
+  }
+}
+
+async function connectCircleUserControlledWalletProvider(input?: CircleWalletLoginInput): Promise<ConnectedWallet | null> {
   const enabled = process.env.NEXT_PUBLIC_CIRCLE_WALLETS_ENABLED === 'true';
 
   if (!enabled) {
     return null;
   }
 
-  const userId = input?.userId?.trim();
+  if (!input) {
+    return null;
+  }
+
+  if (input.method === 'email') {
+    const email = input.email.trim();
+    if (!email) {
+      throw new Error('Enter an email address to continue with Circle.');
+    }
+
+    return connectCircleEmailWallet(email);
+  }
+
+  if (input.method === 'social') {
+    return connectCircleSocialWallet(input.provider);
+  }
+
+  const userId = input.userId.trim();
 
   if (!userId) {
     return null;
   }
 
-  const config = await callCircleWalletProvider<{ appId: string; blockchain: string; accountType: string }>({ action: 'config' });
+  const config = await getCircleConfig();
   await callCircleWalletProvider({ action: 'createUser', userId });
-  const session = await callCircleWalletProvider<{ userToken: string; encryptionKey: string }>({ action: 'session', userId });
-  let wallet = await getFirstCircleWallet(session.userToken, config.blockchain);
+  const session = await callCircleWalletProvider<CircleLoginResult>({ action: 'session', userId });
+
+  return finishCircleWalletLogin({ config, login: session, userHint: userId });
+}
+
+async function connectCircleEmailWallet(email: string) {
+  const config = await getCircleConfig();
+  const { W3SSdk } = await import('@circle-fin/w3s-pw-web-sdk');
+  const deviceSdk = createStyledCircleSdk(new W3SSdk({ appSettings: { appId: config.appId } }));
+  const deviceId = await deviceSdk.getDeviceId();
+  const token = await callCircleWalletProvider<CircleDeviceToken>({
+    action: 'deviceToken',
+    loginMethod: 'email',
+    email,
+    deviceId,
+  });
+  const login = await runCircleEmailVerification(config.appId, token);
+
+  return finishCircleWalletLogin({
+    config,
+    login,
+    userHint: login.userID || login.userId || email,
+  });
+}
+
+async function connectCircleSocialWallet(provider: CircleSocialProvider): Promise<ConnectedWallet> {
+  const config = await getCircleConfig();
+  const socialConfig = getCircleSocialConfig(provider);
+
+  if (!socialConfig) {
+    throw new Error(`${providerLabel(provider)} login needs its OAuth ID configured for Circle first.`);
+  }
+
+  const { W3SSdk } = await import('@circle-fin/w3s-pw-web-sdk');
+  const deviceSdk = createStyledCircleSdk(new W3SSdk({ appSettings: { appId: config.appId } }));
+  const deviceId = await deviceSdk.getDeviceId();
+  const token = await callCircleWalletProvider<CircleDeviceToken>({
+    action: 'deviceToken',
+    loginMethod: 'social',
+    deviceId,
+  });
+  const pending: PendingCircleSocialLogin = {
+    ...token,
+    appId: config.appId,
+    blockchain: config.blockchain,
+    provider,
+    redirectUri: socialConfig.redirectUri,
+  };
+
+  window.localStorage.setItem(pendingCircleSocialLoginKey, JSON.stringify(pending));
+
+  const sdk = createStyledCircleSdk(new W3SSdk({
+    appSettings: { appId: config.appId },
+    loginConfigs: {
+      ...token,
+      ...socialConfig.loginConfigs,
+    },
+  }));
+
+  await sdk.performLogin((provider === 'google' ? 'Google' : 'Facebook') as Parameters<typeof sdk.performLogin>[0]);
+
+  return new Promise<ConnectedWallet>(() => undefined);
+}
+
+async function finishCircleWalletLogin(input: {
+  config: CircleConfig;
+  login: CircleLoginResult;
+  userHint: string;
+}): Promise<ConnectedWallet> {
+  let wallet = await getFirstCircleWallet(input.login.userToken, input.config.blockchain);
 
   if (!wallet) {
     const challenge = await callCircleWalletProvider<{ challengeId: string }>({
       action: 'initialize',
-      userToken: session.userToken,
+      userToken: input.login.userToken,
     });
 
     await executeCircleChallenge({
-      appId: config.appId,
-      userToken: session.userToken,
-      encryptionKey: session.encryptionKey,
+      appId: input.config.appId,
+      userToken: input.login.userToken,
+      encryptionKey: input.login.encryptionKey,
       challengeId: challenge.challengeId,
     });
-    wallet = await getFirstCircleWallet(session.userToken, config.blockchain);
+    wallet = await getFirstCircleWallet(input.login.userToken, input.config.blockchain);
   }
 
   if (!wallet?.address) {
@@ -162,9 +316,13 @@ async function connectCircleUserControlledWalletProvider(input?: { userId?: stri
   return {
     address: wallet.address,
     walletId: wallet.id,
-    userId,
+    userId: input.userHint,
     mode: 'circle-user-controlled',
   };
+}
+
+async function getCircleConfig() {
+  return callCircleWalletProvider<CircleConfig>({ action: 'config' });
 }
 
 async function callCircleWalletProvider<T>(body: Record<string, unknown>): Promise<T> {
@@ -199,13 +357,13 @@ async function executeCircleChallenge(input: {
   challengeId: string;
 }) {
   const { W3SSdk } = await import('@circle-fin/w3s-pw-web-sdk');
-  const sdk = new W3SSdk({
+  const sdk = createStyledCircleSdk(new W3SSdk({
     appSettings: { appId: input.appId },
     authentication: {
       userToken: input.userToken,
       encryptionKey: input.encryptionKey,
     },
-  });
+  }));
 
   await new Promise<void>((resolve, reject) => {
     sdk.execute(input.challengeId, (error) => {
@@ -217,6 +375,153 @@ async function executeCircleChallenge(input: {
       resolve();
     });
   });
+}
+
+async function runCircleEmailVerification(appId: string, token: CircleDeviceToken) {
+  const { W3SSdk } = await import('@circle-fin/w3s-pw-web-sdk');
+
+  return new Promise<CircleLoginResult>((resolve, reject) => {
+    const sdk = createStyledCircleSdk(new W3SSdk({
+      appSettings: { appId },
+      loginConfigs: token,
+    }, (error, result) => {
+      if (error) {
+        reject(new Error(error.message || 'Circle email verification failed.'));
+        return;
+      }
+
+      if (!result?.userToken || !result.encryptionKey) {
+        reject(new Error('Circle email verification did not return a user session.'));
+        return;
+      }
+
+      resolve(result as CircleLoginResult);
+    }));
+
+    sdk.verifyOtp();
+  });
+}
+
+async function runCircleSocialVerification(pending: PendingCircleSocialLogin) {
+  const { W3SSdk } = await import('@circle-fin/w3s-pw-web-sdk');
+  const socialConfig = getCircleSocialConfig(pending.provider, pending.redirectUri);
+
+  if (!socialConfig) {
+    throw new Error(`${providerLabel(pending.provider)} login needs its OAuth ID configured for Circle first.`);
+  }
+
+  return new Promise<CircleLoginResult>((resolve, reject) => {
+    createStyledCircleSdk(new W3SSdk({
+      appSettings: { appId: pending.appId },
+      loginConfigs: {
+        deviceToken: pending.deviceToken,
+        deviceEncryptionKey: pending.deviceEncryptionKey,
+        ...socialConfig.loginConfigs,
+      },
+    }, (error, result) => {
+      if (error) {
+        reject(new Error(error.message || 'Circle social login failed.'));
+        return;
+      }
+
+      if (!result?.userToken || !result.encryptionKey) {
+        reject(new Error('Circle social login did not return a user session.'));
+        return;
+      }
+
+      resolve(result as CircleLoginResult);
+    }));
+  });
+}
+
+function createStyledCircleSdk<T extends {
+  setThemeColor: (theme: Record<string, unknown>) => void;
+  setLocalizations: (localizations: Record<string, unknown>) => void;
+}>(sdk: T) {
+  sdk.setThemeColor({
+    bg: '#0f172a',
+    divider: '#243047',
+    textMain: '#f8fafc',
+    textMain2: '#e2e8f0',
+    textAuxiliary: '#94a3b8',
+    textAuxiliary2: '#64748b',
+    textInteractive: '#25c0f4',
+    inputBg: '#101a2c',
+    inputText: '#f8fafc',
+    inputBorderFocused: '#25c0f4',
+    mainBtnBg: '#25c0f4',
+    mainBtnBgOnHover: '#46d2ff',
+    mainBtnText: '#090e1a',
+    secondBtnText: '#f8fafc',
+    secondBtnBorder: '#243047',
+    titleGradients: ['#f8fafc', '#25c0f4'],
+  });
+  sdk.setLocalizations({
+    emailOtp: {
+      title: 'Verify your email',
+      subtitle: 'Enter the code Circle sent to continue into Presto Markets.',
+      resendHint: 'Did not get the code?',
+      resend: 'Send again',
+    },
+    initPincode: {
+      headline: 'Create your wallet PIN',
+      subhead: 'Circle keeps your keyshare on your device.',
+    },
+    securityIntros: {
+      headline: 'Secure your wallet recovery',
+      description: 'These answers help recover access if your PIN is lost.',
+    },
+  });
+
+  return sdk;
+}
+
+function getCircleSocialConfig(provider: CircleSocialProvider, redirectUri = getCircleSocialRedirectUri()) {
+  if (provider === 'google') {
+    const clientId = process.env.NEXT_PUBLIC_CIRCLE_GOOGLE_CLIENT_ID;
+    return clientId ? {
+      redirectUri,
+      loginConfigs: {
+        google: {
+          clientId,
+          redirectUri,
+          selectAccountPrompt: true,
+        },
+      },
+    } : null;
+  }
+
+  const appId = process.env.NEXT_PUBLIC_CIRCLE_FACEBOOK_APP_ID;
+  return appId ? {
+    redirectUri,
+    loginConfigs: {
+      facebook: {
+        appId,
+        redirectUri,
+      },
+    },
+  } : null;
+}
+
+function getCircleSocialRedirectUri() {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  return process.env.NEXT_PUBLIC_CIRCLE_SOCIAL_REDIRECT_URI || `${window.location.origin}${window.location.pathname}`;
+}
+
+function getPendingCircleSocialLogin() {
+  try {
+    const stored = window.localStorage.getItem(pendingCircleSocialLoginKey);
+    return stored ? JSON.parse(stored) as PendingCircleSocialLogin : null;
+  } catch {
+    return null;
+  }
+}
+
+function providerLabel(provider: CircleSocialProvider) {
+  return provider === 'google' ? 'Google' : 'Facebook';
 }
 
 async function connectExternalWalletProvider(): Promise<ConnectedWallet> {

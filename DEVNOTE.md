@@ -176,8 +176,9 @@ Already started:
 * Live Arc factory writes for market creation
 * Live market transactions for USDC approval, buy, resolve, claim, and refund flows
 * Market filters for prediction, opinion, opportunity, open, closing soon, resolved, canceled, draft, and onchain markets
-* Circle User-Controlled Wallet endpoint scaffolding for user sessions, device tokens, initialization challenges, and wallet listing
-* Branded Circle wallet onboarding panel with external wallet fallback
+* Circle User-Controlled Wallet endpoint scaffolding for user sessions, email/social device tokens, initialization challenges, and wallet listing
+* Branded Circle wallet onboarding panel with official Circle email OTP flow and external wallet fallback
+* Google and Facebook social login hooks through Circle Web SDK when OAuth IDs are configured in Circle Console and public env vars
 * Circle Web SDK challenge execution for user initialization
 * External EOA wallet fallback while Circle credentials and onboarding settings are configured
 * Connected-account share reads for portfolio positions
@@ -187,6 +188,7 @@ Already started:
 
 Next work:
 
+* Configure production Google/Facebook OAuth IDs for Circle social sign-in if social buttons should be live
 * Expand recent event reads into a persistent indexed account history
 * Add production hardening notes for audit, dispute, bond, and failure paths
 
@@ -229,12 +231,13 @@ The safest next scope is account-aware live app depth.
 
 Order:
 
-1. Finish Circle User-Controlled Wallet onboarding UI beyond the current endpoint and SDK challenge path.
-2. Add connected-wallet share reads for portfolio positions.
-3. Add account-level activity indexing.
-4. Read creator and resolver ownership into the UI.
-5. Hide or disable resolver-only actions for non-resolvers.
-6. Add audit notes and dispute or bond design before real value beyond testnet.
+1. Configure Circle social provider IDs in Circle Console and deployment env vars if Google/Facebook sign-in should be enabled.
+2. Expand recent event reads into a persistent indexed account history.
+3. Add audit notes and dispute or bond design before real value beyond testnet.
+
+Circle User-Controlled Wallet note:
+
+* Circle's official User-Controlled Wallet model does not expose raw private-key export. The app should support user-owned signing, wallet recovery, copy address, and disconnect instead of promising seed phrase or private-key export.
 
 ## Design Rules
 

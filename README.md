@@ -98,6 +98,17 @@ npm run deploy:arc
 
 Copy `.env.example` to `.env.local` when deployment addresses are available.
 
+Circle wallet sign-in:
+
+```text
+NEXT_PUBLIC_CIRCLE_WALLETS_ENABLED=true
+NEXT_PUBLIC_CIRCLE_APP_ID=<circle-user-controlled-wallet-app-id>
+NEXT_PUBLIC_CIRCLE_GOOGLE_CLIENT_ID=<optional-google-oauth-client-id>
+NEXT_PUBLIC_CIRCLE_FACEBOOK_APP_ID=<optional-facebook-app-id>
+NEXT_PUBLIC_CIRCLE_SOCIAL_REDIRECT_URI=<optional-social-redirect-uri>
+CIRCLE_API_KEY=<circle-api-key>
+```
+
 Arc Testnet deployment:
 
 ```text
