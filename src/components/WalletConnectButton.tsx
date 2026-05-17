@@ -19,7 +19,6 @@ export function WalletConnectButton() {
   const [showConnectPanel, setShowConnectPanel] = useState(false);
   const [circleUserId, setCircleUserId] = useState('');
   const [copied, setCopied] = useState(false);
-  const circleEnabled = process.env.NEXT_PUBLIC_CIRCLE_WALLETS_ENABLED === 'true';
 
   useEffect(() => {
     getExistingExternalWallet()
@@ -131,10 +130,9 @@ export function WalletConnectButton() {
 
       {showConnectPanel ? (
         <div className="absolute right-0 mt-3 w-[340px] rounded-[16px] border border-white/[0.08] bg-[#141e30] p-4 shadow-2xl shadow-black/30">
-          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-cyan">Circle wallet</p>
-          <h2 className="mt-2 text-lg font-black text-white">Sign in to Presto</h2>
+          <h2 className="text-lg font-black text-white">Sign in to Presto</h2>
           <p className="mt-2 text-sm leading-6 text-[#94a3b8]">
-            Use Circle User-Controlled Wallets for app-native onboarding. Your keyshare stays with you through Circle&apos;s Web SDK.
+            Uses Circle User-Controlled Wallets for app-native onboarding
           </p>
 
           <label className="mt-4 block text-xs font-black uppercase tracking-[0.16em] text-[#94a3b8]">
@@ -149,16 +147,11 @@ export function WalletConnectButton() {
           <button
             type="button"
             onClick={() => void connectWallet(circleUserId)}
-            disabled={!circleEnabled || status === 'Connecting...'}
+            disabled={status === 'Connecting...'}
             className="mt-4 w-full rounded-[10px] bg-[#25c0f4] px-5 py-3 text-sm font-black text-[#090e1a] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Continue with Circle
           </button>
-          {!circleEnabled ? (
-            <p className="mt-2 text-xs leading-5 text-[#94a3b8]">
-              Circle wallets are disabled until `NEXT_PUBLIC_CIRCLE_WALLETS_ENABLED=true` and Circle credentials are configured.
-            </p>
-          ) : null}
           {status && status !== 'Connecting...' ? (
             <p className="mt-2 rounded-[10px] border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs font-bold text-red-200">
               {status}
