@@ -51,6 +51,7 @@ Phase 1 is intentionally conservative. It does not include AMM pricing, autonomo
 * Live Arc factory reads for deployed market discovery.
 * Live Arc factory writes for market creation.
 * Live market transactions for USDC approval, buy, resolve, claim, and refund flows.
+* Wallet provider abstraction aligned with Arc account abstraction and Circle Wallets. Circle Wallets are the primary provider once server-side Circle credentials and session storage are configured; external EOA wallets remain the fallback.
 * App phase readiness checks for Arc chain, USDC address, and market factory address.
 * Market filters for prediction, opinion, opportunity, open, closing soon, resolved, canceled, draft, and onchain markets.
 * Portfolio page kept data-honest until per-wallet share indexing is added.

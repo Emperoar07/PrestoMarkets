@@ -12,6 +12,9 @@
     "deploy:arc": "hardhat run scripts/deploy-arc.cjs --network arc"
   },
   "dependencies": {
+    "@circle-fin/adapter-viem-v2": "^1.11.0",
+    "@circle-fin/app-kit": "^1.5.1",
+    "@circle-fin/developer-controlled-wallets": "^10.3.1",
     "@openzeppelin/contracts": "^5.4.0",
     "clsx": "^2.1.1",
     "dlv": "^1.1.3",
