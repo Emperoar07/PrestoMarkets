@@ -35,6 +35,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const [confirmHuman, setConfirmHuman] = useState(false);
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isOracleRunning, setIsOracleRunning] = useState(false);
 
   if (!market) {
     return (
@@ -103,6 +104,38 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     setAgentReport(prepared.pretty);
     setResolutionURI(prepared.dataUri);
     setMessage('Agent evidence report prepared. Review it, then confirm the resolver checks before settling.');
+  }
+
+  async function runOracleResearch() {
+    if (!market) return;
+    setIsOracleRunning(true);
+    setMessage('Oracle researching market… this takes 10–20 seconds.');
+    try {
+      const res = await fetch('/api/agents/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ market }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.error ?? 'Oracle request failed.');
+        return;
+      }
+      const rec = data.recommendation;
+      setAgentOutcome(rec.outcome === 'CANCEL' ? 'CANCEL' : rec.outcome as 'YES' | 'NO' | 'CANCEL');
+      setAgentConfidence(rec.confidence ?? 'Medium');
+      setAgentSources((rec.sources ?? []).join('\n'));
+      setAgentNotes(
+        rec.evidenceSummary +
+        (rec.uncertainty ? `\n\nUncertainty: ${rec.uncertainty}` : ''),
+      );
+      setAgentOperator('Presto Resolution Oracle (Claude claude-sonnet-4-6)');
+      setMessage(`Oracle complete — recommended ${rec.outcome} with ${rec.confidence} confidence. Review the fields below before preparing the report.`);
+    } catch {
+      setMessage('Oracle request failed. Check your network or ANTHROPIC_API_KEY env var.');
+    } finally {
+      setIsOracleRunning(false);
+    }
   }
 
   return (
@@ -465,16 +498,33 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                             Use Circle Agent Stack or another controlled agent to gather evidence. The resolver still signs the final Arc transaction.
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            void navigator.clipboard?.writeText(buildAgentResolutionPrompt(market));
-                            setMessage('Agent research prompt copied. Run it with your controlled Circle Agent workflow, then paste the findings here.');
-                          }}
-                          className="rounded-[10px] border border-cyan/25 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-cyan transition-colors hover:bg-cyan/10"
-                        >
-                          Copy agent prompt
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={isOracleRunning}
+                            onClick={() => void runOracleResearch()}
+                            className="flex items-center gap-1.5 rounded-[10px] bg-cyan px-3 py-2 text-[10px] font-black uppercase tracking-widest text-ink transition-colors hover:opacity-90 disabled:opacity-50"
+                          >
+                            {isOracleRunning ? (
+                              <>
+                                <span className="inline-block h-2.5 w-2.5 animate-spin rounded-full border-2 border-ink/30 border-t-ink" />
+                                Researching…
+                              </>
+                            ) : (
+                              <>⚡ AI Research</>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void navigator.clipboard?.writeText(buildAgentResolutionPrompt(market));
+                              setMessage('Agent research prompt copied. Run it with your controlled Circle Agent workflow, then paste the findings here.');
+                            }}
+                            className="rounded-[10px] border border-cyan/25 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-cyan transition-colors hover:bg-cyan/10"
+                          >
+                            Copy prompt
+                          </button>
+                        </div>
                       </div>
 
                       <div className="mt-4 grid gap-2 md:grid-cols-3">
