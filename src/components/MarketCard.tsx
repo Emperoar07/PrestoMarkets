@@ -9,111 +9,98 @@ type MarketCardMarket = Market & {
   closeDate?: string;
 };
 
-const typeStyle: Record<Market['type'], string> = {
-  Prediction: 'border-cyan/30 bg-cyan/10 text-cyan',
-  Opinion: 'border-mint/25 bg-mint/10 text-mint',
-  Opportunity: 'border-blue-300/25 bg-blue-300/10 text-blue-200',
-};
-
-const statusStyle: Record<Market['status'], string> = {
-  Open: 'text-mint',
-  'Closing soon': 'text-yellow-200',
-  Resolved: 'text-cyan',
-  Canceled: 'text-red-200',
-  Draft: 'text-muted',
+const typeColor: Record<Market['type'], string> = {
+  Prediction: 'text-cyan',
+  Opinion: 'text-mint',
+  Opportunity: 'text-blue-300',
 };
 
 function formatCountdown(ms: number): string {
   if (ms <= 0) return 'Closing';
-  const totalSeconds = Math.floor(ms / 1000);
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m ${seconds}s`;
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m ${sec}s`;
 }
 
 function ClosingCountdown({ closeDate }: { closeDate: string }) {
   const [label, setLabel] = useState(() => formatCountdown(new Date(closeDate).getTime() - Date.now()));
-
   useEffect(() => {
-    const tick = () => setLabel(formatCountdown(new Date(closeDate).getTime() - Date.now()));
-    const id = setInterval(tick, 1000);
+    const id = setInterval(() => setLabel(formatCountdown(new Date(closeDate).getTime() - Date.now())), 1000);
     return () => clearInterval(id);
   }, [closeDate]);
-
-  return <span className={`text-xs font-black ${statusStyle['Closing soon']}`}>Closing in {label}</span>;
+  return <>{label}</>;
 }
 
 export function MarketCard({ market }: { market: MarketCardMarket }) {
-  const yesOutcome = market.outcomes.find((outcome) => outcome.label === 'YES') ?? market.outcomes[0];
-  const noOutcome = market.outcomes.find((outcome) => outcome.label === 'NO') ?? market.outcomes[1] ?? yesOutcome;
-  const isDirectional = market.title.toLowerCase().includes('up or down');
+  const yes = market.outcomes.find((o) => o.label === 'YES') ?? market.outcomes[0];
+  const no = market.outcomes.find((o) => o.label === 'NO') ?? market.outcomes[1] ?? yes;
+  const yesOdds = yes.odds;
+  const noOdds = no.odds;
   const isClosingSoon = market.status === 'Closing soon';
+  const isLive = market.status === 'Open' || isClosingSoon;
+  const isResolved = market.status === 'Resolved';
 
   return (
     <Link
       href={`/markets/${market.id}`}
-      className="group flex min-h-[224px] flex-col rounded-[18px] border border-white/[0.06] bg-[#192126] p-4 transition-all hover:-translate-y-1 hover:border-cyan/35 hover:bg-[#1d2830]"
+      className="group flex flex-col rounded-[16px] border border-white/[0.06] bg-[#192126] p-5 transition-all hover:-translate-y-[2px] hover:border-cyan/30 hover:bg-[#1c2830] hover:shadow-lg hover:shadow-black/30"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-[12px] bg-cyan/10">
-            {market.imageURI ? (
-              <img src={market.imageURI} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <span className="text-xl font-black text-cyan">{market.type.slice(0, 1)}</span>
-            )}
-          </div>
-          <div className="min-w-0">
-            <h3 className="line-clamp-2 text-[16px] font-black leading-snug tracking-tight text-white">{market.title}</h3>
-            <p className="mt-2 text-xs font-bold text-[#8fa0b4]">{market.type} · {market.chain}</p>
-          </div>
-        </div>
-        {isDirectional ? (
-          <div className="text-right">
-            <p className="text-2xl font-black text-white">{yesOutcome.odds}%</p>
-            <p className="text-xs font-bold text-[#8fa0b4]">Up</p>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="mt-6 grid gap-2">
-        <div className="flex items-center justify-between gap-3">
-          <span className="truncate text-sm font-black text-white">{isDirectional ? 'Up' : yesOutcome.label}</span>
-          <span className="text-lg font-black text-white">{yesOutcome.odds}%</span>
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="truncate text-sm font-black text-white">{isDirectional ? 'Down' : noOutcome.label}</span>
-          <span className="text-lg font-black text-white">{noOutcome.odds}%</span>
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <span className="rounded-[9px] bg-[#1d4938] px-4 py-3 text-center text-sm font-black text-mint">
-          {isDirectional ? 'Up' : 'Yes'}
-        </span>
-        <span className="rounded-[9px] bg-[#462328] px-4 py-3 text-center text-sm font-black text-red-300">
-          {isDirectional ? 'Down' : 'No'}
-        </span>
-      </div>
-
-      <div className="mt-auto flex items-center justify-between pt-4">
-        <div className="flex items-center gap-2">
-          <span className={`h-2 w-2 rounded-full ${market.status === 'Open' || isClosingSoon ? 'bg-red-400' : 'bg-cyan'}`} />
-          {isClosingSoon && market.closeDate ? (
-            <ClosingCountdown closeDate={market.closeDate} />
+      {/* Header */}
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#0f1e28]">
+          {market.imageURI ? (
+            <img src={market.imageURI} alt="" className="h-full w-full object-cover" />
           ) : (
-            <span className={`text-xs font-black ${statusStyle[market.status]}`}>
-              {market.status === 'Open' ? 'LIVE' : market.status}
-            </span>
+            <span className={`text-base font-black ${typeColor[market.type]}`}>{market.type.slice(0, 1)}</span>
           )}
-          <span className="text-xs font-bold text-[#8fa0b4]">{market.volume} Vol.</span>
         </div>
-        <span className="text-xs font-bold text-[#8fa0b4]">{market.liquidity} Liq.</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className={`text-[10px] font-black uppercase tracking-wider ${typeColor[market.type]}`}>{market.type}</span>
+            {isLive ? <span className="h-1.5 w-1.5 rounded-full bg-red-400" /> : null}
+          </div>
+          <h3 className="mt-1 line-clamp-2 text-[14px] font-black leading-snug tracking-tight text-white">
+            {market.title}
+          </h3>
+        </div>
+      </div>
+
+      {/* Odds bar */}
+      <div className="mt-4">
+        <div className="flex overflow-hidden rounded-full" style={{ height: 6 }}>
+          <div className="bg-cyan transition-all" style={{ width: `${yesOdds}%` }} />
+          <div className="flex-1 bg-red-500/50" />
+        </div>
+        <div className="mt-2.5 flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <span className="rounded-[5px] bg-cyan/10 px-2 py-0.5 text-xs font-black text-cyan">Yes</span>
+            <span className="text-sm font-black text-white">{yesOdds}%</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-black text-white">{noOdds}%</span>
+            <span className="rounded-[5px] bg-red-400/10 px-2 py-0.5 text-xs font-black text-red-300">No</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="mt-4 flex items-center justify-between border-t border-white/[0.05] pt-3.5">
+        <div className="flex items-center gap-3 text-xs font-bold text-[#8fa0b4]">
+          <span>{market.volume} Vol.</span>
+          <span className="text-white/20">·</span>
+          <span>{market.liquidity} Liq.</span>
+        </div>
+        <span className={`text-xs font-black ${isClosingSoon ? 'text-yellow-300' : isResolved ? 'text-cyan' : 'text-[#8fa0b4]'}`}>
+          {isClosingSoon && market.closeDate
+            ? <ClosingCountdown closeDate={market.closeDate} />
+            : market.status === 'Open' ? 'LIVE'
+            : market.closeLabel}
+        </span>
       </div>
     </Link>
   );
