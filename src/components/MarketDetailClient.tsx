@@ -373,39 +373,96 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 )}
               </div>
 
-              {/* Settlement actions */}
-              <div className="mt-5 border-t border-white/[0.06] pt-5">
-                <p className="text-[10px] font-black uppercase tracking-widest text-muted">Resolver actions</p>
-                <p className="mt-2 text-xs leading-5 text-muted">
-                  {connectedWallet
-                    ? isResolver ? 'This wallet is the designated resolver.'
-                      : 'Only the resolver wallet can settle this market.'
-                    : 'Connect the resolver wallet to settle.'}
-                </p>
-                <input
-                  value={resolutionURI}
-                  onChange={(e) => setResolutionURI(e.target.value)}
-                  placeholder="Resolution evidence URI"
-                  className="mt-3 w-full rounded-[10px] border border-white/[0.06] bg-[#0f172a] px-3 py-2 text-sm text-white outline-none focus:border-cyan/40"
-                />
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  {[
-                    { label: `Resolve ${selectedOutcome}`, action: () => resolveMarket({ marketId, outcome: selectedOutcome, resolutionURI }), disabled: !canUseResolverActions || !resolutionURI.trim() },
-                    { label: 'Cancel', action: () => cancelMarket(marketId), disabled: !canUseResolverActions },
-                    { label: 'Claim', action: () => claimMarket(marketId), disabled: !canClaim },
-                    { label: 'Refund', action: () => refundMarket(marketId), disabled: !canRefund },
-                  ].map(({ label, action, disabled }) => (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => void runAction(action)}
-                      disabled={isSubmitting || disabled}
-                      className="rounded-[10px] border border-white/[0.06] bg-[#0f172a] px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {label}
-                    </button>
-                  ))}
+              {/* Claim / Refund — user-facing settlement */}
+              {(canClaim || canRefund) ? (
+                <div className="mt-5 border-t border-white/[0.06] pt-5">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted">Settlement available</p>
+                  <div className="mt-3 flex flex-col gap-2">
+                    {canClaim ? (
+                      <button
+                        type="button"
+                        onClick={() => void runAction(() => claimMarket(marketId))}
+                        disabled={isSubmitting}
+                        className="w-full rounded-[12px] bg-mint/10 py-3 text-sm font-black text-mint ring-1 ring-mint/30 transition-all hover:bg-mint/15 disabled:opacity-50"
+                      >
+                        Claim {accountPreview?.claimable}
+                      </button>
+                    ) : null}
+                    {canRefund ? (
+                      <button
+                        type="button"
+                        onClick={() => void runAction(() => refundMarket(marketId))}
+                        disabled={isSubmitting}
+                        className="w-full rounded-[12px] bg-cyan/10 py-3 text-sm font-black text-cyan ring-1 ring-cyan/30 transition-all hover:bg-cyan/15 disabled:opacity-50"
+                      >
+                        Refund {accountPreview?.refundable}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
+              ) : null}
+
+              {/* Resolver controls */}
+              <div className="mt-5 border-t border-white/[0.06] pt-5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted">Resolver</p>
+                  {isResolver ? (
+                    <span className="rounded-full bg-cyan/10 px-2 py-0.5 text-[10px] font-black text-cyan ring-1 ring-cyan/20">
+                      You are the resolver
+                    </span>
+                  ) : null}
+                </div>
+
+                {/* Resolver address */}
+                <p className="mt-2 truncate text-xs text-[#475569]">
+                  {market.resolverAddress || market.resolver}
+                </p>
+
+                {canUseResolverActions ? (
+                  <div className="mt-4 space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-muted">
+                      Evidence URI
+                    </label>
+                    <input
+                      value={resolutionURI}
+                      onChange={(e) => setResolutionURI(e.target.value)}
+                      placeholder="https://evidence.example/resolution"
+                      className="mt-1 w-full rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-2.5 text-sm text-white outline-none transition-colors focus:border-cyan/40 placeholder:text-[#334155]"
+                    />
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => void runAction(() => resolveMarket({ marketId, outcome: 'YES', resolutionURI }))}
+                        disabled={isSubmitting || !resolutionURI.trim()}
+                        className="rounded-[10px] bg-cyan/10 py-2.5 text-xs font-black text-cyan ring-1 ring-cyan/25 transition-all hover:bg-cyan/15 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Resolve YES
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void runAction(() => resolveMarket({ marketId, outcome: 'NO', resolutionURI }))}
+                        disabled={isSubmitting || !resolutionURI.trim()}
+                        className="rounded-[10px] bg-red-400/10 py-2.5 text-xs font-black text-red-300 ring-1 ring-red-400/20 transition-all hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Resolve NO
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void runAction(() => cancelMarket(marketId))}
+                      disabled={isSubmitting}
+                      className="w-full rounded-[10px] border border-white/[0.06] bg-[#0d1520] py-2.5 text-xs font-black text-muted transition-all hover:border-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Cancel market
+                    </button>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs leading-5 text-muted">
+                    {connectedWallet
+                      ? 'Only the resolver wallet can settle or cancel this market.'
+                      : 'Connect the resolver wallet to access settlement controls.'}
+                  </p>
+                )}
               </div>
 
               {/* Status message */}

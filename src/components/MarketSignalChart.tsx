@@ -49,9 +49,9 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
   const yesPoints = buildSignalPoints(yesOdds, volume, liquidity);
   const noPoints = buildSignalPoints(noOdds, liquidity, volume, Math.PI);
 
-  const W = 420;
-  const H = compact ? 80 : 160;
-  const PAD_R = compact ? 0 : 36;
+  const W = 460;
+  const H = compact ? 80 : 260;
+  const PAD_R = compact ? 0 : 38;
   const chartW = W - PAD_R;
 
   const yesPath = buildSmoothPath(yesPoints, chartW, H);
@@ -63,7 +63,7 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
   const yesEndY = H - (yesEnd / 100) * H;
   const noEndY = H - (noEnd / 100) * H;
 
-  const gridLines = compact ? [50] : [25, 50, 75];
+  const gridLines = compact ? [50] : [0, 25, 50, 75, 100];
   const uid = compact ? 'c' : 'd';
 
   return (
@@ -90,7 +90,7 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
       <svg
         className="w-full overflow-visible"
         viewBox={`0 0 ${W} ${H}`}
-        style={{ height: compact ? 80 : 160 }}
+        style={{ height: compact ? 80 : 260 }}
         role="img"
         aria-label="Market probability signal chart"
       >
@@ -121,17 +121,18 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
         {/* Grid lines */}
         {gridLines.map((pct) => {
           const y = H - (pct / 100) * H;
+          const labelY = pct === 100 ? y + 11 : pct === 0 ? y - 3 : y + 4;
           return (
             <g key={pct}>
               <line
                 x1="0" x2={chartW} y1={y} y2={y}
-                stroke="rgba(255,255,255,0.06)"
-                strokeDasharray="3 8"
+                stroke={pct === 0 || pct === 100 ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.07)'}
+                strokeDasharray={pct === 0 || pct === 100 ? '0' : '3 8'}
                 strokeLinecap="round"
               />
               {!compact ? (
-                <text x={chartW + 8} y={y + 4} fill="#64748b" fontSize="10" fontWeight="700" fontFamily="sans-serif">
-                  {pct}
+                <text x={chartW + 8} y={labelY} fill="#475569" fontSize="10" fontWeight="700" fontFamily="sans-serif">
+                  {pct}%
                 </text>
               ) : null}
             </g>
