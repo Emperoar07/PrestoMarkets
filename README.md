@@ -14,9 +14,7 @@ There are three types of markets:
 
 **Opportunity** markets surface where builders and capital should focus. They are intended for structured opportunity signals with milestone aware resolution.
 
-## How it is built
-
-The application is a Next.js 14 app deployed on Vercel. Market contracts live on Arc Testnet (chain ID 5042002). USDC is the only collateral token. Smart contract interactions use viem. Wallet connection supports two paths: Circle User Controlled Wallets (email OTP, Google, and PIN) and any external EVM wallet through RainbowKit.
+Market contracts live on Arc Testnet (chain ID 5042002). USDC is the only collateral token. Smart contract interactions use viem. Wallet connection supports two paths: Circle User Controlled Wallets (email OTP, Google, and PIN) and any external EVM wallet through RainbowKit.
 
 The factory contract holds the registry of all markets. Each market is a separate contract that stores shares, collateral, resolution state, and settlement records. All reads happen directly from the contracts with no indexer in V1.
 
@@ -68,6 +66,3 @@ Presto Markets is a testnet application. It is not financial advice. Market asse
 | Wallets | Circle User Controlled Wallets, RainbowKit, wagmi |
 | Deployment | Vercel |
 
-## Repository
-
-github.com/Emperoar07/PrestoMarkets
