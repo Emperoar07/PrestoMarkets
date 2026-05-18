@@ -31,6 +31,7 @@ const phases = [
       'Live Arc factory reads, creation, trading, resolution, claims, and refunds',
       'Circle email OTP, Google, and PIN wallet onboarding',
       'Inline RainbowKit external EVM wallet connectors',
+      'Agent-assisted resolver evidence console with human confirmation gates',
     ],
   },
   {
@@ -49,7 +50,7 @@ const phases = [
     title: 'Later',
     label: 'AI and cross chain rails',
     items: [
-      'Agent assisted resolution after disputes are designed',
+      'Autonomous agent resolution only after disputes are designed',
       'Persistent account activity indexing',
       'Paymaster support for USDC gas flows',
       'Bridge Kit and CCTP for cross chain market funding',

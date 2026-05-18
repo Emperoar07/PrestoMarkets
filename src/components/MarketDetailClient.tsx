@@ -84,13 +84,15 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
   function prepareAgentReport() {
     if (!market) return;
+    const activeMarket = market;
+
     if (!agentSources.trim() || !agentNotes.trim()) {
       setMessage('Add source links and agent findings before preparing a resolution report.');
       return;
     }
 
     const prepared = buildAgentResolutionReport({
-      market,
+      market: activeMarket,
       outcome: agentOutcome,
       confidence: agentConfidence,
       evidenceNotes: agentNotes,

@@ -8,6 +8,7 @@ const progressItems = [
   'Circle email OTP, Google, and PIN wallet onboarding are in the sign-in modal.',
   'Production Google Web Client ID is configured locally and in Vercel environments.',
   'RainbowKit external EVM wallets render inline in the same modal.',
+  'Agent-assisted resolver evidence reports are available with strict human confirmation gates.',
   'Production hardening gate is documented before real-value markets.',
 ];
 
@@ -16,6 +17,7 @@ const remainingItems = [
   'Add persistent indexed account history beyond recent log-window reads.',
   'Improve realized and unrealized portfolio accounting.',
   'Turn hardening notes into reviewed audit findings and dispute or bond design.',
+  'Wire Circle Agent Wallet policy automation and x402 paid data calls after testnet resolver operations are reviewed.',
   'Redeploy production after env and UI changes.',
 ];
 

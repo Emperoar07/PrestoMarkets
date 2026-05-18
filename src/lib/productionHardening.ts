@@ -100,8 +100,8 @@ export const laterHardening: HardeningItem[] = [
   },
   {
     title: 'Agent-assisted resolution',
-    status: 'Later',
-    summary: 'Keep AI resolution out of scope until human override, failure modes, disputes, and evidence standards exist.',
+    status: 'Current',
+    summary: 'Use agent output only to prepare evidence reports. Final resolution still requires the configured resolver wallet, source verification, rules confirmation, and human accountability.',
   },
   {
     title: 'AMM or dynamic pricing',

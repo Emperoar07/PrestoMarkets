@@ -12,7 +12,7 @@ const guideSections = [
   },
   {
     title: 'Resolve and Settle',
-    copy: 'After close, only the configured resolver can resolve or cancel. Resolved markets expose the evidence URI, the winning outcome, claim previews, and refund previews directly from contract state.',
+    copy: 'After close, only the configured resolver can resolve or cancel. The resolver page includes an agent-assisted evidence console, but settlement buttons stay locked until the resolver verifies the source of truth, confirms rule alignment, and accepts human accountability.',
   },
   {
     title: 'Portfolio',
@@ -30,6 +30,7 @@ const liquidityPlan = [
 const terms = [
   'Presto Markets is a testnet application on Arc. It is not financial, legal, tax, or investment advice.',
   'Markets can resolve only according to the written rules, source of truth, and resolver evidence recorded for that market.',
+  'Agent-generated evidence is advisory. The configured resolver remains responsible for verifying sources before signing a settlement transaction.',
   'Users are responsible for wallet security, transaction review, and understanding that testnet assets have no guaranteed value.',
   'Do not use real value markets until audit findings, dispute paths, resolver operations, and production risk controls are complete.',
   'Circle Wallets, RainbowKit, Arc, and other product rails remain independent services with their own terms and operational requirements.',
