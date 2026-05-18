@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildX402PaymentRequired, verifyX402Payment, ARC_CONTRACTS } from '@/lib/circleAgents';
 import { markets } from '@/lib/markets';
+import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 
 const PRICE_USD = '0.001';
 
@@ -43,7 +44,9 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Serve market data ──
-  const payload = markets.map((m) => ({
+  const liveMarkets = await fetchOnchainMarkets().catch(() => []);
+  const sourceMarkets = liveMarkets.length > 0 ? liveMarkets : markets;
+  const payload = sourceMarkets.map((m) => ({
     id: m.id,
     title: m.title,
     category: m.category,
@@ -56,6 +59,20 @@ export async function GET(req: NextRequest) {
     chain: m.chain,
     collateral: m.collateral,
     sourceOfTruth: m.sourceOfTruth,
+    createdByType: m.createdByType ?? 'user',
+    agent: m.createdByType === 'agent'
+      ? {
+          name: m.agentName,
+          source: m.agentSource,
+          model: m.agentModel,
+          confidence: m.agentConfidence,
+          reason: m.agentReason,
+          trendSource: m.trendSource,
+          trendUrl: m.trendUrl,
+          momentumScore: m.momentumScore,
+          safetyScore: m.safetyScore,
+        }
+      : null,
   }));
 
   return NextResponse.json(

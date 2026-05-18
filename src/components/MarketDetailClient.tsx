@@ -74,6 +74,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const canUseResolverActions = canAccessResolverActions && isClosedForResolution;
   const resolverChecksPassed = confirmSource && confirmRules && confirmHuman;
   const canSubmitResolution = canUseResolverActions && resolverChecksPassed && Boolean(resolutionURI.trim());
+  const isAgentMarket = market.createdByType === 'agent';
 
   async function runAction(action: () => Promise<{ ok: boolean; message: string; txHash?: string }>) {
     setIsSubmitting(true);
@@ -158,6 +159,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               <span className="rounded-full border border-white/[0.06] bg-white/[0.04] px-3 py-1 text-[11px] font-black text-[#8fa0b4]">
                 {market.category}
               </span>
+              {isAgentMarket ? (
+                <span className="rounded-full border border-cyan/35 bg-cyan/10 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-cyan">
+                  Agent
+                </span>
+              ) : null}
             </div>
 
             {/* Title */}
@@ -242,6 +248,42 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
               </div>
             </div>
+
+            {isAgentMarket ? (
+              <div className="mt-4 rounded-[14px] border border-cyan/20 bg-cyan/[0.06] p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-cyan">Agent-created market</p>
+                    <h2 className="mt-1.5 text-base font-black text-white">{market.agentName || 'Presto Market Agent'}</h2>
+                    <p className="mt-2 text-sm leading-6 text-muted">
+                      {market.agentReason || 'This market was created automatically by the Presto co-admin agent from public trend signals.'}
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-cyan/25 bg-cyan/10 px-3 py-1 text-xs font-black text-cyan">
+                    {market.agentConfidence || 'Confidence logged'}
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-3 border-t border-white/[0.06] pt-4 md:grid-cols-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Trend source</p>
+                    <p className="mt-1.5 break-all text-sm text-white">{market.trendSource || market.agentSource || 'Public trend feed'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Momentum</p>
+                    <p className="mt-1.5 text-sm text-white">{market.momentumScore ?? 'Not scored'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Safety</p>
+                    <p className="mt-1.5 text-sm text-white">{market.safetyScore ?? 'Not scored'}</p>
+                  </div>
+                </div>
+                {market.trendUrl ? (
+                  <a href={market.trendUrl} target="_blank" rel="noreferrer" className="mt-4 inline-block break-all text-sm font-bold text-cyan hover:opacity-80">
+                    View trend source
+                  </a>
+                ) : null}
+              </div>
+            ) : null}
 
             {/* Market activity */}
             <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">

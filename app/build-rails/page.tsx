@@ -9,6 +9,8 @@ const progressItems = [
   'Production Google Web Client ID is configured locally and in Vercel environments.',
   'RainbowKit external EVM wallets render inline in the same modal.',
   'Agent-assisted resolver evidence reports are available with strict human confirmation gates.',
+  'Agent-created markets now carry auditable metadata and show an Agent badge in the UI.',
+  'A gated co-admin agent route can create Arc markets from trend intelligence drafts.',
   'Production hardening gate is documented before real-value markets.',
 ];
 
@@ -17,7 +19,7 @@ const remainingItems = [
   'Add persistent indexed account history beyond recent log-window reads.',
   'Improve realized and unrealized portfolio accounting.',
   'Turn hardening notes into reviewed audit findings and dispute or bond design.',
-  'Wire Circle Agent Wallet policy automation and x402 paid data calls after testnet resolver operations are reviewed.',
+  'Wire Circle Agent Wallet policy automation and real X/Grok ingestion after the co-admin route is reviewed.',
   'Redeploy production after env and UI changes.',
 ];
 

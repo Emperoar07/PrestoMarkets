@@ -12,6 +12,7 @@ import {
 import { getArcConfig, getArcChainId } from './arcConfig';
 import { erc20Abi, prestoMarketAbi, prestoMarketFactoryAbi } from './contracts';
 import { getStoredConnectedWallet } from './walletProvider';
+import { buildMarketMetadataURI, type AgentMarketMetadata } from './marketMetadata';
 import type { MarketType } from './markets';
 
 const ARC_CHAIN_HEX = '0x4cef52';
@@ -67,6 +68,7 @@ export type CreateLiveMarketInput = {
   resolver: string;
   resolutionMode: string;
   imageURI?: string;
+  agent?: AgentMarketMetadata;
 };
 
 function requireConfig() {
@@ -95,20 +97,6 @@ function getMarketKind(type: MarketType) {
   if (type === 'Opinion') return 1;
   if (type === 'Opportunity') return 2;
   return 0;
-}
-
-function buildMetadataURI(input: CreateLiveMarketInput) {
-  const metadata = {
-    name: input.title,
-    description: input.description,
-    category: input.category,
-    imageURI: input.imageURI,
-    rules: input.rules,
-    sourceOfTruth: input.sourceOfTruth,
-    resolutionMode: input.resolutionMode,
-  };
-
-  return `data:application/json,${encodeURIComponent(JSON.stringify(metadata))}`;
 }
 
 function getCloseTimestamp(closeDate: string) {
@@ -195,7 +183,7 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
       args: [
         input.resolver as Address,
         getCloseTimestamp(input.closeDate),
-        buildMetadataURI(input),
+        buildMarketMetadataURI(input),
         getMarketKind(input.type),
       ],
     });

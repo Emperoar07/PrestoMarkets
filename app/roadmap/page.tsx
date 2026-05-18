@@ -32,6 +32,7 @@ const phases = [
       'Circle email OTP, Google, and PIN wallet onboarding',
       'Inline RainbowKit external EVM wallet connectors',
       'Agent-assisted resolver evidence console with human confirmation gates',
+      'Agent-badged markets and gated co-admin market creation endpoint',
     ],
   },
   {
@@ -50,6 +51,7 @@ const phases = [
     title: 'Later',
     label: 'AI and cross chain rails',
     items: [
+      'X API and Grok ingestion for autonomous trend discovery',
       'Autonomous agent resolution only after disputes are designed',
       'Persistent account activity indexing',
       'Paymaster support for USDC gas flows',

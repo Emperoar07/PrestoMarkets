@@ -1,6 +1,7 @@
 import { createPublicClient, formatUnits, http, type Address } from 'viem';
 import { getArcConfig, getArcChainId } from './arcConfig';
 import { prestoMarketAbi, prestoMarketFactoryAbi } from './contracts';
+import { parseMarketMetadata } from './marketMetadata';
 import type { AppMarket } from './appState';
 import type { MarketStatus, MarketType, ResolutionMode } from './markets';
 const MARKET_BATCH_SIZE = 20;
@@ -84,29 +85,6 @@ function getOdds(yesShares: bigint, noShares: bigint) {
   return { yes, no: 100 - yes };
 }
 
-function parseMetadata(metadataURI: string) {
-  if (!metadataURI.startsWith('data:application/json,')) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(decodeURIComponent(metadataURI.slice('data:application/json,'.length))) as Partial<{
-      name: string;
-      description: string;
-      image: string;
-      imageURI: string;
-      category: string;
-      rules: string;
-      sourceOfTruth: string;
-      resolutionMode: ResolutionMode;
-    }>;
-
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
 async function readMarket(client: ReturnType<typeof createPublicClient>, address: Address, index: number): Promise<AppMarket> {
   const [
     creator,
@@ -144,7 +122,7 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
   const marketType = getMarketType(kind);
   const collateralValue = status === 'Resolved' ? resolvedCollateral : totalCollateral;
   const titleSource = metadataURI.trim().length > 0 ? metadataURI : `Market ${index + 1}`;
-  const metadata = parseMetadata(metadataURI);
+  const metadata = parseMarketMetadata(metadataURI);
 
   return {
     id: address.toLowerCase(),
@@ -169,7 +147,17 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     winningOutcomeLabel: status === 'Resolved' ? (winningOutcome === 0 ? 'YES' : 'NO') : undefined,
     resolutionURI: resolutionURI || undefined,
     createdBy: truncateAddress(creator),
+    createdByType: metadata?.createdByType,
     creatorAddress: creator,
+    agentName: metadata?.agentName,
+    agentSource: metadata?.agentSource,
+    agentModel: metadata?.agentModel,
+    agentReason: metadata?.agentReason,
+    agentConfidence: metadata?.agentConfidence,
+    trendSource: metadata?.trendSource,
+    trendUrl: metadata?.trendUrl,
+    momentumScore: metadata?.momentumScore,
+    safetyScore: metadata?.safetyScore,
     feeMode: Number(protocolFeeBps) > 0 ? `${protocolFeeBps} bps protocol fee` : 'No protocol fee',
     outcomes: [
       { label: 'YES', odds: odds.yes, liquidity: formatOnchainUsd(yesShares) },

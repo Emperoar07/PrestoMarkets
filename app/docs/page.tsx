@@ -4,7 +4,7 @@ import { SiteFooter } from '@/components/SiteFooter';
 const guideSections = [
   {
     title: 'Create a Market',
-    copy: 'Write a clear title, pick a category and close date, set a resolver address, describe the source of truth, and define the resolution rules. A review modal shows the full record before the live Arc transaction goes out.',
+    copy: 'Users and admins can create markets from the app. The Presto co-admin agent can also create onchain markets through a gated backend route, and agent-created markets carry an Agent badge plus trend, confidence, momentum, and safety metadata.',
   },
   {
     title: 'Trade Outcomes',
@@ -31,6 +31,7 @@ const terms = [
   'Presto Markets is a testnet application on Arc. It is not financial, legal, tax, or investment advice.',
   'Markets can resolve only according to the written rules, source of truth, and resolver evidence recorded for that market.',
   'Agent-generated evidence is advisory. The configured resolver remains responsible for verifying sources before signing a settlement transaction.',
+  'Agent-created markets are labeled in the interface and metadata, but users should still review the written rules, source of truth, and close time before trading.',
   'Users are responsible for wallet security, transaction review, and understanding that testnet assets have no guaranteed value.',
   'Do not use real value markets until audit findings, dispute paths, resolver operations, and production risk controls are complete.',
   'Circle Wallets, RainbowKit, Arc, and other product rails remain independent services with their own terms and operational requirements.',

@@ -1,6 +1,7 @@
 export type MarketType = 'Prediction' | 'Opinion' | 'Opportunity';
 export type MarketStatus = 'Open' | 'Closing soon' | 'Resolved' | 'Canceled' | 'Draft';
 export type ResolutionMode = 'Human resolver' | 'Community resolver' | 'Agent assisted';
+export type MarketCreatedByType = 'user' | 'admin' | 'agent';
 
 export type MarketOutcome = {
   label: 'YES' | 'NO';
@@ -32,7 +33,17 @@ export type Market = {
   sourceOfTruth: string;
   rules: string;
   createdBy: string;
+  createdByType?: MarketCreatedByType;
   creatorAddress?: string;
+  agentName?: string;
+  agentSource?: string;
+  agentModel?: string;
+  agentReason?: string;
+  agentConfidence?: string;
+  trendSource?: string;
+  trendUrl?: string;
+  momentumScore?: number;
+  safetyScore?: number;
   feeMode: string;
   outcomes: MarketOutcome[];
   activity: MarketActivity[];
