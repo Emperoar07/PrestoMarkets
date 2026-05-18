@@ -80,14 +80,12 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
         <div className="flex shrink-0 items-center gap-1.5">
           <button
             type="button"
-            onClick={(e) => e.preventDefault()}
             className="rounded-[8px] bg-[#0a3320] px-3 py-2 text-xs font-bold text-[#4ade80] transition-colors hover:bg-[#0d4429] active:scale-95"
           >
             Buy Yes
           </button>
           <button
             type="button"
-            onClick={(e) => e.preventDefault()}
             className="rounded-[8px] bg-[#2d1010] px-3 py-2 text-xs font-bold text-[#f87171] transition-colors hover:bg-[#3d1515] active:scale-95"
           >
             Buy No
