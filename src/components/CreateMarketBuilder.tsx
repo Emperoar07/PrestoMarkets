@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { isAddress } from 'viem';
 import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
 import type { MarketType, ResolutionMode } from '@/lib/markets';
@@ -34,6 +35,49 @@ export function CreateMarketBuilder() {
   const [showReview, setShowReview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<string, string>>>({});
+
+  function validateField(name: string, value: string): string {
+    if (name === 'title') {
+      if (!value.trim()) return 'Title is required.';
+      if (value.trim().length < 10) return 'Title must be at least 10 characters.';
+      if (value.trim().length > 200) return 'Title must be 200 characters or fewer.';
+    }
+    if (name === 'description') {
+      if (!value.trim()) return 'Description is required.';
+      if (value.trim().length < 20) return 'Description must be at least 20 characters.';
+      if (value.trim().length > 1000) return 'Description must be 1000 characters or fewer.';
+    }
+    if (name === 'rules') {
+      if (!value.trim()) return 'Resolution rules are required.';
+      if (value.trim().length < 20) return 'Rules must be at least 20 characters.';
+    }
+    if (name === 'sourceOfTruth') {
+      if (!value.trim()) return 'Source of truth is required.';
+    }
+    if (name === 'closeDate') {
+      if (!value) return 'Close date is required.';
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return 'Enter a valid date.';
+      if (parsed.getTime() <= Date.now()) return 'Close date must be in the future.';
+    }
+    if (name === 'resolver') {
+      if (!value.trim()) return 'Resolver address is required.';
+      if (!isAddress(value.trim())) return 'Enter a valid EVM wallet address (0x…).';
+    }
+    return '';
+  }
+
+  function setField(name: string, value: string, setter: (v: string) => void) {
+    setter(value);
+    const error = validateField(name, value);
+    setFieldErrors((prev) => ({ ...prev, [name]: error }));
+  }
+
+  function blurField(name: string, value: string) {
+    const error = validateField(name, value);
+    setFieldErrors((prev) => ({ ...prev, [name]: error }));
+  }
 
   function chooseType(type: MarketType) {
     setSelectedType(type);
@@ -73,16 +117,31 @@ export function CreateMarketBuilder() {
   }
 
   async function launchMarket() {
-    if (!title || !description || !category || !rules || !sourceOfTruth || !closeDate || !resolver) {
-      setStatusMessage('Complete all required fields before launching.');
+    const checks: [string, string][] = [
+      ['title', title],
+      ['description', description],
+      ['rules', rules],
+      ['sourceOfTruth', sourceOfTruth],
+      ['closeDate', closeDate],
+      ['resolver', resolver],
+    ];
+    const errors: Record<string, string> = {};
+    for (const [name, value] of checks) {
+      const error = validateField(name, value);
+      if (error) errors[name] = error;
+    }
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setStatusMessage('Fix the errors above before launching.');
+      return;
+    }
+
+    if (!category) {
+      setStatusMessage('Choose a category before launching.');
       return;
     }
 
     const parsedCloseDate = new Date(closeDate);
-    if (Number.isNaN(parsedCloseDate.getTime()) || parsedCloseDate.getTime() <= Date.now()) {
-      setStatusMessage('Choose a future close date.');
-      return;
-    }
 
     setIsSubmitting(true);
     setStatusMessage('Submitting market creation to Arc...');
@@ -120,24 +179,22 @@ export function CreateMarketBuilder() {
 
         <div className="mt-9 grid gap-6 lg:grid-cols-[320px_1fr]">
           <aside>
-            <section className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-5">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Market family</p>
-              <div className="mt-4 grid gap-3">
-                {marketTypes.map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => chooseType(type)}
-                    className={`rounded-[14px] border px-4 py-4 text-left transition-colors ${
-                      selectedType === type ? 'border-cyan/50 bg-cyan/10 text-cyan' : 'border-white/[0.06] bg-[#0f172a] text-white hover:border-cyan/30'
-                    }`}
-                  >
-                    <span className="block font-black">{type}</span>
-                    <span className="mt-1 block text-sm leading-6 text-muted">{typeCopy[type]}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Market family</p>
+            <div className="mt-4 grid gap-3">
+              {marketTypes.map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => chooseType(type)}
+                  className={`rounded-[14px] border px-4 py-4 text-left transition-colors ${
+                    selectedType === type ? 'border-cyan/50 bg-cyan/10 text-cyan' : 'border-white/[0.06] bg-[#141e30] text-white hover:border-cyan/30'
+                  }`}
+                >
+                  <span className="block font-black">{type}</span>
+                  <span className="mt-1 block text-sm leading-6 text-muted">{typeCopy[type]}</span>
+                </button>
+              ))}
+            </div>
           </aside>
 
           <div className="space-y-6">
@@ -162,9 +219,12 @@ export function CreateMarketBuilder() {
                   <label className="text-sm font-bold text-muted">Market title</label>
                   <input
                     value={title}
-                    onChange={(event) => setTitle(event.target.value)}
-                    className="mt-2 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
+                    onChange={(e) => setField('title', e.target.value, setTitle)}
+                    onBlur={(e) => blurField('title', e.target.value)}
+                    className={`mt-2 w-full rounded-[14px] border bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50 ${fieldErrors.title ? 'border-red-400/50' : 'border-white/[0.06]'}`}
+                    placeholder="e.g. Will ETH break $5k before end of 2025?"
                   />
+                  {fieldErrors.title ? <p className="mt-1.5 text-xs font-bold text-red-400">{fieldErrors.title}</p> : null}
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
@@ -201,25 +261,31 @@ export function CreateMarketBuilder() {
                   <label className="text-sm font-bold text-muted">Description</label>
                   <textarea
                     value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    className="mt-2 min-h-28 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
+                    onChange={(e) => setField('description', e.target.value, setDescription)}
+                    onBlur={(e) => blurField('description', e.target.value)}
+                    className={`mt-2 min-h-28 w-full rounded-[14px] border bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50 ${fieldErrors.description ? 'border-red-400/50' : 'border-white/[0.06]'}`}
                   />
+                  {fieldErrors.description ? <p className="mt-1.5 text-xs font-bold text-red-400">{fieldErrors.description}</p> : null}
                 </div>
                 <div>
                   <label className="text-sm font-bold text-muted">Resolution rules</label>
                   <textarea
                     value={rules}
-                    onChange={(event) => setRules(event.target.value)}
-                    className="mt-2 min-h-32 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
+                    onChange={(e) => setField('rules', e.target.value, setRules)}
+                    onBlur={(e) => blurField('rules', e.target.value)}
+                    className={`mt-2 min-h-32 w-full rounded-[14px] border bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50 ${fieldErrors.rules ? 'border-red-400/50' : 'border-white/[0.06]'}`}
                   />
+                  {fieldErrors.rules ? <p className="mt-1.5 text-xs font-bold text-red-400">{fieldErrors.rules}</p> : null}
                 </div>
                 <div>
                   <label className="text-sm font-bold text-muted">Source of truth</label>
                   <textarea
                     value={sourceOfTruth}
-                    onChange={(event) => setSourceOfTruth(event.target.value)}
-                    className="mt-2 min-h-24 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
+                    onChange={(e) => setField('sourceOfTruth', e.target.value, setSourceOfTruth)}
+                    onBlur={(e) => blurField('sourceOfTruth', e.target.value)}
+                    className={`mt-2 min-h-24 w-full rounded-[14px] border bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50 ${fieldErrors.sourceOfTruth ? 'border-red-400/50' : 'border-white/[0.06]'}`}
                   />
+                  {fieldErrors.sourceOfTruth ? <p className="mt-1.5 text-xs font-bold text-red-400">{fieldErrors.sourceOfTruth}</p> : null}
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
@@ -227,27 +293,32 @@ export function CreateMarketBuilder() {
                     <input
                       type="datetime-local"
                       value={closeDate}
-                      onChange={(event) => setCloseDate(event.target.value)}
-                      className="mt-2 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
+                      onChange={(e) => setField('closeDate', e.target.value, setCloseDate)}
+                      onBlur={(e) => blurField('closeDate', e.target.value)}
+                      className={`mt-2 w-full rounded-[14px] border bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50 ${fieldErrors.closeDate ? 'border-red-400/50' : 'border-white/[0.06]'}`}
                     />
+                    {fieldErrors.closeDate ? <p className="mt-1.5 text-xs font-bold text-red-400">{fieldErrors.closeDate}</p> : null}
                   </div>
                   <div>
                     <label className="text-sm font-bold text-muted">Resolver address</label>
                     <input
                       value={resolver}
-                      onChange={(event) => setResolver(event.target.value)}
-                      className="mt-2 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
+                      onChange={(e) => setField('resolver', e.target.value, setResolver)}
+                      onBlur={(e) => blurField('resolver', e.target.value)}
+                      placeholder="0x…"
+                      className={`mt-2 w-full rounded-[14px] border bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50 ${fieldErrors.resolver ? 'border-red-400/50' : 'border-white/[0.06]'}`}
                     />
+                    {fieldErrors.resolver ? <p className="mt-1.5 text-xs font-bold text-red-400">{fieldErrors.resolver}</p> : null}
                   </div>
                 </div>
 
-                <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
+                <div>
                   <label className="text-sm font-bold text-muted">Market picture</label>
                   <div className="mt-3 grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
                     <input
                       value={imageURI}
                       onChange={(event) => setImageURI(event.target.value)}
-                      className="w-full rounded-[14px] border border-white/[0.06] bg-[#141e30] px-4 py-4 text-white outline-none focus:border-cyan/50"
+                      className="w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
                     />
                     <label className="cursor-pointer rounded-[10px] border border-cyan/30 bg-cyan/10 px-5 py-4 text-center text-sm font-black text-cyan transition-colors hover:bg-cyan/15">
                       Upload image
@@ -263,13 +334,32 @@ export function CreateMarketBuilder() {
                     Use a hosted image URL, or upload a small image that can travel inside the market metadata.
                   </p>
                   {imageURI ? (
-                    <div className="mt-4 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#141e30]">
+                    <div className="mt-4 overflow-hidden rounded-[14px] border border-white/[0.06]">
                       <img src={imageURI} alt="Market preview" className="h-48 w-full object-cover" />
                     </div>
                   ) : null}
                 </div>
 
-                <button type="button" onClick={() => setShowReview(true)} className="w-full rounded-[10px] bg-cyan px-6 py-4 font-black text-ink transition-opacity hover:opacity-90">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const checks: [string, string][] = [
+                      ['title', title], ['description', description], ['rules', rules],
+                      ['sourceOfTruth', sourceOfTruth], ['closeDate', closeDate], ['resolver', resolver],
+                    ];
+                    const errors: Record<string, string> = {};
+                    for (const [name, value] of checks) {
+                      const error = validateField(name, value);
+                      if (error) errors[name] = error;
+                    }
+                    if (Object.keys(errors).length > 0) {
+                      setFieldErrors(errors);
+                      return;
+                    }
+                    setShowReview(true);
+                  }}
+                  className="w-full rounded-[10px] bg-cyan px-6 py-4 font-black text-ink transition-opacity hover:opacity-90"
+                >
                   Review Live Market
                 </button>
               </div>

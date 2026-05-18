@@ -4,34 +4,34 @@ import { SiteFooter } from '@/components/SiteFooter';
 const guideSections = [
   {
     title: 'Create a Market',
-    copy: 'Write a clear title, category, close date, resolver address, source of truth, and resolution rules. The review modal appears before the live Arc transaction is submitted.',
+    copy: 'Write a clear title, pick a category and close date, set a resolver address, describe the source of truth, and define the resolution rules. A review modal shows the full record before the live Arc transaction goes out.',
   },
   {
     title: 'Trade Outcomes',
-    copy: 'Presto V1 uses fixed YES and NO shares backed by USDC. A buy deposits USDC and mints outcome shares; there is no sell path or AMM in this version.',
+    copy: 'Presto V1 uses fixed YES and NO shares backed by USDC. A buy deposits USDC and mints outcome shares. There is no sell path or automated market maker in this version — positions are held until settlement.',
   },
   {
     title: 'Resolve and Settle',
-    copy: 'After close, only the configured resolver can resolve or cancel. Resolved markets expose evidence URI, winning outcome, claim preview, and refund preview from contract state.',
+    copy: 'After close, only the configured resolver can resolve or cancel. Resolved markets expose the evidence URI, the winning outcome, claim previews, and refund previews directly from contract state.',
   },
   {
     title: 'Portfolio',
-    copy: 'Portfolio values show cost basis, signal marks, claim previews, refund previews, and realized settlement state. Recent activity still depends on recent Arc log reads.',
+    copy: 'Portfolio values show actual cost basis, signal marks for open positions, claim previews, refund previews, and realized settlement state. Activity is read from live Arc event logs over a 30 day window.',
   },
 ];
 
 const liquidityPlan = [
-  'Phase A: keep fixed-share V1 as the safety baseline, with transparent YES/NO share ratios and no implied exit liquidity.',
-  'Phase B: add indexed historical trades and maker intent records so liquidity can be measured before it is routed.',
-  'Phase C: introduce a CLOB-style liquidity layer with resting bids and asks, visible spread, depth, minimum order size, and cancelable maker orders.',
-  'Phase D: only after audits, route market buys through resting liquidity first, then expose maker rewards or fees if the economics are reviewed.',
+  'Keep the fixed share V1 model as the safety baseline with transparent YES and NO share ratios and no implied exit liquidity.',
+  'Add indexed historical trades and maker intent records so liquidity can be measured before it is routed.',
+  'Introduce a limit order book style liquidity layer with resting bids and asks, visible spread, depth, minimum order size, and cancelable maker orders.',
+  'Only after audits, route market buys through resting liquidity first, then expose maker rewards or fees once the economics have been reviewed.',
 ];
 
 const terms = [
   'Presto Markets is a testnet application on Arc. It is not financial, legal, tax, or investment advice.',
   'Markets can resolve only according to the written rules, source of truth, and resolver evidence recorded for that market.',
   'Users are responsible for wallet security, transaction review, and understanding that testnet assets have no guaranteed value.',
-  'Do not use real-value markets until audit findings, dispute paths, resolver operations, and production risk controls are complete.',
+  'Do not use real value markets until audit findings, dispute paths, resolver operations, and production risk controls are complete.',
   'Circle Wallets, RainbowKit, Arc, and other product rails remain independent services with their own terms and operational requirements.',
 ];
 
@@ -60,36 +60,34 @@ export default function DocsPage() {
             <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Liquidity design</p>
             <h2 className="mt-2 text-2xl font-black text-white">How Presto should add liquidity</h2>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">
-              Polymarket-style markets make liquidity visible through bids, asks, spreads, and depth. Presto should follow that direction with a CLOB-style layer later, not an invisible pool that hides execution quality.
+              Polymarket style markets make liquidity visible through bids, asks, spreads, and depth. Presto should follow that direction with a limit order book layer later, not an invisible pool that hides execution quality from traders.
             </p>
           </div>
-          <div className="grid gap-3 p-6">
+          <div className="divide-y divide-white/[0.06]">
             {liquidityPlan.map((item, index) => (
-              <div key={item} className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan">Step {index + 1}</p>
-                <p className="mt-2 text-sm font-bold leading-6 text-white">{item}</p>
+              <div key={item} className="flex gap-5 p-6">
+                <span className="mt-0.5 shrink-0 text-xs font-black uppercase tracking-[0.18em] text-cyan">Phase {index + 1}</span>
+                <p className="text-sm leading-6 text-white">{item}</p>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="mt-10 rounded-[16px] border border-white/[0.06] bg-[#141e30]">
-          <div className="border-b border-line p-6">
-            <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Market charts</p>
-            <h2 className="mt-2 text-2xl font-black text-white">What the charts mean</h2>
-          </div>
-          <div className="grid gap-4 p-6 md:grid-cols-3">
-            <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
+        <section className="mt-10">
+          <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Market charts</p>
+          <h2 className="mt-2 text-2xl font-black text-white">What the charts mean</h2>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-5">
               <h3 className="font-black text-white">YES signal</h3>
-              <p className="mt-3 text-sm leading-6 text-muted">The chart currently visualizes the live YES share ratio as a probability signal, not a guaranteed exit price.</p>
+              <p className="mt-3 text-sm leading-6 text-muted">The chart visualizes the live YES share ratio as a probability signal. It is not a guaranteed exit price and should be read as market sentiment, not a tradeable quote.</p>
             </div>
-            <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
+            <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-5">
               <h3 className="font-black text-white">Liquidity context</h3>
-              <p className="mt-3 text-sm leading-6 text-muted">Volume and collateral help show how much activity backs the signal, but V1 liquidity is still fixed-share settlement.</p>
+              <p className="mt-3 text-sm leading-6 text-muted">Volume and collateral help show how much activity backs the signal, but V1 liquidity is fixed share settlement. The number reflects participation, not available exit depth.</p>
             </div>
-            <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
+            <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-5">
               <h3 className="font-black text-white">Future depth</h3>
-              <p className="mt-3 text-sm leading-6 text-muted">A future CLOB can add bid/ask depth, spread, marketable orders, and maker liquidity controls after protocol review.</p>
+              <p className="mt-3 text-sm leading-6 text-muted">A future order book can add bid and ask depth, spread, marketable orders, and maker liquidity controls once the protocol has been audited and reviewed.</p>
             </div>
           </div>
         </section>
@@ -99,11 +97,9 @@ export default function DocsPage() {
             <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Terms and risk</p>
             <h2 className="mt-2 text-2xl font-black text-white">Terms of Use</h2>
           </div>
-          <div className="grid gap-3 p-6">
+          <div className="divide-y divide-white/[0.06]">
             {terms.map((item) => (
-              <p key={item} className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5 text-sm leading-6 text-muted">
-                {item}
-              </p>
+              <p key={item} className="p-6 text-sm leading-6 text-muted">{item}</p>
             ))}
           </div>
         </section>
@@ -120,7 +116,7 @@ export default function DocsPage() {
           <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Legal</p>
           <h2 className="mt-2 text-2xl font-black text-white">Cookie Policy</h2>
           <p className="mt-3 text-sm leading-6 text-muted">
-            Presto may use local storage or provider-managed browser storage for wallet sessions, UI preferences, and app state. The app does not require tracking cookies for core market reads, but connected providers may use their own browser storage.
+            Presto may use local storage or provider managed browser storage for wallet sessions, UI preferences, and app state. The app does not require tracking cookies for core market reads, but connected providers may use their own browser storage.
           </p>
         </section>
       </main>

@@ -2,28 +2,43 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  formatUnits,
   http,
   isAddress,
   parseUnits,
   type Address,
   type Hex,
 } from 'viem';
-import { getArcConfig } from './arcConfig';
+import { getArcConfig, getArcChainId } from './arcConfig';
 import { erc20Abi, prestoMarketAbi, prestoMarketFactoryAbi } from './contracts';
 import { getStoredConnectedWallet } from './walletProvider';
 import type { MarketType } from './markets';
 
-const ARC_CHAIN_ID = 5042002;
 const ARC_CHAIN_HEX = '0x4cef52';
+const MIN_TRADE_USDC = 0.01;
 
-const arcChain = {
-  id: ARC_CHAIN_ID,
-  name: 'Arc Testnet',
-  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
-  rpcUrls: {
-    default: { http: ['https://rpc.testnet.arc.network'] },
-  },
-} as const;
+async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt === retries) throw error;
+      await new Promise<void>((resolve) => { setTimeout(resolve, 400 * (attempt + 1)); });
+    }
+  }
+  throw new Error('unreachable');
+}
+
+function getArcChain() {
+  return {
+    id: getArcChainId(),
+    name: 'Arc Testnet',
+    nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
+    rpcUrls: {
+      default: { http: ['https://rpc.testnet.arc.network'] as [string] },
+    },
+  };
+}
 
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -118,10 +133,11 @@ async function getClients() {
     throw new Error('No browser wallet was found. Open Presto Markets in a wallet-enabled browser.');
   }
 
+  const arcChainId = getArcChainId();
   const chain = {
-    ...arcChain,
+    ...getArcChain(),
     rpcUrls: {
-      default: { http: [config.rpcUrl] },
+      default: { http: [config.rpcUrl] as [string] },
     },
   };
 
@@ -139,9 +155,9 @@ async function getClients() {
 
   const connectedChainId = await walletClient.getChainId();
 
-  if (connectedChainId !== ARC_CHAIN_ID) {
+  if (connectedChainId !== arcChainId) {
     try {
-      await walletClient.switchChain({ id: ARC_CHAIN_ID });
+      await walletClient.switchChain({ id: arcChainId });
     } catch {
       await window.ethereum.request({
         method: 'wallet_addEthereumChain',
@@ -184,7 +200,7 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
       ],
     });
 
-    await publicClient.waitForTransactionReceipt({ hash });
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
 
     return { ok: true, message: 'Live market created on Arc.', txHash: hash };
   } catch (error) {
@@ -204,14 +220,32 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: 'YE
       throw new Error('Enter a valid USDC amount.');
     }
 
+    if (input.amount < MIN_TRADE_USDC) {
+      throw new Error(`Minimum trade is $${MIN_TRADE_USDC} USDC.`);
+    }
+
     const marketAddress = input.marketAddress as Address;
     const amount = parseUnits(String(input.amount), 6);
-    const allowance = await publicClient.readContract({
-      address: config.usdcAddress,
-      abi: erc20Abi,
-      functionName: 'allowance',
-      args: [account, marketAddress],
-    });
+
+    const [balance, allowance] = await Promise.all([
+      withRetry(() => publicClient.readContract({
+        address: config.usdcAddress,
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [account],
+      })),
+      withRetry(() => publicClient.readContract({
+        address: config.usdcAddress,
+        abi: erc20Abi,
+        functionName: 'allowance',
+        args: [account, marketAddress],
+      })),
+    ]);
+
+    if (balance < amount) {
+      const have = Number(formatUnits(balance, 6)).toFixed(2);
+      throw new Error(`Insufficient USDC balance. You have $${have} but the trade needs $${input.amount}.`);
+    }
 
     if (allowance < amount) {
       const approveHash = await walletClient.writeContract({
@@ -221,7 +255,7 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: 'YE
         functionName: 'approve',
         args: [marketAddress, amount],
       });
-      await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash }));
     }
 
     const hash = await walletClient.writeContract({
@@ -232,7 +266,7 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: 'YE
       args: [input.outcome === 'YES' ? 0 : 1, amount],
     });
 
-    await publicClient.waitForTransactionReceipt({ hash });
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
 
     return { ok: true, message: `Bought ${input.outcome} shares on Arc.`, txHash: hash };
   } catch (error) {
@@ -256,7 +290,7 @@ export async function resolveLiveMarket(input: { marketAddress: string; outcome:
       args: [input.outcome === 'YES' ? 0 : 1, input.resolutionURI],
     });
 
-    await publicClient.waitForTransactionReceipt({ hash });
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
 
     return { ok: true, message: 'Market resolved on Arc.', txHash: hash };
   } catch (error) {
@@ -279,7 +313,7 @@ export async function cancelLiveMarket(marketAddress: string): Promise<LiveActio
       functionName: 'cancel',
     });
 
-    await publicClient.waitForTransactionReceipt({ hash });
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
 
     return { ok: true, message: 'Market canceled on Arc.', txHash: hash };
   } catch (error) {
@@ -302,7 +336,7 @@ export async function claimLiveMarket(marketAddress: string): Promise<LiveAction
       functionName: 'claim',
     });
 
-    await publicClient.waitForTransactionReceipt({ hash });
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
 
     return { ok: true, message: 'Claim submitted on Arc.', txHash: hash };
   } catch (error) {
@@ -325,7 +359,7 @@ export async function refundLiveMarket(marketAddress: string): Promise<LiveActio
       functionName: 'refund',
     });
 
-    await publicClient.waitForTransactionReceipt({ hash });
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
 
     return { ok: true, message: 'Refund submitted on Arc.', txHash: hash };
   } catch (error) {

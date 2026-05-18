@@ -1,6 +1,27 @@
 import { NextResponse } from 'next/server';
 
 const circleBaseUrl = process.env.CIRCLE_BASE_URL || 'https://api.circle.com';
+
+const rateLimitWindow = 60_000;
+const rateLimitMax = 20;
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitStore.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitStore.set(ip, { count: 1, resetAt: now + rateLimitWindow });
+    if (rateLimitStore.size > 10_000) {
+      for (const [key, val] of rateLimitStore) {
+        if (now > val.resetAt) rateLimitStore.delete(key);
+      }
+    }
+    return true;
+  }
+  if (entry.count >= rateLimitMax) return false;
+  entry.count++;
+  return true;
+}
 const arcWalletBlockchain = process.env.CIRCLE_WALLET_BLOCKCHAIN || 'ARC-TESTNET';
 const arcWalletAccountType = process.env.CIRCLE_WALLET_ACCOUNT_TYPE || 'SCA';
 
@@ -90,6 +111,15 @@ async function circleFetch(path: string, input: RequestInit & { userToken?: stri
 }
 
 export async function POST(request: Request) {
+  const ip =
+    request.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
+    request.headers.get('x-real-ip') ??
+    'unknown';
+
+  if (!checkRateLimit(ip)) {
+    return jsonError('Too many requests. Please try again later.', 429);
+  }
+
   try {
     const body = await request.json().catch(() => ({})) as CircleRequestBody;
     const action = body.action || 'config';

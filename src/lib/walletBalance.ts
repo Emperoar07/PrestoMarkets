@@ -1,8 +1,6 @@
 import { createPublicClient, formatUnits, http, isAddress, type Address } from 'viem';
-import { getArcConfig } from './arcConfig';
+import { getArcConfig, getArcChainId } from './arcConfig';
 import { erc20Abi } from './contracts';
-
-const ARC_CHAIN_ID = 5042002;
 
 export async function fetchArcUsdcBalance(address: string) {
   const config = getArcConfig();
@@ -13,7 +11,7 @@ export async function fetchArcUsdcBalance(address: string) {
 
   const client = createPublicClient({
     chain: {
-      id: ARC_CHAIN_ID,
+      id: getArcChainId(),
       name: 'Arc Testnet',
       nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
       rpcUrls: {

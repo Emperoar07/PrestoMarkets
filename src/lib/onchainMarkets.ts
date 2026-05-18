@@ -1,10 +1,22 @@
 import { createPublicClient, formatUnits, http, type Address } from 'viem';
-import { getArcConfig } from './arcConfig';
+import { getArcConfig, getArcChainId } from './arcConfig';
 import { prestoMarketAbi, prestoMarketFactoryAbi } from './contracts';
 import type { AppMarket } from './appState';
 import type { MarketStatus, MarketType, ResolutionMode } from './markets';
+const MARKET_BATCH_SIZE = 20;
+const MAX_MARKETS = 500;
 
-const ARC_CHAIN_ID = 5042002;
+async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt === retries) throw error;
+      await new Promise<void>((resolve) => { setTimeout(resolve, 500 * (attempt + 1)); });
+    }
+  }
+  throw new Error('unreachable');
+}
 
 function truncateAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -181,9 +193,10 @@ export async function fetchOnchainMarkets() {
     return [];
   }
 
+  const chainId = getArcChainId();
   const client = createPublicClient({
     chain: {
-      id: ARC_CHAIN_ID,
+      id: chainId,
       name: 'Arc Testnet',
       nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
       rpcUrls: {
@@ -194,20 +207,37 @@ export async function fetchOnchainMarkets() {
   });
 
   const factoryAddress = config.factoryAddress as Address;
-  const marketCount = await client.readContract({
+  const marketCount = await withRetry(() => client.readContract({
     address: factoryAddress,
     abi: prestoMarketFactoryAbi,
     functionName: 'marketCount',
-  });
+  }));
 
-  const marketAddresses = await Promise.all(
-    Array.from({ length: Number(marketCount) }, (_, index) => client.readContract({
-      address: factoryAddress,
-      abi: prestoMarketFactoryAbi,
-      functionName: 'markets',
-      args: [BigInt(index)],
-    })),
-  );
+  const count = Math.min(Number(marketCount), MAX_MARKETS);
+  const indices = Array.from({ length: count }, (_, i) => i);
+  const marketAddresses: Address[] = [];
 
-  return Promise.all(marketAddresses.map((address, index) => readMarket(client, address, index)));
+  for (let i = 0; i < indices.length; i += MARKET_BATCH_SIZE) {
+    const batch = indices.slice(i, i + MARKET_BATCH_SIZE);
+    const batchAddresses = await Promise.all(
+      batch.map((index) => withRetry(() => client.readContract({
+        address: factoryAddress,
+        abi: prestoMarketFactoryAbi,
+        functionName: 'markets',
+        args: [BigInt(index)],
+      }))),
+    );
+    marketAddresses.push(...batchAddresses);
+  }
+
+  const markets: AppMarket[] = [];
+  for (let i = 0; i < marketAddresses.length; i += MARKET_BATCH_SIZE) {
+    const batch = marketAddresses.slice(i, i + MARKET_BATCH_SIZE);
+    const batchMarkets = await Promise.all(
+      batch.map((address, batchIndex) => withRetry(() => readMarket(client, address, i + batchIndex))),
+    );
+    markets.push(...batchMarkets);
+  }
+
+  return markets;
 }

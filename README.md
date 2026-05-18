@@ -1,126 +1,73 @@
 # Presto Markets
 
-Presto Markets is a public Arc Testnet market platform for predictions, opinions, and opportunity discovery.
+Presto Markets is a public prediction market application built on Arc, a Layer 1 blockchain purpose built for stablecoin native financial applications. Markets are created and settled entirely onchain, with USDC as the collateral and settlement asset throughout.
 
-Product line: > Your opinions. Your opportunities. Your predictions.
+## What it does
 
-This repository is separate from Presto DEX. It keeps the same dark navy and cyan brand language, but the product is focused on markets 
+Anyone can create a market, set the resolution rules, assign a resolver address, and publish it to the Arc factory. Other users can buy YES or NO shares with USDC. When the market closes, the resolver submits evidence and resolves the outcome. Winners claim their USDC. Canceled markets are fully refundable.
 
-## Arc Blueprint Positioning
+There are three types of markets:
 
-Presto Markets follows the Arc prediction market blueprint. The goal is to make uncertainty tradable while keeping the experience grounded in USDC, predictable costs, fast settlement, and clear rules.
+**Prediction** markets cover objective future outcomes where a clear source of truth exists and a verifiable answer is expected after close. These follow the pattern made familiar by Polymarket.
 
-Core scope:
+**Opinion** markets capture community conviction on product decisions, governance questions, or directional sentiment where the signal itself is the value, not just the binary answer.
 
-* USDC comes first as the market collateral.
-* Markets should act as public signal infrastructure, not only betting flows.
-* Small trades should feel practical because Arc uses stablecoin gas.
-* Every market needs clear rules, a source of truth, resolver evidence, and an auditable result.
-* EURC and other stable settlement paths can come later once the USDC version is safe.
-* Higher trust civic, enterprise, and institutional markets should be possible later with stronger controls.
+**Opportunity** markets surface where builders and capital should focus. They are intended for structured opportunity signals with milestone aware resolution.
 
-## Arc App Kit
+## How it is built
 
-Arc App Kit is product infrastructure for movement and funding rails. It can help with USDC sends, bridge flows, swap or funding flows, and unified balance later.
+The application is a Next.js 14 app deployed on Vercel. Market contracts live on Arc Testnet (chain ID 5042002). USDC is the only collateral token. Smart contract interactions use viem. Wallet connection supports two paths: Circle User Controlled Wallets (email OTP, Google, and PIN) and any external EVM wallet through RainbowKit.
 
-It does not replace the custom market contracts.
+The factory contract holds the registry of all markets. Each market is a separate contract that stores shares, collateral, resolution state, and settlement records. All reads happen directly from the contracts with no indexer in V1.
 
-## Circle Product Rails
+## Getting started
 
-Current integration scope:
+Copy the environment template and fill in your keys:
 
-* USDC
-* Contracts
-
-Planned integration scope:
-
-* Paymaster for USDC gas flows.
-* Wallets for smoother onboarding.
-* Bridge Kit and CCTP for cross chain USDC funding.
-* Gateway for unified USDC balance once the account model is ready.
-
-These planned rails should only be marked live after wallet, funding, and settlement flows are tested end to end.
-
-## Arc MCP
-
-Use Arc MCP for every Arc-specific design or implementation decision before making code changes. Use Circle MCP for every Circle-specific wallet, paymaster, bridge, gateway, or USDC rail decision before making code changes.
-
-MCP server:
-
-```text
-https://docs.arc.io/mcp
+```
+cp .env.local.example .env.local
 ```
 
-Circle MCP server:
+The required variables are:
 
-```text
-https://api.circle.com/v1/codegen/mcp
+```
+NEXT_PUBLIC_ARC_RPC_URL                 Arc Testnet RPC endpoint
+NEXT_PUBLIC_PRESTO_FACTORY_ADDRESS      Deployed factory contract address
+CIRCLE_API_KEY                          Circle API key for the wallet backend
+NEXT_PUBLIC_CIRCLE_APP_ID               Circle app ID for the browser SDK
+NEXT_PUBLIC_CIRCLE_WALLETS_ENABLED      Set to true to enable Circle wallets
 ```
 
-Setup guide:
+Install dependencies and start the development server:
 
-```text
-https://docs.arc.io/ai/mcp
 ```
-
-Cursor config:
-
-```json
-{
-  "mcpServers": {
-    "arc-docs": {
-      "url": "https://docs.arc.io/mcp"
-    }
-  }
-}
-```
-
-VS Code config is checked into `.vscode/mcp.json`.
-
-## Development
-
-```bash
 npm install
 npm run dev
 ```
 
-Contract tests:
+The app runs at http://localhost:3000 and redirects immediately to the markets explorer.
 
-```bash
-npm run test:contracts
-```
+## Testnet USDC
 
-Deploy factory to Arc Testnet:
+Arc Testnet uses USDC as the gas token. You can get testnet USDC from the Circle faucet at faucet.circle.com. The faucet link is also in the app header once a wallet is connected.
 
-```bash
-npm run deploy:arc
-```
+## What is not in V1
 
-Copy `.env.example` to `.env.local` when deployment addresses are available.
+Positions cannot be exited before resolution. There is no sell path and no automated market maker. Liquidity is fixed share settlement only. Activity history is read from a rolling 30 day log window rather than a persistent index. Dispute and bond mechanisms are designed for a later phase.
 
-Circle wallet sign-in:
+## Status
 
-```text
-NEXT_PUBLIC_CIRCLE_WALLETS_ENABLED=true
-NEXT_PUBLIC_CIRCLE_APP_ID=<circle-user-controlled-wallet-app-id>
-NEXT_PUBLIC_CIRCLE_GOOGLE_CLIENT_ID=<optional-google-oauth-client-id>
-NEXT_PUBLIC_CIRCLE_SOCIAL_REDIRECT_URI=<optional-social-redirect-uri>
-NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=<optional-walletconnect-project-id-for-rainbowkit>
-CIRCLE_API_KEY=<circle-api-key>
-```
+Presto Markets is a testnet application. It is not financial advice. Market assets have no guaranteed value on testnet. Do not use for real value transactions until audit findings, dispute paths, and production risk controls are complete and reviewed.
 
-Arc Testnet deployment:
+## Tech stack
 
-```text
-PrestoMarketFactory: 0xB5FA65ae7c76b2DeecA1906848e8805df6dCF807
-USDC collateral: 0x3600000000000000000000000000000000000000
-Deployment record: data/arc-testnet.json
-```
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 14, Tailwind CSS, TypeScript |
+| Blockchain | Arc Testnet, viem |
+| Wallets | Circle User Controlled Wallets, RainbowKit, wagmi |
+| Deployment | Vercel |
 
-## Safety Notes
+## Repository
 
-* Keep V1 public only.
-* Use USDC collateral first.
-* Do not add USYC yield accounting until reward and redemption math is separately audited.
-* Do not add autonomous AI resolution until resolver bonds, disputes, and failure paths are designed.
-* Treat `docs/PRODUCTION_HARDENING.md` as the release gate before real-value markets.
+github.com/Emperoar07/PrestoMarkets

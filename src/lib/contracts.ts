@@ -25,6 +25,16 @@ export const prestoMarketFactoryAbi = [
     ],
     outputs: [{ name: 'market', type: 'address' }],
   },
+  {
+    type: 'event',
+    name: 'MarketCreated',
+    inputs: [
+      { name: 'market', type: 'address', indexed: true },
+      { name: 'creator', type: 'address', indexed: true },
+      { name: 'resolver', type: 'address', indexed: false },
+      { name: 'marketKind', type: 'uint8', indexed: false },
+    ],
+  },
 ] as const;
 
 export const prestoMarketAbi = [
@@ -186,6 +196,46 @@ export const prestoMarketAbi = [
     stateMutability: 'nonpayable',
     inputs: [],
     outputs: [],
+  },
+  {
+    type: 'event',
+    name: 'SharesBought',
+    inputs: [
+      { name: 'buyer', type: 'address', indexed: true },
+      { name: 'recipient', type: 'address', indexed: true },
+      { name: 'outcome', type: 'uint8', indexed: true },
+      { name: 'amount', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'Claimed',
+    inputs: [
+      { name: 'user', type: 'address', indexed: true },
+      { name: 'amount', type: 'uint256', indexed: false },
+      { name: 'fee', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'Refunded',
+    inputs: [
+      { name: 'user', type: 'address', indexed: true },
+      { name: 'amount', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'Resolved',
+    inputs: [
+      { name: 'outcome', type: 'uint8', indexed: true },
+      { name: 'resolutionURI', type: 'string', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'Canceled',
+    inputs: [],
   },
 ] as const;
 

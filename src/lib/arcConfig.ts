@@ -26,6 +26,12 @@ export function getArcConfig() {
   };
 }
 
+export function getArcChainId(): number {
+  const config = getArcConfig();
+  const parsed = parseInt(config.chainId, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5042002;
+}
+
 export function getArcReadinessItems(): ArcReadinessItem[] {
   const config = getArcConfig();
 

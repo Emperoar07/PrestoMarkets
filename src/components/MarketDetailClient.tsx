@@ -70,7 +70,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
       <SiteHeader />
       <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-28 md:px-7">
         <div className="grid gap-6 lg:grid-cols-[1fr_390px]">
-          <section className="rounded-[18px] border border-white/[0.06] bg-[#11191f] p-6">
+          <section>
             <div className="flex flex-wrap items-center gap-3">
               <span className="rounded-full border border-cyan/30 bg-cyan/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-cyan">
                 {market.type}
@@ -120,12 +120,12 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             <div className="mt-8 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-6">
               <h2 className="text-xl font-black text-white">Resolution rules</h2>
               <p className="mt-3 leading-7 text-muted">{market.rules}</p>
-              <div className="mt-5 grid gap-3 md:grid-cols-2">
-                <div className="rounded-[14px] border border-white/[0.06] bg-[#141e30] p-4">
+              <div className="mt-5 grid gap-x-10 gap-y-5 border-t border-white/[0.06] pt-5 md:grid-cols-2">
+                <div>
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Source of truth</p>
                   <p className="mt-2 text-sm leading-6 text-white">{market.sourceOfTruth}</p>
                 </div>
-                <div className="rounded-[14px] border border-white/[0.06] bg-[#141e30] p-4">
+                <div>
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Resolver</p>
                   <p className="mt-2 break-all text-sm leading-6 text-white">{market.resolverAddress || market.resolver}</p>
                   <p className="mt-1 text-sm text-cyan">{market.resolutionMode}</p>
@@ -134,9 +134,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             </div>
             <div className="mt-8 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-6">
               <h2 className="text-xl font-black text-white">Market activity</h2>
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div className="mt-5 grid gap-x-10 gap-y-5 border-t border-white/[0.06] pt-5 md:grid-cols-3">
                 {market.activity.map((item) => (
-                  <div key={item.label} className="rounded-[14px] border border-white/[0.06] bg-[#141e30] p-4">
+                  <div key={item.label}>
                     <p className="text-sm text-muted">{item.label}</p>
                     <p className="mt-1 text-2xl font-black text-white">{item.value}</p>
                   </div>
@@ -158,8 +158,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     {market.status}
                   </span>
                 </div>
-                <div className="mt-5 grid gap-3 md:grid-cols-3">
-                  <div className="rounded-[14px] border border-white/[0.06] bg-[#141e30] p-4">
+                <div className="mt-5 grid gap-x-10 gap-y-5 border-t border-white/[0.06] pt-5 md:grid-cols-3">
+                  <div>
                     <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Evidence URI</p>
                     {market.resolutionURI ? (
                       <a
@@ -174,7 +174,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                       <p className="mt-2 text-sm leading-6 text-muted">No resolver evidence URI was recorded.</p>
                     )}
                   </div>
-                  <div className="rounded-[14px] border border-white/[0.06] bg-[#141e30] p-4">
+                  <div>
                     <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Connected wallet</p>
                     <p className="mt-2 text-sm leading-6 text-white">
                       {connectedWallet
@@ -188,7 +188,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                         : 'Connect a wallet to check claim or refund status.'}
                     </p>
                   </div>
-                  <div className="rounded-[14px] border border-white/[0.06] bg-[#141e30] p-4">
+                  <div>
                     <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Audit trail</p>
                     <p className="mt-2 text-sm leading-6 text-muted">
                       The final outcome, evidence URI, claim preview, and refund preview are read from the live Arc market contract.
@@ -236,8 +236,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <span className="mt-1 block text-sm text-muted">{noOutcome.liquidity} liquidity</span>
               </button>
             </div>
-            <div className="mt-5 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-4">
-              <label className="text-sm font-bold text-muted">Amount USDC</label>
+            <div className="mt-5 border-t border-white/[0.06] pt-5">
+              <label className="text-xs font-black uppercase tracking-[0.16em] text-muted">Amount USDC</label>
               <input
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}
@@ -246,7 +246,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 inputMode="decimal"
               />
             </div>
-            <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-4">
+            <div className="mt-5 border-t border-white/[0.06] pt-5">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Trade preview</p>
               <div className="mt-3 flex items-center justify-between text-sm text-muted">
                 <span>Selected outcome</span>
@@ -260,8 +260,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <span>Estimated shares</span>
                 <span className="font-black text-white">{estimatedShares.toFixed(2)}</span>
               </div>
+              <p className="mt-3 text-xs leading-5 text-muted">
+                Presto uses a fixed share model. Positions cannot be sold or exited before the market settles. You hold shares until the resolver closes the market and publishes an outcome.
+              </p>
             </div>
-            <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-4">
+            <div className="mt-5 border-t border-white/[0.06] pt-5">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Your position</p>
               {connectedWallet ? (
                 <>
@@ -294,7 +297,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             >
               {canTrade ? `${isSubmitting ? 'Submitting...' : `Buy ${selectedOutcome} on Arc`}` : 'Market Not Open'}
             </button>
-            <div className="mt-5 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-4">
+            <div className="mt-5 border-t border-white/[0.06] pt-5">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Settlement actions</p>
               <p className="mt-2 text-sm leading-6 text-muted">
                 {connectedWallet
@@ -307,14 +310,14 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 value={resolutionURI}
                 onChange={(event) => setResolutionURI(event.target.value)}
                 placeholder="Resolution evidence URI"
-                className="mt-3 w-full rounded-[10px] border border-white/[0.06] bg-[#141e30] px-3 py-2 text-sm text-white outline-none focus:border-cyan/50"
+                className="mt-3 w-full rounded-[10px] border border-white/[0.06] bg-[#0f172a] px-3 py-2 text-sm text-white outline-none focus:border-cyan/50"
               />
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => void runAction(() => resolveMarket({ marketId, outcome: selectedOutcome, resolutionURI }))}
                   disabled={isSubmitting || !canUseResolverActions || !resolutionURI.trim()}
-                  className="rounded-xl border border-white/[0.06] bg-panel2 px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-xl border border-white/[0.06] bg-[#0f172a] px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Resolve {selectedOutcome}
                 </button>
@@ -322,7 +325,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   type="button"
                   onClick={() => void runAction(() => cancelMarket(marketId))}
                   disabled={isSubmitting || !canUseResolverActions}
-                  className="rounded-xl border border-white/[0.06] bg-panel2 px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-xl border border-white/[0.06] bg-[#0f172a] px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Cancel
                 </button>
@@ -330,7 +333,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   type="button"
                   onClick={() => void runAction(() => claimMarket(marketId))}
                   disabled={isSubmitting || !canClaim}
-                  className="rounded-xl border border-white/[0.06] bg-panel2 px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-xl border border-white/[0.06] bg-[#0f172a] px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Claim
                 </button>
@@ -338,7 +341,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   type="button"
                   onClick={() => void runAction(() => refundMarket(marketId))}
                   disabled={isSubmitting || !canRefund}
-                  className="rounded-xl border border-white/[0.06] bg-panel2 px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-xl border border-white/[0.06] bg-[#0f172a] px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Refund
                 </button>

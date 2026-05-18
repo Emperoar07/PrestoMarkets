@@ -107,19 +107,17 @@ export default function RoadmapPage() {
             <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Circle product rails</p>
             <h2 className="mt-2 text-2xl font-black text-white">Current and planned integrations</h2>
           </div>
-          <div className="grid gap-4 p-6 md:grid-cols-2">
+          <div className="divide-y divide-white/[0.06]">
             {productRails.map((rail) => (
-              <div key={rail.name} className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="text-lg font-black text-white">{rail.name}</h3>
-                    <p className="mt-1 text-sm font-bold text-cyan">{rail.purpose}</p>
-                  </div>
-                  <span className={`rounded-full border px-3 py-1 text-xs font-black ${statusStyle[rail.status]}`}>
-                    {rail.status}
-                  </span>
+              <div key={rail.name} className="flex items-start justify-between gap-6 p-6">
+                <div>
+                  <h3 className="text-lg font-black text-white">{rail.name}</h3>
+                  <p className="mt-1 text-sm font-bold text-cyan">{rail.purpose}</p>
+                  <p className="mt-3 text-sm leading-6 text-muted">{rail.note}</p>
                 </div>
-                <p className="mt-4 text-sm leading-6 text-muted">{rail.note}</p>
+                <span className={`shrink-0 rounded-full border px-3 py-1 text-xs font-black ${statusStyle[rail.status]}`}>
+                  {rail.status}
+                </span>
               </div>
             ))}
           </div>
@@ -134,19 +132,19 @@ export default function RoadmapPage() {
             </p>
           </div>
 
-          <div className="border-b border-line p-6">
-            <h3 className="text-sm font-black uppercase tracking-[0.18em] text-[#94a3b8]">Internal contract review findings</h3>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="border-b border-line">
+            <h3 className="px-6 pt-6 text-sm font-black uppercase tracking-[0.18em] text-[#94a3b8]">Internal contract review findings</h3>
+            <div className="divide-y divide-white/[0.06]">
               {contractAuditFindings.map((item) => (
-                <div key={item.area} className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-4">
-                  <div className="flex items-start justify-between gap-3">
+                <div key={item.area} className="flex items-start justify-between gap-4 p-6">
+                  <div>
                     <h4 className="text-sm font-black text-white">{item.area}</h4>
-                    <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black ${severityStyle[item.severity]}`}>
-                      {item.severity}
-                    </span>
+                    <p className="mt-3 text-sm leading-6 text-muted">{item.finding}</p>
+                    <p className="mt-3 text-sm font-bold leading-6 text-[#dbeafe]">{item.requiredAction}</p>
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-muted">{item.finding}</p>
-                  <p className="mt-3 text-sm font-bold leading-6 text-[#dbeafe]">{item.requiredAction}</p>
+                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black ${severityStyle[item.severity]}`}>
+                    {item.severity}
+                  </span>
                 </div>
               ))}
             </div>
@@ -171,16 +169,16 @@ function HardeningGroup(input: {
   return (
     <div>
       <h3 className="text-sm font-black uppercase tracking-[0.18em] text-[#94a3b8]">{input.title}</h3>
-      <div className="mt-4 grid gap-3">
+      <div className="mt-4 divide-y divide-white/[0.06] rounded-[16px] border border-white/[0.06]">
         {input.items.map((item) => (
-          <div key={item.title} className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-4">
+          <div key={item.title} className="p-4">
             <div className="flex items-start justify-between gap-3">
               <h4 className="text-sm font-black text-white">{item.title}</h4>
-              <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black ${hardeningStatusStyle[item.status]}`}>
+              <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black ${hardeningStatusStyle[item.status]}`}>
                 {item.status}
               </span>
             </div>
-            <p className="mt-3 text-sm leading-6 text-muted">{item.summary}</p>
+            <p className="mt-2 text-sm leading-6 text-muted">{item.summary}</p>
           </div>
         ))}
       </div>

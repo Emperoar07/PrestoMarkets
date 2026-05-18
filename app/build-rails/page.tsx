@@ -30,27 +30,25 @@ export default function BuildRailsPage() {
           Presto Markets reads from the deployed Arc factory, submits live market transactions, and now supports Circle app-native onboarding plus inline RainbowKit external wallets.
         </p>
 
-        <section className="mt-9 rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Current</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {currentRails.map((rail) => (
-                  <span key={rail.name} className="rounded-full border border-mint/25 bg-mint/10 px-3 py-1 text-xs font-black text-mint">
-                    {rail.name}
-                  </span>
-                ))}
-              </div>
+        <section className="mt-9 grid gap-4 md:grid-cols-2">
+          <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-5">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Current</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {currentRails.map((rail) => (
+                <span key={rail.name} className="rounded-full border border-mint/25 bg-mint/10 px-3 py-1 text-xs font-black text-mint">
+                  {rail.name}
+                </span>
+              ))}
             </div>
-            <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Planned</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {plannedRails.map((rail) => (
-                  <span key={rail.name} className="rounded-full border border-line bg-panel2 px-3 py-1 text-xs font-black text-muted">
-                    {rail.name}
-                  </span>
-                ))}
-              </div>
+          </div>
+          <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-5">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Planned</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {plannedRails.map((rail) => (
+                <span key={rail.name} className="rounded-full border border-line bg-panel2 px-3 py-1 text-xs font-black text-muted">
+                  {rail.name}
+                </span>
+              ))}
             </div>
           </div>
         </section>

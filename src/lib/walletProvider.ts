@@ -187,7 +187,7 @@ export async function completePendingCircleSocialLogin(): Promise<ConnectedWalle
     setStoredConnectedWallet(wallet);
     return wallet;
   } finally {
-    window.localStorage.removeItem(pendingCircleSocialLoginKey);
+    window.sessionStorage.removeItem(pendingCircleSocialLoginKey);
   }
 }
 
@@ -276,7 +276,7 @@ async function connectCircleSocialWallet(provider: CircleSocialProvider): Promis
     redirectUri: socialConfig.redirectUri,
   };
 
-  window.localStorage.setItem(pendingCircleSocialLoginKey, JSON.stringify(pending));
+  window.sessionStorage.setItem(pendingCircleSocialLoginKey, JSON.stringify(pending));
 
   const sdk = createStyledCircleSdk(new W3SSdk({
     appSettings: { appId: config.appId },
@@ -505,7 +505,7 @@ function getCircleSocialRedirectUri() {
 
 function getPendingCircleSocialLogin() {
   try {
-    const stored = window.localStorage.getItem(pendingCircleSocialLoginKey);
+    const stored = window.sessionStorage.getItem(pendingCircleSocialLoginKey);
     return stored ? JSON.parse(stored) as PendingCircleSocialLogin : null;
   } catch {
     return null;

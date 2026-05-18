@@ -3,16 +3,13 @@ import {
   formatUnits,
   http,
   isAddress,
-  parseAbiItem,
   type Address,
 } from 'viem';
-import { getArcConfig } from './arcConfig';
+import { getArcConfig, getArcChainId } from './arcConfig';
 import { prestoMarketAbi } from './contracts';
 import type { AppMarket } from './appState';
 import type { PortfolioActivity, Position } from './portfolio';
-
-const ARC_CHAIN_ID = 5042002;
-const activityBlockWindow = BigInt(10_000);
+const activityBlockWindow = BigInt(2_592_000);
 
 export type AccountMarketPreview = {
   marketId: string;
@@ -29,9 +26,9 @@ export type AccountPortfolioSnapshot = {
   previews: Record<string, AccountMarketPreview>;
 };
 
-const sharesBoughtEvent = parseAbiItem('event SharesBought(address indexed buyer, address indexed recipient, uint8 indexed outcome, uint256 amount)');
-const claimedEvent = parseAbiItem('event Claimed(address indexed user, uint256 amount, uint256 fee)');
-const refundedEvent = parseAbiItem('event Refunded(address indexed user, uint256 amount)');
+const sharesBoughtEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'SharesBought')!;
+const claimedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'Claimed')!;
+const refundedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'Refunded')!;
 
 function formatUsdc(value: bigint) {
   return `$${Number(formatUnits(value, 6)).toFixed(2)}`;
@@ -56,11 +53,12 @@ function getPositionValuation(input: {
   market: AppMarket;
   outcome: 'YES' | 'NO';
   shares: bigint;
+  costBasis: number;
   claimable: bigint;
   refundable: bigint;
   hasClaimed: boolean;
 }) {
-  const costBasis = toUsdcNumber(input.shares);
+  const costBasis = input.costBasis;
   const outcomeOdds = (input.market.outcomes.find((item) => item.label === input.outcome)?.odds ?? 50) / 100;
 
   if (input.claimable > BigInt(0)) {
@@ -110,7 +108,7 @@ function createClient() {
 
   return createPublicClient({
     chain: {
-      id: ARC_CHAIN_ID,
+      id: getArcChainId(),
       name: 'Arc Testnet',
       nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
       rpcUrls: {
@@ -119,6 +117,28 @@ function createClient() {
     },
     transport: http(config.rpcUrl),
   });
+}
+
+async function fetchMarketCostBasis(
+  client: ReturnType<typeof createPublicClient>,
+  marketAddress: Address,
+  account: Address,
+): Promise<{ yes: number; no: number }> {
+  const logs = await client.getLogs({
+    address: marketAddress,
+    event: sharesBoughtEvent,
+    args: { recipient: account },
+    fromBlock: BigInt(0),
+  }).catch(() => []);
+
+  let yes = 0;
+  let no = 0;
+  for (const log of logs) {
+    const amount = toUsdcNumber(log.args.amount ?? BigInt(0));
+    if (log.args.outcome === 0) yes += amount;
+    else no += amount;
+  }
+  return { yes, no };
 }
 
 export async function fetchAccountPortfolio(markets: AppMarket[], accountAddress?: string | null): Promise<AccountPortfolioSnapshot> {
@@ -141,12 +161,13 @@ export async function fetchAccountPortfolio(markets: AppMarket[], accountAddress
     if (!isAddress(market.id)) return;
 
     const address = market.id as Address;
-    const [yesShares, noShares, claimPreview, refundable, hasClaimed] = await Promise.all([
+    const [yesShares, noShares, claimPreview, refundable, hasClaimed, costBasis] = await Promise.all([
       client.readContract({ address, abi: prestoMarketAbi, functionName: 'sharesOf', args: [0, account] }),
       client.readContract({ address, abi: prestoMarketAbi, functionName: 'sharesOf', args: [1, account] }),
       client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewClaim', args: [account] }),
       client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewRefund', args: [account] }),
       client.readContract({ address, abi: prestoMarketAbi, functionName: 'claimed', args: [account] }),
+      fetchMarketCostBasis(client, address, account),
     ]);
     const claimable = claimPreview[0];
 
@@ -168,6 +189,7 @@ export async function fetchAccountPortfolio(markets: AppMarket[], accountAddress
         market,
         outcome,
         shares,
+        costBasis: outcome === 'YES' ? costBasis.yes : costBasis.no,
         claimable: market.winningOutcomeLabel === outcome ? claimable : BigInt(0),
         refundable: market.status === 'Canceled' ? shares : BigInt(0),
         hasClaimed,
