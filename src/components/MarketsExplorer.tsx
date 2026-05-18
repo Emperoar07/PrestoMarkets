@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { MarketCard } from './MarketCard';
 import { useAppState } from '@/lib/appState';
-import { primaryViewCategories, topicNavCategories, topicMarketCategories } from '@/lib/categories';
+import { topicMarketCategories } from '@/lib/categories';
 import type { AppMarket } from '@/lib/appState';
 
 type SortKey = 'volume' | 'ending' | 'newest';
@@ -18,9 +18,7 @@ function parseVolume(v: string): number {
 
 function sortMarkets(list: AppMarket[], sort: SortKey): AppMarket[] {
   const copy = [...list];
-  if (sort === 'volume') {
-    return copy.sort((a, b) => parseVolume(b.volume) - parseVolume(a.volume));
-  }
+  if (sort === 'volume') return copy.sort((a, b) => parseVolume(b.volume) - parseVolume(a.volume));
   if (sort === 'ending') {
     return copy.sort((a, b) => {
       const at = a.closeDate ? new Date(a.closeDate).getTime() : Infinity;
@@ -31,40 +29,53 @@ function sortMarkets(list: AppMarket[], sort: SortKey): AppMarket[] {
   return copy.reverse();
 }
 
-const searchEventName = 'presto:market-search';
+function getCatFromUrl() {
+  if (typeof window === 'undefined') return 'Trending';
+  return new URLSearchParams(window.location.search).get('cat') ?? 'Trending';
+}
 
 export function MarketsExplorer() {
   const { markets, isLoadingMarkets } = useAppState();
-  const [activeCategory, setActiveCategory] = useState('Trending');
+  const [activeCategory, setActiveCategory] = useState(getCatFromUrl);
   const [activeHotTopic, setActiveHotTopic] = useState('All');
   const [searchValue, setSearchValue] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('volume');
+  const [sortKey, setSortKey] = useState<SortKey>(() => {
+    const cat = getCatFromUrl();
+    return cat === 'Breaking' ? 'ending' : cat === 'New' ? 'newest' : 'volume';
+  });
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
 
-    function syncSearchFromUrl() {
-      setSearchValue(new URLSearchParams(window.location.search).get('q') ?? '');
+    function syncFromUrl() {
+      const cat = new URLSearchParams(window.location.search).get('cat') ?? 'Trending';
+      const q = new URLSearchParams(window.location.search).get('q') ?? '';
+      setActiveCategory(cat);
+      setSearchValue(q);
+      setSortKey(cat === 'Breaking' ? 'ending' : cat === 'New' ? 'newest' : 'volume');
     }
 
-    function syncSearchFromHeader(event: Event) {
+    function onCategoryChange(event: Event) {
+      const cat = (event as CustomEvent<string>).detail ?? 'Trending';
+      setActiveCategory(cat);
+      setActiveHotTopic('All');
+      setSortKey(cat === 'Breaking' ? 'ending' : cat === 'New' ? 'newest' : 'volume');
+    }
+
+    function onSearchChange(event: Event) {
       setSearchValue((event as CustomEvent<string>).detail ?? '');
     }
 
-    syncSearchFromUrl();
-    window.addEventListener('popstate', syncSearchFromUrl);
-    window.addEventListener(searchEventName, syncSearchFromHeader);
+    syncFromUrl();
+    window.addEventListener('popstate', syncFromUrl);
+    window.addEventListener('presto:category-change', onCategoryChange);
+    window.addEventListener('presto:market-search', onSearchChange);
     return () => {
-      window.removeEventListener('popstate', syncSearchFromUrl);
-      window.removeEventListener(searchEventName, syncSearchFromHeader);
+      window.removeEventListener('popstate', syncFromUrl);
+      window.removeEventListener('presto:category-change', onCategoryChange);
+      window.removeEventListener('presto:market-search', onSearchChange);
     };
   }, []);
-
-  function selectCategory(cat: string) {
-    setActiveCategory(cat);
-    setActiveHotTopic('All');
-    setSortKey(cat === 'Breaking' ? 'ending' : cat === 'New' ? 'newest' : 'volume');
-  }
 
   const filtered = markets.filter((market) => {
     const search = searchValue.trim().toLowerCase();
@@ -106,61 +117,10 @@ export function MarketsExplorer() {
     : `$${v.toFixed(0)}`;
 
   return (
-    <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-[66px] md:px-7">
-
-      {/* ── Polymarket-style combined nav row ── */}
-      <CategoryScroller className="border-b border-white/[0.06]">
-        <div className="flex items-center">
-          {/* Primary view tabs: Trending / Breaking / New */}
-          {primaryViewCategories.map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => selectCategory(cat)}
-              className={`flex min-w-fit items-center gap-1.5 px-4 py-4 text-[13px] font-bold transition-colors ${
-                activeCategory === cat && activeHotTopic === 'All'
-                  ? 'border-b-2 border-cyan text-white'
-                  : 'text-[#64748b] hover:text-[#94a3b8]'
-              }`}
-            >
-              {cat === 'Trending' ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
-                  <polyline points="17 6 23 6 23 12" />
-                </svg>
-              ) : cat === 'Breaking' ? (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="12" cy="12" r="10" opacity="0.3" />
-                  <circle cx="12" cy="12" r="5" />
-                </svg>
-              ) : null}
-              {cat}
-            </button>
-          ))}
-
-          {/* Divider */}
-          <div className="mx-1 h-5 w-px shrink-0 bg-white/[0.1]" />
-
-          {/* Topic nav tabs: Politics / Sports / Crypto … */}
-          {topicNavCategories.map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => selectCategory(cat)}
-              className={`min-w-fit px-4 py-4 text-[13px] font-bold transition-colors ${
-                activeCategory === cat && activeHotTopic === 'All'
-                  ? 'border-b-2 border-cyan text-white'
-                  : 'text-[#64748b] hover:text-[#94a3b8]'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-      </CategoryScroller>
+    <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-28 md:px-7">
 
       {/* Hot topic pills */}
-      <CategoryScroller className="border-b border-white/[0.04] py-2.5">
+      <HorizScroller className="border-b border-white/[0.04] pb-3">
         <div className="flex gap-1.5">
           {topicMarketCategories.map((cat) => (
             <button
@@ -177,7 +137,7 @@ export function MarketsExplorer() {
             </button>
           ))}
         </div>
-      </CategoryScroller>
+      </HorizScroller>
 
       {/* Stats + sort toolbar */}
       <div className="mt-4 flex items-center justify-between gap-4">
@@ -204,22 +164,18 @@ export function MarketsExplorer() {
             {searchValue ? ` for "${searchValue}"` : ''}
           </p>
           <div className="flex items-center gap-0.5 rounded-[10px] border border-white/[0.06] bg-[#0d1520] p-1">
-            {(['volume', 'Ending', 'Newest'] as const).map((k) => {
-              const key = k === 'Ending' ? 'ending' : k === 'Newest' ? 'newest' : 'volume' as SortKey;
-              const label = k === 'volume' ? 'Volume' : k;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setSortKey(key)}
-                  className={`rounded-[7px] px-3 py-1.5 text-xs font-bold transition-colors ${
-                    sortKey === key ? 'bg-[#1a2540] text-white' : 'text-[#4a5568] hover:text-[#94a3b8]'
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
+            {([['volume', 'Volume'], ['ending', 'Ending'], ['newest', 'Newest']] as [SortKey, string][]).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setSortKey(key)}
+                className={`rounded-[7px] px-3 py-1.5 text-xs font-bold transition-colors ${
+                  sortKey === key ? 'bg-[#1a2540] text-white' : 'text-[#4a5568] hover:text-[#94a3b8]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -273,12 +229,11 @@ export function MarketsExplorer() {
   );
 }
 
-function CategoryScroller({ children, className }: { children: ReactNode; className: string }) {
-  const scrollerRef = useRef<HTMLDivElement>(null);
-
+function HorizScroller({ children, className }: { children: ReactNode; className: string }) {
+  const ref = useRef<HTMLDivElement>(null);
   return (
     <section className={`relative ${className}`}>
-      <div ref={scrollerRef} className="scrollbar-hide overflow-x-auto">
+      <div ref={ref} className="scrollbar-hide overflow-x-auto">
         {children}
       </div>
     </section>

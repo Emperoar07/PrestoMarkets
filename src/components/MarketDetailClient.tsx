@@ -5,6 +5,7 @@ import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
 import { MarketSignalChart } from './MarketSignalChart';
 import { formatUsd, useAppState } from '@/lib/appState';
+import { agentResolutionGuardrails, buildAgentResolutionPrompt, buildAgentResolutionReport } from '@/lib/agentResolution';
 import type { MarketStatus } from '@/lib/markets';
 
 const statusStyle: Record<MarketStatus, string> = {
@@ -23,6 +24,15 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const [selectedOutcome, setSelectedOutcome] = useState<'YES' | 'NO'>('YES');
   const [amount, setAmount] = useState('25');
   const [resolutionURI, setResolutionURI] = useState('');
+  const [agentOutcome, setAgentOutcome] = useState<'YES' | 'NO' | 'CANCEL'>('YES');
+  const [agentConfidence, setAgentConfidence] = useState('Medium');
+  const [agentSources, setAgentSources] = useState('');
+  const [agentNotes, setAgentNotes] = useState('');
+  const [agentOperator, setAgentOperator] = useState('');
+  const [agentReport, setAgentReport] = useState('');
+  const [confirmSource, setConfirmSource] = useState(false);
+  const [confirmRules, setConfirmRules] = useState(false);
+  const [confirmHuman, setConfirmHuman] = useState(false);
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -58,7 +68,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const connectedAddress = connectedWallet?.address.toLowerCase();
   const resolverAddress = market.resolverAddress?.toLowerCase();
   const isResolver = Boolean(connectedAddress && resolverAddress && connectedAddress === resolverAddress);
-  const canUseResolverActions = isResolver && (market.status === 'Open' || market.status === 'Closing soon');
+  const isClosedForResolution = market.closeLabel === 'Closed';
+  const canAccessResolverActions = isResolver && !hasSettlementRecord;
+  const canUseResolverActions = canAccessResolverActions && isClosedForResolution;
+  const resolverChecksPassed = confirmSource && confirmRules && confirmHuman;
+  const canSubmitResolution = canUseResolverActions && resolverChecksPassed && Boolean(resolutionURI.trim());
 
   async function runAction(action: () => Promise<{ ok: boolean; message: string; txHash?: string }>) {
     setIsSubmitting(true);
@@ -68,10 +82,31 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     setMessage(result.message);
   }
 
+  function prepareAgentReport() {
+    if (!market) return;
+    if (!agentSources.trim() || !agentNotes.trim()) {
+      setMessage('Add source links and agent findings before preparing a resolution report.');
+      return;
+    }
+
+    const prepared = buildAgentResolutionReport({
+      market,
+      outcome: agentOutcome,
+      confidence: agentConfidence,
+      evidenceNotes: agentNotes,
+      evidenceSources: agentSources,
+      operator: agentOperator,
+    });
+
+    setAgentReport(prepared.pretty);
+    setResolutionURI(prepared.dataUri);
+    setMessage('Agent evidence report prepared. Review it, then confirm the resolver checks before settling.');
+  }
+
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-24 md:px-7">
+      <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-28 md:px-7">
         <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
 
           {/* ── Left column ── */}
@@ -418,22 +453,148 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   {market.resolverAddress || market.resolver}
                 </p>
 
-                {canUseResolverActions ? (
-                  <div className="mt-4 space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-muted">
+                {canAccessResolverActions ? (
+                  <div className="mt-4 space-y-4">
+                    <div className="rounded-[14px] border border-cyan/20 bg-cyan/[0.06] p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-cyan">Agent powered resolution</p>
+                          <p className="mt-1 text-xs leading-5 text-muted">
+                            Use Circle Agent Stack or another controlled agent to gather evidence. The resolver still signs the final Arc transaction.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void navigator.clipboard?.writeText(buildAgentResolutionPrompt(market));
+                            setMessage('Agent research prompt copied. Run it with your controlled Circle Agent workflow, then paste the findings here.');
+                          }}
+                          className="rounded-[10px] border border-cyan/25 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-cyan transition-colors hover:bg-cyan/10"
+                        >
+                          Copy agent prompt
+                        </button>
+                      </div>
+
+                      <div className="mt-4 grid gap-2 md:grid-cols-3">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-muted">
+                          Proposed outcome
+                          <select
+                            value={agentOutcome}
+                            onChange={(event) => setAgentOutcome(event.target.value as 'YES' | 'NO' | 'CANCEL')}
+                            className="mt-1 w-full rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan/40"
+                          >
+                            <option value="YES">YES</option>
+                            <option value="NO">NO</option>
+                            <option value="CANCEL">Cancel</option>
+                          </select>
+                        </label>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-muted">
+                          Confidence
+                          <select
+                            value={agentConfidence}
+                            onChange={(event) => setAgentConfidence(event.target.value)}
+                            className="mt-1 w-full rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan/40"
+                          >
+                            <option>High</option>
+                            <option>Medium</option>
+                            <option>Low</option>
+                          </select>
+                        </label>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-muted">
+                          Operator
+                          <input
+                            value={agentOperator}
+                            onChange={(event) => setAgentOperator(event.target.value)}
+                            placeholder="Resolver or agent name"
+                            className="mt-1 w-full rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan/40 placeholder:text-[#334155]"
+                          />
+                        </label>
+                      </div>
+
+                      <label className="mt-3 block text-[10px] font-black uppercase tracking-widest text-muted">
+                        Source links
+                        <textarea
+                          value={agentSources}
+                          onChange={(event) => setAgentSources(event.target.value)}
+                          placeholder="One primary source URL per line"
+                          rows={3}
+                          className="mt-1 w-full resize-none rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan/40 placeholder:text-[#334155]"
+                        />
+                      </label>
+
+                      <label className="mt-3 block text-[10px] font-black uppercase tracking-widest text-muted">
+                        Agent findings
+                        <textarea
+                          value={agentNotes}
+                          onChange={(event) => setAgentNotes(event.target.value)}
+                          placeholder="Paste the agent evidence summary, timestamps, and uncertainty notes."
+                          rows={4}
+                          className="mt-1 w-full resize-none rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan/40 placeholder:text-[#334155]"
+                        />
+                      </label>
+
+                      <div className="mt-3 rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted">Strict instructions</p>
+                        <ul className="mt-2 space-y-1.5 text-xs leading-5 text-muted">
+                          {agentResolutionGuardrails.map((guardrail) => (
+                            <li key={guardrail}>- {guardrail}</li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={prepareAgentReport}
+                        className="mt-3 w-full rounded-[10px] bg-cyan py-2.5 text-xs font-black text-ink transition-opacity hover:opacity-90"
+                      >
+                        Prepare agent evidence report
+                      </button>
+
+                      {agentReport ? (
+                        <details className="mt-3 rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-3">
+                          <summary className="cursor-pointer text-[10px] font-black uppercase tracking-widest text-cyan">
+                            Review generated report
+                          </summary>
+                          <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-5 text-muted">
+                            {agentReport}
+                          </pre>
+                        </details>
+                      ) : null}
+                    </div>
+
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-muted">
                       Evidence URI
+                      <input
+                        value={resolutionURI}
+                        onChange={(e) => setResolutionURI(e.target.value)}
+                        placeholder="https://evidence.example/resolution or generated agent data URI"
+                        className="mt-1 w-full rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-2.5 text-sm text-white outline-none transition-colors focus:border-cyan/40 placeholder:text-[#334155]"
+                      />
                     </label>
-                    <input
-                      value={resolutionURI}
-                      onChange={(e) => setResolutionURI(e.target.value)}
-                      placeholder="https://evidence.example/resolution"
-                      className="mt-1 w-full rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-2.5 text-sm text-white outline-none transition-colors focus:border-cyan/40 placeholder:text-[#334155]"
-                    />
-                    <div className="grid grid-cols-2 gap-2 pt-1">
+
+                    <div className="space-y-2 rounded-[14px] border border-white/[0.06] bg-[#0d1520] p-3">
+                      {[
+                        ['source', 'I verified the source of truth and primary evidence links.', confirmSource, setConfirmSource],
+                        ['rules', 'The selected outcome follows the written market rules exactly.', confirmRules, setConfirmRules],
+                        ['human', 'I understand the agent is advisory and the resolver is accountable for this final transaction.', confirmHuman, setConfirmHuman],
+                      ].map(([key, label, checked, setter]) => (
+                        <label key={key as string} className="flex items-start gap-2 text-xs leading-5 text-muted">
+                          <input
+                            type="checkbox"
+                            checked={checked as boolean}
+                            onChange={(event) => (setter as (value: boolean) => void)(event.target.checked)}
+                            className="mt-1 accent-cyan"
+                          />
+                          <span>{label as string}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => void runAction(() => resolveMarket({ marketId, outcome: 'YES', resolutionURI }))}
-                        disabled={isSubmitting || !resolutionURI.trim()}
+                        disabled={isSubmitting || !canSubmitResolution}
                         className="rounded-[10px] bg-cyan/10 py-2.5 text-xs font-black text-cyan ring-1 ring-cyan/25 transition-all hover:bg-cyan/15 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         Resolve YES
@@ -441,7 +602,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                       <button
                         type="button"
                         onClick={() => void runAction(() => resolveMarket({ marketId, outcome: 'NO', resolutionURI }))}
-                        disabled={isSubmitting || !resolutionURI.trim()}
+                        disabled={isSubmitting || !canSubmitResolution}
                         className="rounded-[10px] bg-red-400/10 py-2.5 text-xs font-black text-red-300 ring-1 ring-red-400/20 transition-all hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         Resolve NO
@@ -450,15 +611,22 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     <button
                       type="button"
                       onClick={() => void runAction(() => cancelMarket(marketId))}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || !resolverChecksPassed || !isClosedForResolution}
                       className="w-full rounded-[10px] border border-white/[0.06] bg-[#0d1520] py-2.5 text-xs font-black text-muted transition-all hover:border-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Cancel market
                     </button>
+                    {!isClosedForResolution ? (
+                      <p className="text-xs leading-5 text-muted">
+                        Settlement buttons stay locked until the market close time. You can prepare the agent evidence report now.
+                      </p>
+                    ) : null}
                   </div>
                 ) : (
                   <p className="mt-2 text-xs leading-5 text-muted">
-                    {connectedWallet
+                    {isResolver && !isClosedForResolution
+                      ? 'Resolution unlocks after the market close time. You can prepare evidence now, but settlement must wait.'
+                      : connectedWallet
                       ? 'Only the resolver wallet can settle or cancel this market.'
                       : 'Connect the resolver wallet to access settlement controls.'}
                   </p>
