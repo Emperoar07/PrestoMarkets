@@ -6,6 +6,7 @@ import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
 import type { MarketType, ResolutionMode } from '@/lib/markets';
 import { useAppState } from '@/lib/appState';
+import { createMarketCategories } from '@/lib/categories';
 
 const marketTypes: MarketType[] = ['Prediction', 'Opinion', 'Opportunity'];
 const resolutionModes: ResolutionMode[] = ['Human resolver', 'Community resolver', 'Agent assisted'];
@@ -110,7 +111,7 @@ export function CreateMarketBuilder() {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-[1140px] px-4 pb-16 pt-28 md:px-7">
+      <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-28 md:px-7">
         <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Create</p>
         <h1 className="mt-3 text-[clamp(34px,5vw,54px)] font-black tracking-tight text-white">Launch a public market</h1>
         <p className="mt-3 max-w-3xl text-[14px] leading-[1.7] text-muted">
@@ -168,11 +169,18 @@ export function CreateMarketBuilder() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <label className="text-sm font-bold text-muted">Category</label>
-                    <input
+                    <select
                       value={category}
                       onChange={(event) => setCategory(event.target.value)}
                       className="mt-2 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
-                    />
+                    >
+                      <option value="">Choose category</option>
+                      {createMarketCategories.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="text-sm font-bold text-muted">Resolution mode</label>

@@ -1,15 +1,37 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { MarketCard } from './MarketCard';
 import { useAppState } from '@/lib/appState';
+import { primaryMarketCategories, topicMarketCategories } from '@/lib/categories';
 
-const filters = ['All', 'Prediction', 'Opinion', 'Opportunity', 'Open', 'Closing soon', 'Resolved', 'Canceled', 'Onchain'];
+const categoryEventName = 'presto:market-search';
 
 export function MarketsExplorer() {
   const { markets } = useAppState();
-  const [activeFilter, setActiveFilter] = useState('All');
+  const [activePrimaryCategory, setActivePrimaryCategory] = useState('Trending');
+  const [activeTopicCategory, setActiveTopicCategory] = useState('All');
   const [searchValue, setSearchValue] = useState('');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    function syncSearchFromUrl() {
+      setSearchValue(new URLSearchParams(window.location.search).get('q') ?? '');
+    }
+
+    function syncSearchFromHeader(event: Event) {
+      setSearchValue((event as CustomEvent<string>).detail ?? '');
+    }
+
+    syncSearchFromUrl();
+    window.addEventListener('popstate', syncSearchFromUrl);
+    window.addEventListener(categoryEventName, syncSearchFromHeader);
+    return () => {
+      window.removeEventListener('popstate', syncSearchFromUrl);
+      window.removeEventListener(categoryEventName, syncSearchFromHeader);
+    };
+  }, []);
 
   const visibleMarkets = markets.filter((market) => {
     const search = searchValue.trim().toLowerCase();
@@ -22,23 +44,33 @@ export function MarketsExplorer() {
       return false;
     }
 
-    if (activeFilter === 'All') {
+    if (activeTopicCategory !== 'All') {
+      const topic = activeTopicCategory.toLowerCase();
+      return market.title.toLowerCase().includes(topic)
+        || market.description.toLowerCase().includes(topic)
+        || market.category.toLowerCase().includes(topic);
+    }
+
+    if (activePrimaryCategory === 'Trending') {
       return true;
     }
 
-    if (activeFilter === 'Onchain') {
-      return market.source === 'onchain';
+    if (activePrimaryCategory === 'Breaking') {
+      return market.status === 'Closing soon' || market.status === 'Open';
     }
 
-    if (activeFilter === market.type || activeFilter === market.status) {
+    if (activePrimaryCategory === 'New') {
       return true;
     }
 
-    return false;
+    const primary = activePrimaryCategory.toLowerCase();
+    return market.category.toLowerCase().includes(primary)
+      || market.title.toLowerCase().includes(primary)
+      || market.description.toLowerCase().includes(primary);
   });
 
   return (
-    <main className="mx-auto max-w-[1140px] px-4 pb-16 pt-28 md:px-7">
+    <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-28 md:px-7">
       <div className="mx-auto max-w-3xl text-center">
         <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Explore</p>
         <h1 className="mt-3 text-[clamp(38px,6vw,64px)] font-black tracking-tight text-white">Presto Markets</h1>
@@ -47,39 +79,42 @@ export function MarketsExplorer() {
         </p>
       </div>
 
-      <section className="mt-9 border-y border-white/[0.06] py-3">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex gap-2 overflow-x-auto pb-1 lg:pb-0">
-            {filters.map((filter, index) => (
+      <CategoryScroller className="mt-9 border-y border-white/[0.06] py-3">
+        <div className="flex gap-7 pb-1 text-sm font-black text-[#8fa0b4]">
+          {primaryMarketCategories.map((category) => (
+            <button
+              key={category}
+              type="button"
+              onClick={() => {
+                setActivePrimaryCategory(category);
+                setActiveTopicCategory('All');
+              }}
+              className={`min-w-fit transition-colors hover:text-white ${activePrimaryCategory === category && activeTopicCategory === 'All' ? 'text-white' : ''}`}
+            >
+              {category}
+            </button>
+          ))}
+        </div>
+      </CategoryScroller>
+
+      <CategoryScroller className="border-b border-white/[0.06] py-4">
+        <div className="flex gap-4 pb-1">
+          {topicMarketCategories.map((category) => (
               <button
-                key={filter}
+                key={category}
                 type="button"
-                onClick={() => setActiveFilter(filter)}
-                className={`group flex min-w-fit items-center gap-2 rounded-[12px] border px-3 py-2 text-sm font-black transition-colors ${
-                  activeFilter === filter
-                    ? 'border-cyan/45 bg-cyan/15 text-white'
-                    : 'border-transparent text-[#8fa0b4] hover:border-white/[0.08] hover:bg-white/[0.04] hover:text-white'
+                onClick={() => setActiveTopicCategory(category)}
+                className={`min-w-fit rounded-[8px] px-4 py-2 text-sm font-black transition-colors ${
+                  activeTopicCategory === category
+                    ? 'bg-[#123f5c] text-cyan'
+                    : 'text-[#8fa0b4] hover:bg-white/[0.04] hover:text-white'
                 }`}
               >
-                <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${
-                  activeFilter === filter ? 'bg-cyan text-ink' : 'bg-[#1b252d] text-[#8fa0b4] group-hover:text-white'
-                }`}>
-                  {index + 1}
-                </span>
-                {filter}
+                {category}
               </button>
             ))}
-          </div>
-          <div className="w-full lg:max-w-[320px]">
-            <input
-              value={searchValue}
-              onChange={(event) => setSearchValue(event.target.value)}
-              placeholder="Search markets"
-              className="w-full rounded-[12px] border border-white/[0.06] bg-[#11191f] px-4 py-2.5 text-sm font-bold text-white outline-none transition-colors placeholder:text-[#64748b] focus:border-cyan/50"
-            />
-          </div>
         </div>
-      </section>
+      </CategoryScroller>
 
       <div className="mt-7 flex items-center justify-between">
         <div>
@@ -102,5 +137,40 @@ export function MarketsExplorer() {
         </div>
       )}
     </main>
+  );
+}
+
+function CategoryScroller({ children, className }: { children: ReactNode; className: string }) {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+
+  function scrollByAmount(direction: 'left' | 'right') {
+    scrollerRef.current?.scrollBy({
+      left: direction === 'left' ? -320 : 320,
+      behavior: 'smooth',
+    });
+  }
+
+  return (
+    <section className={`group relative ${className}`}>
+      <button
+        type="button"
+        onClick={() => scrollByAmount('left')}
+        className="absolute left-0 top-1/2 z-10 flex h-full w-12 -translate-y-1/2 items-center justify-start bg-gradient-to-r from-[#090e1a] to-transparent pl-1 text-2xl font-black text-white opacity-0 transition-opacity group-hover:opacity-0 hover:opacity-100"
+        aria-label="Scroll categories left"
+      >
+        ‹
+      </button>
+      <div ref={scrollerRef} className="scrollbar-hide overflow-x-auto">
+        {children}
+      </div>
+      <button
+        type="button"
+        onClick={() => scrollByAmount('right')}
+        className="absolute right-0 top-1/2 z-10 flex h-full w-12 -translate-y-1/2 items-center justify-end bg-gradient-to-l from-[#090e1a] to-transparent pr-1 text-2xl font-black text-white opacity-0 transition-opacity group-hover:opacity-0 hover:opacity-100"
+        aria-label="Scroll categories right"
+      >
+        ›
+      </button>
+    </section>
   );
 }

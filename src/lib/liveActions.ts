@@ -10,6 +10,7 @@ import {
 } from 'viem';
 import { getArcConfig } from './arcConfig';
 import { erc20Abi, prestoMarketAbi, prestoMarketFactoryAbi } from './contracts';
+import { getStoredConnectedWallet } from './walletProvider';
 import type { MarketType } from './markets';
 
 const ARC_CHAIN_ID = 5042002;
@@ -107,6 +108,11 @@ function getCloseTimestamp(closeDate: string) {
 
 async function getClients() {
   const config = requireConfig();
+  const connectedWallet = getStoredConnectedWallet();
+
+  if (connectedWallet?.mode === 'circle-user-controlled') {
+    throw new Error('Circle app wallets are enabled for sign-in, balance, and portfolio reads. Live market transactions still require an external EVM wallet until Circle transaction challenge endpoints are wired.');
+  }
 
   if (typeof window === 'undefined' || !window.ethereum) {
     throw new Error('No browser wallet was found. Open Presto Markets in a wallet-enabled browser.');

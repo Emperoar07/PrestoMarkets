@@ -28,7 +28,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     return (
       <>
         <SiteHeader />
-        <main className="mx-auto max-w-4xl px-4 pb-16 pt-28 md:px-7">
+        <main className="mx-auto max-w-[1100px] px-4 pb-16 pt-28 md:px-7">
           <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-8 text-center">
             <h1 className="text-3xl font-black text-white">Market not found</h1>
             <p className="mt-3 text-muted">This market was not returned by the deployed Arc factory.</p>
@@ -68,7 +68,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-[1140px] px-4 pb-16 pt-28 md:px-7">
+      <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-28 md:px-7">
         <div className="grid gap-6 lg:grid-cols-[1fr_390px]">
           <section className="rounded-[18px] border border-white/[0.06] bg-[#11191f] p-6">
             <div className="flex flex-wrap items-center gap-3">

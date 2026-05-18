@@ -30,7 +30,7 @@ export function HomeExperience() {
       <SiteHeader />
       <main className="overflow-hidden">
         <section className="relative flex min-h-screen items-center pb-20 pt-[120px]">
-          <div className="relative z-10 mx-auto w-full max-w-[1140px] px-4 text-center md:px-7">
+          <div className="relative z-10 mx-auto w-full max-w-[1400px] px-4 text-center md:px-7">
             <div className="mb-7 inline-flex items-center gap-2 rounded-[20px] border border-white/10 bg-white/[0.03] px-3.5 py-1.5 text-[11.5px] font-semibold text-[#94a3b8]">
               <span className="h-1.5 w-1.5 rounded-full bg-[#22c55e]" />
               Arc Testnet
@@ -65,7 +65,7 @@ export function HomeExperience() {
           </div>
         </section>
 
-        <section className="mx-auto max-w-[1140px] px-4 py-20 md:px-7">
+        <section className="mx-auto max-w-[1400px] px-4 py-20 md:px-7">
           <div className="mb-2 text-[clamp(24px,3.5vw,38px)] font-extrabold tracking-tight text-white">Prediction markets with the Presto feel.</div>
 
           <div className="mt-10 grid gap-4 md:grid-cols-3">
@@ -78,7 +78,7 @@ export function HomeExperience() {
           </div>
         </section>
 
-        <section className="mx-auto max-w-[1140px] px-4 py-6 md:px-7">
+        <section className="mx-auto max-w-[1400px] px-4 py-6 md:px-7">
           <div className="mb-5 flex items-center justify-between">
             <h2 className="text-[24px] font-extrabold tracking-tight text-white">Featured markets</h2>
             <Link href="/markets" className="flex items-center gap-2 text-[13px] font-bold text-cyan">
