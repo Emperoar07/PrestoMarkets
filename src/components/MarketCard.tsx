@@ -1,8 +1,12 @@
+'use client';
+
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import type { Market } from '@/lib/markets';
 
 type MarketCardMarket = Market & {
   source?: 'onchain';
+  closeDate?: string;
 };
 
 const typeStyle: Record<Market['type'], string> = {
@@ -19,10 +23,36 @@ const statusStyle: Record<Market['status'], string> = {
   Draft: 'text-muted',
 };
 
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return 'Closing';
+  const totalSeconds = Math.floor(ms / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m ${seconds}s`;
+}
+
+function ClosingCountdown({ closeDate }: { closeDate: string }) {
+  const [label, setLabel] = useState(() => formatCountdown(new Date(closeDate).getTime() - Date.now()));
+
+  useEffect(() => {
+    const tick = () => setLabel(formatCountdown(new Date(closeDate).getTime() - Date.now()));
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [closeDate]);
+
+  return <span className={`text-xs font-black ${statusStyle['Closing soon']}`}>Closing in {label}</span>;
+}
+
 export function MarketCard({ market }: { market: MarketCardMarket }) {
   const yesOutcome = market.outcomes.find((outcome) => outcome.label === 'YES') ?? market.outcomes[0];
   const noOutcome = market.outcomes.find((outcome) => outcome.label === 'NO') ?? market.outcomes[1] ?? yesOutcome;
   const isDirectional = market.title.toLowerCase().includes('up or down');
+  const isClosingSoon = market.status === 'Closing soon';
 
   return (
     <Link
@@ -73,8 +103,14 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
 
       <div className="mt-auto flex items-center justify-between pt-4">
         <div className="flex items-center gap-2">
-          <span className={`h-2 w-2 rounded-full ${market.status === 'Open' || market.status === 'Closing soon' ? 'bg-red-400' : 'bg-cyan'}`} />
-          <span className={`text-xs font-black ${statusStyle[market.status]}`}>{market.status === 'Open' ? 'LIVE' : market.status}</span>
+          <span className={`h-2 w-2 rounded-full ${market.status === 'Open' || isClosingSoon ? 'bg-red-400' : 'bg-cyan'}`} />
+          {isClosingSoon && market.closeDate ? (
+            <ClosingCountdown closeDate={market.closeDate} />
+          ) : (
+            <span className={`text-xs font-black ${statusStyle[market.status]}`}>
+              {market.status === 'Open' ? 'LIVE' : market.status}
+            </span>
+          )}
           <span className="text-xs font-bold text-[#8fa0b4]">{market.volume} Vol.</span>
         </div>
         <span className="text-xs font-bold text-[#8fa0b4]">{market.liquidity} Liq.</span>
