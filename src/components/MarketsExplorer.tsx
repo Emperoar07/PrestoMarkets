@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { MarketCard } from './MarketCard';
 import { useAppState } from '@/lib/appState';
 
-const filters = ['All', 'Prediction', 'Opinion', 'Opportunity', 'Open', 'Closing soon', 'Resolved', 'Canceled', 'Draft', 'Onchain'];
+const filters = ['All', 'Prediction', 'Opinion', 'Opportunity', 'Open', 'Closing soon', 'Resolved', 'Canceled', 'Onchain'];
 
 export function MarketsExplorer() {
   const { markets } = useAppState();
@@ -47,31 +47,35 @@ export function MarketsExplorer() {
         </p>
       </div>
 
-      <section className="mt-9 rounded-[16px] border border-white/[0.06] bg-[#141e30] p-5">
-        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Market filters</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {filters.map((filter) => (
-                <button
-                  key={filter}
-                  type="button"
-                  onClick={() => setActiveFilter(filter)}
-                  className={`rounded-[10px] border px-4 py-2 text-sm font-bold transition-colors ${
-                    activeFilter === filter ? 'border-cyan/40 bg-cyan text-ink' : 'border-white/[0.06] bg-[#0f172a] text-muted hover:border-cyan/30 hover:text-white'
-                  }`}
-                >
-                  {filter}
-                </button>
-              ))}
-            </div>
+      <section className="mt-9 border-y border-white/[0.06] py-3">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex gap-2 overflow-x-auto pb-1 lg:pb-0">
+            {filters.map((filter, index) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => setActiveFilter(filter)}
+                className={`group flex min-w-fit items-center gap-2 rounded-[12px] border px-3 py-2 text-sm font-black transition-colors ${
+                  activeFilter === filter
+                    ? 'border-cyan/45 bg-cyan/15 text-white'
+                    : 'border-transparent text-[#8fa0b4] hover:border-white/[0.08] hover:bg-white/[0.04] hover:text-white'
+                }`}
+              >
+                <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${
+                  activeFilter === filter ? 'bg-cyan text-ink' : 'bg-[#1b252d] text-[#8fa0b4] group-hover:text-white'
+                }`}>
+                  {index + 1}
+                </span>
+                {filter}
+              </button>
+            ))}
           </div>
-          <div className="w-full max-w-md">
-            <label className="text-xs font-black uppercase tracking-[0.18em] text-muted">Search markets</label>
+          <div className="w-full lg:max-w-[320px]">
             <input
               value={searchValue}
               onChange={(event) => setSearchValue(event.target.value)}
-              className="mt-2 w-full rounded-[10px] border border-white/10 bg-[#0f172a] px-4 py-3 text-white outline-none transition-colors focus:border-cyan/50"
+              placeholder="Search markets"
+              className="w-full rounded-[12px] border border-white/[0.06] bg-[#11191f] px-4 py-2.5 text-sm font-bold text-white outline-none transition-colors placeholder:text-[#64748b] focus:border-cyan/50"
             />
           </div>
         </div>

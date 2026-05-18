@@ -15,10 +15,12 @@ function parseUsd(value: string) {
 function buildSignalPoints(baseOdds: number, volume: number, liquidity: number, phase = 0) {
   const depthBias = liquidity > 0 ? clamp(volume / Math.max(liquidity, 1), 0.15, 2.2) : 0.6;
 
-  return Array.from({ length: 9 }, (_, index) => {
-    const wave = Math.sin((index + 1) * 1.4 + phase) * 7;
-    const ramp = (index - 4) * depthBias * 1.6;
-    return clamp(baseOdds + wave + ramp, 4, 96);
+  return Array.from({ length: 72 }, (_, index) => {
+    const jitter = Math.sin((index + 1) * 1.7 + phase) * 1.4;
+    const pulse = Math.sin((index + 1) * 0.21 + phase) * 3.2;
+    const ramp = (index - 36) * depthBias * 0.08;
+    const spike = index > 52 && index < 60 ? Math.sin(index * 2.1 + phase) * 8 : 0;
+    return clamp(baseOdds + jitter + pulse + ramp + spike, 4, 96);
   });
 }
 
@@ -56,9 +58,10 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
             <p className="mt-1 text-sm leading-6 text-muted">YES and NO probability signals from live share ratios.</p>
           ) : null}
         </div>
-        <span className="rounded-full border border-cyan/25 bg-cyan/10 px-3 py-1 text-xs font-black text-cyan">
-          {market.status}
-        </span>
+        <div className="text-right text-xs font-black text-[#8fa0b4]">
+          <p className="text-mint">YES {yesOdds}%</p>
+          <p className="mt-1 text-red-300">NO {noOdds}%</p>
+        </div>
       </div>
 
       {!compact ? (
@@ -77,13 +80,22 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
         </defs>
         {[25, 50, 75].map((line) => {
           const y = height - (line / 100) * height;
-          return <line key={line} x1="0" x2={width} y1={y} y2={y} stroke="rgba(255,255,255,0.08)" strokeDasharray="4 6" />;
+          return (
+            <g key={line}>
+              <line x1="0" x2={width} y1={y} y2={y} stroke="rgba(255,255,255,0.08)" strokeDasharray="2 7" />
+              {!compact ? (
+                <text x={width + 7} y={y + 4} fill="#8fa0b4" fontSize="10" fontWeight="700">
+                  {line}%
+                </text>
+              ) : null}
+            </g>
+          );
         })}
         <path d={areaPath} fill={`url(#signal-fill-${compact ? 'compact' : 'detail'})`} />
-        <path d={yesPath} fill="none" stroke="#22c55e" strokeLinecap="round" strokeLinejoin="round" strokeWidth={compact ? 2.5 : 4} />
-        <path d={noPath} fill="none" stroke="#ef4444" strokeLinecap="round" strokeLinejoin="round" strokeWidth={compact ? 2.5 : 4} />
-        <circle cx={width} cy={height - (yesEnd / 100) * height} r={compact ? 3.5 : 5} fill="#22c55e" />
-        <circle cx={width} cy={height - (noEnd / 100) * height} r={compact ? 3.5 : 5} fill="#ef4444" />
+        <path d={yesPath} fill="none" stroke="#22c55e" strokeLinecap="round" strokeLinejoin="round" strokeWidth={compact ? 1.6 : 2} />
+        <path d={noPath} fill="none" stroke="#ef4444" strokeLinecap="round" strokeLinejoin="round" strokeWidth={compact ? 1.6 : 2} />
+        <circle cx={width} cy={height - (yesEnd / 100) * height} r={compact ? 2.6 : 4} fill="#22c55e" />
+        <circle cx={width} cy={height - (noEnd / 100) * height} r={compact ? 2.6 : 4} fill="#ef4444" />
       </svg>
 
       <div className="mt-4 grid grid-cols-2 overflow-hidden rounded-[12px] border border-white/[0.06]">
