@@ -58,10 +58,6 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
             <p className="mt-1 text-sm leading-6 text-muted">YES and NO probability signals from live share ratios.</p>
           ) : null}
         </div>
-        <div className="text-right text-xs font-black text-[#8fa0b4]">
-          <p className="text-mint">YES {yesOdds}%</p>
-          <p className="mt-1 text-red-300">NO {noOdds}%</p>
-        </div>
       </div>
 
       {!compact ? (
@@ -78,7 +74,7 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
             <stop offset="100%" stopColor="#25c0f4" stopOpacity="0.02" />
           </linearGradient>
         </defs>
-        {[25, 50, 75].map((line) => {
+        {[25, 50, 75, 100].map((line) => {
           const y = height - (line / 100) * height;
           return (
             <g key={line}>
