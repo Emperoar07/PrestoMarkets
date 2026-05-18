@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
+import { MarketSignalChart } from './MarketSignalChart';
 import { formatUsd, useAppState } from '@/lib/appState';
 import type { MarketStatus } from '@/lib/markets';
 
@@ -68,8 +69,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     <>
       <SiteHeader />
       <main className="mx-auto max-w-[1140px] px-4 pb-16 pt-28 md:px-7">
-        <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-          <section className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-7">
+        <div className="grid gap-6 lg:grid-cols-[1fr_390px]">
+          <section className="rounded-[18px] border border-white/[0.06] bg-[#11191f] p-6">
             <div className="flex flex-wrap items-center gap-3">
               <span className="rounded-full border border-cyan/30 bg-cyan/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-cyan">
                 {market.type}
@@ -82,12 +83,22 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               </span>
             </div>
             <h1 className="mt-5 text-[clamp(32px,4vw,48px)] font-black leading-tight tracking-tight text-white">{market.title}</h1>
+            <div className="mt-4 flex flex-wrap gap-3 text-sm font-bold text-[#8fa0b4]">
+              <span>{market.category}</span>
+              <span>·</span>
+              <span>{market.chain}</span>
+              <span>·</span>
+              <span>{market.volume} Vol.</span>
+            </div>
             <p className="mt-4 text-[15px] leading-[1.8] text-muted">{market.description}</p>
             {market.imageURI ? (
               <div className="mt-7 overflow-hidden rounded-[16px] border border-white/[0.06] bg-[#0f172a]">
                 <img src={market.imageURI} alt={market.title} className="h-[320px] w-full object-cover" />
               </div>
             ) : null}
+            <div className="mt-8">
+              <MarketSignalChart market={market} />
+            </div>
             <div className="mt-8 grid gap-4 md:grid-cols-4">
               <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                 <p className="text-sm text-muted">Volume</p>
@@ -188,8 +199,16 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             ) : null}
           </section>
 
-          <aside className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
-            <h2 className="text-xl font-black text-white">Trade outcome</h2>
+          <aside className="h-fit rounded-[18px] border border-white/[0.06] bg-[#11191f] p-5 lg:sticky lg:top-24">
+            <div className="flex items-start gap-3">
+              <div className="h-12 w-12 shrink-0 overflow-hidden rounded-[12px] bg-cyan/10">
+                {market.imageURI ? <img src={market.imageURI} alt="" className="h-full w-full object-cover" /> : null}
+              </div>
+              <div>
+                <p className="text-sm font-bold text-[#8fa0b4]">{market.title}</p>
+                <h2 className="mt-1 text-xl font-black text-white">Trade outcome</h2>
+              </div>
+            </div>
             <p className="mt-2 text-sm leading-6 text-muted">
               Trades execute against this live Arc market. If your USDC allowance is too low, Presto will ask for approval before submitting the buy.
             </p>

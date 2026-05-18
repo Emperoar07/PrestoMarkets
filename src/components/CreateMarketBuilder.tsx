@@ -267,70 +267,80 @@ export function CreateMarketBuilder() {
               </div>
             </form>
 
-            {showReview ? (
-              <section className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
-                <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
-                  <div>
-                    <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Review</p>
-                    <h2 className="mt-2 text-2xl font-black text-white">{title}</h2>
-                    <p className="mt-3 max-w-3xl leading-7 text-muted">{description}</p>
-                  </div>
-                  <span className="rounded-full border border-cyan/30 bg-cyan/10 px-3 py-1 text-xs font-black text-cyan">
-                    Live Arc transaction
-                  </span>
-                </div>
-
-                {imageURI ? (
-                  <div className="mt-6 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#0f172a]">
-                    <img src={imageURI} alt={title || 'Market picture'} className="h-64 w-full object-cover" />
-                  </div>
-                ) : null}
-
-                <div className="mt-6 grid gap-4 md:grid-cols-2">
-                  <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Resolver</p>
-                    <p className="mt-2 break-all text-lg font-black text-white">{resolver || 'Set a resolver address before launching'}</p>
-                  </div>
-                  <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Close date</p>
-                    <p className="mt-2 text-lg font-black text-white">{getCloseDateLabel()}</p>
-                  </div>
-                </div>
-
-                <div className="mt-6 grid gap-4 md:grid-cols-2">
-                  <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Resolution rules</p>
-                    <p className="mt-3 text-sm leading-6 text-white">{rules}</p>
-                  </div>
-                  <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Source of truth</p>
-                    <p className="mt-3 text-sm leading-6 text-white">{sourceOfTruth}</p>
-                  </div>
-                </div>
-
-                <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                  <button
-                    type="button"
-                    onClick={() => void launchMarket()}
-                    disabled={isSubmitting}
-                    className="rounded-[10px] bg-cyan px-6 py-4 font-black text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isSubmitting ? 'Submitting...' : 'Launch Live Market'}
-                  </button>
-                  <button type="button" onClick={() => setShowReview(false)} className="rounded-[10px] border border-white/10 bg-[#0f172a] px-6 py-4 font-black text-white">
-                    Keep Editing
-                  </button>
-                </div>
-                {statusMessage ? (
-                  <p className={`mt-4 rounded-[14px] border px-4 py-3 text-sm font-bold ${statusMessage.includes('failed') || statusMessage.includes('valid') || statusMessage.includes('required') ? 'border-red-400/25 bg-red-400/10 text-red-200' : 'border-cyan/25 bg-cyan/10 text-cyan'}`}>
-                    {statusMessage}
-                  </p>
-                ) : null}
-              </section>
-            ) : null}
           </div>
         </div>
       </main>
+      {showReview ? (
+        <div className="fixed inset-0 z-[9999] grid place-items-center overflow-y-auto bg-[#050b14]/88 px-4 py-8 backdrop-blur-md">
+          <section className="relative w-full max-w-[920px] rounded-[20px] border border-cyan/15 bg-[#141e30] p-6 shadow-2xl shadow-black/45">
+            <button
+              type="button"
+              onClick={() => setShowReview(false)}
+              className="absolute right-4 top-4 rounded-full border border-white/10 bg-[#0f172a] px-3 py-1.5 text-sm font-black text-white transition-colors hover:border-cyan/40"
+              aria-label="Close review modal"
+            >
+              X
+            </button>
+            <div className="flex flex-col justify-between gap-4 pr-12 md:flex-row md:items-start">
+              <div>
+                <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Review</p>
+                <h2 className="mt-2 text-2xl font-black text-white">{title || 'Untitled market'}</h2>
+                <p className="mt-3 max-w-3xl leading-7 text-muted">{description || 'Add a market description before launching.'}</p>
+              </div>
+              <span className="rounded-full border border-cyan/30 bg-cyan/10 px-3 py-1 text-xs font-black text-cyan">
+                Live Arc transaction
+              </span>
+            </div>
+
+            {imageURI ? (
+              <div className="mt-6 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#0f172a]">
+                <img src={imageURI} alt={title || 'Market picture'} className="h-64 w-full object-cover" />
+              </div>
+            ) : null}
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Resolver</p>
+                <p className="mt-2 break-all text-lg font-black text-white">{resolver || 'Set a resolver address before launching'}</p>
+              </div>
+              <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Close date</p>
+                <p className="mt-2 text-lg font-black text-white">{getCloseDateLabel()}</p>
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Resolution rules</p>
+                <p className="mt-3 text-sm leading-6 text-white">{rules || 'Add objective resolution rules before launching.'}</p>
+              </div>
+              <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Source of truth</p>
+                <p className="mt-3 text-sm leading-6 text-white">{sourceOfTruth || 'Add a source of truth before launching.'}</p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => void launchMarket()}
+                disabled={isSubmitting}
+                className="rounded-[10px] bg-cyan px-6 py-4 font-black text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSubmitting ? 'Submitting...' : 'Launch Live Market'}
+              </button>
+              <button type="button" onClick={() => setShowReview(false)} className="rounded-[10px] border border-white/10 bg-[#0f172a] px-6 py-4 font-black text-white">
+                Keep Editing
+              </button>
+            </div>
+            {statusMessage ? (
+              <p className={`mt-4 rounded-[14px] border px-4 py-3 text-sm font-bold ${statusMessage.includes('failed') || statusMessage.includes('valid') || statusMessage.includes('required') ? 'border-red-400/25 bg-red-400/10 text-red-200' : 'border-cyan/25 bg-cyan/10 text-cyan'}`}>
+                {statusMessage}
+              </p>
+            ) : null}
+          </section>
+        </div>
+      ) : null}
       <SiteFooter />
     </>
   );
