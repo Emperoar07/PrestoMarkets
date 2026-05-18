@@ -15,6 +15,8 @@ const statusStyle: Record<MarketStatus, string> = {
   Draft: 'border-line bg-ink text-muted',
 };
 
+const quickAmounts = [10, 25, 100, 500];
+
 export function MarketDetailClient({ marketId }: { marketId: string }) {
   const { accountPreviews, connectedWallet, getMarket, placeTrade, resolveMarket, cancelMarket, claimMarket, refundMarket } = useAppState();
   const market = getMarket(marketId);
@@ -39,12 +41,13 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     );
   }
 
-  const yesOutcome = market.outcomes.find((outcome) => outcome.label === 'YES') ?? market.outcomes[0];
-  const noOutcome = market.outcomes.find((outcome) => outcome.label === 'NO') ?? market.outcomes[1] ?? yesOutcome;
+  const yesOutcome = market.outcomes.find((o) => o.label === 'YES') ?? market.outcomes[0];
+  const noOutcome = market.outcomes.find((o) => o.label === 'NO') ?? market.outcomes[1] ?? yesOutcome;
   const activeOutcome = selectedOutcome === 'YES' ? yesOutcome : noOutcome;
   const amountValue = Number(amount) || 0;
   const entryPrice = activeOutcome.odds / 100;
   const estimatedShares = amountValue > 0 ? amountValue / entryPrice : 0;
+  const potentialReturn = estimatedShares > 0 ? estimatedShares * 1 : 0;
   const canTrade = market.status === 'Open' || market.status === 'Closing soon';
   const accountPreview = accountPreviews[market.id];
   const claimableAmount = Number(accountPreview?.claimable.replace(/[$,]/g, '') || 0);
@@ -68,87 +71,128 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-28 md:px-7">
-        <div className="grid gap-6 lg:grid-cols-[1fr_390px]">
-          <section>
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="rounded-full border border-cyan/30 bg-cyan/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-cyan">
+      <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-24 md:px-7">
+        <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
+
+          {/* ── Left column ── */}
+          <section className="min-w-0">
+
+            {/* Pills */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-cyan/30 bg-cyan/10 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-cyan">
                 {market.type}
               </span>
-              <span className={`rounded-full border px-3 py-1 text-xs font-black ${statusStyle[market.status]}`}>
+              <span className={`rounded-full border px-3 py-1 text-[11px] font-black ${statusStyle[market.status]}`}>
                 {market.status}
               </span>
-              <span className="rounded-full border border-mint/25 bg-mint/10 px-3 py-1 text-xs font-black text-mint">
-                Onchain
+              <span className="rounded-full border border-white/[0.06] bg-white/[0.04] px-3 py-1 text-[11px] font-black text-[#8fa0b4]">
+                {market.category}
               </span>
             </div>
-            <h1 className="mt-5 text-[clamp(32px,4vw,48px)] font-black leading-tight tracking-tight text-white">{market.title}</h1>
-            <div className="mt-4 flex flex-wrap gap-3 text-sm font-bold text-[#8fa0b4]">
-              <span>{market.category}</span>
-              <span>·</span>
+
+            {/* Title */}
+            <h1 className="mt-4 text-[clamp(28px,4vw,46px)] font-black leading-tight tracking-tight text-white">
+              {market.title}
+            </h1>
+
+            {/* Meta strip */}
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#8fa0b4]">
               <span>{market.chain}</span>
-              <span>·</span>
+              <span className="text-white/20">·</span>
               <span>{market.volume} Vol.</span>
+              <span className="text-white/20">·</span>
+              <span>{market.liquidity} Liq.</span>
+              <span className="text-white/20">·</span>
+              <span>Closes {market.closeLabel}</span>
             </div>
-            <p className="mt-4 text-[15px] leading-[1.8] text-muted">{market.description}</p>
+
+            {/* Odds bar */}
+            <div className="mt-6">
+              <div className="flex overflow-hidden rounded-full" style={{ height: 8 }}>
+                <div className="bg-cyan transition-all duration-500" style={{ width: `${yesOutcome.odds}%` }} />
+                <div className="flex-1 bg-red-500/40" />
+              </div>
+              <div className="mt-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="rounded-md bg-cyan/10 px-2.5 py-1 text-xs font-black text-cyan">YES</span>
+                  <span className="text-lg font-black text-white">{yesOutcome.odds}%</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-black text-white">{noOutcome.odds}%</span>
+                  <span className="rounded-md bg-red-400/10 px-2.5 py-1 text-xs font-black text-red-300">NO</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Description */}
+            {market.description ? (
+              <p className="mt-6 text-[15px] leading-[1.8] text-[#94a3b8]">{market.description}</p>
+            ) : null}
+
+            {/* Market image */}
             {market.imageURI ? (
-              <div className="mt-7 overflow-hidden rounded-[16px] border border-white/[0.06] bg-[#0f172a]">
-                <img src={market.imageURI} alt={market.title} className="h-[320px] w-full object-cover" />
+              <div className="mt-6 overflow-hidden rounded-[14px] border border-white/[0.06]">
+                <img src={market.imageURI} alt={market.title} className="h-[280px] w-full object-cover" />
               </div>
             ) : null}
+
+            {/* Signal chart */}
             <div className="mt-8">
               <MarketSignalChart market={market} />
             </div>
-            <div className="mt-8 grid gap-4 md:grid-cols-4">
-              <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-                <p className="text-sm text-muted">Volume</p>
-                <p className="mt-2 text-2xl font-black text-white">{market.volume}</p>
-              </div>
-              <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-                <p className="text-sm text-muted">Liquidity</p>
-                <p className="mt-2 text-2xl font-black text-white">{market.liquidity}</p>
-              </div>
-              <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-                <p className="text-sm text-muted">Close</p>
-                <p className="mt-2 text-2xl font-black text-white">{market.closeLabel}</p>
-              </div>
-              <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
-                <p className="text-sm text-muted">Collateral</p>
-                <p className="mt-2 text-2xl font-black text-white">{market.collateral}</p>
-              </div>
+
+            {/* Stats row */}
+            <div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-4">
+              {[
+                { label: 'Volume', value: market.volume },
+                { label: 'Liquidity', value: market.liquidity },
+                { label: 'Closes', value: market.closeLabel },
+                { label: 'Collateral', value: market.collateral },
+              ].map((stat) => (
+                <div key={stat.label} className="rounded-[12px] border border-white/[0.06] bg-[#141e30] px-4 py-4">
+                  <p className="text-xs font-bold text-muted">{stat.label}</p>
+                  <p className="mt-1.5 text-xl font-black text-white">{stat.value}</p>
+                </div>
+              ))}
             </div>
-            <div className="mt-8 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-6">
-              <h2 className="text-xl font-black text-white">Resolution rules</h2>
-              <p className="mt-3 leading-7 text-muted">{market.rules}</p>
-              <div className="mt-5 grid gap-x-10 gap-y-5 border-t border-white/[0.06] pt-5 md:grid-cols-2">
+
+            {/* Resolution rules */}
+            <div className="mt-6 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
+              <h2 className="text-base font-black text-white">Resolution rules</h2>
+              <p className="mt-2 text-sm leading-7 text-muted">{market.rules}</p>
+              <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-2">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Source of truth</p>
-                  <p className="mt-2 text-sm leading-6 text-white">{market.sourceOfTruth}</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted">Source of truth</p>
+                  <p className="mt-1.5 text-sm leading-6 text-white">{market.sourceOfTruth}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Resolver</p>
-                  <p className="mt-2 break-all text-sm leading-6 text-white">{market.resolverAddress || market.resolver}</p>
-                  <p className="mt-1 text-sm text-cyan">{market.resolutionMode}</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted">Resolver</p>
+                  <p className="mt-1.5 break-all text-sm leading-6 text-white">{market.resolverAddress || market.resolver}</p>
+                  <p className="mt-1 text-xs text-cyan">{market.resolutionMode}</p>
                 </div>
               </div>
             </div>
-            <div className="mt-8 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-6">
-              <h2 className="text-xl font-black text-white">Market activity</h2>
-              <div className="mt-5 grid gap-x-10 gap-y-5 border-t border-white/[0.06] pt-5 md:grid-cols-3">
+
+            {/* Market activity */}
+            <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
+              <h2 className="text-base font-black text-white">Market activity</h2>
+              <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-3">
                 {market.activity.map((item) => (
                   <div key={item.label}>
-                    <p className="text-sm text-muted">{item.label}</p>
-                    <p className="mt-1 text-2xl font-black text-white">{item.value}</p>
+                    <p className="text-xs font-bold text-muted">{item.label}</p>
+                    <p className="mt-1 text-xl font-black text-white">{item.value}</p>
                   </div>
                 ))}
               </div>
             </div>
+
+            {/* Settlement record */}
             {hasSettlementRecord ? (
-              <div className="mt-8 rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-6">
-                <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan">Settlement record</p>
-                    <h2 className="mt-2 text-xl font-black text-white">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-cyan">Settlement record</p>
+                    <h2 className="mt-1.5 text-base font-black text-white">
                       {market.status === 'Resolved'
                         ? `${market.winningOutcomeLabel ?? 'Winning outcome'} resolved`
                         : 'Market canceled'}
@@ -158,40 +202,33 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     {market.status}
                   </span>
                 </div>
-                <div className="mt-5 grid gap-x-10 gap-y-5 border-t border-white/[0.06] pt-5 md:grid-cols-3">
+                <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-3">
                   <div>
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Evidence URI</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Evidence URI</p>
                     {market.resolutionURI ? (
-                      <a
-                        href={market.resolutionURI}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-2 block break-all text-sm font-bold leading-6 text-cyan hover:text-[#7ddfff]"
-                      >
+                      <a href={market.resolutionURI} target="_blank" rel="noreferrer"
+                        className="mt-1.5 block break-all text-sm font-bold leading-6 text-cyan hover:opacity-80">
                         {market.resolutionURI}
                       </a>
                     ) : (
-                      <p className="mt-2 text-sm leading-6 text-muted">No resolver evidence URI was recorded.</p>
+                      <p className="mt-1.5 text-sm leading-6 text-muted">No evidence URI recorded.</p>
                     )}
                   </div>
                   <div>
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Connected wallet</p>
-                    <p className="mt-2 text-sm leading-6 text-white">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Your settlement</p>
+                    <p className="mt-1.5 text-sm leading-6 text-white">
                       {connectedWallet
-                        ? accountPreview?.hasClaimed
-                          ? 'Settlement already claimed or refunded.'
-                          : canClaim
-                            ? `${accountPreview?.claimable} claimable`
-                            : canRefund
-                              ? `${accountPreview?.refundable} refundable`
-                              : 'No settlement action available.'
-                        : 'Connect a wallet to check claim or refund status.'}
+                        ? accountPreview?.hasClaimed ? 'Already claimed or refunded.'
+                          : canClaim ? `${accountPreview?.claimable} claimable`
+                          : canRefund ? `${accountPreview?.refundable} refundable`
+                          : 'No settlement available.'
+                        : 'Connect wallet to check.'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Audit trail</p>
-                    <p className="mt-2 text-sm leading-6 text-muted">
-                      The final outcome, evidence URI, claim preview, and refund preview are read from the live Arc market contract.
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Audit trail</p>
+                    <p className="mt-1.5 text-sm leading-6 text-muted">
+                      Outcome, evidence, claim and refund previews are read directly from the Arc market contract.
                     </p>
                   </div>
                 </div>
@@ -199,160 +236,191 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             ) : null}
           </section>
 
-          <aside className="h-fit rounded-[18px] border border-white/[0.06] bg-[#11191f] p-5 lg:sticky lg:top-24">
-            <div className="flex items-start gap-3">
-              <div className="h-12 w-12 shrink-0 overflow-hidden rounded-[12px] bg-cyan/10">
-                {market.imageURI ? <img src={market.imageURI} alt="" className="h-full w-full object-cover" /> : null}
+          {/* ── Right aside — trade panel ── */}
+          <aside className="h-fit lg:sticky lg:top-24">
+            <div className="rounded-[18px] border border-white/[0.06] bg-[#141e30] p-5">
+
+              {/* YES / NO toggle */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedOutcome('YES')}
+                  className={`rounded-[12px] border py-4 text-center transition-all ${
+                    selectedOutcome === 'YES'
+                      ? 'border-cyan/40 bg-cyan/10 shadow-[0_0_16px_-4px_rgba(37,192,244,0.3)]'
+                      : 'border-white/[0.06] bg-[#0f172a] hover:border-white/10'
+                  }`}
+                >
+                  <p className="text-xs font-black text-muted">Buy YES</p>
+                  <p className={`mt-1 text-2xl font-black ${selectedOutcome === 'YES' ? 'text-cyan' : 'text-white'}`}>
+                    {yesOutcome.odds}¢
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOutcome('NO')}
+                  className={`rounded-[12px] border py-4 text-center transition-all ${
+                    selectedOutcome === 'NO'
+                      ? 'border-red-400/40 bg-red-400/10 shadow-[0_0_16px_-4px_rgba(248,113,113,0.2)]'
+                      : 'border-white/[0.06] bg-[#0f172a] hover:border-white/10'
+                  }`}
+                >
+                  <p className="text-xs font-black text-muted">Buy NO</p>
+                  <p className={`mt-1 text-2xl font-black ${selectedOutcome === 'NO' ? 'text-red-300' : 'text-white'}`}>
+                    {noOutcome.odds}¢
+                  </p>
+                </button>
               </div>
-              <div>
-                <p className="text-sm font-bold text-[#8fa0b4]">{market.title}</p>
-                <h2 className="mt-1 text-xl font-black text-white">Trade outcome</h2>
+
+              {/* Amount input */}
+              <div className="mt-5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-muted">Amount</label>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-muted">USDC</span>
+                </div>
+                <input
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="mt-2 w-full bg-transparent text-4xl font-black text-white outline-none placeholder:text-white/20"
+                  placeholder="0"
+                  inputMode="decimal"
+                />
+                {/* Quick amounts */}
+                <div className="mt-3 flex gap-2">
+                  {quickAmounts.map((q) => (
+                    <button
+                      key={q}
+                      type="button"
+                      onClick={() => setAmount(String(q))}
+                      className={`flex-1 rounded-[8px] border py-1.5 text-xs font-black transition-colors ${
+                        amount === String(q)
+                          ? 'border-cyan/30 bg-cyan/10 text-cyan'
+                          : 'border-white/[0.06] bg-[#0f172a] text-[#8fa0b4] hover:border-white/10 hover:text-white'
+                      }`}
+                    >
+                      ${q}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              Trades execute against this live Arc market. If your USDC allowance is too low, Presto will ask for approval before submitting the buy.
-            </p>
-            <div className="mt-5 grid gap-3">
+
+              {/* Trade summary */}
+              <div className="mt-5 space-y-2.5 border-t border-white/[0.06] pt-5">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted">Avg price</span>
+                  <span className="font-black text-white">{yesOutcome.odds}¢ per share</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted">Shares</span>
+                  <span className="font-black text-white">{estimatedShares > 0 ? estimatedShares.toFixed(2) : '—'}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted">Potential return</span>
+                  <span className={`font-black ${potentialReturn > amountValue ? 'text-mint' : 'text-white'}`}>
+                    {potentialReturn > 0 ? `$${potentialReturn.toFixed(2)}` : '—'}
+                  </span>
+                </div>
+                <p className="pt-1 text-[11px] leading-5 text-muted">
+                  Fixed share model — positions cannot be exited before settlement.
+                </p>
+              </div>
+
+              {/* Buy button */}
               <button
                 type="button"
-                onClick={() => setSelectedOutcome('YES')}
-                className={`rounded-[14px] border p-5 text-left transition-colors ${
-                  selectedOutcome === 'YES' ? 'border-cyan/35 bg-cyan/10' : 'border-white/[0.06] bg-[#0f172a]'
+                onClick={() => void runAction(() => placeTrade({ marketId, outcome: selectedOutcome, amount: amountValue }))}
+                disabled={!canTrade || isSubmitting || amountValue <= 0}
+                className={`mt-5 w-full rounded-[12px] py-4 font-black tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                  selectedOutcome === 'YES'
+                    ? 'bg-cyan text-ink hover:opacity-90'
+                    : 'bg-red-400 text-white hover:opacity-90'
                 }`}
               >
-                <span className="text-sm font-bold text-muted">Buy YES</span>
-                <span className="mt-2 block text-3xl font-black text-cyan">{yesOutcome.odds}%</span>
-                <span className="mt-1 block text-sm text-muted">{yesOutcome.liquidity} liquidity</span>
+                {!canTrade ? 'Market not open'
+                  : isSubmitting ? 'Submitting...'
+                  : amountValue <= 0 ? 'Enter an amount'
+                  : `Buy ${selectedOutcome} · $${amountValue}`}
               </button>
-              <button
-                type="button"
-                onClick={() => setSelectedOutcome('NO')}
-                className={`rounded-[14px] border p-5 text-left transition-colors ${
-                  selectedOutcome === 'NO' ? 'border-cyan/35 bg-cyan/10' : 'border-white/[0.06] bg-[#0f172a]'
-                }`}
-              >
-                <span className="text-sm font-bold text-muted">Buy NO</span>
-                <span className="mt-2 block text-3xl font-black text-white">{noOutcome.odds}%</span>
-                <span className="mt-1 block text-sm text-muted">{noOutcome.liquidity} liquidity</span>
-              </button>
-            </div>
-            <div className="mt-5 border-t border-white/[0.06] pt-5">
-              <label className="text-xs font-black uppercase tracking-[0.16em] text-muted">Amount USDC</label>
-              <input
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-                className="mt-2 w-full bg-transparent text-3xl font-black text-white outline-none"
-                placeholder="0.00"
-                inputMode="decimal"
-              />
-            </div>
-            <div className="mt-5 border-t border-white/[0.06] pt-5">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Trade preview</p>
-              <div className="mt-3 flex items-center justify-between text-sm text-muted">
-                <span>Selected outcome</span>
-                <span className="font-black text-white">{selectedOutcome}</span>
-              </div>
-              <div className="mt-2 flex items-center justify-between text-sm text-muted">
-                <span>Entry price</span>
-                <span className="font-black text-white">{formatUsd(entryPrice)}</span>
-              </div>
-              <div className="mt-2 flex items-center justify-between text-sm text-muted">
-                <span>Estimated shares</span>
-                <span className="font-black text-white">{estimatedShares.toFixed(2)}</span>
-              </div>
-              <p className="mt-3 text-xs leading-5 text-muted">
-                Presto uses a fixed share model. Positions cannot be sold or exited before the market settles. You hold shares until the resolver closes the market and publishes an outcome.
-              </p>
-            </div>
-            <div className="mt-5 border-t border-white/[0.06] pt-5">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Your position</p>
-              {connectedWallet ? (
-                <>
-                  <div className="mt-3 flex items-center justify-between text-sm text-muted">
-                    <span>YES shares</span>
-                    <span className="font-black text-white">{accountPreview?.yesShares ?? '0.00'}</span>
+
+              {/* Your position */}
+              <div className="mt-5 border-t border-white/[0.06] pt-5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted">Your position</p>
+                {connectedWallet ? (
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted">YES shares</span>
+                      <span className="font-black text-white">{accountPreview?.yesShares ?? '0.00'}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted">NO shares</span>
+                      <span className="font-black text-white">{accountPreview?.noShares ?? '0.00'}</span>
+                    </div>
+                    {claimableAmount > 0 ? (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted">Claimable</span>
+                        <span className="font-black text-mint">{accountPreview?.claimable}</span>
+                      </div>
+                    ) : null}
+                    {refundableAmount > 0 ? (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted">Refundable</span>
+                        <span className="font-black text-cyan">{accountPreview?.refundable}</span>
+                      </div>
+                    ) : null}
                   </div>
-                  <div className="mt-2 flex items-center justify-between text-sm text-muted">
-                    <span>NO shares</span>
-                    <span className="font-black text-white">{accountPreview?.noShares ?? '0.00'}</span>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between text-sm text-muted">
-                    <span>Claimable</span>
-                    <span className="font-black text-mint">{accountPreview?.claimable ?? '$0.00'}</span>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between text-sm text-muted">
-                    <span>Refundable</span>
-                    <span className="font-black text-cyan">{accountPreview?.refundable ?? '$0.00'}</span>
-                  </div>
-                </>
-              ) : (
-                <p className="mt-3 text-sm leading-6 text-muted">Connect a wallet to read your shares and settlement availability.</p>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => void runAction(() => placeTrade({ marketId, outcome: selectedOutcome, amount: amountValue }))}
-              disabled={!canTrade || isSubmitting}
-              className="mt-5 w-full rounded-[10px] bg-cyan px-6 py-4 font-black text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {canTrade ? `${isSubmitting ? 'Submitting...' : `Buy ${selectedOutcome} on Arc`}` : 'Market Not Open'}
-            </button>
-            <div className="mt-5 border-t border-white/[0.06] pt-5">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Settlement actions</p>
-              <p className="mt-2 text-sm leading-6 text-muted">
-                {connectedWallet
-                  ? isResolver
-                    ? 'This wallet is the market resolver.'
-                    : 'Resolver actions are locked to the configured resolver wallet.'
-                  : 'Connect the resolver wallet to resolve or cancel this market.'}
-              </p>
-              <input
-                value={resolutionURI}
-                onChange={(event) => setResolutionURI(event.target.value)}
-                placeholder="Resolution evidence URI"
-                className="mt-3 w-full rounded-[10px] border border-white/[0.06] bg-[#0f172a] px-3 py-2 text-sm text-white outline-none focus:border-cyan/50"
-              />
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => void runAction(() => resolveMarket({ marketId, outcome: selectedOutcome, resolutionURI }))}
-                  disabled={isSubmitting || !canUseResolverActions || !resolutionURI.trim()}
-                  className="rounded-xl border border-white/[0.06] bg-[#0f172a] px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Resolve {selectedOutcome}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void runAction(() => cancelMarket(marketId))}
-                  disabled={isSubmitting || !canUseResolverActions}
-                  className="rounded-xl border border-white/[0.06] bg-[#0f172a] px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void runAction(() => claimMarket(marketId))}
-                  disabled={isSubmitting || !canClaim}
-                  className="rounded-xl border border-white/[0.06] bg-[#0f172a] px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Claim
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void runAction(() => refundMarket(marketId))}
-                  disabled={isSubmitting || !canRefund}
-                  className="rounded-xl border border-white/[0.06] bg-[#0f172a] px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Refund
-                </button>
+                ) : (
+                  <p className="mt-2 text-sm text-muted">Connect a wallet to see your shares.</p>
+                )}
               </div>
+
+              {/* Settlement actions */}
+              <div className="mt-5 border-t border-white/[0.06] pt-5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted">Resolver actions</p>
+                <p className="mt-2 text-xs leading-5 text-muted">
+                  {connectedWallet
+                    ? isResolver ? 'This wallet is the designated resolver.'
+                      : 'Only the resolver wallet can settle this market.'
+                    : 'Connect the resolver wallet to settle.'}
+                </p>
+                <input
+                  value={resolutionURI}
+                  onChange={(e) => setResolutionURI(e.target.value)}
+                  placeholder="Resolution evidence URI"
+                  className="mt-3 w-full rounded-[10px] border border-white/[0.06] bg-[#0f172a] px-3 py-2 text-sm text-white outline-none focus:border-cyan/40"
+                />
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {[
+                    { label: `Resolve ${selectedOutcome}`, action: () => resolveMarket({ marketId, outcome: selectedOutcome, resolutionURI }), disabled: !canUseResolverActions || !resolutionURI.trim() },
+                    { label: 'Cancel', action: () => cancelMarket(marketId), disabled: !canUseResolverActions },
+                    { label: 'Claim', action: () => claimMarket(marketId), disabled: !canClaim },
+                    { label: 'Refund', action: () => refundMarket(marketId), disabled: !canRefund },
+                  ].map(({ label, action, disabled }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => void runAction(action)}
+                      disabled={isSubmitting || disabled}
+                      className="rounded-[10px] border border-white/[0.06] bg-[#0f172a] px-3 py-2 text-xs font-black text-muted transition-colors hover:border-cyan/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Status message */}
+              {message ? (
+                <p className={`mt-4 rounded-[12px] border px-4 py-3 text-sm font-bold ${
+                  message.toLowerCase().includes('fail') || message.toLowerCase().includes('error') || message.toLowerCase().includes('insufficient')
+                    ? 'border-red-400/25 bg-red-400/10 text-red-200'
+                    : 'border-mint/25 bg-mint/10 text-mint'
+                }`}>
+                  {message}
+                </p>
+              ) : null}
             </div>
-            {message ? (
-              <p className={`mt-4 rounded-2xl border px-4 py-3 text-sm font-bold ${message.includes('cannot') ? 'border-red-400/25 bg-red-400/10 text-red-200' : 'border-mint/25 bg-mint/10 text-mint'}`}>
-                {message}
-              </p>
-            ) : null}
           </aside>
+
         </div>
       </main>
       <SiteFooter />

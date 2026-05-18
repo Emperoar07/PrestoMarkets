@@ -96,7 +96,7 @@ export function SiteHeader() {
               value={searchValue}
               onChange={(event) => updateExploreSearch(event.target.value)}
               placeholder="Search markets"
-              className="hidden w-[300px] rounded-lg border border-white/[0.06] bg-[#11191f] px-3 py-2 text-[13px] font-bold text-white outline-none transition-colors placeholder:text-[#64748b] focus:border-cyan/50 xl:block"
+              className="hidden w-[300px] rounded-lg border border-white/[0.06] bg-[#11191f] px-3 py-2 text-[13px] font-bold text-white outline-none transition-colors placeholder:text-[#64748b] focus:border-cyan/50 xl:block xl:mr-6"
             />
           ) : null}
           <Link href="/markets" className={navLinkClass(isExplorePage && !isCreatePage)}>
