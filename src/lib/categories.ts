@@ -1,20 +1,22 @@
-export const primaryMarketCategories = [
-  'Trending',
-  'Breaking',
-  'New',
+export const primaryViewCategories = ['Trending', 'Breaking', 'New'] as const;
+
+export const topicNavCategories = [
   'Politics',
   'Sports',
   'Crypto',
   'Esports',
-  'Iran',
   'Finance',
   'Geopolitics',
   'Tech',
   'Culture',
   'Economy',
   'Weather',
-  'Mentions',
   'Elections',
+] as const;
+
+export const primaryMarketCategories = [
+  ...primaryViewCategories,
+  ...topicNavCategories,
   'More',
 ] as const;
 

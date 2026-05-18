@@ -82,23 +82,24 @@ export function SiteHeader() {
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 border-b border-white/[0.06] bg-[#090e1a]/90 backdrop-blur-xl">
-      <div className="mx-auto flex h-[66px] max-w-[1400px] items-center px-4 md:px-7">
+      <div className="mx-auto flex h-[66px] max-w-[1400px] items-center gap-3 px-4 md:px-7">
         <BrandMark />
+        {/* Search — sits right next to the logo, grows to fill available space */}
+        {showExploreSearch ? (
+          <input
+            value={searchValue}
+            onChange={(event) => updateExploreSearch(event.target.value)}
+            placeholder="Search markets…"
+            className="hidden max-w-[340px] flex-1 rounded-lg border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-[13px] font-medium text-white outline-none transition-colors placeholder:text-[#334155] focus:border-cyan/40 md:block"
+          />
+        ) : null}
         {showWallet && connectedWallet ? (
-          <div className="ml-5 hidden rounded-lg border border-white/[0.06] bg-[#11191f] px-3 py-2 text-[12px] font-black text-[#dbeafe] md:block">
-            <span className="text-[#8fa0b4]">Arc USDC</span>{' '}
+          <div className="hidden rounded-lg border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-[12px] font-black text-[#dbeafe] md:block">
+            <span className="text-[#4a5568]">Arc USDC</span>{' '}
             <span className="text-cyan">{usdcBalance ?? '--'}</span>
           </div>
         ) : null}
         <nav className="ml-auto flex items-center gap-3">
-          {showExploreSearch ? (
-            <input
-              value={searchValue}
-              onChange={(event) => updateExploreSearch(event.target.value)}
-              placeholder="Search markets"
-              className="hidden w-[300px] rounded-lg border border-white/[0.06] bg-[#11191f] px-3 py-2 text-[13px] font-bold text-white outline-none transition-colors placeholder:text-[#64748b] focus:border-cyan/50 xl:block xl:mr-6"
-            />
-          ) : null}
           <Link href="/markets" className={navLinkClass(isExplorePage && !isCreatePage)}>
             Explore Markets
           </Link>
