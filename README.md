@@ -1,6 +1,6 @@
 # Presto Markets
 
-Onchain prediction markets on [Arc Testnet](https://docs.arc.io). USDC is the only collateral. Every market is its own contract — no indexer, no off-chain matching.
+Onchain prediction markets on [Arc Testnet](https://docs.arc.io). USDC is the only collateral. Every market is its own contract no indexer, no off-chain matching.
 
 ## What works today
 
@@ -16,9 +16,6 @@ Onchain prediction markets on [Arc Testnet](https://docs.arc.io). USDC is the on
 cp .env.local.example .env.local
 npm install
 npm run dev
-```
-
-Open `http://localhost:3000`. Required env keys are listed in `.env.local.example`.
 
 Testnet USDC: [faucet.circle.com](https://faucet.circle.com).
 
