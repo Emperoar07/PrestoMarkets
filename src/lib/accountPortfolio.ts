@@ -7,6 +7,7 @@ import {
 } from 'viem';
 import { getArcConfig, getArcChainId } from './arcConfig';
 import { prestoMarketAbi } from './contracts';
+import { fetchMarketCostBasisIndexed } from './costBasisIndexer';
 import type { AppMarket } from './appState';
 import type { PortfolioActivity, Position } from './portfolio';
 const activityBlockWindow = BigInt(2_592_000);
@@ -124,21 +125,7 @@ async function fetchMarketCostBasis(
   marketAddress: Address,
   account: Address,
 ): Promise<{ yes: number; no: number }> {
-  const logs = await client.getLogs({
-    address: marketAddress,
-    event: sharesBoughtEvent,
-    args: { recipient: account },
-    fromBlock: BigInt(0),
-  }).catch(() => []);
-
-  let yes = 0;
-  let no = 0;
-  for (const log of logs) {
-    const amount = toUsdcNumber(log.args.amount ?? BigInt(0));
-    if (log.args.outcome === 0) yes += amount;
-    else no += amount;
-  }
-  return { yes, no };
+  return fetchMarketCostBasisIndexed(client, marketAddress, account);
 }
 
 export async function fetchAccountPortfolio(markets: AppMarket[], accountAddress?: string | null): Promise<AccountPortfolioSnapshot> {
