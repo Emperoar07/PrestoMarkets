@@ -9,6 +9,7 @@
 // Arc Testnet contract addresses (from Arc docs MCP)
 export const ARC_CONTRACTS = {
   USDC: '0x3600000000000000000000000000000000000000',
+  EURC: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a',
   // ERC-8004 agent identity
   IdentityRegistry: '0x8004A818BFB912233c491871b3d84c89A494BD9e',
   ReputationRegistry: '0x8004B663056A597Dffe9eCcC1965A193B7388713',

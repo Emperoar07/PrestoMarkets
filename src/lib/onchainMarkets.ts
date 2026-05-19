@@ -135,7 +135,7 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     liquidity: formatOnchainUsd(collateralValue),
     closeLabel: getCloseLabel(status, closeTime),
     status,
-    collateral: 'USDC',
+    collateral: (metadata?.collateral === 'EURC' ? 'EURC' : 'USDC') as 'USDC' | 'EURC',
     chain: 'Arc Testnet',
     resolver: truncateAddress(resolver),
     resolverAddress: resolver,

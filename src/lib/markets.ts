@@ -25,7 +25,7 @@ export type Market = {
   liquidity: string;
   closeLabel: string;
   status: MarketStatus;
-  collateral: 'USDC';
+  collateral: 'USDC' | 'EURC';
   chain: 'Arc Testnet';
   resolver: string;
   resolverAddress?: string;

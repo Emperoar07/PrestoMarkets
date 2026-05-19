@@ -10,13 +10,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 import { agentResolveMarket, getAgentAddress } from '@/lib/agentWallet';
+import { getAgentIdentityStatus, recordResolutionReputation } from '@/lib/agentIdentity';
 import type { AppMarket } from '@/lib/appState';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 type ResolutionResult =
-  | { ok: true; marketId: string; title: string; outcome: string; txHash: string }
+  | { ok: true; marketId: string; title: string; outcome: string; txHash: string; confidence: number }
   | { ok: false; marketId: string; title: string; reason: string };
 
 async function resolveMarket(market: AppMarket): Promise<ResolutionResult> {
@@ -100,6 +101,7 @@ Return JSON only:
     title: market.title,
     outcome: parsed.outcome,
     txHash: result.txHash as string,
+    confidence: parsed.confidence,
   };
 }
 
@@ -138,11 +140,26 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, ran: new Date().toISOString(), resolved: 0, results: [] });
     }
 
+    // Fetch agent ERC-8004 ID for reputation recording (non-blocking)
+    const identityStatus = await getAgentIdentityStatus().catch(() => null);
+    const agentErc8004Id = identityStatus?.agentId ? BigInt(identityStatus.agentId) : null;
+
     const results: ResolutionResult[] = [];
     for (const market of expired) {
       try {
         const result = await resolveMarket(market);
         results.push(result);
+
+        // Record reputation onchain if agent is registered and VALIDATOR_PRIVATE_KEY is set
+        if (agentErc8004Id && result.ok) {
+          const score = result.confidence >= 0.95 ? 95 : result.confidence >= 0.85 ? 85 : 75;
+          await recordResolutionReputation(
+            agentErc8004Id,
+            score,
+            'successful_resolution',
+            result.txHash,
+          ).catch(() => null); // never block the cron on reputation
+        }
       } catch (e) {
         results.push({
           ok: false,

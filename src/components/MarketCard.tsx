@@ -38,6 +38,7 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
   const isLive = market.status === 'Open' || isClosingSoon;
   const isResolved = market.status === 'Resolved';
   const isAgentMarket = market.createdByType === 'agent';
+  const isEurc = market.collateral === 'EURC';
 
   return (
     <Link
@@ -106,10 +107,17 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
         </div>
       </div>
 
-      {/* Footer: volume + status */}
+      {/* Footer: volume + collateral + liquidity */}
       <div className="mt-3 flex items-center justify-between border-t border-white/[0.04] pt-3">
         <span className="text-xs text-[#4a5568]">{market.volume} Vol.</span>
-        <span className="text-xs text-[#4a5568]">{market.liquidity} Liq.</span>
+        <div className="flex items-center gap-2">
+          {isEurc ? (
+            <span className="rounded-full border border-blue-400/25 bg-blue-400/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-blue-400">
+              EURC
+            </span>
+          ) : null}
+          <span className="text-xs text-[#4a5568]">{market.liquidity} Liq.</span>
+        </div>
       </div>
     </Link>
   );

@@ -24,6 +24,7 @@ export type MarketMetadata = AgentMarketMetadata & {
   rules: string;
   sourceOfTruth: string;
   resolutionMode: ResolutionMode;
+  collateral?: 'USDC' | 'EURC';
 };
 
 export type BuildMarketMetadataInput = {
@@ -35,6 +36,7 @@ export type BuildMarketMetadataInput = {
   sourceOfTruth: string;
   resolutionMode: ResolutionMode | string;
   imageURI?: string;
+  collateral?: 'USDC' | 'EURC';
   agent?: AgentMarketMetadata;
 };
 
@@ -49,6 +51,7 @@ export function buildMarketMetadata(input: BuildMarketMetadataInput): MarketMeta
     rules: input.rules,
     sourceOfTruth: input.sourceOfTruth,
     resolutionMode: input.resolutionMode as ResolutionMode,
+    collateral: input.collateral ?? 'USDC',
     createdByType: input.agent?.createdByType ?? 'user',
     agentName: input.agent?.agentName,
     agentSource: input.agent?.agentSource,
