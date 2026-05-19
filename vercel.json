@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/market-factory",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/auto-resolve",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
