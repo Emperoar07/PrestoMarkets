@@ -14,6 +14,18 @@ import { erc20Abi, prestoMarketAbi, prestoMarketFactoryAbi } from './contracts';
 import { getStoredConnectedWallet } from './walletProvider';
 import { buildMarketMetadataURI, type AgentMarketMetadata } from './marketMetadata';
 import type { MarketType } from './markets';
+import {
+  buyCircleShares,
+  cancelCircleMarket,
+  claimCircleMarket,
+  createCircleMarket,
+  refundCircleMarket,
+  resolveCircleMarket,
+} from './circleActions';
+
+function isCircleWallet(): boolean {
+  return getStoredConnectedWallet()?.mode === 'circle-user-controlled';
+}
 
 const ARC_CHAIN_HEX = '0x4cef52';
 const MIN_TRADE_USDC = 0.01;
@@ -112,11 +124,6 @@ function getCloseTimestamp(closeDate: string) {
 
 async function getClients() {
   const config = requireConfig();
-  const connectedWallet = getStoredConnectedWallet();
-
-  if (connectedWallet?.mode === 'circle-user-controlled') {
-    throw new Error('Circle app wallets are enabled for sign-in, balance, and portfolio reads. Live market transactions still require an external EVM wallet until Circle transaction challenge endpoints are wired.');
-  }
 
   if (typeof window === 'undefined' || !window.ethereum) {
     throw new Error('No browser wallet was found. Open Presto Markets in a wallet-enabled browser.');
@@ -169,6 +176,7 @@ async function getClients() {
 }
 
 export async function createLiveMarket(input: CreateLiveMarketInput): Promise<LiveActionResult> {
+  if (isCircleWallet()) return createCircleMarket(input);
   try {
     const { account, config, publicClient, walletClient } = await getClients();
 
@@ -198,6 +206,7 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
 }
 
 export async function buyLiveShares(input: { marketAddress: string; outcome: 'YES' | 'NO'; amount: number }): Promise<LiveActionResult> {
+  if (isCircleWallet()) return buyCircleShares(input);
   try {
     const { account, config, publicClient, walletClient } = await getClients();
 
@@ -264,6 +273,7 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: 'YE
 }
 
 export async function resolveLiveMarket(input: { marketAddress: string; outcome: 'YES' | 'NO'; resolutionURI: string }): Promise<LiveActionResult> {
+  if (isCircleWallet()) return resolveCircleMarket(input);
   try {
     const { account, publicClient, walletClient } = await getClients();
 
@@ -288,6 +298,7 @@ export async function resolveLiveMarket(input: { marketAddress: string; outcome:
 }
 
 export async function cancelLiveMarket(marketAddress: string): Promise<LiveActionResult> {
+  if (isCircleWallet()) return cancelCircleMarket(marketAddress);
   try {
     const { account, publicClient, walletClient } = await getClients();
 
@@ -311,6 +322,7 @@ export async function cancelLiveMarket(marketAddress: string): Promise<LiveActio
 }
 
 export async function claimLiveMarket(marketAddress: string): Promise<LiveActionResult> {
+  if (isCircleWallet()) return claimCircleMarket(marketAddress);
   try {
     const { account, publicClient, walletClient } = await getClients();
 
@@ -334,6 +346,7 @@ export async function claimLiveMarket(marketAddress: string): Promise<LiveAction
 }
 
 export async function refundLiveMarket(marketAddress: string): Promise<LiveActionResult> {
+  if (isCircleWallet()) return refundCircleMarket(marketAddress);
   try {
     const { account, publicClient, walletClient } = await getClients();
 

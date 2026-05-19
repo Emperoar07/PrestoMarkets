@@ -1,0 +1,226 @@
+import { isAddress, parseUnits } from 'viem';
+import { getArcConfig } from './arcConfig';
+import { buildMarketMetadataURI } from './marketMetadata';
+import { getCircleSession, type CircleSession } from './walletProvider';
+import type { CreateLiveMarketInput, LiveActionResult } from './liveActions';
+import type { MarketType } from './markets';
+
+const MIN_TRADE_USDC = 0.01;
+const TX_POLL_INTERVAL_MS = 2_000;
+const TX_POLL_TIMEOUT_MS = 120_000;
+
+type CircleTxStatus =
+  | 'INITIATED'
+  | 'PENDING_RISK_SCREENING'
+  | 'QUEUED'
+  | 'SENT'
+  | 'CONFIRMED'
+  | 'COMPLETE'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'DENIED';
+
+type CircleTransaction = {
+  id: string;
+  state: CircleTxStatus;
+  txHash?: string;
+  errorReason?: string;
+};
+
+async function callProvider<T>(body: Record<string, unknown>): Promise<T> {
+  const response = await fetch('/api/circle/wallet/provider', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => null) as { error?: string } | T | null;
+  if (!response.ok) {
+    const err = (data as { error?: string } | null)?.error || 'Circle wallet request failed.';
+    throw new Error(err);
+  }
+  return data as T;
+}
+
+async function executeChallenge(session: CircleSession, challengeId: string): Promise<void> {
+  const { W3SSdk } = await import('@circle-fin/w3s-pw-web-sdk');
+  const sdk = new W3SSdk({
+    appSettings: { appId: session.appId },
+    authentication: { userToken: session.userToken, encryptionKey: session.encryptionKey },
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    sdk.execute(challengeId, (error) => {
+      if (error) {
+        reject(new Error(error.message || 'Circle PIN/biometric challenge failed.'));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+async function waitForTx(session: CircleSession, transactionId: string): Promise<string> {
+  const started = Date.now();
+  while (Date.now() - started < TX_POLL_TIMEOUT_MS) {
+    const tx = await callProvider<CircleTransaction>({
+      action: 'getTransaction',
+      userToken: session.userToken,
+      transactionId,
+    });
+    if (tx.state === 'CONFIRMED' || tx.state === 'COMPLETE') {
+      return tx.txHash ?? '';
+    }
+    if (tx.state === 'FAILED' || tx.state === 'CANCELLED' || tx.state === 'DENIED') {
+      throw new Error(`Circle transaction ${tx.state.toLowerCase()}: ${tx.errorReason ?? 'no reason given'}`);
+    }
+    await new Promise((r) => setTimeout(r, TX_POLL_INTERVAL_MS));
+  }
+  throw new Error('Circle transaction timed out waiting for confirmation.');
+}
+
+async function runContractExecution(input: {
+  session: CircleSession;
+  contractAddress: string;
+  abiFunctionSignature: string;
+  abiParameters: unknown[];
+  amount?: string;
+  refId?: string;
+}): Promise<string> {
+  const { id, challengeId } = await callProvider<{ id: string; challengeId: string }>({
+    action: 'contractExecution',
+    userToken: input.session.userToken,
+    walletId: input.session.walletId,
+    contractAddress: input.contractAddress,
+    abiFunctionSignature: input.abiFunctionSignature,
+    abiParameters: input.abiParameters,
+    ...(input.amount ? { amount: input.amount } : {}),
+    ...(input.refId ? { refId: input.refId } : {}),
+  });
+
+  await executeChallenge(input.session, challengeId);
+  return waitForTx(input.session, id);
+}
+
+function requireSession(): CircleSession {
+  const session = getCircleSession();
+  if (!session) {
+    throw new Error('Circle wallet session expired — sign in again.');
+  }
+  return session;
+}
+
+function requireArcConfig() {
+  const config = getArcConfig();
+  if (!config.factoryAddress || !isAddress(config.factoryAddress)) {
+    throw new Error('NEXT_PUBLIC_MARKET_FACTORY_ADDRESS must be a valid address.');
+  }
+  if (!config.usdcAddress || !isAddress(config.usdcAddress)) {
+    throw new Error('NEXT_PUBLIC_USDC_ADDRESS must be a valid address.');
+  }
+  return config;
+}
+
+function getMarketKind(type: MarketType): number {
+  if (type === 'Opinion') return 1;
+  if (type === 'Opportunity') return 2;
+  return 0;
+}
+
+function getCloseTimestamp(closeDate: string): bigint {
+  const closeTime = Math.floor(new Date(closeDate).getTime() / 1000);
+  if (!Number.isFinite(closeTime) || closeTime <= Math.floor(Date.now() / 1000)) {
+    throw new Error('Close date must be in the future.');
+  }
+  return BigInt(closeTime);
+}
+
+export async function createCircleMarket(input: CreateLiveMarketInput): Promise<LiveActionResult> {
+  try {
+    const session = requireSession();
+    const config = requireArcConfig();
+    if (!isAddress(input.resolver)) {
+      throw new Error('Resolver must be a valid wallet address.');
+    }
+    const txHash = await runContractExecution({
+      session,
+      contractAddress: config.factoryAddress!,
+      abiFunctionSignature: 'createMarket(address,uint256,string,uint8)',
+      abiParameters: [
+        input.resolver,
+        getCloseTimestamp(input.closeDate).toString(),
+        buildMarketMetadataURI(input),
+        getMarketKind(input.type),
+      ],
+    });
+    return { ok: true, message: 'Live market created via Circle wallet.', txHash: txHash as `0x${string}` };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : 'Market creation failed.' };
+  }
+}
+
+export async function buyCircleShares(input: { marketAddress: string; outcome: 'YES' | 'NO'; amount: number }): Promise<LiveActionResult> {
+  try {
+    const session = requireSession();
+    const config = requireArcConfig();
+    if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
+    if (!Number.isFinite(input.amount) || input.amount < MIN_TRADE_USDC) {
+      throw new Error(`Minimum trade is $${MIN_TRADE_USDC} USDC.`);
+    }
+    const amount = parseUnits(String(input.amount), 6).toString();
+
+    await runContractExecution({
+      session,
+      contractAddress: config.usdcAddress!,
+      abiFunctionSignature: 'approve(address,uint256)',
+      abiParameters: [input.marketAddress, amount],
+      refId: `presto-approve-${input.marketAddress}`,
+    });
+
+    const txHash = await runContractExecution({
+      session,
+      contractAddress: input.marketAddress,
+      abiFunctionSignature: 'buy(uint8,uint256)',
+      abiParameters: [input.outcome === 'YES' ? 0 : 1, amount],
+      refId: `presto-buy-${input.marketAddress}`,
+    });
+    return { ok: true, message: `Bought ${input.outcome} shares via Circle wallet.`, txHash: txHash as `0x${string}` };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : 'Buy transaction failed.' };
+  }
+}
+
+export async function resolveCircleMarket(input: { marketAddress: string; outcome: 'YES' | 'NO'; resolutionURI: string }): Promise<LiveActionResult> {
+  try {
+    const session = requireSession();
+    if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
+    const txHash = await runContractExecution({
+      session,
+      contractAddress: input.marketAddress,
+      abiFunctionSignature: 'resolve(uint8,string)',
+      abiParameters: [input.outcome === 'YES' ? 0 : 1, input.resolutionURI],
+    });
+    return { ok: true, message: 'Market resolved via Circle wallet.', txHash: txHash as `0x${string}` };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : 'Resolve transaction failed.' };
+  }
+}
+
+async function noArgAction(marketAddress: string, signature: string, label: string): Promise<LiveActionResult> {
+  try {
+    const session = requireSession();
+    if (!isAddress(marketAddress)) throw new Error('Market address is invalid.');
+    const txHash = await runContractExecution({
+      session,
+      contractAddress: marketAddress,
+      abiFunctionSignature: signature,
+      abiParameters: [],
+    });
+    return { ok: true, message: `${label} via Circle wallet.`, txHash: txHash as `0x${string}` };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : `${label} failed.` };
+  }
+}
+
+export const cancelCircleMarket = (m: string) => noArgAction(m, 'cancel()', 'Market canceled');
+export const claimCircleMarket = (m: string) => noArgAction(m, 'claim()', 'Claim submitted');
+export const refundCircleMarket = (m: string) => noArgAction(m, 'refund()', 'Refund submitted');

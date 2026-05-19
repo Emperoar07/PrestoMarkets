@@ -21,8 +21,7 @@ const typeCopy: Record<MarketType, string> = {
 
 export function CreateMarketBuilder() {
   const router = useRouter();
-  const { createMarket, connectedWallet } = useAppState();
-  const isCircleWallet = connectedWallet?.mode === 'circle-user-controlled';
+  const { createMarket } = useAppState();
   const [selectedType, setSelectedType] = useState<MarketType>('Prediction');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -179,18 +178,6 @@ export function CreateMarketBuilder() {
         <p className="mt-3 max-w-3xl text-[14px] leading-[1.7] text-muted">
           Create a live market through the deployed Presto factory on Arc. Your wallet signs the transaction, and the market appears after the factory read refreshes.
         </p>
-
-        {isCircleWallet && (
-          <div className="mt-6 flex items-start gap-3 rounded-[12px] border border-yellow-400/30 bg-yellow-400/10 px-4 py-4">
-            <span className="mt-0.5 shrink-0 text-yellow-300">⚠</span>
-            <div>
-              <p className="text-sm font-black text-yellow-200">External wallet required to create markets</p>
-              <p className="mt-1 text-xs leading-5 text-yellow-200/70">
-                You&apos;re signed in with a Circle app wallet, which supports sign-in and balance reads only. Arc Testnet market transactions require an external EVM wallet — connect MetaMask or another browser wallet to launch markets.
-              </p>
-            </div>
-          </div>
-        )}
 
         <div className="mt-9 grid gap-6 lg:grid-cols-[320px_1fr]">
           <aside>

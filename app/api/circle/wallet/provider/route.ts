@@ -31,7 +31,9 @@ type CircleAction =
   | 'deviceToken'
   | 'session'
   | 'initialize'
-  | 'wallets';
+  | 'wallets'
+  | 'contractExecution'
+  | 'getTransaction';
 
 type CircleRequestBody = {
   action?: CircleAction;
@@ -40,6 +42,14 @@ type CircleRequestBody = {
   deviceId?: string;
   email?: string;
   loginMethod?: 'email' | 'social';
+  walletId?: string;
+  contractAddress?: string;
+  abiFunctionSignature?: string;
+  abiParameters?: unknown[];
+  amount?: string;
+  feeLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
+  refId?: string;
+  transactionId?: string;
 };
 
 type CircleErrorBody = {
@@ -204,6 +214,38 @@ export async function POST(request: Request) {
       if (!body.userToken) return jsonError('userToken is required.');
 
       return circleFetch('/v1/w3s/wallets', {
+        method: 'GET',
+        userToken: body.userToken,
+      });
+    }
+
+    if (action === 'contractExecution') {
+      if (!body.userToken) return jsonError('userToken is required.');
+      if (!body.walletId) return jsonError('walletId is required.');
+      if (!body.contractAddress) return jsonError('contractAddress is required.');
+      if (!body.abiFunctionSignature) return jsonError('abiFunctionSignature is required.');
+
+      return circleFetch('/v1/w3s/user/transactions/contractExecution', {
+        method: 'POST',
+        userToken: body.userToken,
+        body: JSON.stringify({
+          idempotencyKey: crypto.randomUUID(),
+          walletId: body.walletId,
+          contractAddress: body.contractAddress,
+          abiFunctionSignature: body.abiFunctionSignature,
+          abiParameters: body.abiParameters ?? [],
+          ...(body.amount ? { amount: body.amount } : {}),
+          feeLevel: body.feeLevel ?? 'MEDIUM',
+          ...(body.refId ? { refId: body.refId } : {}),
+        }),
+      });
+    }
+
+    if (action === 'getTransaction') {
+      if (!body.userToken) return jsonError('userToken is required.');
+      if (!body.transactionId) return jsonError('transactionId is required.');
+
+      return circleFetch(`/v1/w3s/transactions/${encodeURIComponent(body.transactionId)}`, {
         method: 'GET',
         userToken: body.userToken,
       });
