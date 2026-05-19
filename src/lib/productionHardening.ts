@@ -41,8 +41,8 @@ export const contractAuditFindings: AuditFinding[] = [
   {
     area: 'Indexing dependence',
     severity: 'Low',
-    finding: 'Portfolio activity currently reads recent logs from Arc RPC and can miss older account history. Contract balances remain authoritative.',
-    requiredAction: 'Add persistent indexing before relying on activity history as a complete statement view.',
+    finding: 'Cost basis is now incrementally indexed in browser localStorage with a per-account, per-market checkpoint. The activity feed still scans a recent log window from Arc RPC and can miss older account history when read from a fresh device. Contract balances remain authoritative.',
+    requiredAction: 'Add server-side persistent indexing of activity events before relying on the activity feed as a complete statement view across devices.',
   },
 ];
 
@@ -88,7 +88,7 @@ export const failurePathDesign: HardeningItem[] = [
   {
     title: 'Indexing gaps',
     status: 'Current',
-    summary: 'Keep portfolio and activity UI honest while account history still depends on recent Arc log windows.',
+    summary: 'Cost basis is incrementally cached per browser; activity history still depends on a recent Arc log window, so portfolio and activity copy stay explicit until a server-side index lands.',
   },
 ];
 
