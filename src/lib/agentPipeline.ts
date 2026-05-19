@@ -263,8 +263,8 @@ async function createOnchain(
       agentReason: `${classification.reason} | Safety: ${safety.reason}`,
       trendSource: trend.source,
       trendUrl: trend.url,
-      momentumScore: classification.momentumScore,
-      safetyScore: safety.confidence,
+      momentumScore: Math.round(classification.momentumScore * 100), // stored as 0-100 to match trends route
+      safetyScore: Math.round(safety.confidence * 100),              // stored as 0-100 to match trends route
     },
   };
 

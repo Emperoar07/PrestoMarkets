@@ -42,15 +42,45 @@ export function buildX402PaymentRequired(priceUsd = '0.001') {
   };
 }
 
-// Verify an X402 payment header (signature check delegated to Circle Gateway)
+// Verify an X402 payment header.
+// Structural check: validates EIP-3009 authorization shape and expiry.
+// Signature check: delegated to Circle Gateway facilitator when CIRCLE_GATEWAY_FACILITATOR_URL is set.
 export async function verifyX402Payment(paymentHeader: string): Promise<boolean> {
   if (!paymentHeader) return false;
-  // In production: call Circle Gateway facilitator to verify the EIP-3009 signature.
-  // For testnet: accept any well-formed base64 payload as valid.
   try {
     const decoded = Buffer.from(paymentHeader, 'base64').toString('utf-8');
-    const parsed = JSON.parse(decoded);
-    return Boolean(parsed?.x402Version && parsed?.payload);
+    const parsed = JSON.parse(decoded) as Record<string, unknown>;
+
+    // Must be a valid x402 envelope
+    if (!parsed?.x402Version || !parsed?.payload) return false;
+
+    const payload = parsed.payload as Record<string, unknown>;
+    const auth = (payload?.authorization ?? payload) as Record<string, unknown>;
+
+    // Must contain EIP-3009 TransferWithAuthorization fields
+    const required = ['from', 'to', 'value', 'validAfter', 'validBefore', 'nonce'];
+    if (!required.every((k) => auth[k] !== undefined)) return false;
+
+    // Must not be expired
+    const validBefore = Number(auth.validBefore);
+    if (!Number.isFinite(validBefore) || validBefore < Math.floor(Date.now() / 1000)) return false;
+
+    // Must have signature components
+    if (!auth.v || !auth.r || !auth.s) return false;
+
+    // If Circle Gateway facilitator is configured, delegate full signature verification
+    const facilitatorUrl = process.env.CIRCLE_GATEWAY_FACILITATOR_URL;
+    if (facilitatorUrl) {
+      const res = await fetch(`${facilitatorUrl}/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payment: parsed }),
+      });
+      return res.ok;
+    }
+
+    // Testnet fallback: structural + expiry validation only (documented limitation)
+    return true;
   } catch {
     return false;
   }

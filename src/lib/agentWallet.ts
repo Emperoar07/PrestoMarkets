@@ -7,12 +7,13 @@ import {
   createWalletClient,
   http,
   isAddress,
+  parseUnits,
   type Address,
   type Hex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { getArcConfig, getArcChainId } from './arcConfig';
-import { prestoMarketFactoryAbi, prestoMarketAbi } from './contracts';
+import { erc20Abi, prestoMarketFactoryAbi, prestoMarketAbi } from './contracts';
 import { buildMarketMetadataURI } from './marketMetadata';
 import type { CreateLiveMarketInput } from './liveActions';
 
@@ -41,7 +42,8 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
 }
 
 function getClients() {
-  const pk = process.env.AGENT_PRIVATE_KEY;
+  // Accept both names so existing Vercel configs with PRESTO_AGENT_PRIVATE_KEY still work
+  const pk = process.env.AGENT_PRIVATE_KEY ?? process.env.PRESTO_AGENT_PRIVATE_KEY;
   if (!pk) throw new Error('AGENT_PRIVATE_KEY is not set — agent wallet unavailable.');
 
   const config = getArcConfig();
@@ -115,8 +117,59 @@ export async function agentResolveMarket(marketAddress: string, outcomeIndex: nu
   }
 }
 
+// Buy outcome shares onchain from the agent wallet (approve USDC → call buy)
+// Used by the liquidity bot to properly mint shares, not just transfer USDC
+export async function agentBuyShares(
+  marketAddress: string,
+  outcomeIndex: 0 | 1,
+  amountUsdc: string,
+) {
+  try {
+    if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
+    const { account, publicClient, walletClient } = getClients();
+    const config = getArcConfig();
+    if (!config.usdcAddress || !isAddress(config.usdcAddress)) throw new Error('USDC address not configured.');
+
+    const amount = parseUnits(amountUsdc, 6);
+    const usdcAddress = config.usdcAddress as Address;
+    const market = marketAddress as Address;
+
+    // Check current allowance — only approve if needed
+    const allowance = await publicClient.readContract({
+      address: usdcAddress,
+      abi: erc20Abi,
+      functionName: 'allowance',
+      args: [account.address, market],
+    }) as bigint;
+
+    if (allowance < amount) {
+      const approveHash = await walletClient.writeContract({
+        account,
+        address: usdcAddress,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [market, amount],
+      });
+      await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash }));
+    }
+
+    const hash = await walletClient.writeContract({
+      account,
+      address: market,
+      abi: prestoMarketAbi,
+      functionName: 'buy',
+      args: [outcomeIndex, amount],
+    });
+
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    return { ok: true, txHash: hash };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Liquidity buy failed.' };
+  }
+}
+
 export function getAgentAddress(): string | null {
-  const pk = process.env.AGENT_PRIVATE_KEY;
+  const pk = process.env.AGENT_PRIVATE_KEY ?? process.env.PRESTO_AGENT_PRIVATE_KEY;
   if (!pk) return null;
   try {
     return privateKeyToAccount(pk as Hex).address;

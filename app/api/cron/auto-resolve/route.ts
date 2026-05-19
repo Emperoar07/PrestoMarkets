@@ -20,10 +20,56 @@ type ResolutionResult =
   | { ok: true; marketId: string; title: string; outcome: string; txHash: string; confidence: number }
   | { ok: false; marketId: string; title: string; reason: string };
 
+// Fetch real evidence from Serper before asking Claude — prevents hallucination
+async function fetchLiveEvidence(market: AppMarket): Promise<{ snippets: string; sources: string[] }> {
+  const apiKey = process.env.SERPER_API_KEY;
+  if (!apiKey) return { snippets: '', sources: [] };
+
+  try {
+    const res = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: `${market.title} result outcome`, gl: 'us', num: 6 }),
+    });
+    if (!res.ok) return { snippets: '', sources: [] };
+
+    const data = await res.json() as {
+      organic?: Array<{ title: string; snippet: string; link: string }>;
+      topStories?: Array<{ title: string; link: string }>;
+    };
+
+    const sources: string[] = [];
+    const lines: string[] = [];
+
+    for (const s of data.topStories ?? []) {
+      lines.push(`[NEWS] ${s.title} — ${s.link}`);
+      sources.push(s.link);
+    }
+    for (const s of (data.organic ?? []).slice(0, 4)) {
+      lines.push(`[WEB] ${s.title}: ${s.snippet} — ${s.link}`);
+      sources.push(s.link);
+    }
+
+    return { snippets: lines.join('\n'), sources };
+  } catch {
+    return { snippets: '', sources: [] };
+  }
+}
+
+// Minimum confidence required to submit a resolution onchain autonomously
+const MIN_AUTO_RESOLVE_CONFIDENCE = 0.85;
+
 async function resolveMarket(market: AppMarket): Promise<ResolutionResult> {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  // Research the outcome using Claude Sonnet
+  // Step 1: Fetch live evidence before asking Claude — grounds the oracle in real data
+  const { snippets: liveEvidence, sources: searchSources } = await fetchLiveEvidence(market);
+  const hasLiveEvidence = liveEvidence.length > 0;
+
+  const evidenceBlock = hasLiveEvidence
+    ? `Live search results (fetched now — use these as your primary evidence):\n${liveEvidence}`
+    : `WARNING: No live search results available. You have NO external evidence. You MUST return CANCEL unless the outcome is logically certain from the rules alone.`;
+
   const researchPrompt = `You are an autonomous resolution oracle for a prediction market platform.
 
 Market: "${market.title}"
@@ -31,21 +77,22 @@ Rules: "${market.rules}"
 Source of truth: "${market.sourceOfTruth}"
 Close date: "${market.closeDate}"
 Category: "${market.category}"
+Today: ${new Date().toISOString()}
 
-Today is ${new Date().toISOString()}.
+${evidenceBlock}
 
-Your task:
-1. Based on the market rules and source of truth, determine the most likely outcome.
-2. Return YES (outcome index 0) or NO (outcome index 1) or CANCEL (if truly unresolvable).
-3. Be conservative — prefer CANCEL over a guess.
-4. Your resolution is final and will be submitted onchain.
+Instructions:
+- Base your answer ONLY on the evidence above, not on your training data.
+- Return CANCEL if the evidence is insufficient, ambiguous, or contradicts itself.
+- Confidence must reflect actual evidence quality — do not inflate it.
+- This resolution will be submitted onchain and is irreversible.
 
 Return JSON only:
 {
   "outcome": "YES" | "NO" | "CANCEL",
   "outcomeIndex": 0 | 1 | 2,
   "confidence": 0.0–1.0,
-  "evidenceSummary": "one paragraph describing the evidence",
+  "evidenceSummary": "one paragraph citing specific sources",
   "sources": ["url1", "url2"]
 }`;
 
@@ -67,12 +114,15 @@ Return JSON only:
     sources: string[];
   };
 
-  if (parsed.outcome === 'CANCEL' || parsed.confidence < 0.75) {
+  // Merge search sources into claude's reported sources
+  const allSources = Array.from(new Set([...(parsed.sources ?? []), ...searchSources])).slice(0, 8);
+
+  if (parsed.outcome === 'CANCEL' || parsed.confidence < MIN_AUTO_RESOLVE_CONFIDENCE) {
     return {
       ok: false,
       marketId: market.id,
       title: market.title,
-      reason: `Oracle confidence too low (${parsed.confidence}) or outcome CANCEL: ${parsed.evidenceSummary}`,
+      reason: `Oracle skipped (confidence=${parsed.confidence.toFixed(2)}, outcome=${parsed.outcome}, liveEvidence=${hasLiveEvidence}): ${parsed.evidenceSummary}`,
     };
   }
 
@@ -83,7 +133,8 @@ Return JSON only:
     outcome: parsed.outcome,
     confidence: parsed.confidence,
     evidenceSummary: parsed.evidenceSummary,
-    sources: parsed.sources ?? [],
+    sources: allSources,
+    liveEvidenceUsed: hasLiveEvidence,
     oracle: 'claude-sonnet-4-6',
     autonomous: true,
   };
@@ -107,11 +158,12 @@ Return JSON only:
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get('authorization');
-    if (auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  if (!secret) {
+    return NextResponse.json({ error: 'CRON_SECRET is not configured — cron endpoints are disabled until this env var is set.' }, { status: 500 });
+  }
+  const auth = req.headers.get('authorization');
+  if (auth !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {

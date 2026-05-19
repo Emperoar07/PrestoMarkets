@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCircleWalletsClient, sendUsdc, ARC_CONTRACTS } from '@/lib/circleAgents';
+import { getCircleWalletsClient, ARC_CONTRACTS } from '@/lib/circleAgents';
+import { agentBuyShares } from '@/lib/agentWallet';
 
 // GET — return liquidity analysis across markets
 export async function GET(req: NextRequest) {
@@ -73,21 +74,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'amount must be between 0 and 25 USDC' }, { status: 400 });
   }
 
-  const result = await sendUsdc(body.marketAddress, body.amount);
+  // Split evenly across YES (0) and NO (1) to provide neutral liquidity on both sides
+  const halfAmount = (amountNum / 2).toFixed(6);
+  const [yesResult, noResult] = await Promise.all([
+    agentBuyShares(body.marketAddress, 0, halfAmount),
+    agentBuyShares(body.marketAddress, 1, halfAmount),
+  ]);
 
-  if (!result.ok) {
+  if (!yesResult.ok || !noResult.ok) {
     return NextResponse.json(
-      { error: result.error ?? 'Liquidity transfer failed' },
+      { error: `Liquidity buy failed — YES: ${yesResult.ok ? 'ok' : yesResult.error}, NO: ${noResult.ok ? 'ok' : noResult.error}` },
       { status: 503 },
     );
   }
 
   return NextResponse.json({
     ok: true,
-    txId: result.txId,
+    yesTxHash: yesResult.txHash,
+    noTxHash: noResult.txHash,
     marketAddress: body.marketAddress,
     amountUsdc: body.amount,
-    explorer: `https://testnet.arcscan.app/tx/${result.txId}`,
-    poweredBy: 'Circle Developer-Controlled Wallets · Arc Testnet',
+    note: 'Bought YES and NO shares equally to provide neutral liquidity depth.',
+    poweredBy: 'Presto Agent Wallet · Arc Testnet',
   });
 }
