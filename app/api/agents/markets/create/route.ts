@@ -66,12 +66,14 @@ export async function POST(req: NextRequest) {
     assertNonEmpty(body.sourceOfTruth, 'sourceOfTruth');
     assertAgentScores(body.agent);
 
-    const resolverAddress = body.resolver
-      ?? process.env.PRESTO_AGENT_RESOLVER_ADDRESS
-      ?? process.env.NEXT_PUBLIC_MARKET_RESOLVER_ADDRESS;
+    // Always resolve to the agent wallet — never trust a caller-supplied resolver address.
+    // A compromised API key must not be able to redirect resolution to an arbitrary address.
+    const resolverAddress = process.env.PRESTO_AGENT_RESOLVER_ADDRESS
+      ?? process.env.NEXT_PUBLIC_MARKET_RESOLVER_ADDRESS
+      ?? undefined; // agentCreateMarket will default to the agent wallet address
 
     if (resolverAddress && !isAddress(resolverAddress)) {
-      throw new Error('resolver must be a valid address.');
+      throw new Error('PRESTO_AGENT_RESOLVER_ADDRESS must be a valid EVM address.');
     }
 
     const result = await agentCreateMarket({

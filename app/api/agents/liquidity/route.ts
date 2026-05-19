@@ -74,16 +74,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'amount must be between 0 and 25 USDC' }, { status: 400 });
   }
 
-  // Split evenly across YES (0) and NO (1) to provide neutral liquidity on both sides
+  // Sequential: buy YES first, then NO. Parallel risks directional exposure if one side fails.
   const halfAmount = (amountNum / 2).toFixed(6);
-  const [yesResult, noResult] = await Promise.all([
-    agentBuyShares(body.marketAddress, 0, halfAmount),
-    agentBuyShares(body.marketAddress, 1, halfAmount),
-  ]);
 
-  if (!yesResult.ok || !noResult.ok) {
+  const yesResult = await agentBuyShares(body.marketAddress, 0, halfAmount);
+  if (!yesResult.ok) {
     return NextResponse.json(
-      { error: `Liquidity buy failed — YES: ${yesResult.ok ? 'ok' : yesResult.error}, NO: ${noResult.ok ? 'ok' : noResult.error}` },
+      { error: `YES buy failed (NO not attempted): ${yesResult.error}`, partialSuccess: false },
+      { status: 503 },
+    );
+  }
+
+  const noResult = await agentBuyShares(body.marketAddress, 1, halfAmount);
+  if (!noResult.ok) {
+    return NextResponse.json(
+      {
+        error: `NO buy failed after YES succeeded — agent holds directional YES exposure: ${noResult.error}`,
+        partialSuccess: true,
+        yesTxHash: yesResult.txHash,
+      },
       { status: 503 },
     );
   }
@@ -94,7 +103,7 @@ export async function POST(req: NextRequest) {
     noTxHash: noResult.txHash,
     marketAddress: body.marketAddress,
     amountUsdc: body.amount,
-    note: 'Bought YES and NO shares equally to provide neutral liquidity depth.',
+    note: 'Bought YES and NO shares sequentially to provide neutral liquidity depth.',
     poweredBy: 'Presto Agent Wallet · Arc Testnet',
   });
 }

@@ -58,14 +58,48 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
     }
 
+    const alreadyRegistered = result.txHash === '0x0';
+
+    // Auto-persist AGENT_ERC8004_ID to Vercel env vars if token is configured
+    let vercelEnvSet = false;
+    const vercelToken = process.env.VERCEL_TOKEN;
+    const vercelProjectId = process.env.VERCEL_PROJECT_ID ?? 'prj_MRjpZNy9yykIfO3c4wX344tIldWA';
+    if (vercelToken && result.agentId && result.agentId !== 'unknown') {
+      try {
+        // Upsert the env var — try POST first, fall back to PATCH on conflict
+        const body = JSON.stringify({ key: 'AGENT_ERC8004_ID', value: result.agentId, type: 'plain', target: ['production', 'preview'] });
+        const headers = { 'Authorization': `Bearer ${vercelToken}`, 'Content-Type': 'application/json' };
+        const res = await fetch(`https://api.vercel.com/v10/projects/${vercelProjectId}/env`, { method: 'POST', headers, body });
+        if (res.ok) {
+          vercelEnvSet = true;
+        } else if (res.status === 409) {
+          // Env var already exists — update it
+          const existing = await fetch(`https://api.vercel.com/v10/projects/${vercelProjectId}/env?keys=AGENT_ERC8004_ID`, { headers });
+          const data = await existing.json() as { envs?: Array<{ id: string }> };
+          const envId = data.envs?.[0]?.id;
+          if (envId) {
+            const patch = await fetch(`https://api.vercel.com/v10/projects/${vercelProjectId}/env/${envId}`, {
+              method: 'PATCH', headers, body: JSON.stringify({ value: result.agentId }),
+            });
+            vercelEnvSet = patch.ok;
+          }
+        }
+      } catch {
+        // Non-blocking — registration succeeded even if env set failed
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       agentId: result.agentId,
       txHash: result.txHash,
-      note: result.txHash === '0x0'
+      vercelEnvSet,
+      note: alreadyRegistered
         ? 'Agent was already registered — no new transaction needed.'
-        : `Agent registered on ERC-8004. Save AGENT_ERC8004_ID=${result.agentId} to your environment.`,
-      explorerUrl: result.txHash !== '0x0'
+        : vercelEnvSet
+          ? `Agent registered on ERC-8004. AGENT_ERC8004_ID=${result.agentId} has been set in Vercel automatically.`
+          : `Agent registered on ERC-8004. Manually add AGENT_ERC8004_ID=${result.agentId} to your environment.`,
+      explorerUrl: !alreadyRegistered
         ? `https://testnet.arcscan.app/tx/${result.txHash}`
         : null,
     });

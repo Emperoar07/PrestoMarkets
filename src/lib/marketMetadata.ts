@@ -42,24 +42,30 @@ export type BuildMarketMetadataInput = {
 
 const DATA_PREFIX = 'data:application/json,';
 
+// Prevent unbounded AI-generated strings from bloating onchain metadata transactions
+const MAX = { title: 200, description: 1000, rules: 2000, sourceOfTruth: 500, agentReason: 500, trendUrl: 300 };
+function trunc(s: string | undefined, max: number): string | undefined {
+  return s && s.length > max ? s.slice(0, max) : s;
+}
+
 export function buildMarketMetadata(input: BuildMarketMetadataInput): MarketMetadata {
   return {
-    name: input.title,
-    description: input.description,
+    name: trunc(input.title, MAX.title) ?? input.title,
+    description: trunc(input.description, MAX.description) ?? input.description,
     category: input.category,
     imageURI: input.imageURI,
-    rules: input.rules,
-    sourceOfTruth: input.sourceOfTruth,
+    rules: trunc(input.rules, MAX.rules) ?? input.rules,
+    sourceOfTruth: trunc(input.sourceOfTruth, MAX.sourceOfTruth) ?? input.sourceOfTruth,
     resolutionMode: input.resolutionMode as ResolutionMode,
     collateral: input.collateral ?? 'USDC',
     createdByType: input.agent?.createdByType ?? 'user',
     agentName: input.agent?.agentName,
     agentSource: input.agent?.agentSource,
     agentModel: input.agent?.agentModel,
-    agentReason: input.agent?.agentReason,
+    agentReason: trunc(input.agent?.agentReason, MAX.agentReason),
     agentConfidence: input.agent?.agentConfidence,
     trendSource: input.agent?.trendSource,
-    trendUrl: input.agent?.trendUrl,
+    trendUrl: trunc(input.agent?.trendUrl, MAX.trendUrl),
     momentumScore: input.agent?.momentumScore,
     safetyScore: input.agent?.safetyScore,
   };

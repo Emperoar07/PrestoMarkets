@@ -32,6 +32,7 @@ export function CreateMarketBuilder() {
   const [resolver, setResolver] = useState('');
   const [resolutionMode, setResolutionMode] = useState<ResolutionMode>('Human resolver');
   const [imageURI, setImageURI] = useState('');
+  const [collateral, setCollateral] = useState<'USDC' | 'EURC'>('USDC');
   const [showReview, setShowReview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
@@ -157,6 +158,7 @@ export function CreateMarketBuilder() {
       resolver,
       resolutionMode,
       imageURI: imageURI.trim() || undefined,
+      collateral,
     });
 
     setIsSubmitting(false);
@@ -226,7 +228,7 @@ export function CreateMarketBuilder() {
                   />
                   {fieldErrors.title ? <p className="mt-1.5 text-xs font-bold text-red-400">{fieldErrors.title}</p> : null}
                 </div>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-3">
                   <div>
                     <label className="text-sm font-bold text-muted">Category</label>
                     <select
@@ -241,6 +243,31 @@ export function CreateMarketBuilder() {
                         </option>
                       ))}
                     </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-bold text-muted">Collateral</label>
+                    <div className="mt-2 flex gap-2">
+                      {(['USDC', 'EURC'] as const).map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setCollateral(c)}
+                          className={`flex-1 rounded-[14px] border py-4 text-sm font-black transition-colors ${
+                            collateral === c
+                              ? c === 'EURC'
+                                ? 'border-blue-400/50 bg-blue-400/10 text-blue-300'
+                                : 'border-cyan/50 bg-cyan/10 text-cyan'
+                              : 'border-white/[0.06] bg-[#0f172a] text-muted hover:border-white/20'
+                          }`}
+                        >
+                          {c}
+                          {c === 'EURC' && <span className="ml-1 text-[10px] opacity-60">€</span>}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-1.5 text-[11px] text-muted">
+                      {collateral === 'EURC' ? 'Euro-backed · Circle EURC on Arc' : 'Dollar-backed · Circle USDC on Arc'}
+                    </p>
                   </div>
                   <div>
                     <label className="text-sm font-bold text-muted">Resolution mode</label>
@@ -396,7 +423,7 @@ export function CreateMarketBuilder() {
               </div>
             ) : null}
 
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="mt-6 grid gap-4 md:grid-cols-3">
               <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Resolver</p>
                 <p className="mt-2 break-all text-lg font-black text-white">{resolver || 'Set a resolver address before launching'}</p>
@@ -404,6 +431,11 @@ export function CreateMarketBuilder() {
               <div className="rounded-[14px] border border-white/[0.06] bg-[#0f172a] p-5">
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Close date</p>
                 <p className="mt-2 text-lg font-black text-white">{getCloseDateLabel()}</p>
+              </div>
+              <div className={`rounded-[14px] border p-5 ${collateral === 'EURC' ? 'border-blue-400/20 bg-blue-400/5' : 'border-white/[0.06] bg-[#0f172a]'}`}>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Collateral</p>
+                <p className={`mt-2 text-lg font-black ${collateral === 'EURC' ? 'text-blue-300' : 'text-cyan'}`}>{collateral}</p>
+                <p className="mt-0.5 text-[11px] text-muted">{collateral === 'EURC' ? 'Circle EURC · euro-backed' : 'Circle USDC · dollar-backed'}</p>
               </div>
             </div>
 

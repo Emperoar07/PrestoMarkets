@@ -33,6 +33,8 @@ export const prestoMarketFactoryAbi = [
       { name: 'creator', type: 'address', indexed: true },
       { name: 'resolver', type: 'address', indexed: false },
       { name: 'marketKind', type: 'uint8', indexed: false },
+      { name: 'closeTime', type: 'uint256', indexed: false },
+      { name: 'metadataURI', type: 'string', indexed: false },
     ],
   },
 ] as const;
@@ -226,15 +228,16 @@ export const prestoMarketAbi = [
   },
   {
     type: 'event',
-    name: 'Resolved',
+    name: 'MarketResolved',
     inputs: [
-      { name: 'outcome', type: 'uint8', indexed: true },
+      { name: 'winningOutcome', type: 'uint8', indexed: true },
       { name: 'resolutionURI', type: 'string', indexed: false },
+      { name: 'resolvedCollateral', type: 'uint256', indexed: false },
     ],
   },
   {
     type: 'event',
-    name: 'Canceled',
+    name: 'MarketCanceled',
     inputs: [],
   },
 ] as const;

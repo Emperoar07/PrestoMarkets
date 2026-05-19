@@ -50,6 +50,7 @@ type CreateMarketInput = {
   resolver: string;
   resolutionMode: ResolutionMode;
   imageURI?: string;
+  collateral?: 'USDC' | 'EURC';
 };
 
 type AppStateValue = {
