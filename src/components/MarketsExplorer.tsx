@@ -50,22 +50,38 @@ const TOPIC_STOP = new Set([
   'hit', 'see', 'say', 'get', 'go', 'take', 'make', 'set', 'end', 'top',
 ]);
 
+// Freshness: 1.0 at creation, decays to 0 over 72 hours.
+// When fresh, momentum score lifts the topic. Older = pure volume.
+const MOMENTUM_DECAY_MS = 72 * 60 * 60 * 1000;
+
+function topicFreshness(market: AppMarket): number {
+  const created = market.createdAt ? new Date(market.createdAt).getTime() : 0;
+  if (!created) return 0;
+  const age = Date.now() - created;
+  return Math.max(0, 1 - age / MOMENTUM_DECAY_MS);
+}
+
 function deriveTopics(markets: AppMarket[]): string[] {
   if (markets.length === 0) return [];
-  const score = new Map<string, { vol: number; count: number }>();
+  const score = new Map<string, { blended: number; count: number }>();
 
-  const bump = (key: string, vol: number) => {
-    const prev = score.get(key) ?? { vol: 0, count: 0 };
-    score.set(key, { vol: prev.vol + vol, count: prev.count + 1 });
+  const bump = (key: string, vol: number, freshness: number, momentum: number) => {
+    // Blend: volume dominates always; momentum lifts only while fresh
+    const momentumBoost = freshness * (momentum / 100) * vol;
+    const blended = vol + momentumBoost;
+    const prev = score.get(key) ?? { blended: 0, count: 0 };
+    score.set(key, { blended: prev.blended + blended, count: prev.count + 1 });
   };
 
   for (const market of markets) {
     const vol = parseVolume(market.volume);
+    const freshness = topicFreshness(market);
+    const momentum = market.momentumScore ?? 0;
 
     // Category is always a stable topic signal
     const cat = market.category?.trim();
     if (cat && !['Trending', 'Breaking', 'New'].includes(cat)) {
-      bump(cat, vol);
+      bump(cat, vol, freshness, momentum);
     }
 
     // Extract proper-noun phrases from title (skip index 0 — sentence-case)
@@ -84,20 +100,20 @@ function deriveTopics(markets: AppMarket[]): string[] {
         /^[A-Z0-9]/.test(w2) && /^[A-Z0-9]/.test(w3) &&
         !TOPIC_STOP.has(w2.toLowerCase()) && !TOPIC_STOP.has(w3.toLowerCase())
       ) {
-        bump(`${w} ${w2} ${w3}`, vol);
+        bump(`${w} ${w2} ${w3}`, vol, freshness, momentum);
         i += 3;
       } else if (w2 && /^[A-Z0-9]/.test(w2) && !TOPIC_STOP.has(w2.toLowerCase())) {
-        bump(`${w} ${w2}`, vol);
+        bump(`${w} ${w2}`, vol, freshness, momentum);
         i += 2;
       } else {
-        bump(w, vol);
+        bump(w, vol, freshness, momentum);
         i++;
       }
     }
   }
 
   return Array.from(score.entries())
-    .sort((a, b) => b[1].count - a[1].count || b[1].vol - a[1].vol)
+    .sort((a, b) => b[1].blended - a[1].blended || b[1].count - a[1].count)
     .slice(0, 14)
     .map(([topic]) => topic);
 }
