@@ -291,7 +291,7 @@ export function MarketsExplorer() {
   const showHero = !isLoadingMarkets && featuredMarket && !searchValue && activeHotTopic === 'All';
 
   return (
-    <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-28 md:px-7">
+    <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-36 md:px-7">
 
       {/* ── Hero: featured market + sidebar ── */}
       {showHero ? (
