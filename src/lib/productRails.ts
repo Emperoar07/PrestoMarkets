@@ -23,8 +23,8 @@ export const productRails: ProductRail[] = [
   {
     name: 'Circle Wallets',
     status: 'Current',
-    purpose: 'App-native onboarding',
-    note: 'Email OTP, Google, and PIN entry points are wired through Circle User-Controlled Wallets. The production Google Web Client ID is configured; Email OTP still needs console verification.',
+    purpose: 'App-native onboarding + signing',
+    note: 'Email, Google, and PIN sign-in via Circle user-controlled wallets. Live Arc transactions go through Circle\'s contract-execution challenge flow — users PIN-confirm and Circle MPC signs and broadcasts.',
   },
   {
     name: 'RainbowKit',
