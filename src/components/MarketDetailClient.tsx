@@ -437,6 +437,16 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </p>
               </div>
 
+              {/* Circle wallet warning */}
+              {connectedWallet?.mode === 'circle-user-controlled' && (
+                <div className="mt-5 flex items-start gap-3 rounded-[10px] border border-yellow-400/30 bg-yellow-400/10 px-3.5 py-3">
+                  <span className="mt-0.5 shrink-0 text-yellow-300 text-xs">⚠</span>
+                  <p className="text-xs leading-5 text-yellow-200/80">
+                    Circle app wallets can&apos;t sign Arc transactions. Connect MetaMask or another EVM wallet to trade.
+                  </p>
+                </div>
+              )}
+
               {/* Buy button */}
               <button
                 type="button"
