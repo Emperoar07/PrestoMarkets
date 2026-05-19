@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { MarketCard } from './MarketCard';
 import { MarketSignalChart } from './MarketSignalChart';
 import { useAppState } from '@/lib/appState';
-import { topicMarketCategories } from '@/lib/categories';
 import type { AppMarket } from '@/lib/appState';
 
 type SortKey = 'volume' | 'ending' | 'newest';
@@ -36,6 +35,71 @@ function sortMarkets(list: AppMarket[], sort: SortKey): AppMarket[] {
     });
   }
   return copy.reverse();
+}
+
+// Derive topic pills dynamically from actual market data — no static list
+const TOPIC_STOP = new Set([
+  'will', 'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
+  'to', 'in', 'on', 'at', 'by', 'for', 'of', 'and', 'or', 'but',
+  'have', 'has', 'had', 'do', 'does', 'did', 'can', 'could', 'would', 'should',
+  'may', 'might', 'this', 'that', 'these', 'those', 'it', 'its', 'with', 'from',
+  'not', 'no', 'yes', 'if', 'than', 'more', 'most', 'up', 'out', 'about',
+  'what', 'which', 'who', 'when', 'where', 'how', 'why', 'after', 'before',
+  'into', 'over', 'under', 'between', 'through', 'during', 'without', 'new',
+  'big', 'first', 'next', 'last', 'ever', 'still', 'just', 'both', 'each',
+  'hit', 'see', 'say', 'get', 'go', 'take', 'make', 'set', 'end', 'top',
+]);
+
+function deriveTopics(markets: AppMarket[]): string[] {
+  if (markets.length === 0) return [];
+  const score = new Map<string, { vol: number; count: number }>();
+
+  const bump = (key: string, vol: number) => {
+    const prev = score.get(key) ?? { vol: 0, count: 0 };
+    score.set(key, { vol: prev.vol + vol, count: prev.count + 1 });
+  };
+
+  for (const market of markets) {
+    const vol = parseVolume(market.volume);
+
+    // Category is always a stable topic signal
+    const cat = market.category?.trim();
+    if (cat && !['Trending', 'Breaking', 'New'].includes(cat)) {
+      bump(cat, vol);
+    }
+
+    // Extract proper-noun phrases from title (skip index 0 — sentence-case)
+    const words = market.title.replace(/[?!,.'";:]/g, '').split(/\s+/).filter(Boolean);
+    let i = 1;
+    while (i < words.length) {
+      const w = words[i];
+      if (!w || TOPIC_STOP.has(w.toLowerCase()) || !/^[A-Z0-9]/.test(w) || w.length < 3) {
+        i++;
+        continue;
+      }
+      const w2 = words[i + 1];
+      const w3 = words[i + 2];
+      if (
+        w2 && w3 &&
+        /^[A-Z0-9]/.test(w2) && /^[A-Z0-9]/.test(w3) &&
+        !TOPIC_STOP.has(w2.toLowerCase()) && !TOPIC_STOP.has(w3.toLowerCase())
+      ) {
+        bump(`${w} ${w2} ${w3}`, vol);
+        i += 3;
+      } else if (w2 && /^[A-Z0-9]/.test(w2) && !TOPIC_STOP.has(w2.toLowerCase())) {
+        bump(`${w} ${w2}`, vol);
+        i += 2;
+      } else {
+        bump(w, vol);
+        i++;
+      }
+    }
+  }
+
+  return Array.from(score.entries())
+    .sort((a, b) => b[1].count - a[1].count || b[1].vol - a[1].vol)
+    .slice(0, 14)
+    .map(([topic]) => topic);
 }
 
 function getCatFromUrl() {
@@ -165,22 +229,18 @@ function BreakingNewsPanel({ markets }: { markets: AppMarket[] }) {
 }
 
 // ─── Hot topics panel ─────────────────────────────────────────────────────────
-function HotTopicsPanel({ markets }: { markets: AppMarket[] }) {
-  const topics = topicMarketCategories
-    .filter((t) => t !== 'All')
-    .map((topic) => {
-      const matched = markets.filter(
-        (m) =>
-          m.title.toLowerCase().includes(topic.toLowerCase()) ||
-          m.category.toLowerCase().includes(topic.toLowerCase()) ||
-          m.description.toLowerCase().includes(topic.toLowerCase()),
-      );
-      const vol = matched.reduce((s, m) => s + parseVolume(m.volume), 0);
-      return { topic, vol, count: matched.length };
-    })
-    .filter((t) => t.count > 0)
-    .sort((a, b) => b.vol - a.vol)
-    .slice(0, 5);
+function HotTopicsPanel({ markets, topics: derivedTopics }: { markets: AppMarket[]; topics: string[] }) {
+  const topics = derivedTopics.slice(0, 5).map((topic) => {
+    const t = topic.toLowerCase();
+    const matched = markets.filter(
+      (m) =>
+        m.title.toLowerCase().includes(t) ||
+        m.category.toLowerCase().includes(t) ||
+        m.description.toLowerCase().includes(t),
+    );
+    const vol = matched.reduce((s, m) => s + parseVolume(m.volume), 0);
+    return { topic, vol, count: matched.length };
+  }).filter((t) => t.count > 0);
 
   return (
     <div className="rounded-[16px] border border-white/[0.06] bg-[#0d1520] p-5">
@@ -213,6 +273,15 @@ export function MarketsExplorer() {
   const { markets, isLoadingMarkets } = useAppState();
   const [activeCategory, setActiveCategory] = useState(getCatFromUrl);
   const [activeHotTopic, setActiveHotTopic] = useState('All');
+
+  const dynamicTopics = useMemo(() => deriveTopics(markets), [markets]);
+
+  // Reset pill selection if the derived topic no longer exists in updated data
+  useEffect(() => {
+    if (activeHotTopic !== 'All' && !dynamicTopics.includes(activeHotTopic)) {
+      setActiveHotTopic('All');
+    }
+  }, [dynamicTopics, activeHotTopic]);
   const [searchValue, setSearchValue] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>(() => {
     const cat = getCatFromUrl();
@@ -299,7 +368,7 @@ export function MarketsExplorer() {
           <FeaturedMarket market={featuredMarket} />
           <div className="flex flex-col gap-4">
             <BreakingNewsPanel markets={markets} />
-            <HotTopicsPanel markets={markets} />
+            <HotTopicsPanel markets={markets} topics={dynamicTopics} />
           </div>
         </div>
       ) : null}
@@ -312,10 +381,10 @@ export function MarketsExplorer() {
         </span>
       </div>
 
-      {/* Hot topic pills */}
+      {/* Hot topic pills — derived live from market data */}
       <HorizScroller className="mt-3 border-b border-white/[0.04] pb-3">
         <div className="flex gap-1.5">
-          {topicMarketCategories.map((cat) => (
+          {(['All', ...dynamicTopics]).map((cat) => (
             <button
               key={cat}
               type="button"
