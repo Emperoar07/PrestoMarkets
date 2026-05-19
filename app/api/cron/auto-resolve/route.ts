@@ -1,11 +1,3 @@
-/**
- * Vercel Cron: autonomous market resolver — runs every hour.
- * Finds expired agent-created markets, calls Claude Sonnet resolution oracle,
- * then submits resolution onchain via the agent wallet.
- *
- * Only resolves markets where resolverAddress === AGENT_PRIVATE_KEY-derived address.
- */
-
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
@@ -20,16 +12,49 @@ type ResolutionResult =
   | { ok: true; marketId: string; title: string; outcome: string; txHash: string; confidence: number }
   | { ok: false; marketId: string; title: string; reason: string };
 
-// Fetch real evidence from Serper before asking Claude — prevents hallucination
+const MIN_AUTO_RESOLVE_CONFIDENCE = 0.85;
+
+function extractSourceUrls(sourceOfTruth: string): string[] {
+  return Array.from(sourceOfTruth.matchAll(/https?:\/\/[^\s,)]+/gi))
+    .map((match) => match[0].replace(/[.,;]+$/, ''))
+    .filter((url, index, list) => list.indexOf(url) === index)
+    .slice(0, 4);
+}
+
+function extractSourceDomains(sourceOfTruth: string): string[] {
+  const domains = extractSourceUrls(sourceOfTruth).flatMap((url) => {
+    try {
+      const hostname = new URL(url).hostname.replace(/^www\./, '');
+      return hostname ? [hostname] : [];
+    } catch {
+      return [];
+    }
+  });
+
+  return Array.from(new Set(domains));
+}
+
+function buildEvidenceQuery(market: AppMarket) {
+  const domains = extractSourceDomains(market.sourceOfTruth);
+  if (domains.length === 0) return null;
+
+  return [
+    market.title,
+    'result outcome',
+    domains.map((domain) => `site:${domain}`).join(' OR '),
+  ].join(' ');
+}
+
 async function fetchLiveEvidence(market: AppMarket): Promise<{ snippets: string; sources: string[] }> {
   const apiKey = process.env.SERPER_API_KEY;
-  if (!apiKey) return { snippets: '', sources: [] };
+  const query = buildEvidenceQuery(market);
+  if (!apiKey || !query) return { snippets: '', sources: [] };
 
   try {
     const res = await fetch('https://google.serper.dev/search', {
       method: 'POST',
       headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q: `${market.title} result outcome`, gl: 'us', num: 6 }),
+      body: JSON.stringify({ q: query, gl: 'us', num: 6 }),
     });
     if (!res.ok) return { snippets: '', sources: [] };
 
@@ -41,13 +66,14 @@ async function fetchLiveEvidence(market: AppMarket): Promise<{ snippets: string;
     const sources: string[] = [];
     const lines: string[] = [];
 
-    for (const s of data.topStories ?? []) {
-      lines.push(`[NEWS] ${s.title} — ${s.link}`);
-      sources.push(s.link);
+    for (const item of data.topStories ?? []) {
+      lines.push(`[NEWS] ${item.title} - ${item.link}`);
+      sources.push(item.link);
     }
-    for (const s of (data.organic ?? []).slice(0, 4)) {
-      lines.push(`[WEB] ${s.title}: ${s.snippet} — ${s.link}`);
-      sources.push(s.link);
+
+    for (const item of (data.organic ?? []).slice(0, 4)) {
+      lines.push(`[WEB] ${item.title}: ${item.snippet} - ${item.link}`);
+      sources.push(item.link);
     }
 
     return { snippets: lines.join('\n'), sources };
@@ -56,20 +82,29 @@ async function fetchLiveEvidence(market: AppMarket): Promise<{ snippets: string;
   }
 }
 
-// Minimum confidence required to submit a resolution onchain autonomously
-const MIN_AUTO_RESOLVE_CONFIDENCE = 0.85;
-
 async function resolveMarket(market: AppMarket): Promise<ResolutionResult> {
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const declaredSourceUrls = extractSourceUrls(market.sourceOfTruth);
+  if (declaredSourceUrls.length === 0) {
+    return {
+      ok: false,
+      marketId: market.id,
+      title: market.title,
+      reason: 'Auto-resolution skipped: sourceOfTruth has no concrete URL to verify.',
+    };
+  }
 
-  // Step 1: Fetch live evidence before asking Claude — grounds the oracle in real data
   const { snippets: liveEvidence, sources: searchSources } = await fetchLiveEvidence(market);
-  const hasLiveEvidence = liveEvidence.length > 0;
+  const hasLiveEvidence = liveEvidence.length > 0 && searchSources.length > 0;
+  if (!hasLiveEvidence) {
+    return {
+      ok: false,
+      marketId: market.id,
+      title: market.title,
+      reason: 'Auto-resolution skipped: no live evidence found on declared source-of-truth domains.',
+    };
+  }
 
-  const evidenceBlock = hasLiveEvidence
-    ? `Live search results (fetched now — use these as your primary evidence):\n${liveEvidence}`
-    : `WARNING: No live search results available. You have NO external evidence. You MUST return CANCEL unless the outcome is logically certain from the rules alone.`;
-
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const researchPrompt = `You are an autonomous resolution oracle for a prediction market platform.
 
 Market: "${market.title}"
@@ -79,19 +114,24 @@ Close date: "${market.closeDate}"
 Category: "${market.category}"
 Today: ${new Date().toISOString()}
 
-${evidenceBlock}
+Declared source URLs:
+${declaredSourceUrls.join('\n')}
+
+Live search results from declared source domains:
+${liveEvidence}
 
 Instructions:
 - Base your answer ONLY on the evidence above, not on your training data.
+- Treat the declared source URLs and domains as the only allowed source of truth.
 - Return CANCEL if the evidence is insufficient, ambiguous, or contradicts itself.
-- Confidence must reflect actual evidence quality — do not inflate it.
+- Confidence must reflect actual evidence quality; do not inflate it.
 - This resolution will be submitted onchain and is irreversible.
 
 Return JSON only:
 {
   "outcome": "YES" | "NO" | "CANCEL",
   "outcomeIndex": 0 | 1 | 2,
-  "confidence": 0.0–1.0,
+  "confidence": 0.0-1.0,
   "evidenceSummary": "one paragraph citing specific sources",
   "sources": ["url1", "url2"]
 }`;
@@ -114,15 +154,13 @@ Return JSON only:
     sources: string[];
   };
 
-  // Merge search sources into claude's reported sources
   const allSources = Array.from(new Set([...(parsed.sources ?? []), ...searchSources])).slice(0, 8);
-
   if (parsed.outcome === 'CANCEL' || parsed.confidence < MIN_AUTO_RESOLVE_CONFIDENCE) {
     return {
       ok: false,
       marketId: market.id,
       title: market.title,
-      reason: `Oracle skipped (confidence=${parsed.confidence.toFixed(2)}, outcome=${parsed.outcome}, liveEvidence=${hasLiveEvidence}): ${parsed.evidenceSummary}`,
+      reason: `Oracle skipped (confidence=${parsed.confidence.toFixed(2)}, outcome=${parsed.outcome}): ${parsed.evidenceSummary}`,
     };
   }
 
@@ -134,14 +172,14 @@ Return JSON only:
     confidence: parsed.confidence,
     evidenceSummary: parsed.evidenceSummary,
     sources: allSources,
-    liveEvidenceUsed: hasLiveEvidence,
+    liveEvidenceUsed: true,
+    sourceBound: true,
     oracle: 'claude-sonnet-4-6',
     autonomous: true,
   };
 
   const resolutionURI = `data:application/json,${encodeURIComponent(JSON.stringify(resolutionReport))}`;
   const result = await agentResolveMarket(market.id, parsed.outcomeIndex, resolutionURI);
-
   if (!result.ok) {
     return { ok: false, marketId: market.id, title: market.title, reason: result.error ?? 'Onchain resolve failed' };
   }
@@ -159,8 +197,9 @@ Return JSON only:
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
-    return NextResponse.json({ error: 'CRON_SECRET is not configured — cron endpoints are disabled until this env var is set.' }, { status: 500 });
+    return NextResponse.json({ error: 'CRON_SECRET is not configured; cron endpoints are disabled until this env var is set.' }, { status: 500 });
   }
+
   const auth = req.headers.get('authorization');
   if (auth !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -174,35 +213,26 @@ export async function GET(req: NextRequest) {
 
     const allMarkets = await fetchOnchainMarkets();
     const now = Date.now();
-
-    // Only resolve markets that:
-    // 1. Are still open (not already resolved/canceled)
-    // 2. Have passed their close date
-    // 3. Have the agent as resolver
-    const expired = allMarkets.filter((m) => {
-      if (m.status === 'Resolved' || m.status === 'Canceled') return false;
-      if (!m.closeDate) return false;
-      if (new Date(m.closeDate).getTime() > now) return false;
-      // Only auto-resolve markets where agent is the designated resolver
-      const resolver = m.resolverAddress?.toLowerCase() ?? '';
-      return resolver === agentAddress.toLowerCase();
+    const expired = allMarkets.filter((market) => {
+      if (market.status === 'Resolved' || market.status === 'Canceled') return false;
+      if (!market.closeDate) return false;
+      if (new Date(market.closeDate).getTime() > now) return false;
+      return market.resolverAddress?.toLowerCase() === agentAddress.toLowerCase();
     });
 
     if (expired.length === 0) {
       return NextResponse.json({ ok: true, ran: new Date().toISOString(), resolved: 0, results: [] });
     }
 
-    // Fetch agent ERC-8004 ID for reputation recording (non-blocking)
     const identityStatus = await getAgentIdentityStatus().catch(() => null);
     const agentErc8004Id = identityStatus?.agentId ? BigInt(identityStatus.agentId) : null;
-
     const results: ResolutionResult[] = [];
+
     for (const market of expired) {
       try {
         const result = await resolveMarket(market);
         results.push(result);
 
-        // Record reputation onchain if agent is registered and VALIDATOR_PRIVATE_KEY is set
         if (agentErc8004Id && result.ok) {
           const score = result.confidence >= 0.95 ? 95 : result.confidence >= 0.85 ? 85 : 75;
           await recordResolutionReputation(
@@ -210,26 +240,24 @@ export async function GET(req: NextRequest) {
             score,
             'successful_resolution',
             result.txHash,
-          ).catch(() => null); // never block the cron on reputation
+          ).catch(() => null);
         }
-      } catch (e) {
+      } catch (error) {
         results.push({
           ok: false,
           marketId: market.id,
           title: market.title,
-          reason: e instanceof Error ? e.message : String(e),
+          reason: error instanceof Error ? error.message : String(error),
         });
       }
     }
-
-    const resolved = results.filter((r) => r.ok).length;
 
     return NextResponse.json({
       ok: true,
       ran: new Date().toISOString(),
       agentAddress,
       expired: expired.length,
-      resolved,
+      resolved: results.filter((result) => result.ok).length,
       results,
     });
   } catch (error) {

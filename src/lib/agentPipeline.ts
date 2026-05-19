@@ -12,8 +12,10 @@ import Groq from 'groq-sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Anthropic from '@anthropic-ai/sdk';
 import { agentCreateMarket } from './agentWallet';
+import { fetchOnchainMarkets } from './onchainMarkets';
 import type { CreateLiveMarketInput } from './liveActions';
 import type { AgentMarketMetadata } from './marketMetadata';
+import type { AppMarket } from './appState';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -127,6 +129,44 @@ type GeminiDraft = {
   closeDate: string;
   type: 'Prediction' | 'Opinion' | 'Opportunity';
 };
+
+function normalizeText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeUrl(value?: string) {
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    url.hash = '';
+    url.search = '';
+    return url.toString().replace(/\/$/, '').toLowerCase();
+  } catch {
+    return value.trim().toLowerCase();
+  }
+}
+
+function isDuplicateMarket(draft: GeminiDraft, trend: TrendItem, existingMarkets: AppMarket[]) {
+  const draftTitle = normalizeText(draft.title);
+  const trendUrl = normalizeUrl(trend.url);
+
+  return existingMarkets.some((market) => {
+    if (market.status === 'Resolved' || market.status === 'Canceled') return false;
+
+    const existingTitle = normalizeText(market.title);
+    if (existingTitle === draftTitle) return true;
+    if (existingTitle.includes(draftTitle) || draftTitle.includes(existingTitle)) return true;
+
+    const existingTrendUrl = normalizeUrl(market.trendUrl);
+    if (trendUrl && existingTrendUrl && trendUrl === existingTrendUrl) return true;
+
+    return false;
+  });
+}
 
 async function draftWithGemini(trend: TrendItem, category: string): Promise<GeminiDraft> {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -283,6 +323,7 @@ const CONFIDENCE_THRESHOLD = 0.8;
 
 export async function runAgentPipeline(): Promise<PipelineResult[]> {
   const trends = await fetchTrends();
+  const existingMarkets = await fetchOnchainMarkets().catch(() => []);
   const results: PipelineResult[] = [];
 
   for (const trend of trends) {
@@ -300,6 +341,11 @@ export async function runAgentPipeline(): Promise<PipelineResult[]> {
         draft = await draftWithGemini(trend, classification.category);
       } catch (e) {
         results.push({ ok: false, topic: trend.topic, stage: 'draft', reason: String(e) });
+        continue;
+      }
+
+      if (isDuplicateMarket(draft, trend, existingMarkets)) {
+        results.push({ ok: false, topic: trend.topic, stage: 'duplicate', reason: 'Similar active market or trend source already exists.' });
         continue;
       }
 

@@ -68,19 +68,18 @@ export async function verifyX402Payment(paymentHeader: string): Promise<boolean>
     // Must have signature components
     if (!auth.v || !auth.r || !auth.s) return false;
 
-    // If Circle Gateway facilitator is configured, delegate full signature verification
     const facilitatorUrl = process.env.CIRCLE_GATEWAY_FACILITATOR_URL;
-    if (facilitatorUrl) {
-      const res = await fetch(`${facilitatorUrl}/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payment: parsed }),
-      });
-      return res.ok;
+    if (!facilitatorUrl) {
+      return false;
     }
 
-    // Testnet fallback: structural + expiry validation only (documented limitation)
-    return true;
+    const res = await fetch(`${facilitatorUrl.replace(/\/$/, '')}/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payment: parsed }),
+    });
+
+    return res.ok;
   } catch {
     return false;
   }
