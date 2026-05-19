@@ -2,18 +2,18 @@
 
 ## Stack
 
-- **Frontend** — Next.js 14 (App Router), TypeScript, Tailwind
-- **Chain** — Arc Testnet (chain ID `5042002`), USDC as native gas
-- **Reads** — viem `publicClient` against the Arc RPC, no indexer
-- **Wallets** — Circle user-controlled (email/Google/PIN) or any EVM wallet via RainbowKit
-- **Hosting** — Vercel (daily crons for the agent)
+- **Frontend**. Next.js 14 (App Router), TypeScript, Tailwind.
+- **Chain**. Arc Testnet (chain ID `5042002`), USDC as native gas.
+- **Reads**. viem `publicClient` against the Arc RPC. No indexer.
+- **Wallets**. Circle user-controlled (email/Google/PIN) or any EVM wallet via RainbowKit.
+- **Hosting**. Vercel, with daily crons for the agent.
 
 ## Contracts
 
-- `PrestoMarketFactory` — registry of all markets, emits `MarketCreated`
-- `PrestoMarket` — one contract per market: shares, collateral, resolution state
-- USDC + EURC ERC-20s for collateral
-- `IdentityRegistry` (ERC-8004) — agent identity on Arc
+- `PrestoMarketFactory`. Registry of all markets, emits `MarketCreated`.
+- `PrestoMarket`. One contract per market: shares, collateral, resolution state.
+- USDC + EURC ERC-20s for collateral.
+- `IdentityRegistry` (ERC-8004). Agent identity on Arc.
 
 ## Transaction paths
 

@@ -4,11 +4,11 @@ import { SiteFooter } from '@/components/SiteFooter';
 const guide = [
   {
     h: 'Create a market',
-    p: 'Anyone can create a market from the app. Pick a type (Prediction, Opinion, Opportunity), set the close date, write the rules + source of truth, assign a resolver. The autonomous agent can also draft and post markets — those carry an Agent badge.',
+    p: 'Anyone can create a market from the app. Pick a type (Prediction, Opinion, Opportunity), set the close date, write the rules + source of truth, assign a resolver. The autonomous agent can also draft and post markets. Those carry an Agent badge.',
   },
   {
     h: 'Trade',
-    p: 'V1 mints fixed YES / NO shares against USDC. Buying deposits collateral and mints shares. There is no sell path or AMM — positions are held to settlement.',
+    p: 'V1 mints fixed YES / NO shares against USDC. Buying deposits collateral and mints shares. There is no sell path or AMM. Positions are held to settlement.',
   },
   {
     h: 'Resolve and settle',
@@ -21,7 +21,7 @@ const guide = [
 ];
 
 const liquidity = [
-  'Keep V1 fixed-share settlement as the honest baseline — no hidden exit liquidity.',
+  'Keep V1 fixed-share settlement as the honest baseline, with no hidden exit liquidity.',
   'Index historical trades and maker intent so depth is measurable.',
   'Add a limit order book layer: resting bids/asks, visible spread, cancelable maker orders.',
   'After audit, route market buys through resting liquidity first; price in maker rewards.',
@@ -34,7 +34,7 @@ const terms = [
   'Agent-created markets are labeled, but review rules and close time yourself before trading.',
   'You are responsible for wallet security and transaction review. Testnet assets have no guaranteed value.',
   'Do not run real-value markets until audit + dispute paths are complete.',
-  'Circle, RainbowKit, Arc, Vercel each have their own terms — they apply.',
+  'Circle, RainbowKit, Arc, Vercel each have their own terms. They apply.',
 ];
 
 export default function DocsPage() {
@@ -63,7 +63,7 @@ export default function DocsPage() {
         <section className="mt-12 border-t border-white/[0.06] pt-8">
           <h2 className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Liquidity, eventually</h2>
           <p className="mt-4 text-[15px] leading-7 text-muted">
-            Polymarket made depth visible — bids, asks, spread. Presto should follow that, not hide execution quality inside a pool.
+            Polymarket made depth visible: bids, asks, spread. Presto should follow that, not hide execution quality inside a pool.
           </p>
           <ol className="mt-5 space-y-3 text-[15px] leading-7 text-white/90">
             {liquidity.map((item, i) => (
@@ -78,9 +78,9 @@ export default function DocsPage() {
         <section className="mt-12 border-t border-white/[0.06] pt-8">
           <h2 className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Reading the charts</h2>
           <div className="mt-5 space-y-5 text-[15px] leading-7 text-muted">
-            <p><span className="font-black text-white">YES signal</span> — the live YES share ratio as a probability signal. It's market sentiment, not a tradeable quote.</p>
-            <p><span className="font-black text-white">Volume / collateral</span> — how much activity backs the signal. Not available exit depth.</p>
-            <p><span className="font-black text-white">Future depth</span> — once the order book ships, you'll see bid/ask depth, spread, and maker liquidity.</p>
+            <p><span className="font-black text-white">YES signal.</span> The live YES share ratio as a probability signal. It's market sentiment, not a tradeable quote.</p>
+            <p><span className="font-black text-white">Volume / collateral.</span> How much activity backs the signal. Not available exit depth.</p>
+            <p><span className="font-black text-white">Future depth.</span> Once the order book ships, you'll see bid/ask depth, spread, and maker liquidity.</p>
           </div>
         </section>
 

@@ -68,7 +68,7 @@ export default function RoadmapPage() {
         <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Roadmap</p>
         <h1 className="mt-3 text-[clamp(32px,4vw,46px)] font-black tracking-tight text-white">Where Presto is, and what's next.</h1>
         <p className="mt-4 text-[15px] leading-7 text-muted">
-          Markets first, infrastructure after. We add Circle and Arc rails when they meaningfully improve onboarding, funding, or settlement — not before.
+          Markets first, infrastructure after. We add Circle and Arc rails when they meaningfully improve onboarding, funding, or settlement. Not before.
         </p>
 
         {phases.map((phase) => (
@@ -105,7 +105,7 @@ export default function RoadmapPage() {
         <section className="mt-12 border-t border-white/[0.06] pt-8">
           <h2 className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Production hardening</h2>
           <p className="mt-4 text-[14px] leading-7 text-muted">
-            Arc finality is fast and final — so the bar lives in market rules, resolver evidence, and failure paths, not in the settlement layer.
+            Arc finality is fast and final, so the bar lives in market rules, resolver evidence, and failure paths, not in the settlement layer.
           </p>
 
           <h3 className="mt-8 text-[11px] font-black uppercase tracking-[0.18em] text-white/60">Contract review</h3>

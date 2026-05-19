@@ -1,14 +1,14 @@
 # Presto Markets
 
-Onchain prediction markets on [Arc Testnet](https://docs.arc.io). USDC is the only collateral. Every market is its own contract no indexer, no off-chain matching.
+Onchain prediction markets on [Arc Testnet](https://docs.arc.io). USDC is the only collateral. Every market is its own contract. No indexer, no off-chain matching.
 
 ## What works today
 
 - Create markets (Prediction, Opinion, Opportunity) from the browser
 - Trade YES / NO with USDC; resolve, claim, refund
-- Sign in with **Circle user-controlled wallets** (email, Google, PIN) — they sign live Arc tx via Circle's contract-execution challenge flow
+- Sign in with **Circle user-controlled wallets** (email, Google, PIN). They sign live Arc tx via Circle's contract-execution challenge flow.
 - Sign in with any external EVM wallet (MetaMask, WalletConnect)
-- Autonomous agent registered on ERC-8004 that drafts and posts markets from live trends
+- Autonomous agent registered on ERC-8004 that drafts and posts markets from live trends (Grok X, Google News, Cointelegraph, ESPN, Serper)
 
 ## Run it
 
@@ -16,6 +16,9 @@ Onchain prediction markets on [Arc Testnet](https://docs.arc.io). USDC is the on
 cp .env.local.example .env.local
 npm install
 npm run dev
+```
+
+Open `http://localhost:3000`. Required env keys are listed in `.env.local.example`.
 
 Testnet USDC: [faucet.circle.com](https://faucet.circle.com).
 

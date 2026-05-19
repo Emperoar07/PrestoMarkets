@@ -34,11 +34,11 @@ export type PipelineResult =
   | { ok: true; topic: string; txHash: string; draft: MarketDraft }
   | { ok: false; topic: string; stage: string; reason: string };
 
-// ── Stage 1: Trend ingestion ───────────────────────────────────────────────
+// ── Stage 1: Trend ingestion (Serper news + Grok X live search) ────────────
 
-async function fetchTrends(): Promise<TrendItem[]> {
+async function fetchSerperTrends(): Promise<TrendItem[]> {
   const apiKey = process.env.SERPER_API_KEY;
-  if (!apiKey) throw new Error('SERPER_API_KEY not set');
+  if (!apiKey) return [];
 
   const res = await fetch('https://google.serper.dev/search', {
     method: 'POST',
@@ -46,24 +46,144 @@ async function fetchTrends(): Promise<TrendItem[]> {
     body: JSON.stringify({ q: 'trending crypto blockchain prediction markets 2025', gl: 'us', num: 10 }),
   });
 
-  if (!res.ok) throw new Error(`Serper error: ${res.status}`);
+  if (!res.ok) return [];
   const data = await res.json() as {
     organic?: Array<{ title: string; snippet: string; link: string }>;
     topStories?: Array<{ title: string; link: string }>;
   };
 
   const items: TrendItem[] = [];
-
   for (const story of data.topStories ?? []) {
     items.push({ topic: story.title, query: story.title, source: 'serper-news', url: story.link });
   }
-
   for (const result of data.organic ?? []) {
-    if (items.length >= 8) break;
+    if (items.length >= 6) break;
     items.push({ topic: result.title, query: result.snippet, source: 'serper-web', url: result.link });
   }
+  return items.slice(0, 6);
+}
 
-  return items.slice(0, 8);
+async function fetchGrokXTrends(): Promise<TrendItem[]> {
+  const apiKey = process.env.XAI_API_KEY;
+  if (!apiKey) return [];
+
+  const prompt = `List the top 6 stories trending on X right now about crypto, AI, politics, tech, or markets that could become binary YES/NO prediction markets resolvable within 7–90 days. Return JSON only:
+{
+  "items": [
+    { "topic": "short question-style summary, max 90 chars", "context": "one sentence context", "url": "most-cited tweet URL" }
+  ]
+}`;
+
+  const res = await fetch('https://api.x.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'grok-3-latest',
+      messages: [{ role: 'user', content: prompt }],
+      search_parameters: {
+        mode: 'on',
+        sources: [{ type: 'x' }],
+        return_citations: true,
+      },
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+    }),
+  });
+
+  if (!res.ok) return [];
+  const data = await res.json() as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const raw = data.choices?.[0]?.message?.content ?? '{}';
+  let parsed: { items?: Array<{ topic?: string; context?: string; url?: string }> };
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+
+  return (parsed.items ?? [])
+    .filter((item) => typeof item.topic === 'string' && item.topic.length > 0)
+    .map((item) => ({
+      topic: item.topic!,
+      query: item.context ?? item.topic!,
+      source: 'grok-x-live',
+      url: item.url,
+    }))
+    .slice(0, 6);
+}
+
+async function fetchRssTrends(input: { url: string; source: string; limit?: number }): Promise<TrendItem[]> {
+  const res = await fetch(input.url, { headers: { 'User-Agent': 'PrestoMarketsAgent/1.0' } });
+  if (!res.ok) return [];
+  const xml = await res.text();
+  const items: TrendItem[] = [];
+  const itemRegex = /<item\b[^>]*>([\s\S]*?)<\/item>/gi;
+  const titleRegex = /<title>(?:<!\[CDATA\[)?([^<\]]+?)(?:\]\]>)?<\/title>/i;
+  const linkRegex = /<link>([^<]+)<\/link>/i;
+  const descRegex = /<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i;
+  const limit = input.limit ?? 4;
+
+  let match: RegExpExecArray | null;
+  while ((match = itemRegex.exec(xml)) && items.length < limit) {
+    const block = match[1];
+    const title = titleRegex.exec(block)?.[1]?.trim();
+    const link = linkRegex.exec(block)?.[1]?.trim();
+    const desc = descRegex.exec(block)?.[1]?.replace(/<[^>]+>/g, '').trim();
+    if (!title) continue;
+    items.push({ topic: title, query: desc?.slice(0, 240) ?? title, source: input.source, url: link });
+  }
+  return items;
+}
+
+async function fetchGoogleNewsTrends(): Promise<TrendItem[]> {
+  return fetchRssTrends({
+    url: 'https://news.google.com/rss?gl=US&hl=en-US&ceid=US:en',
+    source: 'google-news',
+    limit: 4,
+  });
+}
+
+async function fetchCryptoNewsTrends(): Promise<TrendItem[]> {
+  return fetchRssTrends({
+    url: 'https://cointelegraph.com/rss',
+    source: 'cointelegraph',
+    limit: 4,
+  });
+}
+
+async function fetchSportsTrends(): Promise<TrendItem[]> {
+  return fetchRssTrends({
+    url: 'https://www.espn.com/espn/rss/news',
+    source: 'espn',
+    limit: 3,
+  });
+}
+
+function interleave(...lists: TrendItem[][]): TrendItem[] {
+  const out: TrendItem[] = [];
+  const max = Math.max(...lists.map((l) => l.length));
+  for (let i = 0; i < max; i++) {
+    for (const list of lists) {
+      if (list[i]) out.push(list[i]);
+    }
+  }
+  return out;
+}
+
+async function fetchTrends(): Promise<TrendItem[]> {
+  const [grokX, googleNews, cryptoNews, sports, serper] = await Promise.all([
+    fetchGrokXTrends().catch(() => [] as TrendItem[]),
+    fetchGoogleNewsTrends().catch(() => [] as TrendItem[]),
+    fetchCryptoNewsTrends().catch(() => [] as TrendItem[]),
+    fetchSportsTrends().catch(() => [] as TrendItem[]),
+    fetchSerperTrends().catch(() => [] as TrendItem[]),
+  ]);
+  const merged = interleave(grokX, googleNews, cryptoNews, sports, serper);
+  if (merged.length === 0) {
+    throw new Error('No trend sources returned items. Check XAI_API_KEY, SERPER_API_KEY, or network access to RSS feeds.');
+  }
+  return merged.slice(0, 14);
 }
 
 // ── Stage 2: Groq classification ──────────────────────────────────────────
@@ -298,7 +418,9 @@ async function createOnchain(
       createdByType: 'agent',
       agentName: 'Presto Agent',
       agentSource: trend.source,
-      agentModel: 'groq-llama3+gemini-flash+claude-haiku',
+      agentModel: trend.source === 'grok-x-live'
+        ? 'grok-x-live+groq-llama3+gemini-flash+claude-haiku'
+        : 'groq-llama3+gemini-flash+claude-haiku',
       agentConfidence,
       agentReason: `${classification.reason} | Safety: ${safety.reason}`,
       trendSource: trend.source,
