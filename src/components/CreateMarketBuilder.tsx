@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { isAddress } from 'viem';
 import { SiteHeader } from './SiteHeader';
@@ -33,10 +33,32 @@ export function CreateMarketBuilder() {
   const [resolutionMode, setResolutionMode] = useState<ResolutionMode>('Human resolver');
   const [imageURI, setImageURI] = useState('');
   const [collateral, setCollateral] = useState<'USDC' | 'EURC'>('USDC');
+  const [agentAddress, setAgentAddress] = useState<string | null>(null);
   const [showReview, setShowReview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<string, string>>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/agents/identity')
+      .then((res) => res.json())
+      .then((data: { ok?: boolean; agent?: { address?: string } }) => {
+        if (!cancelled && data?.ok && data.agent?.address) setAgentAddress(data.agent.address);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (resolutionMode !== 'Agent assisted' || !agentAddress) return;
+    // Auto-fill resolver with the agent wallet when the user picks Agent assisted, but don't
+    // overwrite an address the user has typed themselves.
+    if (!resolver.trim() || resolver.trim().toLowerCase() === agentAddress.toLowerCase()) {
+      setResolver(agentAddress);
+      setFieldErrors((prev) => ({ ...prev, resolver: '' }));
+    }
+  }, [resolutionMode, agentAddress, resolver]);
 
   function validateField(name: string, value: string): string {
     if (name === 'title') {
