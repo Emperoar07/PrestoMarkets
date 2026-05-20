@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { SiteFooter } from '@/components/SiteFooter';
 import { SiteHeader } from '@/components/SiteHeader';
 import { currentRails, plannedRails } from '@/lib/productRails';
@@ -23,7 +24,10 @@ export default function BuildRailsPage() {
     <>
       <SiteHeader />
       <main className="mx-auto max-w-3xl px-5 pb-20 pt-36 md:px-7 md:pt-40">
-        <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Build rails</p>
+        <Link href="/" className="inline-flex items-center gap-1.5 text-[12px] font-bold text-muted transition-colors hover:text-cyan">
+          <span>←</span> Back home
+        </Link>
+        <p className="mt-6 text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Build rails</p>
         <h1 className="mt-3 text-[clamp(32px,4vw,46px)] font-black tracking-tight text-white">USDC markets first. Rails when ready.</h1>
         <p className="mt-4 text-[15px] leading-7 text-muted">
           Presto reads from the deployed Arc factory and submits live transactions through whichever wallet you sign in with: Circle or an external EVM wallet.
