@@ -35,6 +35,10 @@ function getResolutionMode(kind: number): ResolutionMode {
   return 'Human resolver';
 }
 
+// Show 'Closing soon' only when the close is within 5 hours, so the badge actually means
+// imminent close and not 'this week sometime'.
+const CLOSING_SOON_MS = 5 * 3_600_000;
+
 function getStatus(state: number, closeTime: bigint): MarketStatus {
   if (state === 1) return 'Resolved';
   if (state === 2) return 'Canceled';
@@ -42,10 +46,8 @@ function getStatus(state: number, closeTime: bigint): MarketStatus {
   const closeMs = Number(closeTime) * 1000;
   const diff = closeMs - Date.now();
 
-  if (diff <= 3 * 86_400_000) {
-    return 'Closing soon';
-  }
-
+  if (diff <= 0) return 'Open';
+  if (diff <= CLOSING_SOON_MS) return 'Closing soon';
   return 'Open';
 }
 

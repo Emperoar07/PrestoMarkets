@@ -1,34 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
 import type { Market } from '@/lib/markets';
+import { Countdown } from './Countdown';
 
 type MarketCardMarket = Market & {
   source?: 'onchain';
   closeDate?: string;
 };
-
-function formatCountdown(ms: number): string {
-  if (ms <= 0) return 'Closing';
-  const s = Math.floor(ms / 1000);
-  const d = Math.floor(s / 86400);
-  const h = Math.floor((s % 86400) / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m ${sec}s`;
-}
-
-function ClosingCountdown({ closeDate }: { closeDate: string }) {
-  const [label, setLabel] = useState(() => formatCountdown(new Date(closeDate).getTime() - Date.now()));
-  useEffect(() => {
-    const id = setInterval(() => setLabel(formatCountdown(new Date(closeDate).getTime() - Date.now())), 1000);
-    return () => clearInterval(id);
-  }, [closeDate]);
-  return <>{label}</>;
-}
 
 export function MarketCard({ market }: { market: MarketCardMarket }) {
   const yes = market.outcomes.find((o) => o.label === 'YES') ?? market.outcomes[0];
@@ -78,11 +57,9 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
           <div className="flex flex-col">
             <span className="text-[10px] font-bold uppercase tracking-wider text-[#4ade80]">chance</span>
             {isLive ? (
-              <span className="flex items-center gap-1 text-[10px] font-bold text-[#8fa0b4]">
-                <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-                {isClosingSoon && market.closeDate
-                  ? <ClosingCountdown closeDate={market.closeDate} />
-                  : 'LIVE'}
+              <span className={`flex items-center gap-1 text-[10px] font-bold ${isClosingSoon ? 'text-amber-300' : 'text-[#8fa0b4]'}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${isClosingSoon ? 'bg-amber-300 animate-pulse' : 'bg-red-400'}`} />
+                {market.closeDate ? <Countdown closeDate={market.closeDate} /> : 'LIVE'}
               </span>
             ) : (
               <span className="text-[10px] font-bold text-[#8fa0b4]">{isResolved ? 'Resolved' : market.closeLabel}</span>

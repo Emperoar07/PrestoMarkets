@@ -64,7 +64,7 @@ export default function RoadmapPage() {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-3xl px-5 pb-20 pt-28 md:px-7">
+      <main className="mx-auto max-w-3xl px-5 pb-20 pt-36 md:px-7 md:pt-40">
         <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Roadmap</p>
         <h1 className="mt-3 text-[clamp(32px,4vw,46px)] font-black tracking-tight text-white">Where Presto is, and what's next.</h1>
         <p className="mt-4 text-[15px] leading-7 text-muted">
