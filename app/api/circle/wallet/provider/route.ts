@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 
-const circleBaseUrl = process.env.CIRCLE_BASE_URL || 'https://api.circle.com';
+function envClean(name: string, fallback = ''): string {
+  return (process.env[name] ?? fallback).trim();
+}
+
+const circleBaseUrl = envClean('CIRCLE_BASE_URL', 'https://api.circle.com');
 
 const rateLimitWindow = 60_000;
 const rateLimitMax = 20;
@@ -22,8 +26,8 @@ function checkRateLimit(ip: string): boolean {
   entry.count++;
   return true;
 }
-const arcWalletBlockchain = process.env.CIRCLE_WALLET_BLOCKCHAIN || 'ARC-TESTNET';
-const arcWalletAccountType = process.env.CIRCLE_WALLET_ACCOUNT_TYPE || 'SCA';
+const arcWalletBlockchain = envClean('CIRCLE_WALLET_BLOCKCHAIN', 'ARC-TESTNET');
+const arcWalletAccountType = envClean('CIRCLE_WALLET_ACCOUNT_TYPE', 'SCA');
 
 type CircleAction =
   | 'config'
@@ -77,10 +81,10 @@ function normalizeCircleError(data: unknown, fallback: string) {
 }
 
 function requireCircleConfig() {
-  const apiKey = process.env.CIRCLE_API_KEY;
-  const appId = process.env.NEXT_PUBLIC_CIRCLE_APP_ID;
+  const apiKey = envClean('CIRCLE_API_KEY');
+  const appId = envClean('NEXT_PUBLIC_CIRCLE_APP_ID');
 
-  if (process.env.NEXT_PUBLIC_CIRCLE_WALLETS_ENABLED !== 'true') {
+  if (envClean('NEXT_PUBLIC_CIRCLE_WALLETS_ENABLED') !== 'true') {
     throw new Error('Circle User-Controlled Wallets are not enabled for this deployment.');
   }
 
