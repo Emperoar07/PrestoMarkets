@@ -14,9 +14,9 @@ const resolutionModes: ResolutionMode[] = ['Human resolver', 'Community resolver
 const maxInlineImageBytes = 300_000;
 
 const typeCopy: Record<MarketType, string> = {
-  Prediction: 'Objective future outcomes with clear sources of truth.',
-  Opinion: 'Community conviction and product or governance sentiment.',
-  Opportunity: 'Public signals for where builders and capital should focus.',
+  Prediction: 'A future outcome with a clear source of truth.',
+  Opinion: 'Community conviction. Sentiment over fact.',
+  Opportunity: 'Where builders and capital should look.',
 };
 
 export function CreateMarketBuilder() {
@@ -191,225 +191,249 @@ export function CreateMarketBuilder() {
     }
   }
 
+  const inputBase = 'w-full bg-transparent text-white placeholder:text-[#3d4a63] outline-none transition-colors text-[15px] py-3 border-b';
+  const inputClass = (err?: string) => `${inputBase} ${err ? 'border-red-400/50' : 'border-white/[0.08] focus:border-cyan/60'}`;
+  const textareaClass = (err?: string) => `${inputBase} resize-none leading-7 ${err ? 'border-red-400/50' : 'border-white/[0.08] focus:border-cyan/60'}`;
+
+  function handleReview() {
+    const checks: [string, string][] = [
+      ['title', title], ['description', description], ['rules', rules],
+      ['sourceOfTruth', sourceOfTruth], ['closeDate', closeDate], ['resolver', resolver],
+    ];
+    const errors: Record<string, string> = {};
+    for (const [name, value] of checks) {
+      const error = validateField(name, value);
+      if (error) errors[name] = error;
+    }
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+    setShowReview(true);
+  }
+
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-28 md:px-7">
-        <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Create</p>
-        <h1 className="mt-3 text-[clamp(34px,5vw,54px)] font-black tracking-tight text-white">Launch a public market</h1>
-        <div className="mt-9 grid gap-6 lg:grid-cols-[320px_1fr]">
-          <aside>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-muted">Market family</p>
-            <div className="mt-4 grid gap-3">
-              {marketTypes.map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => chooseType(type)}
-                  className={`rounded-[14px] border px-4 py-4 text-left transition-colors ${
-                    selectedType === type ? 'border-cyan/50 bg-cyan/10 text-cyan' : 'border-white/[0.06] bg-[#141e30] text-white hover:border-cyan/30'
-                  }`}
-                >
-                  <span className="block font-black">{type}</span>
-                  <span className="mt-1 block text-sm leading-6 text-muted">{typeCopy[type]}</span>
-                </button>
-              ))}
+      <main className="mx-auto max-w-2xl px-5 pb-32 pt-24 md:px-6">
+        <h1 className="text-[clamp(28px,3.5vw,40px)] font-black tracking-tight text-white">
+          New market.
+        </h1>
+        <p className="mt-3 text-[15px] leading-7 text-muted">
+          Write a question the world can answer. Pick how it resolves. Launch it onchain in one transaction.
+        </p>
+
+        {/* Market family — inline segmented row, not a sidebar */}
+        <div className="mt-10 grid grid-cols-3 gap-0 border-b border-white/[0.08]">
+          {marketTypes.map((type) => {
+            const isActive = selectedType === type;
+            return (
+              <button
+                key={type}
+                type="button"
+                onClick={() => chooseType(type)}
+                className={`group relative pb-3 pt-1 text-left transition-colors ${isActive ? 'text-white' : 'text-muted hover:text-white/80'}`}
+              >
+                <span className="block text-[15px] font-black">{type}</span>
+                <span className="mt-1 block text-[11px] leading-4 text-muted/80">{typeCopy[type]}</span>
+                <span className={`absolute -bottom-px left-0 h-[2px] w-full transition-all ${isActive ? 'bg-cyan' : 'bg-transparent group-hover:bg-white/10'}`} />
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Section: The question */}
+        <section className="mt-12">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">01 — Question</p>
+          <div className="mt-5 space-y-7">
+            <div>
+              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">What's the question?</label>
+              <input
+                value={title}
+                onChange={(e) => setField('title', e.target.value, setTitle)}
+                onBlur={(e) => blurField('title', e.target.value)}
+                className={`mt-1 ${inputClass(fieldErrors.title)}`}
+                placeholder="Will ETH break $5k before end of 2026?"
+              />
+              {fieldErrors.title ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.title}</p> : null}
             </div>
-          </aside>
+            <div>
+              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Add context</label>
+              <textarea
+                value={description}
+                onChange={(e) => setField('description', e.target.value, setDescription)}
+                onBlur={(e) => blurField('description', e.target.value)}
+                rows={3}
+                className={`mt-1 ${textareaClass(fieldErrors.description)}`}
+                placeholder="What background should traders know?"
+              />
+              {fieldErrors.description ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.description}</p> : null}
+            </div>
+          </div>
+        </section>
 
-          <div className="space-y-6">
-            <form className="rounded-[16px] border border-white/[0.06] bg-[#141e30]">
-              <div className="border-b border-line p-6">
-                <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan">{category || selectedType}</p>
-                    <h2 className="mt-2 text-2xl font-black text-white">Market details</h2>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-                      Fill the metadata that will be written into the live Arc market metadata URI.
-                    </p>
-                  </div>
-                  <span className="w-fit rounded-full border border-white/[0.06] bg-[#0f172a] px-3 py-1 text-xs font-black text-muted">
-                    {resolutionMode}
-                  </span>
-                </div>
+        {/* Section: How it resolves */}
+        <section className="mt-14">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">02 — Resolution</p>
+          <div className="mt-5 space-y-7">
+            <div>
+              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">How will this resolve?</label>
+              <textarea
+                value={rules}
+                onChange={(e) => setField('rules', e.target.value, setRules)}
+                onBlur={(e) => blurField('rules', e.target.value)}
+                rows={3}
+                className={`mt-1 ${textareaClass(fieldErrors.rules)}`}
+                placeholder="YES wins if… Otherwise NO wins."
+              />
+              {fieldErrors.rules ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.rules}</p> : null}
+            </div>
+            <div>
+              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Where will you verify?</label>
+              <textarea
+                value={sourceOfTruth}
+                onChange={(e) => setField('sourceOfTruth', e.target.value, setSourceOfTruth)}
+                onBlur={(e) => blurField('sourceOfTruth', e.target.value)}
+                rows={2}
+                className={`mt-1 ${textareaClass(fieldErrors.sourceOfTruth)}`}
+                placeholder="A specific public source. CoinGecko price, SEC filing, official announcement…"
+              />
+              {fieldErrors.sourceOfTruth ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.sourceOfTruth}</p> : null}
+            </div>
+            <div>
+              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Mode</label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {resolutionModes.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setResolutionMode(mode)}
+                    className={`rounded-full border px-3.5 py-1.5 text-[12px] font-black transition-colors ${
+                      resolutionMode === mode
+                        ? 'border-cyan/50 bg-cyan/10 text-cyan'
+                        : 'border-white/[0.08] text-muted hover:border-white/20 hover:text-white/80'
+                    }`}
+                  >
+                    {mode}
+                  </button>
+                ))}
               </div>
+            </div>
+            <div>
+              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Who resolves it?</label>
+              <input
+                value={resolver}
+                onChange={(e) => setField('resolver', e.target.value, setResolver)}
+                onBlur={(e) => blurField('resolver', e.target.value)}
+                placeholder="0x… (wallet that will sign the resolution)"
+                className={`mt-1 font-mono text-[13px] ${inputClass(fieldErrors.resolver)}`}
+              />
+              {fieldErrors.resolver ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.resolver}</p> : null}
+              {resolutionMode === 'Agent assisted' && agentAddress && resolver.trim().toLowerCase() === agentAddress.toLowerCase() ? (
+                <p className="mt-1.5 text-[11px] text-cyan/80">Auto-filled with the Presto agent wallet.</p>
+              ) : null}
+            </div>
+          </div>
+        </section>
 
-              <div className="space-y-6 p-6">
-                <div>
-                  <label className="text-sm font-bold text-muted">Market title</label>
-                  <input
-                    value={title}
-                    onChange={(e) => setField('title', e.target.value, setTitle)}
-                    onBlur={(e) => blurField('title', e.target.value)}
-                    className={`mt-2 w-full rounded-[14px] border bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50 ${fieldErrors.title ? 'border-red-400/50' : 'border-white/[0.06]'}`}
-                    placeholder="e.g. Will ETH break $5k before end of 2025?"
-                  />
-                  {fieldErrors.title ? <p className="mt-1.5 text-xs font-bold text-red-400">{fieldErrors.title}</p> : null}
-                </div>
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div>
-                    <label className="text-sm font-bold text-muted">Category</label>
-                    <select
-                      value={category}
-                      onChange={(event) => setCategory(event.target.value)}
-                      className="mt-2 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
-                    >
-                      <option value="">Choose category</option>
-                      {createMarketCategories.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-bold text-muted">Collateral</label>
-                    <div className="mt-2 flex gap-2">
-                      {(['USDC', 'EURC'] as const).map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => setCollateral(c)}
-                          className={`flex-1 rounded-[14px] border py-4 text-sm font-black transition-colors ${
-                            collateral === c
-                              ? c === 'EURC'
-                                ? 'border-blue-400/50 bg-blue-400/10 text-blue-300'
-                                : 'border-cyan/50 bg-cyan/10 text-cyan'
-                              : 'border-white/[0.06] bg-[#0f172a] text-muted hover:border-white/20'
-                          }`}
-                        >
-                          {c}
-                          {c === 'EURC' && <span className="ml-1 text-[10px] opacity-60">€</span>}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="mt-1.5 text-[11px] text-muted">
-                      {collateral === 'EURC' ? 'Euro-backed · Circle EURC on Arc' : 'Dollar-backed · Circle USDC on Arc'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-bold text-muted">Resolution mode</label>
-                    <select
-                      value={resolutionMode}
-                      onChange={(event) => setResolutionMode(event.target.value as ResolutionMode)}
-                      className="mt-2 w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
-                    >
-                      {resolutionModes.map((mode) => (
-                        <option key={mode} value={mode}>
-                          {mode}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-sm font-bold text-muted">Description</label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setField('description', e.target.value, setDescription)}
-                    onBlur={(e) => blurField('description', e.target.value)}
-                    className={`mt-2 min-h-28 w-full rounded-[14px] border bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50 ${fieldErrors.description ? 'border-red-400/50' : 'border-white/[0.06]'}`}
-                  />
-                  {fieldErrors.description ? <p className="mt-1.5 text-xs font-bold text-red-400">{fieldErrors.description}</p> : null}
-                </div>
-                <div>
-                  <label className="text-sm font-bold text-muted">Resolution rules</label>
-                  <textarea
-                    value={rules}
-                    onChange={(e) => setField('rules', e.target.value, setRules)}
-                    onBlur={(e) => blurField('rules', e.target.value)}
-                    className={`mt-2 min-h-32 w-full rounded-[14px] border bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50 ${fieldErrors.rules ? 'border-red-400/50' : 'border-white/[0.06]'}`}
-                  />
-                  {fieldErrors.rules ? <p className="mt-1.5 text-xs font-bold text-red-400">{fieldErrors.rules}</p> : null}
-                </div>
-                <div>
-                  <label className="text-sm font-bold text-muted">Source of truth</label>
-                  <textarea
-                    value={sourceOfTruth}
-                    onChange={(e) => setField('sourceOfTruth', e.target.value, setSourceOfTruth)}
-                    onBlur={(e) => blurField('sourceOfTruth', e.target.value)}
-                    className={`mt-2 min-h-24 w-full rounded-[14px] border bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50 ${fieldErrors.sourceOfTruth ? 'border-red-400/50' : 'border-white/[0.06]'}`}
-                  />
-                  {fieldErrors.sourceOfTruth ? <p className="mt-1.5 text-xs font-bold text-red-400">{fieldErrors.sourceOfTruth}</p> : null}
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="text-sm font-bold text-muted">Close date</label>
-                    <input
-                      type="datetime-local"
-                      value={closeDate}
-                      onChange={(e) => setField('closeDate', e.target.value, setCloseDate)}
-                      onBlur={(e) => blurField('closeDate', e.target.value)}
-                      className={`mt-2 w-full rounded-[14px] border bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50 ${fieldErrors.closeDate ? 'border-red-400/50' : 'border-white/[0.06]'}`}
-                    />
-                    {fieldErrors.closeDate ? <p className="mt-1.5 text-xs font-bold text-red-400">{fieldErrors.closeDate}</p> : null}
-                  </div>
-                  <div>
-                    <label className="text-sm font-bold text-muted">Resolver address</label>
-                    <input
-                      value={resolver}
-                      onChange={(e) => setField('resolver', e.target.value, setResolver)}
-                      onBlur={(e) => blurField('resolver', e.target.value)}
-                      placeholder="0x…"
-                      className={`mt-2 w-full rounded-[14px] border bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50 ${fieldErrors.resolver ? 'border-red-400/50' : 'border-white/[0.06]'}`}
-                    />
-                    {fieldErrors.resolver ? <p className="mt-1.5 text-xs font-bold text-red-400">{fieldErrors.resolver}</p> : null}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-sm font-bold text-muted">Market picture</label>
-                  <div className="mt-3 grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
-                    <input
-                      value={imageURI}
-                      onChange={(event) => setImageURI(event.target.value)}
-                      className="w-full rounded-[14px] border border-white/[0.06] bg-[#0f172a] px-4 py-4 text-white outline-none focus:border-cyan/50"
-                    />
-                    <label className="cursor-pointer rounded-[10px] border border-cyan/30 bg-cyan/10 px-5 py-4 text-center text-sm font-black text-cyan transition-colors hover:bg-cyan/15">
-                      Upload image
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="sr-only"
-                        onChange={(event) => handleImageFile(event.target.files?.[0])}
-                      />
-                    </label>
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-muted">
-                    Use a hosted image URL, or upload a small image that can travel inside the market metadata.
-                  </p>
-                  {imageURI ? (
-                    <div className="mt-4 overflow-hidden rounded-[14px] border border-white/[0.06]">
-                      <img src={imageURI} alt="Market preview" className="h-48 w-full object-cover" />
-                    </div>
-                  ) : null}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const checks: [string, string][] = [
-                      ['title', title], ['description', description], ['rules', rules],
-                      ['sourceOfTruth', sourceOfTruth], ['closeDate', closeDate], ['resolver', resolver],
-                    ];
-                    const errors: Record<string, string> = {};
-                    for (const [name, value] of checks) {
-                      const error = validateField(name, value);
-                      if (error) errors[name] = error;
-                    }
-                    if (Object.keys(errors).length > 0) {
-                      setFieldErrors(errors);
-                      return;
-                    }
-                    setShowReview(true);
-                  }}
-                  className="w-full rounded-[10px] bg-cyan px-6 py-4 font-black text-ink transition-opacity hover:opacity-90"
-                >
-                  Review Live Market
-                </button>
+        {/* Section: Settings */}
+        <section className="mt-14">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">03 — Settings</p>
+          <div className="mt-5 space-y-7">
+            <div>
+              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Category</label>
+              <select
+                value={category}
+                onChange={(event) => setCategory(event.target.value)}
+                className={`mt-1 ${inputClass()} appearance-none cursor-pointer`}
+              >
+                <option value="" className="bg-[#0b1322]">Pick one…</option>
+                {createMarketCategories.map((item) => (
+                  <option key={item} value={item} className="bg-[#0b1322]">{item}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Collateral</label>
+              <div className="mt-2 flex gap-2">
+                {(['USDC', 'EURC'] as const).map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCollateral(c)}
+                    className={`flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-[13px] font-black transition-colors ${
+                      collateral === c
+                        ? c === 'EURC'
+                          ? 'border-blue-400/50 bg-blue-400/10 text-blue-300'
+                          : 'border-cyan/50 bg-cyan/10 text-cyan'
+                        : 'border-white/[0.08] text-muted hover:border-white/20'
+                    }`}
+                  >
+                    <span>{c}</span>
+                    <span className="text-[10px] opacity-60">{c === 'EURC' ? '€' : '$'}</span>
+                  </button>
+                ))}
+                <span className="self-center pl-2 text-[11px] text-muted/80">
+                  {collateral === 'EURC' ? 'Circle EURC on Arc' : 'Circle USDC on Arc'}
+                </span>
               </div>
-            </form>
+            </div>
+            <div>
+              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">When does it close?</label>
+              <input
+                type="datetime-local"
+                value={closeDate}
+                onChange={(e) => setField('closeDate', e.target.value, setCloseDate)}
+                onBlur={(e) => blurField('closeDate', e.target.value)}
+                className={`mt-1 ${inputClass(fieldErrors.closeDate)} [color-scheme:dark]`}
+              />
+              {fieldErrors.closeDate ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.closeDate}</p> : null}
+            </div>
+          </div>
+        </section>
 
+        {/* Section: Picture */}
+        <section className="mt-14">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">04 — Picture <span className="font-medium normal-case tracking-normal text-muted/60">(optional)</span></p>
+          <div className="mt-5">
+            <div className="flex items-end gap-3">
+              <input
+                value={imageURI}
+                onChange={(event) => setImageURI(event.target.value)}
+                placeholder="Paste an image URL"
+                className={`flex-1 ${inputClass()}`}
+              />
+              <label className="shrink-0 cursor-pointer pb-3 text-[12px] font-bold text-cyan/80 transition-colors hover:text-cyan">
+                or upload
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(event) => handleImageFile(event.target.files?.[0])}
+                />
+              </label>
+            </div>
+            {imageURI ? (
+              <div className="mt-4 overflow-hidden rounded-[10px] border border-white/[0.06]">
+                <img src={imageURI} alt="Market preview" className="h-40 w-full object-cover" />
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        {/* Sticky launch bar */}
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.06] bg-[#0a1120]/95 backdrop-blur-xl">
+          <div className="mx-auto flex max-w-2xl items-center justify-between gap-4 px-5 py-4 md:px-6">
+            <p className="text-[12px] text-muted">
+              {category ? <><span className="font-black text-white">{selectedType}</span> · {category}</> : <span className="text-muted/60">Pick a category to continue</span>}
+            </p>
+            <button
+              type="button"
+              onClick={handleReview}
+              className="rounded-full bg-cyan px-6 py-2.5 text-[13px] font-black text-ink transition-opacity hover:opacity-90"
+            >
+              Review →
+            </button>
           </div>
         </div>
       </main>
