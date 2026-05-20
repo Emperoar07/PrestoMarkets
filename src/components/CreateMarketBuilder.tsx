@@ -215,35 +215,41 @@ export function CreateMarketBuilder() {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-2xl px-5 pb-32 pt-24 md:px-6">
+      <main className="mx-auto max-w-2xl px-5 pb-36 pt-36 md:px-6 md:pt-44">
         <h1 className="text-[clamp(28px,3.5vw,40px)] font-black tracking-tight text-white">
           New market.
         </h1>
-        <p className="mt-3 text-[15px] leading-7 text-muted">
+        <p className="mt-4 max-w-xl text-[15px] leading-7 text-muted">
           Write a question the world can answer. Pick how it resolves. Launch it onchain in one transaction.
         </p>
 
-        {/* Market family — inline segmented row, not a sidebar */}
-        <div className="mt-10 grid grid-cols-3 gap-0 border-b border-white/[0.08]">
-          {marketTypes.map((type) => {
-            const isActive = selectedType === type;
-            return (
-              <button
-                key={type}
-                type="button"
-                onClick={() => chooseType(type)}
-                className={`group relative pb-3 pt-1 text-left transition-colors ${isActive ? 'text-white' : 'text-muted hover:text-white/80'}`}
-              >
-                <span className="block text-[15px] font-black">{type}</span>
-                <span className="mt-1 block text-[11px] leading-4 text-muted/80">{typeCopy[type]}</span>
-                <span className={`absolute -bottom-px left-0 h-[2px] w-full transition-all ${isActive ? 'bg-cyan' : 'bg-transparent group-hover:bg-white/10'}`} />
-              </button>
-            );
-          })}
+        {/* Market family — inline radio row with generous spacing */}
+        <div className="mt-14">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">Market family</p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3 sm:gap-5">
+            {marketTypes.map((type) => {
+              const isActive = selectedType === type;
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => chooseType(type)}
+                  className={`group relative rounded-[10px] border px-4 py-3.5 text-left transition-all ${
+                    isActive
+                      ? 'border-cyan/40 bg-cyan/[0.06] text-white'
+                      : 'border-white/[0.06] text-muted hover:border-white/15 hover:text-white/85'
+                  }`}
+                >
+                  <span className={`block text-[14px] font-black ${isActive ? 'text-white' : ''}`}>{type}</span>
+                  <span className="mt-1.5 block text-[11px] leading-4 text-muted/70">{typeCopy[type]}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Section: The question */}
-        <section className="mt-12">
+        <section className="mt-16">
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">01 — Question</p>
           <div className="mt-5 space-y-7">
             <div>
@@ -273,7 +279,7 @@ export function CreateMarketBuilder() {
         </section>
 
         {/* Section: How it resolves */}
-        <section className="mt-14">
+        <section className="mt-16">
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">02 — Resolution</p>
           <div className="mt-5 space-y-7">
             <div>
@@ -337,7 +343,7 @@ export function CreateMarketBuilder() {
         </section>
 
         {/* Section: Settings */}
-        <section className="mt-14">
+        <section className="mt-16">
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">03 — Settings</p>
           <div className="mt-5 space-y-7">
             <div>
@@ -393,7 +399,7 @@ export function CreateMarketBuilder() {
         </section>
 
         {/* Section: Picture */}
-        <section className="mt-14">
+        <section className="mt-16">
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">04 — Picture <span className="font-medium normal-case tracking-normal text-muted/60">(optional)</span></p>
           <div className="mt-5">
             <div className="flex items-end gap-3">

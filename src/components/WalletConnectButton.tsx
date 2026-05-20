@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, Copy, LogOut, X } from 'lucide-react';
+import { ChevronDown, LogOut, X } from 'lucide-react';
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from 'wagmi';
 import {
   completePendingCircleSocialLogin,
@@ -166,46 +166,68 @@ export function WalletConnectButton() {
         </button>
 
         {isOpen ? (
-          <div className="absolute right-0 mt-3 w-[340px] rounded-[16px] border border-white/[0.08] bg-[#141e30] p-3 shadow-2xl shadow-black/30">
-            <div className="rounded-[12px] border border-white/[0.06] bg-[#0f172a] p-3">
-              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#94a3b8]">Connected wallet</p>
-              <p className="mt-2 break-all text-sm font-bold text-white">{wallet.address}</p>
-              <p className="mt-1 text-xs text-[#94a3b8]">
-                {wallet.mode === 'circle-user-controlled' ? 'App wallet' : 'External wallet'}
+          <div className="absolute right-0 mt-3 w-[360px] overflow-hidden rounded-[14px] border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/40">
+            {/* Identity header */}
+            <div className="px-4 pb-3 pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-cyan/70">
+                  {wallet.mode === 'circle-user-controlled' ? 'App wallet' : 'External wallet'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void copyAddress()}
+                  className="text-[10.5px] font-bold uppercase tracking-[0.18em] text-muted transition-colors hover:text-cyan"
+                  aria-label="Copy address"
+                >
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+              <p className="mt-2.5 break-all font-mono text-[12.5px] leading-5 text-white/90">
+                {wallet.address}
               </p>
             </div>
 
-            <div className="mt-3 rounded-[12px] border border-white/[0.06] bg-[#0f172a]">
-              <p className="px-3 pt-3 text-[11px] font-black uppercase tracking-[0.16em] text-[#94a3b8]">Recent activity</p>
+            {/* Activity */}
+            <div className="border-t border-white/[0.06] px-1 pt-3">
+              <p className="px-3 pb-2 text-[10.5px] font-bold uppercase tracking-[0.22em] text-cyan/70">Recent</p>
               {activity.length === 0 ? (
-                <p className="px-3 py-4 text-[12px] text-[#64748b]">No trades yet. Your buys, wins, and refunds will appear here.</p>
+                <p className="px-3 pb-4 text-[12px] leading-5 text-muted/80">
+                  No trades yet. Buys, wins, and refunds will appear here as they confirm onchain.
+                </p>
               ) : (
-                <ul className="max-h-[260px] overflow-y-auto px-1 py-1">
+                <ul className="max-h-[280px] overflow-y-auto pb-1">
                   {activity.slice(0, 8).map((item, idx) => {
                     const icon = activityIcon(item.kind);
-                    const description = item.kind === 'win'
-                      ? `Won ${item.detail} on "${item.market}"`
+                    const headline = item.kind === 'win'
+                      ? `Won ${item.detail}`
                       : item.kind === 'refund'
-                        ? `Refunded ${item.detail} from "${item.market}"`
-                        : `${item.label} on "${item.market}" — ${item.detail}`;
+                        ? `Refunded ${item.detail}`
+                        : item.kind === 'in'
+                          ? `Received ${item.detail}`
+                          : `${item.label} · ${item.detail}`;
                     return (
                       <li key={`${item.txHash ?? idx}-${idx}`}>
                         <a
                           href={item.txHash ? `${ARC_EXPLORER_BASE}${item.txHash}` : undefined}
                           target={item.txHash ? '_blank' : undefined}
                           rel={item.txHash ? 'noreferrer' : undefined}
-                          className={`flex items-start gap-2.5 rounded-[10px] px-2.5 py-2 text-left transition-colors ${item.txHash ? 'cursor-pointer hover:bg-white/[0.03]' : 'cursor-default'}`}
+                          className={`group flex items-start gap-3 px-3 py-2.5 transition-colors ${item.txHash ? 'cursor-pointer hover:bg-white/[0.03]' : 'cursor-default'}`}
                           aria-label={item.txHash ? `Open ${item.label} on Arc explorer` : item.label}
                         >
-                          <span className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-black ${icon.tone} ${icon.bg}`}>
+                          <span className={`mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-black ${icon.tone} ${icon.bg}`}>
                             {icon.glyph}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[12px] font-bold text-white">{description}</span>
-                            <span className="mt-0.5 block text-[10.5px] text-[#64748b]">
-                              {item.time}
-                              {item.txHash ? <span className="ml-2 text-cyan/80">view on explorer ↗</span> : null}
-                            </span>
+                            <span className="block truncate text-[13px] font-bold text-white">{headline}</span>
+                            <span className="mt-0.5 block truncate text-[11.5px] text-muted/80">{item.market}</span>
+                          </span>
+                          <span className="flex shrink-0 flex-col items-end gap-0.5">
+                            <span className="text-[10.5px] text-muted/60">{item.time}</span>
+                            {item.txHash ? (
+                              <span className="text-[10.5px] font-bold text-cyan/80 opacity-0 transition-opacity group-hover:opacity-100">
+                                explorer ↗
+                              </span>
+                            ) : null}
                           </span>
                         </a>
                       </li>
@@ -215,24 +237,23 @@ export function WalletConnectButton() {
               )}
             </div>
 
-            <div className="mt-3 grid gap-2">
-              <button
-                type="button"
-                onClick={() => void copyAddress()}
-                className="flex items-center justify-between rounded-[12px] border border-white/[0.06] bg-[#0f172a] px-3 py-3 text-left text-sm font-bold text-white transition-colors hover:border-cyan/30"
+            {/* Footer actions */}
+            <div className="flex items-center justify-between gap-2 border-t border-white/[0.06] px-4 py-3">
+              <a
+                href={`https://testnet.arcscan.app/address/${wallet.address}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[12px] font-bold text-muted transition-colors hover:text-cyan"
               >
-                <span className="flex items-center gap-2">
-                  {copied ? <Check className="h-4 w-4 text-mint" /> : <Copy className="h-4 w-4 text-cyan" />}
-                  {copied ? 'Copied address' : 'Copy address'}
-                </span>
-              </button>
+                View on explorer ↗
+              </a>
               <button
                 type="button"
                 onClick={() => void disconnectWallet()}
-                className="flex items-center gap-2 rounded-[12px] border border-white/[0.06] bg-[#0f172a] px-3 py-3 text-left text-sm font-bold text-red-200 transition-colors hover:border-red-300/30"
+                className="flex items-center gap-1.5 text-[12px] font-bold text-red-300/80 transition-colors hover:text-red-300"
               >
-                <LogOut className="h-4 w-4" />
-                Disconnect wallet
+                <LogOut className="h-3.5 w-3.5" />
+                Disconnect
               </button>
             </div>
           </div>

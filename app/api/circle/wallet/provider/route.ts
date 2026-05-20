@@ -230,8 +230,12 @@ export async function POST(request: Request) {
       if (!body.contractAddress) return jsonError('contractAddress is required.');
       if (!body.abiFunctionSignature) return jsonError('abiFunctionSignature is required.');
 
-      // Circle's user-controlled contractExecution requires fee as { type: 'level', config: { feeLevel } }.
-      // A bare feeLevel string is rejected with 400.
+      // Circle's REST contractExecution expects bare top-level feeLevel (per the batch-operations
+      // example in their docs). All abiParameter scalars must be strings — passing a JS number
+      // for a uint8 returns error code 2 ("Cannot unmarshal").
+      const stringifiedParams = (body.abiParameters ?? []).map((p) =>
+        typeof p === 'number' || typeof p === 'bigint' ? String(p) : p,
+      );
       return circleFetch('/v1/w3s/user/transactions/contractExecution', {
         method: 'POST',
         userToken: body.userToken,
@@ -240,9 +244,9 @@ export async function POST(request: Request) {
           walletId: body.walletId,
           contractAddress: body.contractAddress,
           abiFunctionSignature: body.abiFunctionSignature,
-          abiParameters: body.abiParameters ?? [],
+          abiParameters: stringifiedParams,
           ...(body.amount ? { amount: body.amount } : {}),
-          fee: { type: 'level', config: { feeLevel: body.feeLevel ?? 'MEDIUM' } },
+          feeLevel: body.feeLevel ?? 'MEDIUM',
           ...(body.refId ? { refId: body.refId } : {}),
         }),
       });

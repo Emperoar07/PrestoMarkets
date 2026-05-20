@@ -169,11 +169,12 @@ export async function createCircleMarket(input: CreateLiveMarketInput): Promise<
       session,
       contractAddress: config.factoryAddress!,
       abiFunctionSignature: 'createMarket(address,uint256,string,uint8)',
+      // Every Circle abiParameter scalar must be a string. Numbers cause error code 2.
       abiParameters: [
         input.resolver,
         getCloseTimestamp(input.closeDate).toString(),
         buildMarketMetadataURI(input),
-        getMarketKind(input.type),
+        String(getMarketKind(input.type)),
       ],
     });
     return { ok: true, message: 'Live market created via Circle wallet.', txHash: txHash as `0x${string}` };
@@ -204,7 +205,7 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: '
       session,
       contractAddress: input.marketAddress,
       abiFunctionSignature: 'buy(uint8,uint256)',
-      abiParameters: [input.outcome === 'YES' ? 0 : 1, amount],
+      abiParameters: [input.outcome === 'YES' ? '0' : '1', amount],
       refId: `presto-buy-${input.marketAddress}`,
     });
     return { ok: true, message: `Bought ${input.outcome} shares via Circle wallet.`, txHash: txHash as `0x${string}` };
@@ -221,7 +222,7 @@ export async function resolveCircleMarket(input: { marketAddress: string; outcom
       session,
       contractAddress: input.marketAddress,
       abiFunctionSignature: 'resolve(uint8,string)',
-      abiParameters: [input.outcome === 'YES' ? 0 : 1, input.resolutionURI],
+      abiParameters: [input.outcome === 'YES' ? '0' : '1', input.resolutionURI],
     });
     return { ok: true, message: 'Market resolved via Circle wallet.', txHash: txHash as `0x${string}` };
   } catch (error) {
