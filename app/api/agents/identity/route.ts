@@ -60,22 +60,24 @@ export async function POST(req: NextRequest) {
 
     const alreadyRegistered = result.txHash === '0x0';
 
-    // Auto-persist AGENT_ERC8004_ID to Vercel env vars if token is configured
+    // Auto-persist AGENT_ERC8004_ID to Vercel env vars if token is configured.
+    // VERCEL_TOKEN is high-value: a single bug here that bubbles up the Vercel response body
+    // could leak it. Gate the value strictly (numeric IDs only) and never echo Vercel error
+    // bodies back to the caller.
     let vercelEnvSet = false;
     const vercelToken = process.env.VERCEL_TOKEN;
     const vercelProjectId = process.env.VERCEL_PROJECT_ID ?? 'prj_MRjpZNy9yykIfO3c4wX344tIldWA';
-    if (vercelToken && result.agentId && result.agentId !== 'unknown') {
+    const agentIdIsNumeric = typeof result.agentId === 'string' && /^\d+$/.test(result.agentId);
+    if (vercelToken && agentIdIsNumeric) {
       try {
-        // Upsert the env var — try POST first, fall back to PATCH on conflict
         const body = JSON.stringify({ key: 'AGENT_ERC8004_ID', value: result.agentId, type: 'plain', target: ['production', 'preview'] });
         const headers = { 'Authorization': `Bearer ${vercelToken}`, 'Content-Type': 'application/json' };
         const res = await fetch(`https://api.vercel.com/v10/projects/${vercelProjectId}/env`, { method: 'POST', headers, body });
         if (res.ok) {
           vercelEnvSet = true;
         } else if (res.status === 409) {
-          // Env var already exists — update it
           const existing = await fetch(`https://api.vercel.com/v10/projects/${vercelProjectId}/env?keys=AGENT_ERC8004_ID`, { headers });
-          const data = await existing.json() as { envs?: Array<{ id: string }> };
+          const data = await existing.json().catch(() => ({})) as { envs?: Array<{ id: string }> };
           const envId = data.envs?.[0]?.id;
           if (envId) {
             const patch = await fetch(`https://api.vercel.com/v10/projects/${vercelProjectId}/env/${envId}`, {
@@ -85,7 +87,7 @@ export async function POST(req: NextRequest) {
           }
         }
       } catch {
-        // Non-blocking — registration succeeded even if env set failed
+        // Swallow without logging — error bodies from Vercel can contain the bearer token.
       }
     }
 

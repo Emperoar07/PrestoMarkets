@@ -154,7 +154,20 @@ Return JSON only:
     sources: string[];
   };
 
-  const allSources = Array.from(new Set([...(parsed.sources ?? []), ...searchSources])).slice(0, 8);
+  // Only embed http/https URLs into the onchain resolution report. Serper results and the
+  // oracle's `sources[]` array are attacker-influenceable (an attacker controlling a domain that
+  // surfaces in Serper can plant javascript:/data:text/html URIs that future UIs might render).
+  const isSafeHttpUrl = (url: string): boolean => {
+    try {
+      const { protocol } = new URL(url);
+      return protocol === 'http:' || protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
+  const allSources = Array.from(new Set([...(parsed.sources ?? []), ...searchSources]))
+    .filter(isSafeHttpUrl)
+    .slice(0, 8);
   if (parsed.outcome === 'CANCEL' || parsed.confidence < MIN_AUTO_RESOLVE_CONFIDENCE) {
     return {
       ok: false,

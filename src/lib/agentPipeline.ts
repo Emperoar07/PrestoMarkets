@@ -105,12 +105,34 @@ async function fetchGrokXTrends(): Promise<TrendItem[]> {
   return (parsed.items ?? [])
     .filter((item) => typeof item.topic === 'string' && item.topic.length > 0)
     .map((item) => ({
-      topic: item.topic!,
-      query: item.context ?? item.topic!,
+      topic: sanitizeFeedText(item.topic!),
+      query: sanitizeFeedText(item.context ?? item.topic!),
       source: 'grok-x-live',
       url: item.url,
     }))
     .slice(0, 6);
+}
+
+// Strip prompt-injection sentinels from third-party feed content before it reaches an LLM.
+// RSS sources (Google News aggregates third-party titles verbatim) are an open channel where
+// an attacker can plant "ignore previous instructions" style payloads. We neutralize the most
+// common patterns rather than trusting downstream LLMs to ignore them.
+const INJECTION_PATTERNS: RegExp[] = [
+  /ignore\s+(all\s+)?previous\s+(instructions|prompts|context)/gi,
+  /disregard\s+(all\s+)?(prior|previous|earlier)\s+(instructions|prompts|context)/gi,
+  /\bsystem\s*[:>]/gi,
+  /\bassistant\s*[:>]/gi,
+  /<\s*\/?\s*(system|assistant|user|instructions?)\s*>/gi,
+  /###+\s*(system|instruction|prompt)/gi,
+  /\[\s*(system|instruction|prompt)\s*\]/gi,
+];
+
+function sanitizeFeedText(value: string): string {
+  let out = value;
+  for (const pattern of INJECTION_PATTERNS) {
+    out = out.replace(pattern, '[redacted]');
+  }
+  return out;
 }
 
 async function fetchRssTrends(input: { url: string; source: string; limit?: number }): Promise<TrendItem[]> {
@@ -127,10 +149,12 @@ async function fetchRssTrends(input: { url: string; source: string; limit?: numb
   let match: RegExpExecArray | null;
   while ((match = itemRegex.exec(xml)) && items.length < limit) {
     const block = match[1];
-    const title = titleRegex.exec(block)?.[1]?.trim();
+    const rawTitle = titleRegex.exec(block)?.[1]?.trim();
     const link = linkRegex.exec(block)?.[1]?.trim();
-    const desc = descRegex.exec(block)?.[1]?.replace(/<[^>]+>/g, '').trim();
-    if (!title) continue;
+    const rawDesc = descRegex.exec(block)?.[1]?.replace(/<[^>]+>/g, '').trim();
+    if (!rawTitle) continue;
+    const title = sanitizeFeedText(rawTitle);
+    const desc = rawDesc ? sanitizeFeedText(rawDesc) : undefined;
     items.push({ topic: title, query: desc?.slice(0, 240) ?? title, source: input.source, url: link });
   }
   return items;

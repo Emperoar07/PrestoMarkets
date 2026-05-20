@@ -46,32 +46,42 @@ const MAX = { title: 200, description: 1000, rules: 2000, sourceOfTruth: 500, ag
 const MIN = { title: 8, description: 12, rules: 20, sourceOfTruth: 10 };
 
 const SAFE_URL_SCHEMES = new Set(['http:', 'https:']);
+const SAFE_IMAGE_DATA_PREFIXES = ['data:image/png', 'data:image/jpeg', 'data:image/jpg', 'data:image/gif', 'data:image/webp'];
 
 function trunc(s: string | undefined, max: number): string | undefined {
   return s && s.length > max ? s.slice(0, max) : s;
 }
 
+function isSafeUrl(value: string | undefined): value is string {
+  if (!value) return false;
+  try {
+    return SAFE_URL_SCHEMES.has(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
+function isSafeImage(value: string | undefined): value is string {
+  if (!value) return false;
+  const v = value.trim();
+  if (SAFE_IMAGE_DATA_PREFIXES.some((p) => v.startsWith(`${p};`) || v.startsWith(`${p},`))) {
+    return v.length <= MAX.imageURI;
+  }
+  return isSafeUrl(v);
+}
+
 function assertSafeUrl(value: string | undefined, label: string): void {
   if (!value) return;
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    throw new Error(`${label} must be a valid URL.`);
-  }
-  if (!SAFE_URL_SCHEMES.has(parsed.protocol)) {
-    throw new Error(`${label} must use http or https (got ${parsed.protocol}).`);
+  if (!isSafeUrl(value)) {
+    throw new Error(`${label} must be a valid http or https URL.`);
   }
 }
 
 function assertSafeImage(value: string | undefined): void {
   if (!value) return;
-  const v = value.trim();
-  if (v.startsWith('data:image/')) {
-    if (v.length > MAX.imageURI) throw new Error('Image data URI exceeds the inline size budget.');
-    return;
+  if (!isSafeImage(value)) {
+    throw new Error('imageURI must be an http/https URL or a data:image/{png,jpeg,gif,webp} payload under the size budget.');
   }
-  assertSafeUrl(v, 'imageURI');
 }
 
 function assertMinLength(value: string, min: number, label: string): void {
@@ -120,9 +130,17 @@ export function buildMarketMetadataURI(input: BuildMarketMetadataInput) {
 export function parseMarketMetadata(metadataURI: string): Partial<MarketMetadata> | null {
   if (!metadataURI.startsWith(DATA_PREFIX)) return null;
 
+  let parsed: Partial<MarketMetadata>;
   try {
-    return JSON.parse(decodeURIComponent(metadataURI.slice(DATA_PREFIX.length))) as Partial<MarketMetadata>;
+    parsed = JSON.parse(decodeURIComponent(metadataURI.slice(DATA_PREFIX.length))) as Partial<MarketMetadata>;
   } catch {
     return null;
   }
+
+  // Defence in depth: the factory is permissionless, so anyone can write attacker-controlled
+  // strings into onchain metadata. Drop any field that fails the same validation we apply on
+  // creation rather than rendering javascript:/data:text/html into the UI.
+  if (!isSafeImage(parsed.imageURI)) parsed.imageURI = undefined;
+  if (!isSafeUrl(parsed.trendUrl)) parsed.trendUrl = undefined;
+  return parsed;
 }
