@@ -11,7 +11,10 @@ type Checkpoint = {
 };
 
 const SCHEMA_VERSION = 'v1';
-const LOG_PAGE_BLOCKS = BigInt(50_000);
+// Arc's public RPC rejects wide eth_getLogs queries with 413 Payload Too Large. Sub-second
+// finality means even small block windows cover a useful slice of recent activity, so we
+// keep page size conservative and rely on the checkpoint to amortize history over many loads.
+const LOG_PAGE_BLOCKS = BigInt(2_000);
 
 const sharesBoughtEvent = prestoMarketAbi.find(
   (e) => e.type === 'event' && e.name === 'SharesBought',

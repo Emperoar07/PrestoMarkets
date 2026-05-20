@@ -86,9 +86,11 @@ async function runContractExecution(input: {
   amount?: string;
   refId?: string;
 }): Promise<string> {
-  // Circle's user-controlled contractExecution endpoint returns only a challengeId. The
-  // transactionId is created server-side and must be fetched separately by listing the wallet's
-  // recent transactions and matching on the challengeId.
+  // Circle's user-controlled contractExecution returns only a challengeId. The transactionId
+  // is created server-side and the transactions list endpoint does NOT echo challengeId in
+  // its response, so we time-anchor: record now() right before POSTing, then after the PIN
+  // challenge resolves, pick the most recent transaction whose createDate is after our anchor.
+  const anchor = Date.now() - 2_000; // 2s skew tolerance
   const { challengeId } = await callProvider<{ challengeId: string }>({
     action: 'contractExecution',
     userToken: input.session.userToken,
@@ -105,21 +107,31 @@ async function runContractExecution(input: {
   }
 
   await executeChallenge(input.session, challengeId);
-  const transactionId = await findTransactionId(input.session, challengeId);
+  const transactionId = await findRecentTransactionId(input.session, anchor);
   return waitForTx(input.session, transactionId);
 }
 
-async function findTransactionId(session: CircleSession, challengeId: string): Promise<string> {
-  // Poll briefly: the transaction may not be indexed the instant the challenge resolves.
-  const deadline = Date.now() + 20_000;
+type ListedTransaction = {
+  id: string;
+  createDate?: string;
+  walletId?: string;
+  state?: string;
+};
+
+async function findRecentTransactionId(session: CircleSession, anchorMs: number): Promise<string> {
+  // Poll briefly: Circle may not have indexed the transaction the instant the challenge resolves.
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
-    const list = await callProvider<{ transactions?: Array<{ id: string; challengeId?: string }> }>({
+    const list = await callProvider<{ transactions?: ListedTransaction[] }>({
       action: 'findTransactionByChallenge',
       userToken: session.userToken,
       walletId: session.walletId,
     });
-    const match = list.transactions?.find((t) => t.challengeId === challengeId);
-    if (match?.id) return match.id;
+    const candidates = (list.transactions ?? [])
+      .filter((t) => t.id && t.createDate)
+      .filter((t) => new Date(t.createDate!).getTime() >= anchorMs)
+      .sort((a, b) => new Date(b.createDate!).getTime() - new Date(a.createDate!).getTime());
+    if (candidates[0]?.id) return candidates[0].id;
     await new Promise((r) => setTimeout(r, 1_500));
   }
   throw new Error('Could not locate the transaction after challenge approval.');

@@ -10,7 +10,9 @@ import { prestoMarketAbi } from './contracts';
 import { fetchMarketCostBasisIndexed } from './costBasisIndexer';
 import type { AppMarket } from './appState';
 import type { PortfolioActivity, Position } from './portfolio';
-const activityBlockWindow = BigInt(2_592_000);
+// Arc's public RPC returns 413 on wide getLogs queries. Cap the activity window at ~1 hour
+// of sub-second blocks (~7200 blocks at 0.5s) so each market's three log calls stay accepted.
+const activityBlockWindow = BigInt(7_200);
 
 export type AccountMarketPreview = {
   marketId: string;
