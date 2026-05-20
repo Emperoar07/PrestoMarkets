@@ -6,7 +6,7 @@ import {
   type Address,
 } from 'viem';
 import { getArcConfig, getArcChainId } from './arcConfig';
-import { prestoMarketAbi } from './contracts';
+import { prestoMarketAbi, prestoMarketFactoryAbi } from './contracts';
 import { fetchMarketCostBasisIndexed } from './costBasisIndexer';
 import type { AppMarket } from './appState';
 import type { PortfolioActivity, Position } from './portfolio';
@@ -32,6 +32,7 @@ export type AccountPortfolioSnapshot = {
 const sharesBoughtEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'SharesBought')!;
 const claimedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'Claimed')!;
 const refundedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'Refunded')!;
+const marketCreatedEvent = prestoMarketFactoryAbi.find((e) => e.type === 'event' && e.name === 'MarketCreated')!;
 
 function formatUsdc(value: bigint) {
   return `$${Number(formatUnits(value, 6)).toFixed(2)}`;
@@ -208,8 +209,10 @@ export async function fetchAccountPortfolio(markets: AppMarket[], accountAddress
   }));
 
   const activity = await fetchRecentAccountActivity(client, markets, account);
+  const createdActivity = await fetchRecentCreatedMarkets(client, markets, account).catch(() => [] as PortfolioActivity[]);
+  const combined = [...createdActivity, ...activity].sort((a, b) => b.time.localeCompare(a.time));
 
-  return { positions, activity, previews };
+  return { positions, activity: combined.slice(0, 24), previews };
 }
 
 function formatUsdNumber(value: number) {
@@ -270,4 +273,39 @@ async function fetchRecentAccountActivity(
   }));
 
   return rows.flat().slice(-20).reverse();
+}
+
+async function fetchRecentCreatedMarkets(
+  client: ReturnType<typeof createPublicClient>,
+  markets: AppMarket[],
+  account: Address,
+): Promise<PortfolioActivity[]> {
+  const config = getArcConfig();
+  if (!config.factoryAddress || !isAddress(config.factoryAddress)) return [];
+
+  const latestBlock = await client.getBlockNumber().catch(() => BigInt(0));
+  const fromBlock = latestBlock > activityBlockWindow ? latestBlock - activityBlockWindow : BigInt(0);
+
+  const logs = await client.getLogs({
+    address: config.factoryAddress as Address,
+    event: marketCreatedEvent,
+    args: { creator: account },
+    fromBlock,
+  }).catch(() => []);
+
+  const titleByAddress = new Map(markets.map((m) => [m.id.toLowerCase(), m.title]));
+
+  return logs.map((log) => {
+    const marketAddr = (log.args.market ?? '').toString();
+    const title = titleByAddress.get(marketAddr.toLowerCase()) ?? `Market ${marketAddr.slice(0, 6)}…`;
+    return {
+      label: 'Created market',
+      market: title,
+      detail: `${marketAddr.slice(0, 6)}…${marketAddr.slice(-4)}`,
+      status: 'Confirmed' as const,
+      time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
+      kind: 'create' as const,
+      txHash: log.transactionHash ?? undefined,
+    };
+  });
 }

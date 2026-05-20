@@ -38,6 +38,7 @@ export function CreateMarketBuilder() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<string, string>>>({});
+  const [result, setResult] = useState<{ ok: boolean; message: string; txHash?: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -184,11 +185,15 @@ export function CreateMarketBuilder() {
     });
 
     setIsSubmitting(false);
-    setStatusMessage(result.message);
+    setStatusMessage(result.ok ? '' : result.message);
+    setShowReview(false);
+    setResult({ ok: result.ok, message: result.message, txHash: result.txHash });
+  }
 
-    if (result.ok) {
-      router.push('/markets');
-    }
+  function dismissResult() {
+    const wasOk = result?.ok;
+    setResult(null);
+    if (wasOk) router.push('/markets');
   }
 
   const inputBase = 'w-full bg-transparent text-white placeholder:text-[#3d4a63] outline-none transition-colors text-[15px] py-3 border-b';
@@ -518,6 +523,77 @@ export function CreateMarketBuilder() {
                 {statusMessage}
               </p>
             ) : null}
+          </section>
+        </div>
+      ) : null}
+
+      {result ? (
+        <div className="fixed inset-0 z-[9999] grid place-items-center bg-[#050b14]/88 px-4 py-8 backdrop-blur-md">
+          <section className="relative w-full max-w-[460px] overflow-hidden rounded-[16px] border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/50">
+            <div className={`px-6 pb-5 pt-7 text-center ${result.ok ? 'bg-mint/[0.04]' : 'bg-red-400/[0.04]'}`}>
+              <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full text-[22px] font-black ${result.ok ? 'bg-mint/15 text-mint' : 'bg-red-400/15 text-red-300'}`}>
+                {result.ok ? '✓' : '!'}
+              </div>
+              <h2 className="mt-4 text-[20px] font-black text-white">
+                {result.ok ? 'Market is live.' : 'Could not launch.'}
+              </h2>
+              <p className="mx-auto mt-2 max-w-[340px] text-[13px] leading-6 text-muted">
+                {result.ok
+                  ? `"${title}" is now on Arc. Trades open immediately and stay open until ${getCloseDateLabel()}.`
+                  : result.message}
+              </p>
+            </div>
+
+            {result.ok && result.txHash ? (
+              <div className="border-t border-white/[0.06] px-6 py-4 text-center">
+                <a
+                  href={`https://testnet.arcscan.app/tx/${result.txHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-[12px] text-cyan/80 transition-colors hover:text-cyan"
+                >
+                  {result.txHash.slice(0, 10)}…{result.txHash.slice(-8)} ↗
+                </a>
+              </div>
+            ) : null}
+
+            <div className="flex border-t border-white/[0.06]">
+              {result.ok ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => { setResult(null); }}
+                    className="flex-1 py-4 text-[13px] font-black text-muted transition-colors hover:bg-white/[0.03] hover:text-white"
+                  >
+                    Stay here
+                  </button>
+                  <button
+                    type="button"
+                    onClick={dismissResult}
+                    className="flex-1 border-l border-white/[0.06] bg-cyan py-4 text-[13px] font-black text-ink transition-opacity hover:opacity-90"
+                  >
+                    View markets →
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setResult(null)}
+                    className="flex-1 py-4 text-[13px] font-black text-muted transition-colors hover:bg-white/[0.03] hover:text-white"
+                  >
+                    Dismiss
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setResult(null); setShowReview(true); }}
+                    className="flex-1 border-l border-white/[0.06] bg-cyan py-4 text-[13px] font-black text-ink transition-opacity hover:opacity-90"
+                  >
+                    Try again
+                  </button>
+                </>
+              )}
+            </div>
           </section>
         </div>
       ) : null}

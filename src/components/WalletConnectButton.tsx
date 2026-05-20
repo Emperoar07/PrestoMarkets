@@ -16,22 +16,11 @@ import {
   type ConnectedWallet,
 } from '@/lib/walletProvider';
 import { arcTestnetChain, walletConnectProjectId } from '@/lib/rainbowConfig';
-import { useAppState } from '@/lib/appState';
-
-const ARC_EXPLORER_BASE = 'https://testnet.arcscan.app/tx/';
-
-function activityIcon(kind: 'in' | 'out' | 'win' | 'refund') {
-  if (kind === 'win') return { glyph: '↑', tone: 'text-mint', bg: 'bg-mint/10' };
-  if (kind === 'refund') return { glyph: '↻', tone: 'text-cyan', bg: 'bg-cyan/10' };
-  if (kind === 'in') return { glyph: '↓', tone: 'text-cyan', bg: 'bg-cyan/10' };
-  return { glyph: '↑', tone: 'text-red-300', bg: 'bg-red-400/10' };
-}
 
 export function WalletConnectButton() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { address: rainbowAddress, isConnected: isRainbowConnected } = useAccount();
   const { disconnect } = useDisconnect();
-  const { activity } = useAppState();
   const [wallet, setWallet] = useState<ConnectedWallet | null>(null);
   const [status, setStatus] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -187,65 +176,21 @@ export function WalletConnectButton() {
               </p>
             </div>
 
-            {/* Activity */}
-            <div className="border-t border-white/[0.06] px-1 pt-3">
-              <p className="px-3 pb-2 text-[10.5px] font-bold uppercase tracking-[0.22em] text-cyan/70">Recent</p>
-              {activity.length === 0 ? (
-                <p className="px-3 pb-4 text-[12px] leading-5 text-muted/80">
-                  No trades yet. Buys, wins, and refunds will appear here as they confirm onchain.
-                </p>
-              ) : (
-                <ul className="max-h-[280px] overflow-y-auto pb-1">
-                  {activity.slice(0, 8).map((item, idx) => {
-                    const icon = activityIcon(item.kind);
-                    const headline = item.kind === 'win'
-                      ? `Won ${item.detail}`
-                      : item.kind === 'refund'
-                        ? `Refunded ${item.detail}`
-                        : item.kind === 'in'
-                          ? `Received ${item.detail}`
-                          : `${item.label} · ${item.detail}`;
-                    return (
-                      <li key={`${item.txHash ?? idx}-${idx}`}>
-                        <a
-                          href={item.txHash ? `${ARC_EXPLORER_BASE}${item.txHash}` : undefined}
-                          target={item.txHash ? '_blank' : undefined}
-                          rel={item.txHash ? 'noreferrer' : undefined}
-                          className={`group flex items-start gap-3 px-3 py-2.5 transition-colors ${item.txHash ? 'cursor-pointer hover:bg-white/[0.03]' : 'cursor-default'}`}
-                          aria-label={item.txHash ? `Open ${item.label} on Arc explorer` : item.label}
-                        >
-                          <span className={`mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-black ${icon.tone} ${icon.bg}`}>
-                            {icon.glyph}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13px] font-bold text-white">{headline}</span>
-                            <span className="mt-0.5 block truncate text-[11.5px] text-muted/80">{item.market}</span>
-                          </span>
-                          <span className="flex shrink-0 flex-col items-end gap-0.5">
-                            <span className="text-[10.5px] text-muted/60">{item.time}</span>
-                            {item.txHash ? (
-                              <span className="text-[10.5px] font-bold text-cyan/80 opacity-0 transition-opacity group-hover:opacity-100">
-                                explorer ↗
-                              </span>
-                            ) : null}
-                          </span>
-                        </a>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-
             {/* Footer actions */}
-            <div className="flex items-center justify-between gap-2 border-t border-white/[0.06] px-4 py-3">
+            <div className="flex items-center justify-between gap-3 border-t border-white/[0.06] px-4 py-3">
+              <a
+                href="/activity"
+                className="text-[12px] font-bold text-cyan/80 transition-colors hover:text-cyan"
+              >
+                Activity →
+              </a>
               <a
                 href={`https://testnet.arcscan.app/address/${wallet.address}`}
                 target="_blank"
                 rel="noreferrer"
                 className="text-[12px] font-bold text-muted transition-colors hover:text-cyan"
               >
-                View on explorer ↗
+                Explorer ↗
               </a>
               <button
                 type="button"

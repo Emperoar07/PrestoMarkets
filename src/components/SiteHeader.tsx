@@ -125,6 +125,11 @@ export function SiteHeader() {
               Create Market
             </Link>
           ) : null}
+          {!isLandingPage ? (
+            <Link href="/activity" className={navLinkClass(pathname === '/activity')}>
+              Activity
+            </Link>
+          ) : null}
           <a href={dexUrl} className={navLinkClass()}>
             DEX
           </a>
