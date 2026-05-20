@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { BrandMark } from './BrandMark';
 import { WalletConnectButton } from './WalletConnectButton';
-import { fetchArcUsdcBalance } from '@/lib/walletBalance';
+import { fetchArcStableBalances, type StableSymbol } from '@/lib/walletBalance';
 import { getStoredConnectedWallet, subscribeConnectedWallet, type ConnectedWallet } from '@/lib/walletProvider';
 import { primaryViewCategories, topicNavCategories } from '@/lib/categories';
 
@@ -33,7 +33,10 @@ export function SiteHeader() {
   const [searchValue, setSearchValue] = useState('');
   const [activeCategory, setActiveCategory] = useState('Trending');
   const [connectedWallet, setConnectedWallet] = useState<ConnectedWallet | null>(null);
-  const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
+  const [balances, setBalances] = useState<Record<StableSymbol, string | null>>({ USDC: null, EURC: null });
+  const [activeStable, setActiveStable] = useState<StableSymbol>('USDC');
+  const [balanceMenuOpen, setBalanceMenuOpen] = useState(false);
+  const balanceMenuRef = useRef<HTMLDivElement>(null);
   const categoryScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -58,14 +61,25 @@ export function SiteHeader() {
   useEffect(() => {
     let cancelled = false;
     if (!connectedWallet?.address) {
-      setUsdcBalance(null);
+      setBalances({ USDC: null, EURC: null });
       return undefined;
     }
-    fetchArcUsdcBalance(connectedWallet.address)
-      .then((balance) => { if (!cancelled) setUsdcBalance(balance); })
-      .catch(() => { if (!cancelled) setUsdcBalance(null); });
+    fetchArcStableBalances(connectedWallet.address)
+      .then((result) => { if (!cancelled) setBalances(result); })
+      .catch(() => { if (!cancelled) setBalances({ USDC: null, EURC: null }); });
     return () => { cancelled = true; };
   }, [connectedWallet?.address]);
+
+  useEffect(() => {
+    if (!balanceMenuOpen) return undefined;
+    function handleClickOutside(event: MouseEvent) {
+      if (balanceMenuRef.current && !balanceMenuRef.current.contains(event.target as Node)) {
+        setBalanceMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [balanceMenuOpen]);
 
   function updateExploreSearch(value: string) {
     setSearchValue(value);
@@ -102,12 +116,6 @@ export function SiteHeader() {
             className="hidden max-w-[340px] flex-1 rounded-lg border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-[13px] font-medium text-white outline-none transition-colors placeholder:text-[#334155] focus:border-cyan/40 md:block"
           />
         ) : null}
-        {showWallet && connectedWallet ? (
-          <div className="hidden rounded-lg border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-[12px] font-black text-[#dbeafe] md:block">
-            <span className="text-[#4a5568]">Arc USDC</span>{' '}
-            <span className="text-cyan">{usdcBalance ?? '--'}</span>
-          </div>
-        ) : null}
         <nav className="ml-auto flex items-center gap-3">
           <Link href="/markets" className={navLinkClass(isExplorePage && !isCreatePage)}>
             Explore Markets
@@ -129,6 +137,36 @@ export function SiteHeader() {
             >
               Faucet
             </a>
+          ) : null}
+          {showWallet && connectedWallet ? (
+            <div ref={balanceMenuRef} className="relative hidden md:block">
+              <button
+                type="button"
+                onClick={() => setBalanceMenuOpen((open) => !open)}
+                className="flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-[12px] font-black text-[#dbeafe] transition-colors hover:border-cyan/30"
+              >
+                <span className="text-[#4a5568]">{activeStable}</span>
+                <span className={activeStable === 'EURC' ? 'text-blue-300' : 'text-cyan'}>{balances[activeStable] ?? '--'}</span>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`text-[#4a5568] transition-transform ${balanceMenuOpen ? 'rotate-180' : ''}`}>
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              {balanceMenuOpen ? (
+                <div className="absolute right-0 top-[calc(100%+6px)] z-10 w-44 overflow-hidden rounded-lg border border-white/[0.06] bg-[#0d1520] shadow-xl shadow-black/40">
+                  {(['USDC', 'EURC'] as const).map((sym) => (
+                    <button
+                      key={sym}
+                      type="button"
+                      onClick={() => { setActiveStable(sym); setBalanceMenuOpen(false); }}
+                      className={`flex w-full items-center justify-between px-3 py-2.5 text-[12px] font-black transition-colors hover:bg-white/[0.04] ${activeStable === sym ? 'bg-white/[0.03]' : ''}`}
+                    >
+                      <span className="text-[#94a3b8]">{sym}</span>
+                      <span className={sym === 'EURC' ? 'text-blue-300' : 'text-cyan'}>{balances[sym] ?? '--'}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           ) : null}
           {showWallet ? <WalletConnectButton /> : null}
         </nav>

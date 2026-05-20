@@ -37,7 +37,6 @@ export const topicMarketCategories = [
   'Music',
 ] as const;
 
-export const createMarketCategories = [
-  ...primaryMarketCategories.filter((category) => category !== 'More'),
-  ...topicMarketCategories.filter((category) => category !== 'All'),
-] as const;
+// Clean topical categories for market creation. Excludes view filters (Trending/Breaking/New)
+// and short-lived trend tags (those belong to the hot-topics surface, not creation taxonomy).
+export const createMarketCategories = [...topicNavCategories] as const;
