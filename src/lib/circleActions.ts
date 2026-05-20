@@ -86,7 +86,10 @@ async function runContractExecution(input: {
   amount?: string;
   refId?: string;
 }): Promise<string> {
-  const { id, challengeId } = await callProvider<{ id: string; challengeId: string }>({
+  // Circle's user-controlled contractExecution endpoint returns only a challengeId. The
+  // transactionId is created server-side and must be fetched separately by listing the wallet's
+  // recent transactions and matching on the challengeId.
+  const { challengeId } = await callProvider<{ challengeId: string }>({
     action: 'contractExecution',
     userToken: input.session.userToken,
     walletId: input.session.walletId,
@@ -97,8 +100,29 @@ async function runContractExecution(input: {
     ...(input.refId ? { refId: input.refId } : {}),
   });
 
+  if (!challengeId) {
+    throw new Error('Circle did not return a challenge id.');
+  }
+
   await executeChallenge(input.session, challengeId);
-  return waitForTx(input.session, id);
+  const transactionId = await findTransactionId(input.session, challengeId);
+  return waitForTx(input.session, transactionId);
+}
+
+async function findTransactionId(session: CircleSession, challengeId: string): Promise<string> {
+  // Poll briefly: the transaction may not be indexed the instant the challenge resolves.
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    const list = await callProvider<{ transactions?: Array<{ id: string; challengeId?: string }> }>({
+      action: 'findTransactionByChallenge',
+      userToken: session.userToken,
+      walletId: session.walletId,
+    });
+    const match = list.transactions?.find((t) => t.challengeId === challengeId);
+    if (match?.id) return match.id;
+    await new Promise((r) => setTimeout(r, 1_500));
+  }
+  throw new Error('Could not locate the transaction after challenge approval.');
 }
 
 function requireSession(): CircleSession {

@@ -18,4 +18,6 @@ export type PortfolioActivity = {
   detail: string;
   status: 'Pending' | 'Confirmed' | 'Failed';
   time: string;
+  kind: 'in' | 'out' | 'win' | 'refund';
+  txHash?: string;
 };

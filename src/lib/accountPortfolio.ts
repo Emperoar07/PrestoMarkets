@@ -243,13 +243,17 @@ async function fetchRecentAccountActivity(
         detail: formatUsdc(log.args.amount ?? BigInt(0)),
         status: 'Confirmed' as const,
         time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
+        kind: 'out' as const,
+        txHash: log.transactionHash ?? undefined,
       })),
       ...claims.map((log) => ({
-        label: 'Claimed payout',
+        label: 'Won payout',
         market: market.title,
         detail: `${formatUsdc(log.args.amount ?? BigInt(0))} payout`,
         status: 'Confirmed' as const,
         time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
+        kind: 'win' as const,
+        txHash: log.transactionHash ?? undefined,
       })),
       ...refunds.map((log) => ({
         label: 'Refunded collateral',
@@ -257,6 +261,8 @@ async function fetchRecentAccountActivity(
         detail: formatUsdc(log.args.amount ?? BigInt(0)),
         status: 'Confirmed' as const,
         time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
+        kind: 'refund' as const,
+        txHash: log.transactionHash ?? undefined,
       })),
     ];
   }));

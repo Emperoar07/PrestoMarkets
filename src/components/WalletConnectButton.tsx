@@ -16,11 +16,22 @@ import {
   type ConnectedWallet,
 } from '@/lib/walletProvider';
 import { arcTestnetChain, walletConnectProjectId } from '@/lib/rainbowConfig';
+import { useAppState } from '@/lib/appState';
+
+const ARC_EXPLORER_BASE = 'https://testnet.arcscan.app/tx/';
+
+function activityIcon(kind: 'in' | 'out' | 'win' | 'refund') {
+  if (kind === 'win') return { glyph: '↑', tone: 'text-mint', bg: 'bg-mint/10' };
+  if (kind === 'refund') return { glyph: '↻', tone: 'text-cyan', bg: 'bg-cyan/10' };
+  if (kind === 'in') return { glyph: '↓', tone: 'text-cyan', bg: 'bg-cyan/10' };
+  return { glyph: '↑', tone: 'text-red-300', bg: 'bg-red-400/10' };
+}
 
 export function WalletConnectButton() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { address: rainbowAddress, isConnected: isRainbowConnected } = useAccount();
   const { disconnect } = useDisconnect();
+  const { activity } = useAppState();
   const [wallet, setWallet] = useState<ConnectedWallet | null>(null);
   const [status, setStatus] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -155,13 +166,53 @@ export function WalletConnectButton() {
         </button>
 
         {isOpen ? (
-          <div className="absolute right-0 mt-3 w-[280px] rounded-[16px] border border-white/[0.08] bg-[#141e30] p-3 shadow-2xl shadow-black/30">
+          <div className="absolute right-0 mt-3 w-[340px] rounded-[16px] border border-white/[0.08] bg-[#141e30] p-3 shadow-2xl shadow-black/30">
             <div className="rounded-[12px] border border-white/[0.06] bg-[#0f172a] p-3">
               <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#94a3b8]">Connected wallet</p>
               <p className="mt-2 break-all text-sm font-bold text-white">{wallet.address}</p>
               <p className="mt-1 text-xs text-[#94a3b8]">
                 {wallet.mode === 'circle-user-controlled' ? 'App wallet' : 'External wallet'}
               </p>
+            </div>
+
+            <div className="mt-3 rounded-[12px] border border-white/[0.06] bg-[#0f172a]">
+              <p className="px-3 pt-3 text-[11px] font-black uppercase tracking-[0.16em] text-[#94a3b8]">Recent activity</p>
+              {activity.length === 0 ? (
+                <p className="px-3 py-4 text-[12px] text-[#64748b]">No trades yet. Your buys, wins, and refunds will appear here.</p>
+              ) : (
+                <ul className="max-h-[260px] overflow-y-auto px-1 py-1">
+                  {activity.slice(0, 8).map((item, idx) => {
+                    const icon = activityIcon(item.kind);
+                    const description = item.kind === 'win'
+                      ? `Won ${item.detail} on "${item.market}"`
+                      : item.kind === 'refund'
+                        ? `Refunded ${item.detail} from "${item.market}"`
+                        : `${item.label} on "${item.market}" — ${item.detail}`;
+                    return (
+                      <li key={`${item.txHash ?? idx}-${idx}`}>
+                        <a
+                          href={item.txHash ? `${ARC_EXPLORER_BASE}${item.txHash}` : undefined}
+                          target={item.txHash ? '_blank' : undefined}
+                          rel={item.txHash ? 'noreferrer' : undefined}
+                          className={`flex items-start gap-2.5 rounded-[10px] px-2.5 py-2 text-left transition-colors ${item.txHash ? 'cursor-pointer hover:bg-white/[0.03]' : 'cursor-default'}`}
+                          aria-label={item.txHash ? `Open ${item.label} on Arc explorer` : item.label}
+                        >
+                          <span className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-black ${icon.tone} ${icon.bg}`}>
+                            {icon.glyph}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[12px] font-bold text-white">{description}</span>
+                            <span className="mt-0.5 block text-[10.5px] text-[#64748b]">
+                              {item.time}
+                              {item.txHash ? <span className="ml-2 text-cyan/80">view on explorer ↗</span> : null}
+                            </span>
+                          </span>
+                        </a>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
 
             <div className="mt-3 grid gap-2">

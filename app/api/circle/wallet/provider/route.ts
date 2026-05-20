@@ -37,7 +37,8 @@ type CircleAction =
   | 'initialize'
   | 'wallets'
   | 'contractExecution'
-  | 'getTransaction';
+  | 'getTransaction'
+  | 'findTransactionByChallenge';
 
 type CircleRequestBody = {
   action?: CircleAction;
@@ -229,6 +230,8 @@ export async function POST(request: Request) {
       if (!body.contractAddress) return jsonError('contractAddress is required.');
       if (!body.abiFunctionSignature) return jsonError('abiFunctionSignature is required.');
 
+      // Circle's user-controlled contractExecution requires fee as { type: 'level', config: { feeLevel } }.
+      // A bare feeLevel string is rejected with 400.
       return circleFetch('/v1/w3s/user/transactions/contractExecution', {
         method: 'POST',
         userToken: body.userToken,
@@ -239,7 +242,7 @@ export async function POST(request: Request) {
           abiFunctionSignature: body.abiFunctionSignature,
           abiParameters: body.abiParameters ?? [],
           ...(body.amount ? { amount: body.amount } : {}),
-          feeLevel: body.feeLevel ?? 'MEDIUM',
+          fee: { type: 'level', config: { feeLevel: body.feeLevel ?? 'MEDIUM' } },
           ...(body.refId ? { refId: body.refId } : {}),
         }),
       });
@@ -250,6 +253,18 @@ export async function POST(request: Request) {
       if (!body.transactionId) return jsonError('transactionId is required.');
 
       return circleFetch(`/v1/w3s/transactions/${encodeURIComponent(body.transactionId)}`, {
+        method: 'GET',
+        userToken: body.userToken,
+      });
+    }
+
+    if (action === 'findTransactionByChallenge') {
+      if (!body.userToken) return jsonError('userToken is required.');
+      if (!body.walletId) return jsonError('walletId is required.');
+      // Circle's contractExecution endpoint returns only challengeId. The transactionId is
+      // obtained by listing the wallet's recent transactions; the latest INITIATED/PENDING
+      // entry matching this challengeId is the one we just created.
+      return circleFetch(`/v1/w3s/transactions?walletIds=${encodeURIComponent(body.walletId)}&pageSize=5`, {
         method: 'GET',
         userToken: body.userToken,
       });
