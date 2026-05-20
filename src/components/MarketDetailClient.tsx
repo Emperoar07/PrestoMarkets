@@ -419,21 +419,21 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               {/* Trade summary */}
               <div className="mt-5 space-y-2.5 border-t border-white/[0.06] pt-5">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted">Avg price</span>
+                  <span className="text-muted">Signal price</span>
                   <span className="font-black text-white">{yesOutcome.odds}¢ per share</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted">Shares</span>
+                  <span className="text-muted">Shares (1:1 USDC)</span>
                   <span className="font-black text-white">{estimatedShares > 0 ? estimatedShares.toFixed(2) : '—'}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted">Potential return</span>
+                  <span className="text-muted">Settlement preview</span>
                   <span className={`font-black ${potentialReturn > amountValue ? 'text-mint' : 'text-white'}`}>
                     {potentialReturn > 0 ? `$${potentialReturn.toFixed(2)}` : '—'}
                   </span>
                 </div>
                 <p className="pt-1 text-[11px] leading-5 text-muted">
-                  Fixed share model — positions cannot be exited before settlement.
+                  Signal price, not an executable quote. Fixed-share model with no exit before settlement.
                 </p>
               </div>
 

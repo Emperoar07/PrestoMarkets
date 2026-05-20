@@ -42,13 +42,55 @@ export type BuildMarketMetadataInput = {
 
 const DATA_PREFIX = 'data:application/json,';
 
-// Prevent unbounded AI-generated strings from bloating onchain metadata transactions
-const MAX = { title: 200, description: 1000, rules: 2000, sourceOfTruth: 500, agentReason: 500, trendUrl: 300 };
+const MAX = { title: 200, description: 1000, rules: 2000, sourceOfTruth: 500, agentReason: 500, trendUrl: 300, imageURI: 500_000 };
+const MIN = { title: 8, description: 12, rules: 20, sourceOfTruth: 10 };
+
+const SAFE_URL_SCHEMES = new Set(['http:', 'https:']);
+
 function trunc(s: string | undefined, max: number): string | undefined {
   return s && s.length > max ? s.slice(0, max) : s;
 }
 
+function assertSafeUrl(value: string | undefined, label: string): void {
+  if (!value) return;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${label} must be a valid URL.`);
+  }
+  if (!SAFE_URL_SCHEMES.has(parsed.protocol)) {
+    throw new Error(`${label} must use http or https (got ${parsed.protocol}).`);
+  }
+}
+
+function assertSafeImage(value: string | undefined): void {
+  if (!value) return;
+  const v = value.trim();
+  if (v.startsWith('data:image/')) {
+    if (v.length > MAX.imageURI) throw new Error('Image data URI exceeds the inline size budget.');
+    return;
+  }
+  assertSafeUrl(v, 'imageURI');
+}
+
+function assertMinLength(value: string, min: number, label: string): void {
+  if (value.trim().length < min) {
+    throw new Error(`${label} must be at least ${min} characters.`);
+  }
+}
+
+export function validateMetadataInputs(input: BuildMarketMetadataInput): void {
+  assertMinLength(input.title, MIN.title, 'Title');
+  assertMinLength(input.description, MIN.description, 'Description');
+  assertMinLength(input.rules, MIN.rules, 'Rules');
+  assertMinLength(input.sourceOfTruth, MIN.sourceOfTruth, 'Source of truth');
+  assertSafeImage(input.imageURI);
+  assertSafeUrl(input.agent?.trendUrl, 'Agent trend URL');
+}
+
 export function buildMarketMetadata(input: BuildMarketMetadataInput): MarketMetadata {
+  validateMetadataInputs(input);
   return {
     name: trunc(input.title, MAX.title) ?? input.title,
     description: trunc(input.description, MAX.description) ?? input.description,
