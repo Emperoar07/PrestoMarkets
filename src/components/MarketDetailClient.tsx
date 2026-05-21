@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
 import { MarketSignalChart } from './MarketSignalChart';
 import { Countdown } from './Countdown';
+import { readPayWith, writePayWith } from '@/lib/payWithStore';
+import type { StableSymbol } from '@/lib/swap';
 import { formatUsd, useAppState } from '@/lib/appState';
 import { agentResolutionGuardrails, buildAgentResolutionPrompt, buildAgentResolutionReport } from '@/lib/agentResolution';
 import type { MarketStatus } from '@/lib/markets';
@@ -37,6 +39,19 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOracleRunning, setIsOracleRunning] = useState(false);
+  const [payWith, setPayWith] = useState<StableSymbol>('USDC');
+  const isCircleWallet = connectedWallet?.mode === 'circle-user-controlled';
+
+  useEffect(() => {
+    if (!connectedWallet?.address) return;
+    const stored = readPayWith(connectedWallet.address, marketId);
+    if (stored) setPayWith(stored);
+  }, [connectedWallet?.address, marketId]);
+
+  function choosePayWith(symbol: StableSymbol) {
+    setPayWith(symbol);
+    writePayWith(connectedWallet?.address, marketId, symbol);
+  }
 
   if (!market) {
     return (
@@ -419,6 +434,40 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
               </div>
 
+              {/* Pay with */}
+              <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/[0.06] pt-4">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted">Pay with</span>
+                <div className="flex gap-1.5">
+                  {(['USDC', 'EURC'] as const).map((sym) => {
+                    const isActive = payWith === sym;
+                    const eurcDisabledForCircle = sym === 'EURC' && isCircleWallet;
+                    return (
+                      <button
+                        key={sym}
+                        type="button"
+                        onClick={() => { if (!eurcDisabledForCircle) choosePayWith(sym); }}
+                        disabled={eurcDisabledForCircle}
+                        title={eurcDisabledForCircle ? 'EURC requires an external EVM wallet. Circle app wallets sign per call and cannot batch a swap.' : ''}
+                        className={`rounded-full border px-3 py-1 text-[11px] font-black transition-colors ${
+                          isActive
+                            ? sym === 'EURC'
+                              ? 'border-blue-400/50 bg-blue-400/10 text-blue-300'
+                              : 'border-cyan/50 bg-cyan/10 text-cyan'
+                            : 'border-white/[0.08] text-muted hover:border-white/20'
+                        } ${eurcDisabledForCircle ? 'cursor-not-allowed opacity-40' : ''}`}
+                      >
+                        {sym}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {payWith === 'EURC' ? (
+                <p className="mt-1.5 text-right text-[10.5px] text-muted/80">
+                  Auto-swap EURC → USDC at trade, USDC → EURC on payout.
+                </p>
+              ) : null}
+
               {/* Trade summary */}
               <div className="mt-5 space-y-2.5 border-t border-white/[0.06] pt-5">
                 <div className="flex items-center justify-between text-sm">
@@ -426,7 +475,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   <span className="font-black text-white">{yesOutcome.odds}¢ per share</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted">Shares (1:1 USDC)</span>
+                  <span className="text-muted">Shares (1:1 {payWith})</span>
                   <span className="font-black text-white">{estimatedShares > 0 ? estimatedShares.toFixed(2) : '—'}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
@@ -435,15 +484,12 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     {potentialReturn > 0 ? `$${potentialReturn.toFixed(2)}` : '—'}
                   </span>
                 </div>
-                <p className="pt-1 text-[11px] leading-5 text-muted">
-                  Signal price, not an executable quote. Fixed-share model with no exit before settlement.
-                </p>
               </div>
 
               {/* Buy button */}
               <button
                 type="button"
-                onClick={() => void runAction(() => placeTrade({ marketId, outcome: selectedOutcome, amount: amountValue }))}
+                onClick={() => void runAction(() => placeTrade({ marketId, outcome: selectedOutcome, amount: amountValue, payWith }))}
                 disabled={!canTrade || isSubmitting || amountValue <= 0}
                 className={`mt-5 w-full rounded-[12px] py-4 font-black tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
                   selectedOutcome === 'YES'

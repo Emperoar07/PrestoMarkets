@@ -69,11 +69,7 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
   return (
     <div className={`rounded-[16px] border border-white/[0.06] bg-[#0d1520] ${compact ? 'p-4' : 'p-5 pb-4'}`}>
       {!compact ? (
-        <div className="mb-5 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-widest text-muted">Probability signal</p>
-            <p className="mt-0.5 text-xs text-muted">Simulated from live share ratios</p>
-          </div>
+        <div className="mb-5 flex items-center justify-end gap-4">
           <div className="flex items-center gap-4 text-xs font-bold">
             <span className="flex items-center gap-1.5">
               <span className="h-2 w-5 rounded-full bg-[#25c0f4]" />

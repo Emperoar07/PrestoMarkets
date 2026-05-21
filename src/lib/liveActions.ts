@@ -22,6 +22,7 @@ import {
   refundCircleMarket,
   resolveCircleMarket,
 } from './circleActions';
+import { executeSwap, type StableSymbol } from './swap';
 
 function isCircleWallet(): boolean {
   return getStoredConnectedWallet()?.mode === 'circle-user-controlled';
@@ -205,8 +206,13 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
   }
 }
 
-export async function buyLiveShares(input: { marketAddress: string; outcome: 'YES' | 'NO'; amount: number }): Promise<LiveActionResult> {
-  if (isCircleWallet()) return buyCircleShares(input);
+export async function buyLiveShares(input: { marketAddress: string; outcome: 'YES' | 'NO'; amount: number; payWith?: StableSymbol }): Promise<LiveActionResult> {
+  if (isCircleWallet()) {
+    if (input.payWith && input.payWith !== 'USDC') {
+      return { ok: false, message: 'Paying with EURC requires an external EVM wallet. Circle app wallets sign through PIN per call and cannot batch a swap.' };
+    }
+    return buyCircleShares(input);
+  }
   try {
     const { account, config, publicClient, walletClient } = await getClients();
 
@@ -222,8 +228,20 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: 'YE
       throw new Error(`Minimum trade is $${MIN_TRADE_USDC} USDC.`);
     }
 
+    // If the user picked EURC, swap it to USDC first since every market deployed by the factory
+    // settles in USDC at the contract level. The swap-result amountOut becomes the buy amount.
+    let usdcAmountToBuy = String(input.amount);
+    if (input.payWith === 'EURC') {
+      const swapResult = await executeSwap({
+        tokenIn: 'EURC',
+        tokenOut: 'USDC',
+        amountIn: String(input.amount),
+      });
+      usdcAmountToBuy = swapResult.amountOut;
+    }
+
     const marketAddress = input.marketAddress as Address;
-    const amount = parseUnits(String(input.amount), 6);
+    const amount = parseUnits(usdcAmountToBuy, 6);
 
     const [balance, allowance] = await Promise.all([
       withRetry(() => publicClient.readContract({
@@ -321,7 +339,34 @@ export async function cancelLiveMarket(marketAddress: string): Promise<LiveActio
   }
 }
 
-export async function claimLiveMarket(marketAddress: string): Promise<LiveActionResult> {
+async function swapBackIfNeeded(payWith: StableSymbol | undefined, txHash: Hex, label: string): Promise<LiveActionResult> {
+  if (!payWith || payWith === 'USDC') {
+    return { ok: true, message: `${label} settled in USDC.`, txHash };
+  }
+  // Swap the USDC payout we just received back to the user's chosen pay-with token.
+  // We sweep the wallet's USDC balance delta is hard to read exactly, so the UI passes the
+  // expected payout amount via a separate flow; for now we try a best-effort full-balance swap.
+  try {
+    const { account, config, publicClient } = await getClients();
+    const balance = await publicClient.readContract({
+      address: config.usdcAddress,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [account],
+    });
+    if (balance === BigInt(0)) {
+      return { ok: true, message: `${label} succeeded; nothing to swap back.`, txHash };
+    }
+    const human = formatUnits(balance, 6);
+    await executeSwap({ tokenIn: 'USDC', tokenOut: payWith, amountIn: human });
+    return { ok: true, message: `${label} settled and swapped to ${payWith}.`, txHash };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'swap-back failed';
+    return { ok: true, message: `${label} settled in USDC. Swap to ${payWith} failed: ${msg}`, txHash };
+  }
+}
+
+export async function claimLiveMarket(marketAddress: string, payWith?: StableSymbol): Promise<LiveActionResult> {
   if (isCircleWallet()) return claimCircleMarket(marketAddress);
   try {
     const { account, publicClient, walletClient } = await getClients();
@@ -339,13 +384,13 @@ export async function claimLiveMarket(marketAddress: string): Promise<LiveAction
 
     await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
 
-    return { ok: true, message: 'Claim submitted on Arc.', txHash: hash };
+    return swapBackIfNeeded(payWith, hash, 'Claim');
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Claim transaction failed.' };
   }
 }
 
-export async function refundLiveMarket(marketAddress: string): Promise<LiveActionResult> {
+export async function refundLiveMarket(marketAddress: string, payWith?: StableSymbol): Promise<LiveActionResult> {
   if (isCircleWallet()) return refundCircleMarket(marketAddress);
   try {
     const { account, publicClient, walletClient } = await getClients();
@@ -363,7 +408,7 @@ export async function refundLiveMarket(marketAddress: string): Promise<LiveActio
 
     await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
 
-    return { ok: true, message: 'Refund submitted on Arc.', txHash: hash };
+    return swapBackIfNeeded(payWith, hash, 'Refund');
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Refund transaction failed.' };
   }

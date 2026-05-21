@@ -28,6 +28,8 @@ import {
 } from './walletProvider';
 import type { Market, MarketType, ResolutionMode } from './markets';
 import type { PortfolioActivity, Position } from './portfolio';
+import type { StableSymbol } from './swap';
+import { readPayWith, writePayWith } from './payWithStore';
 
 type OutcomeLabel = 'YES' | 'NO';
 
@@ -64,7 +66,7 @@ type AppStateValue = {
   refreshMarkets: () => Promise<void>;
   refreshAccountPortfolio: () => Promise<void>;
   createMarket: (input: CreateMarketInput) => Promise<LiveActionResult>;
-  placeTrade: (input: { marketId: string; outcome: OutcomeLabel; amount: number }) => Promise<LiveActionResult>;
+  placeTrade: (input: { marketId: string; outcome: OutcomeLabel; amount: number; payWith?: StableSymbol }) => Promise<LiveActionResult>;
   resolveMarket: (input: { marketId: string; outcome: OutcomeLabel; resolutionURI: string }) => Promise<LiveActionResult>;
   cancelMarket: (marketId: string) => Promise<LiveActionResult>;
   claimMarket: (marketId: string) => Promise<LiveActionResult>;
@@ -152,18 +154,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return result;
   }, [refreshMarkets, refreshAccountPortfolio]);
 
-  const placeTrade = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; amount: number }) => {
+  const placeTrade = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; amount: number; payWith?: StableSymbol }) => {
     const result = await buyLiveShares({
       marketAddress: input.marketId,
       outcome: input.outcome,
       amount: input.amount,
+      payWith: input.payWith,
     });
+    if (result.ok && input.payWith) {
+      // Persist the pay-with choice so claim/refund can swap the payout back to the same token.
+      writePayWith(connectedWallet?.address, input.marketId, input.payWith);
+    }
     if (result.ok) {
       await refreshMarkets();
       await refreshAccountPortfolio();
     }
     return result;
-  }, [refreshMarkets, refreshAccountPortfolio]);
+  }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
 
   const resolveMarket = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; resolutionURI: string }) => {
     const result = await resolveLiveMarket({
@@ -188,22 +195,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [refreshMarkets, refreshAccountPortfolio]);
 
   const claimMarket = useCallback(async (marketId: string) => {
-    const result = await claimLiveMarket(marketId);
+    const payWith = readPayWith(connectedWallet?.address, marketId) ?? undefined;
+    const result = await claimLiveMarket(marketId, payWith);
     if (result.ok) {
       await refreshMarkets();
       await refreshAccountPortfolio();
     }
     return result;
-  }, [refreshMarkets, refreshAccountPortfolio]);
+  }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
 
   const refundMarket = useCallback(async (marketId: string) => {
-    const result = await refundLiveMarket(marketId);
+    const payWith = readPayWith(connectedWallet?.address, marketId) ?? undefined;
+    const result = await refundLiveMarket(marketId, payWith);
     if (result.ok) {
       await refreshMarkets();
       await refreshAccountPortfolio();
     }
     return result;
-  }, [refreshMarkets, refreshAccountPortfolio]);
+  }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
 
   const getMarket = useCallback((id: string) => markets.find((market) => market.id === id), [markets]);
 
