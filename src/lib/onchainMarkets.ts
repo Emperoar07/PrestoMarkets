@@ -1,7 +1,7 @@
 import { createPublicClient, formatUnits, http, type Address } from 'viem';
 import { getArcConfig, getArcChainId } from './arcConfig';
 import { prestoMarketAbi, prestoMarketFactoryAbi } from './contracts';
-import { parseMarketMetadata } from './marketMetadata';
+import { isSafeResolutionUri, parseMarketMetadata } from './marketMetadata';
 import type { AppMarket } from './appState';
 import type { MarketStatus, MarketType, ResolutionMode } from './markets';
 const MARKET_BATCH_SIZE = 20;
@@ -143,11 +143,13 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     resolverAddress: resolver,
     resolutionMode: metadata?.resolutionMode || getResolutionMode(kind),
     sourceOfTruth: metadata?.sourceOfTruth || metadataURI || 'Metadata URI was not set at creation.',
-    rules: resolutionURI
+    rules: resolutionURI && isSafeResolutionUri(resolutionURI)
       ? `Resolved with evidence: ${resolutionURI}. Winning outcome: ${winningOutcome === 0 ? 'YES' : 'NO'}.`
-      : metadata?.rules || 'Rules live in the market metadata URI. Resolver evidence is published after settlement.',
+      : resolutionURI
+        ? `Resolved. Winning outcome: ${winningOutcome === 0 ? 'YES' : 'NO'}. Evidence URI was rejected as unsafe.`
+        : metadata?.rules || 'Rules live in the market metadata URI. Resolver evidence is published after settlement.',
     winningOutcomeLabel: status === 'Resolved' ? (winningOutcome === 0 ? 'YES' : 'NO') : undefined,
-    resolutionURI: resolutionURI || undefined,
+    resolutionURI: isSafeResolutionUri(resolutionURI) ? resolutionURI : undefined,
     createdBy: truncateAddress(creator),
     createdByType: metadata?.createdByType,
     creatorAddress: creator,

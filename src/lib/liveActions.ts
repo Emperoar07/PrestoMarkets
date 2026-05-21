@@ -340,52 +340,65 @@ export async function cancelLiveMarket(marketAddress: string): Promise<LiveActio
   }
 }
 
-async function swapBackIfNeeded(payWith: StableSymbol | undefined, txHash: Hex, label: string): Promise<LiveActionResult> {
-  if (!payWith || payWith === 'USDC') {
-    return { ok: true, message: `${label} settled in USDC.`, txHash };
+/**
+ * After a settlement-style call (claim or refund) that pays the user in USDC, swap *only*
+ * the delta between pre- and post-USDC balance back to the user's chosen payWith token.
+ * The earlier full-balance sweep would have swapped the user's unrelated USDC holdings too.
+ */
+async function settleAndMaybeSwapBack(input: {
+  marketAddress: Address;
+  functionName: 'claim' | 'refund';
+  payWith: StableSymbol | undefined;
+  label: string;
+}): Promise<LiveActionResult> {
+  const { account, config, publicClient, walletClient } = await getClients();
+  const wantsSwapBack = input.payWith === 'EURC';
+
+  // Snapshot the user's USDC balance BEFORE the on-chain settle so we can swap exactly the
+  // payout delta, not whatever USDC they had sitting in the wallet.
+  const preBalance = wantsSwapBack
+    ? await publicClient.readContract({ address: config.usdcAddress, abi: erc20Abi, functionName: 'balanceOf', args: [account] })
+    : BigInt(0);
+
+  const hash = await walletClient.writeContract({
+    account,
+    address: input.marketAddress,
+    abi: prestoMarketAbi,
+    functionName: input.functionName,
+  });
+  await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+
+  if (!wantsSwapBack) {
+    return { ok: true, message: `${input.label} settled in USDC.`, txHash: hash };
   }
-  // Swap the USDC payout we just received back to the user's chosen pay-with token.
-  // We sweep the wallet's USDC balance delta is hard to read exactly, so the UI passes the
-  // expected payout amount via a separate flow; for now we try a best-effort full-balance swap.
+
   try {
-    const { account, config, publicClient } = await getClients();
-    const balance = await publicClient.readContract({
-      address: config.usdcAddress,
-      abi: erc20Abi,
-      functionName: 'balanceOf',
-      args: [account],
-    });
-    if (balance === BigInt(0)) {
-      return { ok: true, message: `${label} succeeded; nothing to swap back.`, txHash };
+    const postBalance = await publicClient.readContract({ address: config.usdcAddress, abi: erc20Abi, functionName: 'balanceOf', args: [account] });
+    const delta = postBalance > preBalance ? postBalance - preBalance : BigInt(0);
+    if (delta === BigInt(0)) {
+      return { ok: true, message: `${input.label} settled; no USDC payout to swap back.`, txHash: hash };
     }
-    const human = formatUnits(balance, 6);
-    await executeSwap({ tokenIn: 'USDC', tokenOut: payWith, amountIn: human });
-    return { ok: true, message: `${label} settled and swapped to ${payWith}.`, txHash };
+    const human = formatUnits(delta, 6);
+    await executeSwap({ tokenIn: 'USDC', tokenOut: input.payWith!, amountIn: human });
+    return { ok: true, message: `${input.label} settled and swapped to ${input.payWith}.`, txHash: hash };
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'swap-back failed';
-    return { ok: true, message: `${label} settled in USDC. Swap to ${payWith} failed: ${msg}`, txHash };
+    return { ok: true, message: `${input.label} settled in USDC. Swap to ${input.payWith} failed: ${msg}`, txHash: hash };
   }
 }
 
 export async function claimLiveMarket(marketAddress: string, payWith?: StableSymbol): Promise<LiveActionResult> {
   if (isCircleWallet()) return claimCircleMarket(marketAddress);
+  if (!isAddress(marketAddress)) {
+    return { ok: false, message: 'Market address is invalid.' };
+  }
   try {
-    const { account, publicClient, walletClient } = await getClients();
-
-    if (!isAddress(marketAddress)) {
-      throw new Error('Market address is invalid.');
-    }
-
-    const hash = await walletClient.writeContract({
-      account,
-      address: marketAddress as Address,
-      abi: prestoMarketAbi,
+    return await settleAndMaybeSwapBack({
+      marketAddress: marketAddress as Address,
       functionName: 'claim',
+      payWith,
+      label: 'Claim',
     });
-
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
-
-    return swapBackIfNeeded(payWith, hash, 'Claim');
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Claim transaction failed.' };
   }
@@ -393,23 +406,16 @@ export async function claimLiveMarket(marketAddress: string, payWith?: StableSym
 
 export async function refundLiveMarket(marketAddress: string, payWith?: StableSymbol): Promise<LiveActionResult> {
   if (isCircleWallet()) return refundCircleMarket(marketAddress);
+  if (!isAddress(marketAddress)) {
+    return { ok: false, message: 'Market address is invalid.' };
+  }
   try {
-    const { account, publicClient, walletClient } = await getClients();
-
-    if (!isAddress(marketAddress)) {
-      throw new Error('Market address is invalid.');
-    }
-
-    const hash = await walletClient.writeContract({
-      account,
-      address: marketAddress as Address,
-      abi: prestoMarketAbi,
+    return await settleAndMaybeSwapBack({
+      marketAddress: marketAddress as Address,
       functionName: 'refund',
+      payWith,
+      label: 'Refund',
     });
-
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
-
-    return swapBackIfNeeded(payWith, hash, 'Refund');
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Refund transaction failed.' };
   }

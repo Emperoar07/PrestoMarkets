@@ -127,7 +127,7 @@ const INJECTION_PATTERNS: RegExp[] = [
   /\[\s*(system|instruction|prompt)\s*\]/gi,
 ];
 
-function sanitizeFeedText(value: string): string {
+export function sanitizeFeedText(value: string): string {
   let out = value;
   for (const pattern of INJECTION_PATTERNS) {
     out = out.replace(pattern, '[redacted]');

@@ -52,13 +52,26 @@ function trunc(s: string | undefined, max: number): string | undefined {
   return s && s.length > max ? s.slice(0, max) : s;
 }
 
-function isSafeUrl(value: string | undefined): value is string {
+export function isSafeUrl(value: string | undefined): value is string {
   if (!value) return false;
   try {
     return SAFE_URL_SCHEMES.has(new URL(value).protocol);
   } catch {
     return false;
   }
+}
+
+/**
+ * Resolution URIs may be http/https OR a data:application/json blob (the
+ * auto-resolver writes the latter). Any other scheme is rejected, since the
+ * resolver is chosen per-market and the factory is permissionless, so an
+ * attacker can plant a malicious URI by being their own market's resolver.
+ */
+export function isSafeResolutionUri(value: string | undefined): value is string {
+  if (!value) return false;
+  const v = value.trim();
+  if (v.startsWith('data:application/json,') || v.startsWith('data:application/json;')) return true;
+  return isSafeUrl(v);
 }
 
 function isSafeImage(value: string | undefined): value is string {

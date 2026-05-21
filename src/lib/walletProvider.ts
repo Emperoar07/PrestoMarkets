@@ -11,8 +11,6 @@ const ARC_CHAIN_HEX = '0x4cef52';
 const connectedWalletStorageKey = 'presto.connectedWallet';
 const connectedWalletEventName = 'presto:wallet';
 const pendingCircleSocialLoginKey = 'presto.circle.pendingSocialLogin';
-const circleSessionStorageKey = 'presto.circle.session';
-
 export type CircleSession = {
   appId: string;
   userToken: string;
@@ -20,23 +18,19 @@ export type CircleSession = {
   walletId: string;
 };
 
+// Circle's userToken + encryptionKey grant impersonation against Circle's API for the user's
+// wallet (subject to PIN), so any XSS that reads them lets an attacker drive contractExecution
+// challenges. Holding the session in module-scoped memory (cleared on tab close, never
+// serialized to storage) closes the steal-and-replay path. Trade-off: a hard reload signs the
+// user out of Circle and they must re-authenticate. Acceptable.
+let circleSessionRef: CircleSession | null = null;
+
 export function getCircleSession(): CircleSession | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.sessionStorage.getItem(circleSessionStorageKey);
-    return raw ? JSON.parse(raw) as CircleSession : null;
-  } catch {
-    return null;
-  }
+  return circleSessionRef;
 }
 
 function setCircleSession(session: CircleSession | null) {
-  if (typeof window === 'undefined') return;
-  if (session) {
-    window.sessionStorage.setItem(circleSessionStorageKey, JSON.stringify(session));
-  } else {
-    window.sessionStorage.removeItem(circleSessionStorageKey);
-  }
+  circleSessionRef = session;
 }
 
 export type CircleSocialProvider = 'google';

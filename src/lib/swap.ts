@@ -34,6 +34,13 @@ type CreateSwapResponse = {
   estimatedAmount: string;
   fromAddress: string;
   toAddress: string;
+  // The remaining fields aren't documented as always-present in Circle's response. We only
+  // enforce them when they are; the request-side validation in /api/swap is the primary
+  // guarantee that they match what the user asked for.
+  tokenInChain?: string;
+  tokenOutChain?: string;
+  tokenInAddress?: string;
+  tokenOutAddress?: string;
   transaction: {
     executionParams: {
       execId: string;
@@ -131,20 +138,53 @@ export async function executeSwap(input: { tokenIn: StableSymbol; tokenOut: Stab
   const { address, walletClient, publicClient } = await getWalletAccount();
   const response = await createSwap({ ...input, fromAddress: address });
 
+  // Defense-in-depth: we forward raw calldata from Circle into the user's wallet, so verify
+  // the response is consistent with what we asked for. The primary guarantee is the
+  // request-side validation in /api/swap; here we add belt-and-braces checks on the response.
+  // toAddress is the critical drain-prevention check (always present per Circle docs); the
+  // other fields are checked only when echoed, since their presence is undocumented.
+  if (response.toAddress.toLowerCase() !== address.toLowerCase()) {
+    throw new Error('Swap recipient does not match the connected wallet — refusing to sign.');
+  }
+  const expectedTokenIn = getStableAddress(input.tokenIn).toLowerCase();
+  const expectedTokenOut = getStableAddress(input.tokenOut).toLowerCase();
+  if (response.tokenInChain && response.tokenInChain !== ARC_CHAIN_NAME) {
+    throw new Error(`Swap input chain mismatch: ${response.tokenInChain}.`);
+  }
+  if (response.tokenOutChain && response.tokenOutChain !== ARC_CHAIN_NAME) {
+    throw new Error(`Swap output chain mismatch: ${response.tokenOutChain}.`);
+  }
+  if (response.tokenInAddress && response.tokenInAddress.toLowerCase() !== expectedTokenIn) {
+    throw new Error('Swap response references an unexpected input token.');
+  }
+  if (response.tokenOutAddress && response.tokenOutAddress.toLowerCase() !== expectedTokenOut) {
+    throw new Error('Swap response references an unexpected output token.');
+  }
+
   const { instructions } = response.transaction.executionParams;
   if (!instructions?.length) throw new Error('Swap response had no instructions to execute.');
+
+  // Cap any single approval at 2x amountIn (in base units). Stops a malicious response from
+  // turning the swap into an unbounded approve + drain on the user's USDC/EURC balance.
+  const amountInBaseUnits = parseUnits(input.amountIn, 6);
+  const approvalCap = amountInBaseUnits * BigInt(2);
 
   let lastTxHash: Hex = '0x' as Hex;
   for (const instr of instructions) {
     // Approve the router for the input token if needed.
     if (instr.amountToApprove && instr.amountToApprove !== '0') {
+      // The tokenIn in each instruction must match what the user originally agreed to spend.
+      if (instr.tokenIn.toLowerCase() !== expectedTokenIn) {
+        throw new Error('Swap instruction references an unexpected approve token — refusing to sign.');
+      }
+      let need = BigInt(instr.amountToApprove);
+      if (need > approvalCap) need = approvalCap;
       const currentAllowance = await publicClient.readContract({
         address: instr.tokenIn as Address,
         abi: erc20Abi,
         functionName: 'allowance',
         args: [address, instr.target as Address],
       });
-      const need = BigInt(instr.amountToApprove);
       if (currentAllowance < need) {
         const approveHash = await walletClient.writeContract({
           account: address,

@@ -177,6 +177,21 @@ Return JSON only:
     };
   }
 
+  // Derive outcomeIndex from the canonical outcome string instead of trusting the LLM's
+  // numeric field. A sloppy JSON like { outcome: "YES", outcomeIndex: 1 } would otherwise
+  // resolve the market to NO irreversibly.
+  let derivedIndex: 0 | 1;
+  if (parsed.outcome === 'YES') derivedIndex = 0;
+  else if (parsed.outcome === 'NO') derivedIndex = 1;
+  else {
+    return {
+      ok: false,
+      marketId: market.id,
+      title: market.title,
+      reason: `Oracle returned an unrecognised outcome string "${parsed.outcome}".`,
+    };
+  }
+
   const resolutionReport = {
     schema: 'presto.agent-resolution.v1',
     resolvedAt: new Date().toISOString(),
@@ -192,7 +207,7 @@ Return JSON only:
   };
 
   const resolutionURI = `data:application/json,${encodeURIComponent(JSON.stringify(resolutionReport))}`;
-  const result = await agentResolveMarket(market.id, parsed.outcomeIndex, resolutionURI);
+  const result = await agentResolveMarket(market.id, derivedIndex, resolutionURI);
   if (!result.ok) {
     return { ok: false, marketId: market.id, title: market.title, reason: result.error ?? 'Onchain resolve failed' };
   }

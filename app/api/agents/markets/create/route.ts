@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAddress } from 'viem';
 import { agentCreateMarket } from '@/lib/agentWallet';
+import { sanitizeFeedText } from '@/lib/agentPipeline';
 import type { AgentMarketMetadata } from '@/lib/marketMetadata';
 import type { MarketType, ResolutionMode } from '@/lib/markets';
+
+function cleanString(value: string | undefined): string | undefined {
+  return value ? sanitizeFeedText(value) : value;
+}
 
 type AgentCreateMarketRequest = {
   type?: MarketType;
@@ -78,23 +83,26 @@ export async function POST(req: NextRequest) {
 
     const result = await agentCreateMarket({
       type: body.type ?? 'Prediction',
-      title: body.title.trim(),
-      description: body.description.trim(),
+      // sanitizeFeedText strips prompt-injection sentinels from any caller-supplied string
+      // that lands in onchain metadata and feeds into later LLM prompts (resolver evidence,
+      // future pipeline runs that re-ingest existing markets).
+      title: sanitizeFeedText(body.title.trim()),
+      description: sanitizeFeedText(body.description.trim()),
       category: body.category.trim(),
       closeDate: resolveCloseDate(body),
-      rules: body.rules.trim(),
-      sourceOfTruth: body.sourceOfTruth.trim(),
+      rules: sanitizeFeedText(body.rules.trim()),
+      sourceOfTruth: sanitizeFeedText(body.sourceOfTruth.trim()),
       resolver: resolverAddress ?? 'Presto Agent',
       resolutionMode: body.resolutionMode ?? 'Agent assisted',
       imageURI: body.imageURI?.trim() || undefined,
       agent: {
         createdByType: 'agent',
-        agentName: body.agent?.agentName ?? 'Presto Trend Agent',
-        agentSource: body.agent?.agentSource ?? 'Trend monitor',
+        agentName: cleanString(body.agent?.agentName) ?? 'Presto Trend Agent',
+        agentSource: cleanString(body.agent?.agentSource) ?? 'Trend monitor',
         agentModel: body.agent?.agentModel,
-        agentReason: body.agent?.agentReason,
+        agentReason: cleanString(body.agent?.agentReason),
         agentConfidence: body.agent?.agentConfidence,
-        trendSource: body.agent?.trendSource,
+        trendSource: cleanString(body.agent?.trendSource),
         trendUrl: body.agent?.trendUrl,
         momentumScore: body.agent?.momentumScore,
         safetyScore: body.agent?.safetyScore,
