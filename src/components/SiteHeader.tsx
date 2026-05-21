@@ -27,7 +27,12 @@ export function SiteHeader() {
   const isLandingPage = pathname === '/';
   const showWallet = !isLandingPage;
   const isExplorePage = pathname === '/markets' || pathname.startsWith('/markets/');
-  const showExploreSearch = pathname === '/markets';
+  const syncsExploreSearch = pathname === '/markets';
+  const isDocsPage = pathname === '/docs' || pathname === '/roadmap' || pathname === '/build-rails';
+  const showSearchBar = !isLandingPage && !isDocsPage;
+  // Category tab row only on the markets explorer itself — not market detail pages, not
+  // portfolio/activity/create. Keeps secondary pages uncluttered.
+  const showCategoryNav = pathname === '/markets';
   const isCreatePage = pathname === '/markets/create';
 
   const [searchValue, setSearchValue] = useState('');
@@ -40,12 +45,12 @@ export function SiteHeader() {
   const categoryScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!showExploreSearch || typeof window === 'undefined') {
+    if (!syncsExploreSearch || typeof window === 'undefined') {
       setSearchValue('');
       return;
     }
     setSearchValue(new URLSearchParams(window.location.search).get('q') ?? '');
-  }, [showExploreSearch]);
+  }, [syncsExploreSearch]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -83,9 +88,17 @@ export function SiteHeader() {
 
   function updateExploreSearch(value: string) {
     setSearchValue(value);
-    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
-    if (value) { params.set('q', value); } else { params.delete('q'); }
-    router.replace(`/markets${params.toString() ? `?${params.toString()}` : ''}`, { scroll: false });
+    // On /markets we sync the URL in place. On any other page we navigate to /markets with
+    // the query, so search works from /portfolio, /activity, /markets/create, market detail,
+    // etc. — basically anywhere the bar is shown.
+    const params = new URLSearchParams();
+    if (value) params.set('q', value);
+    const target = `/markets${params.toString() ? `?${params.toString()}` : ''}`;
+    if (syncsExploreSearch) {
+      router.replace(target, { scroll: false });
+    } else {
+      router.push(target);
+    }
     window.dispatchEvent(new CustomEvent('presto:market-search', { detail: value }));
   }
 
@@ -105,18 +118,22 @@ export function SiteHeader() {
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 border-b border-white/[0.06] bg-[#090e1a]/90 backdrop-blur-xl">
-      {/* Row 1: logo + search + nav */}
-      <div className="mx-auto flex h-[66px] max-w-[1400px] items-center gap-3 px-4 md:px-7">
-        <BrandMark />
-        {showExploreSearch ? (
-          <input
-            value={searchValue}
-            onChange={(event) => updateExploreSearch(event.target.value)}
-            placeholder="Search markets…"
-            className="hidden max-w-[340px] flex-1 rounded-lg border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-[13px] font-medium text-white outline-none transition-colors placeholder:text-[#334155] focus:border-cyan/40 md:block"
-          />
-        ) : null}
-        <nav className="ml-auto flex items-center gap-3">
+      {/* Row 1: brand (left) · search (middle, fills gap) · nav (right) */}
+      <div className="mx-auto flex h-[66px] max-w-[1400px] items-center gap-6 px-4 md:px-7">
+        <div className="shrink-0">
+          <BrandMark />
+        </div>
+        <div className="hidden flex-1 justify-start md:flex">
+          {showSearchBar ? (
+            <input
+              value={searchValue}
+              onChange={(event) => updateExploreSearch(event.target.value)}
+              placeholder="Search markets…"
+              className="w-full max-w-[420px] rounded-lg border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-[13px] font-medium text-white outline-none transition-colors placeholder:text-[#334155] focus:border-cyan/40"
+            />
+          ) : null}
+        </div>
+        <nav className="ml-auto flex shrink-0 items-center gap-3">
           <Link href="/markets" className={navLinkClass(isExplorePage && !isCreatePage)}>
             Explore Markets
           </Link>
@@ -177,8 +194,8 @@ export function SiteHeader() {
         </nav>
       </div>
 
-      {/* Row 2: category nav — shown on all non-landing pages */}
-      {!isLandingPage ? (
+      {/* Row 2: category nav — only on the markets explorer */}
+      {showCategoryNav ? (
         <div className="border-t border-white/[0.04]">
           <div className="mx-auto max-w-[1400px] px-4 md:px-7">
             <div ref={categoryScrollRef} className="scrollbar-hide overflow-x-auto">
