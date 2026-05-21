@@ -229,19 +229,20 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: 'YE
     }
 
     // If the user picked EURC, swap it to USDC first since every market deployed by the factory
-    // settles in USDC at the contract level. The swap-result amountOut becomes the buy amount.
-    let usdcAmountToBuy = String(input.amount);
+    // settles in USDC at the contract level. Circle's swap response returns estimatedAmount as
+    // a base-units string (e.g. '10800000' for 10.8 USDC) — use BigInt directly, NOT parseUnits.
+    const marketAddress = input.marketAddress as Address;
+    let amount: bigint;
     if (input.payWith === 'EURC') {
       const swapResult = await executeSwap({
         tokenIn: 'EURC',
         tokenOut: 'USDC',
         amountIn: String(input.amount),
       });
-      usdcAmountToBuy = swapResult.amountOut;
+      amount = BigInt(swapResult.amountOut);
+    } else {
+      amount = parseUnits(String(input.amount), 6);
     }
-
-    const marketAddress = input.marketAddress as Address;
-    const amount = parseUnits(usdcAmountToBuy, 6);
 
     const [balance, allowance] = await Promise.all([
       withRetry(() => publicClient.readContract({

@@ -166,6 +166,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       writePayWith(connectedWallet?.address, input.marketId, input.payWith);
     }
     if (result.ok) {
+      // Arc finalizes in sub-second blocks but public RPC takes ~1-2s to surface the new
+      // sharesOf state. Refresh once immediately, then once more after a short delay so the
+      // YOUR POSITION block updates without a manual reload.
+      void refreshMarkets();
+      void refreshAccountPortfolio();
+      await new Promise((r) => setTimeout(r, 1_800));
       await refreshMarkets();
       await refreshAccountPortfolio();
     }

@@ -2,8 +2,11 @@ import { isAddress, parseUnits } from 'viem';
 import { getArcConfig } from './arcConfig';
 import { buildMarketMetadataURI } from './marketMetadata';
 import { getCircleSession, type CircleSession } from './walletProvider';
+import { requestCircleConfirmation, type CircleConfirmDetails } from './circleConfirm';
 import type { CreateLiveMarketInput, LiveActionResult } from './liveActions';
 import type { MarketType } from './markets';
+
+const ARC_EXPLORER_ADDRESS = 'https://testnet.arcscan.app/address/';
 
 const MIN_TRADE_USDC = 0.01;
 const TX_POLL_INTERVAL_MS = 2_000;
@@ -85,7 +88,26 @@ async function runContractExecution(input: {
   abiParameters: unknown[];
   amount?: string;
   refId?: string;
+  preview?: Partial<CircleConfirmDetails>;
 }): Promise<string> {
+  // Show our own preview modal before Circle's PIN prompt. Circle's confirmation UI is
+  // patchy for PIN-auth users on arbitrary contracts (no token icon, missing fee line),
+  // so we always show transaction details we know on our side and only proceed when the
+  // user confirms.
+  const previewDetails: CircleConfirmDetails = {
+    label: input.preview?.label ?? 'Sign with Circle wallet',
+    action: input.preview?.action ?? 'You\'re about to sign a contract call on Arc Testnet.',
+    contractAddress: input.contractAddress,
+    functionSignature: input.abiFunctionSignature,
+    amountDisplay: input.preview?.amountDisplay,
+    parameters: input.preview?.parameters ?? input.abiParameters.map((p) => String(p)),
+    contractExplorerUrl: input.preview?.contractExplorerUrl ?? `${ARC_EXPLORER_ADDRESS}${input.contractAddress}`,
+  };
+  const approved = await requestCircleConfirmation(previewDetails);
+  if (!approved) {
+    throw new Error('You cancelled the Circle signing request.');
+  }
+
   // Circle's user-controlled contractExecution returns only a challengeId. The transactionId
   // is created server-side and the transactions list endpoint does NOT echo challengeId in
   // its response, so we time-anchor: record now() right before POSTing, then after the PIN
