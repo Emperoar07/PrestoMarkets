@@ -466,13 +466,42 @@ async function createOnchain(
 // ── Main pipeline ──────────────────────────────────────────────────────────
 
 const CONFIDENCE_THRESHOLD = 0.8;
+// Cap the number of *active* agent-created markets (Open or Closing soon). Once a market
+// resolves or cancels, a slot frees up. Tunable via env so we can raise it once we trust the
+// pipeline more. Default 2 for safety while we're early.
+const AGENT_ACTIVE_MARKET_CAP = Math.max(0, Number(process.env.PRESTO_AGENT_ACTIVE_MARKET_CAP ?? 2));
+
+function countActiveAgentMarkets(markets: AppMarket[]): number {
+  return markets.filter((m) =>
+    m.createdByType === 'agent' && (m.status === 'Open' || m.status === 'Closing soon')
+  ).length;
+}
 
 export async function runAgentPipeline(): Promise<PipelineResult[]> {
   const trends = await fetchTrends();
   const existingMarkets = await fetchOnchainMarkets().catch(() => []);
   const results: PipelineResult[] = [];
 
+  let activeAgentMarkets = countActiveAgentMarkets(existingMarkets);
+  if (activeAgentMarkets >= AGENT_ACTIVE_MARKET_CAP) {
+    return [{
+      ok: false,
+      topic: '(pipeline)',
+      stage: 'cap',
+      reason: `Agent active-market cap reached (${activeAgentMarkets}/${AGENT_ACTIVE_MARKET_CAP}). Waiting for an existing market to resolve before creating more.`,
+    }];
+  }
+
   for (const trend of trends) {
+    if (activeAgentMarkets >= AGENT_ACTIVE_MARKET_CAP) {
+      results.push({
+        ok: false,
+        topic: trend.topic,
+        stage: 'cap',
+        reason: `Active-market cap (${AGENT_ACTIVE_MARKET_CAP}) reached during this run.`,
+      });
+      break;
+    }
     try {
       // Stage 2: classify
       const classification = await classifyWithGroq(trend);
@@ -505,6 +534,7 @@ export async function runAgentPipeline(): Promise<PipelineResult[]> {
       // Stage 5: onchain
       const result = await createOnchain(draft, trend, classification, safety);
       results.push(result);
+      if (result.ok) activeAgentMarkets += 1;
     } catch (e) {
       results.push({ ok: false, topic: trend.topic, stage: 'pipeline', reason: String(e) });
     }
