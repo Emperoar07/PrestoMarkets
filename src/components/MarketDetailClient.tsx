@@ -41,6 +41,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const [isOracleRunning, setIsOracleRunning] = useState(false);
   const [payWith, setPayWith] = useState<StableSymbol>('USDC');
   const isCircleWallet = connectedWallet?.mode === 'circle-user-controlled';
+  const unit = payWith === 'EURC' ? '€' : '$';
 
   useEffect(() => {
     if (!connectedWallet?.address) return;
@@ -406,7 +407,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               <div className="mt-5">
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-black uppercase tracking-widest text-muted">Amount</label>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-muted">USDC</span>
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${payWith === 'EURC' ? 'text-blue-300' : 'text-muted'}`}>{payWith}</span>
                 </div>
                 <input
                   value={amount}
@@ -428,7 +429,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                           : 'border-white/[0.06] bg-[#0f172a] text-[#8fa0b4] hover:border-white/10 hover:text-white'
                       }`}
                     >
-                      ${q}
+                      {unit}{q}
                     </button>
                   ))}
                 </div>
@@ -440,21 +441,26 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <div className="flex gap-1.5">
                   {(['USDC', 'EURC'] as const).map((sym) => {
                     const isActive = payWith === sym;
-                    const eurcDisabledForCircle = sym === 'EURC' && isCircleWallet;
+                    // EURC works for external EVM wallets via our /api/swap proxy + viem.
+                    // Circle user-controlled wallets are blocked: Arc Testnet (chainId 5042002)
+                    // is not on Circle's signing-API allowlist, so raw-calldata signing fails,
+                    // and contractExecution requires the swap router ABI which Circle doesn't
+                    // publish. Verified via Circle MCP.
+                    const eurcUnavailable = sym === 'EURC' && isCircleWallet;
                     return (
                       <button
                         key={sym}
                         type="button"
-                        onClick={() => { if (!eurcDisabledForCircle) choosePayWith(sym); }}
-                        disabled={eurcDisabledForCircle}
-                        title={eurcDisabledForCircle ? 'EURC requires an external EVM wallet. Circle app wallets sign per call and cannot batch a swap.' : ''}
+                        onClick={() => { if (!eurcUnavailable) choosePayWith(sym); }}
+                        disabled={eurcUnavailable}
+                        title={eurcUnavailable ? 'EURC needs an external EVM wallet. Arc Testnet is not on Circle\'s signing-API chain allowlist, so app wallets can\'t sign the swap router call.' : ''}
                         className={`rounded-full border px-3 py-1 text-[11px] font-black transition-colors ${
                           isActive
                             ? sym === 'EURC'
                               ? 'border-blue-400/50 bg-blue-400/10 text-blue-300'
                               : 'border-cyan/50 bg-cyan/10 text-cyan'
                             : 'border-white/[0.08] text-muted hover:border-white/20'
-                        } ${eurcDisabledForCircle ? 'cursor-not-allowed opacity-40' : ''}`}
+                        } ${eurcUnavailable ? 'cursor-not-allowed opacity-40' : ''}`}
                       >
                         {sym}
                       </button>
@@ -462,11 +468,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   })}
                 </div>
               </div>
-              {payWith === 'EURC' ? (
-                <p className="mt-1.5 text-right text-[10.5px] text-muted/80">
-                  Auto-swap EURC → USDC at trade, USDC → EURC on payout.
-                </p>
-              ) : null}
 
               {/* Trade summary */}
               <div className="mt-5 space-y-2.5 border-t border-white/[0.06] pt-5">
@@ -481,7 +482,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted">Settlement preview</span>
                   <span className={`font-black ${potentialReturn > amountValue ? 'text-mint' : 'text-white'}`}>
-                    {potentialReturn > 0 ? `$${potentialReturn.toFixed(2)}` : '—'}
+                    {potentialReturn > 0 ? `${unit}${potentialReturn.toFixed(2)}` : '—'}
                   </span>
                 </div>
               </div>
@@ -500,7 +501,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 {!canTrade ? 'Market not open'
                   : isSubmitting ? 'Submitting...'
                   : amountValue <= 0 ? 'Enter an amount'
-                  : `Buy ${selectedOutcome} · $${amountValue}`}
+                  : `Buy ${selectedOutcome} · ${unit}${amountValue}`}
               </button>
 
               {/* Your position */}

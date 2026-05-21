@@ -1,16 +1,16 @@
 /**
- * Cross-collateral swap via Circle App Kit.
+ * Cross-collateral swap via Circle Stablecoin Kits, executed through a server proxy.
  *
- * Lets a user pay for a market in EURC even if the market settles in USDC (or vice versa)
- * by routing through Circle's Swap capability on Arc Testnet right before the buy, and
- * routing the payout back through Swap right after the claim or refund.
- *
- * Limitation: only external EVM wallets (window.ethereum) are supported. Circle
- * user-controlled wallets cannot use App Kit Swap because their browser SDK does not expose
- * an EIP-1193 provider that signs without going through the PIN/biometric challenge per call.
+ * Direct browser calls to api.circle.com/v1/stablecoinKits/swap fail CORS preflight
+ * because Circle's CORS policy rejects the x-user-agent header. We work around this
+ * by proxying the create-swap call through our own /api/swap route (server-side, no
+ * CORS), then executing the returned instructions[] against the user's connected wallet
+ * via viem. Each instruction is an ERC-20 approve plus a contract call against a router.
  */
 
-import type { Address } from 'viem';
+import { createPublicClient, createWalletClient, custom, http, parseUnits, type Address, type Hex } from 'viem';
+import { getArcConfig, getArcChainId } from './arcConfig';
+import { erc20Abi } from './contracts';
 
 export type StableSymbol = 'USDC' | 'EURC';
 
@@ -18,78 +18,161 @@ export type SwapResult = {
   amountIn: string;
   amountOut: string;
   txHash: string;
-  explorerUrl?: string;
 };
 
-function getKitKey(): string {
-  const key = (process.env.NEXT_PUBLIC_CIRCLE_KIT_KEY ?? '').trim();
-  if (!key) throw new Error('NEXT_PUBLIC_CIRCLE_KIT_KEY is not set. Cross-collateral swap is unavailable.');
-  return key;
-}
+type SwapInstruction = {
+  target: string;
+  data: string;
+  value: string;
+  tokenIn: string;
+  amountToApprove: string;
+  tokenOut: string;
+  minTokenOut?: string;
+};
 
-async function createBrowserAdapter() {
-  if (typeof window === 'undefined' || !window.ethereum) {
-    throw new Error('Cross-collateral swap requires an EVM browser wallet (MetaMask / WalletConnect). Circle app wallets cannot swap on the client.');
+type CreateSwapResponse = {
+  estimatedAmount: string;
+  fromAddress: string;
+  toAddress: string;
+  transaction: {
+    executionParams: {
+      execId: string;
+      deadline: string;
+      tokens: Array<{ token: string; beneficiary: string }>;
+      instructions: SwapInstruction[];
+    };
+    gasLimit?: string | number;
+  };
+};
+
+const ARC_CHAIN_NAME = 'Arc_Testnet';
+
+function getStableAddress(symbol: StableSymbol): Address {
+  const config = getArcConfig();
+  if (symbol === 'USDC') {
+    if (!config.usdcAddress) throw new Error('NEXT_PUBLIC_USDC_ADDRESS is not set');
+    return config.usdcAddress as Address;
   }
-  const { createViemAdapterFromProvider } = await import('@circle-fin/adapter-viem-v2');
-  return createViemAdapterFromProvider({ provider: window.ethereum as Parameters<typeof createViemAdapterFromProvider>[0]['provider'] });
+  if (!config.eurcAddress) throw new Error('EURC address is unavailable');
+  return config.eurcAddress as Address;
 }
 
-export async function quoteSwap(input: {
-  tokenIn: StableSymbol;
-  tokenOut: StableSymbol;
-  amountIn: string;
-}): Promise<{ amountOut: string }> {
-  if (input.tokenIn === input.tokenOut) return { amountOut: input.amountIn };
-  const { AppKit } = await import('@circle-fin/app-kit');
-  const kit = new AppKit();
-  const adapter = await createBrowserAdapter();
-  const result = await kit.estimateSwap({
-    from: { adapter, chain: 'Arc_Testnet' },
-    tokenIn: input.tokenIn,
-    tokenOut: input.tokenOut,
-    amountIn: input.amountIn,
-    config: { kitKey: getKitKey() },
-  }) as { amountOut?: string };
-  return { amountOut: String(result?.amountOut ?? input.amountIn) };
-}
-
-export async function executeSwap(input: {
-  tokenIn: StableSymbol;
-  tokenOut: StableSymbol;
-  amountIn: string;
-}): Promise<SwapResult> {
-  if (input.tokenIn === input.tokenOut) {
-    throw new Error('Source and destination tokens are the same; no swap needed.');
-  }
-  const { AppKit } = await import('@circle-fin/app-kit');
-  const kit = new AppKit();
-  const adapter = await createBrowserAdapter();
-  const result = await kit.swap({
-    from: { adapter, chain: 'Arc_Testnet' },
-    tokenIn: input.tokenIn,
-    tokenOut: input.tokenOut,
-    amountIn: input.amountIn,
-    config: { kitKey: getKitKey() },
-  }) as { amountIn?: string; amountOut?: string; txHash?: string; explorerUrl?: string };
-
+function arcChain() {
+  const config = getArcConfig();
   return {
-    amountIn: String(result?.amountIn ?? input.amountIn),
-    amountOut: String(result?.amountOut ?? '0'),
-    txHash: String(result?.txHash ?? ''),
-    explorerUrl: result?.explorerUrl,
+    id: getArcChainId(),
+    name: 'Arc Testnet',
+    nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
+    rpcUrls: { default: { http: [config.rpcUrl] as [string] } },
   };
 }
 
-export function getStableContract(symbol: StableSymbol): Address | null {
-  const env = symbol === 'USDC'
-    ? process.env.NEXT_PUBLIC_USDC_ADDRESS
-    : process.env.NEXT_PUBLIC_EURC_ADDRESS;
-  const cleaned = (env ?? '').trim();
-  if (!cleaned.startsWith('0x')) {
-    // Fall back to the Arc Testnet EURC address from arcConfig if env is unset.
-    if (symbol === 'EURC') return '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a' as Address;
-    return null;
+async function getWalletAccount(): Promise<{ address: Address; walletClient: ReturnType<typeof createWalletClient>; publicClient: ReturnType<typeof createPublicClient> }> {
+  if (typeof window === 'undefined' || !window.ethereum) {
+    throw new Error('Cross-collateral swap needs an EVM browser wallet (MetaMask / WalletConnect).');
   }
-  return cleaned as Address;
+  const config = getArcConfig();
+  const chain = arcChain();
+  await window.ethereum.request({ method: 'eth_requestAccounts' });
+  const walletClient = createWalletClient({ chain, transport: custom(window.ethereum) });
+  const [address] = await walletClient.getAddresses();
+  if (!address) throw new Error('No wallet account returned for the swap.');
+  const publicClient = createPublicClient({ chain, transport: http(config.rpcUrl) });
+  return { address, walletClient, publicClient };
+}
+
+async function createSwap(input: {
+  tokenIn: StableSymbol;
+  tokenOut: StableSymbol;
+  amountIn: string;
+  fromAddress: Address;
+}): Promise<CreateSwapResponse> {
+  const tokenInAddress = getStableAddress(input.tokenIn);
+  const tokenOutAddress = getStableAddress(input.tokenOut);
+  const amountUnits = parseUnits(input.amountIn, 6).toString();
+
+  const res = await fetch('/api/swap', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      tokenInAddress,
+      tokenInChain: ARC_CHAIN_NAME,
+      tokenOutAddress,
+      tokenOutChain: ARC_CHAIN_NAME,
+      fromAddress: input.fromAddress,
+      toAddress: input.fromAddress,
+      amount: amountUnits,
+    }),
+  });
+  const data = await res.json().catch(() => null) as CreateSwapResponse | { error?: string } | null;
+  if (!res.ok || !data || (data as { error?: string }).error) {
+    throw new Error((data as { error?: string })?.error || `Swap quote failed: ${res.status}`);
+  }
+  return data as CreateSwapResponse;
+}
+
+export async function quoteSwap(input: { tokenIn: StableSymbol; tokenOut: StableSymbol; amountIn: string; fromAddress?: Address }): Promise<{ amountOut: string }> {
+  if (input.tokenIn === input.tokenOut) return { amountOut: input.amountIn };
+  let from: Address;
+  if (input.fromAddress) {
+    from = input.fromAddress;
+  } else {
+    const { address } = await getWalletAccount();
+    from = address;
+  }
+  const response = await createSwap({ ...input, fromAddress: from });
+  return { amountOut: response.estimatedAmount };
+}
+
+export async function executeSwap(input: { tokenIn: StableSymbol; tokenOut: StableSymbol; amountIn: string }): Promise<SwapResult> {
+  if (input.tokenIn === input.tokenOut) {
+    throw new Error('Source and destination tokens are the same; no swap needed.');
+  }
+  const { address, walletClient, publicClient } = await getWalletAccount();
+  const response = await createSwap({ ...input, fromAddress: address });
+
+  const { instructions } = response.transaction.executionParams;
+  if (!instructions?.length) throw new Error('Swap response had no instructions to execute.');
+
+  let lastTxHash: Hex = '0x' as Hex;
+  for (const instr of instructions) {
+    // Approve the router for the input token if needed.
+    if (instr.amountToApprove && instr.amountToApprove !== '0') {
+      const currentAllowance = await publicClient.readContract({
+        address: instr.tokenIn as Address,
+        abi: erc20Abi,
+        functionName: 'allowance',
+        args: [address, instr.target as Address],
+      });
+      const need = BigInt(instr.amountToApprove);
+      if (currentAllowance < need) {
+        const approveHash = await walletClient.writeContract({
+          account: address,
+          chain: arcChain(),
+          address: instr.tokenIn as Address,
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [instr.target as Address, need],
+        });
+        await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      }
+    }
+
+    // Execute the swap call.
+    const txHash = await walletClient.sendTransaction({
+      account: address,
+      chain: arcChain(),
+      to: instr.target as Address,
+      data: instr.data as Hex,
+      value: instr.value && instr.value !== '0x' ? BigInt(instr.value) : BigInt(0),
+    });
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    lastTxHash = txHash;
+  }
+
+  return {
+    amountIn: input.amountIn,
+    amountOut: response.estimatedAmount,
+    txHash: lastTxHash,
+  };
 }
