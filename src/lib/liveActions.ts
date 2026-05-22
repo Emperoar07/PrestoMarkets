@@ -5,6 +5,7 @@ import {
   formatUnits,
   http,
   isAddress,
+  parseEventLogs,
   parseUnits,
   type Address,
   type Hex,
@@ -68,6 +69,7 @@ export type LiveActionResult = {
   ok: boolean;
   message: string;
   txHash?: Hex;
+  marketAddress?: Address;
 };
 
 export type CreateLiveMarketInput = {
@@ -200,9 +202,15 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
       ],
     });
 
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    const receipt = await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    const created = parseEventLogs({
+      abi: prestoMarketFactoryAbi,
+      eventName: 'MarketCreated',
+      logs: receipt.logs,
+    })[0];
+    const marketAddress = created?.args.market;
 
-    return { ok: true, message: 'Live market created on Arc.', txHash: hash };
+    return { ok: true, message: 'Live market created on Arc.', txHash: hash, marketAddress };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Market creation failed.' };
   }

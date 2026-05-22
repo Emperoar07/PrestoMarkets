@@ -26,7 +26,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const market = getMarket(marketId);
   const [selectedOutcome, setSelectedOutcome] = useState<'YES' | 'NO'>('YES');
   const [tradeMode, setTradeMode] = useState<'buy' | 'liquidity'>('buy');
+  const [orderMode, setOrderMode] = useState<'market' | 'limit'>('market');
   const [amount, setAmount] = useState('25');
+  const [limitPrice, setLimitPrice] = useState('50');
   const [resolutionURI, setResolutionURI] = useState('');
   const [agentOutcome, setAgentOutcome] = useState<'YES' | 'NO' | 'CANCEL'>('YES');
   const [agentConfidence, setAgentConfidence] = useState('Medium');
@@ -93,6 +95,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const resolverChecksPassed = confirmSource && confirmRules && confirmHuman;
   const canSubmitResolution = canUseResolverActions && resolverChecksPassed && Boolean(resolutionURI.trim());
   const isAgentMarket = market.createdByType === 'agent';
+  const isLimitOrder = tradeMode === 'buy' && orderMode === 'limit';
 
   async function runAction(action: () => Promise<{ ok: boolean; message: string; txHash?: string }>) {
     setIsSubmitting(true);
@@ -417,6 +420,26 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 ))}
               </div>
 
+              {tradeMode === 'buy' ? (
+                <div className="mb-4 grid grid-cols-2 rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-1">
+                  {([
+                    ['market', 'Market'],
+                    ['limit', 'Limit'],
+                  ] as const).map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setOrderMode(mode)}
+                      className={`rounded-[9px] py-2 text-sm font-black transition-colors ${
+                        orderMode === mode ? 'bg-[#1a2540] text-white' : 'text-muted hover:text-white'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
               {/* YES / NO toggle */}
               <div className={`grid grid-cols-2 gap-2 ${tradeMode === 'liquidity' ? 'opacity-70' : ''}`}>
                 <button
@@ -483,6 +506,26 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
               </div>
 
+              {isLimitOrder ? (
+                <div className="mt-4 rounded-[14px] border border-cyan/15 bg-cyan/[0.045] p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-muted">Limit price</label>
+                    <div className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-[#0d1520] px-3 py-1.5">
+                      <input
+                        value={limitPrice}
+                        onChange={(event) => setLimitPrice(event.target.value)}
+                        inputMode="decimal"
+                        className="w-14 bg-transparent text-right text-sm font-black text-white outline-none"
+                      />
+                      <span className="text-xs font-black text-cyan">¢</span>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-muted">
+                    Limit orders are prepared for the order-book contract phase. V1 market buys still execute immediately through the live share contract.
+                  </p>
+                </div>
+              ) : null}
+
               {/* Pay with */}
               <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/[0.06] pt-4">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-muted">Pay with</span>
@@ -521,7 +564,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               <div className="mt-5 space-y-2.5 border-t border-white/[0.06] pt-5">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted">{tradeMode === 'liquidity' ? 'Liquidity method' : 'Signal price'}</span>
-                  <span className="font-black text-white">{tradeMode === 'liquidity' ? 'Balanced YES + NO' : `${activeOutcome.odds}¢ per share`}</span>
+                  <span className="font-black text-white">
+                    {tradeMode === 'liquidity'
+                      ? 'Balanced YES + NO'
+                      : isLimitOrder ? `${limitPrice || '0'}¢ limit` : `${activeOutcome.odds}¢ per share`}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted">Total shares</span>
@@ -554,7 +601,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     ? addLiquidity({ marketId, amount: amountValue, payWith })
                     : placeTrade({ marketId, outcome: selectedOutcome, amount: amountValue, payWith })
                 ))}
-                disabled={!canTrade || isSubmitting || amountValue <= 0}
+                disabled={!canTrade || isSubmitting || amountValue <= 0 || isLimitOrder}
                 className={`mt-5 w-full rounded-[12px] py-4 font-black tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
                   tradeMode === 'liquidity' || selectedOutcome === 'YES'
                     ? 'bg-cyan text-ink hover:opacity-90'
@@ -564,6 +611,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 {!canTrade ? 'Market not open'
                   : isSubmitting ? 'Submitting...'
                   : amountValue <= 0 ? 'Enter an amount'
+                  : isLimitOrder ? 'Limit order book phase'
                   : tradeMode === 'liquidity' ? `Add liquidity · ${unit}${amountValue}`
                   : `Buy ${selectedOutcome} · ${unit}${amountValue}`}
               </button>

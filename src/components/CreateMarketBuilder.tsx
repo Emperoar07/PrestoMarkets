@@ -21,7 +21,7 @@ const typeCopy: Record<MarketType, string> = {
 
 export function CreateMarketBuilder() {
   const router = useRouter();
-  const { createMarket } = useAppState();
+  const { createMarket, addLiquidity } = useAppState();
   const [selectedType, setSelectedType] = useState<MarketType>('Prediction');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -43,12 +43,13 @@ export function CreateMarketBuilder() {
   const [outcomeStyle, setOutcomeStyle] = useState<'binary' | 'poll'>('binary');
   const [outcomeOptions, setOutcomeOptions] = useState(['YES', 'NO']);
   const [collateral, setCollateral] = useState<'USDC' | 'EURC'>('USDC');
+  const [initialLiquidity, setInitialLiquidity] = useState('');
   const [agentAddress, setAgentAddress] = useState<string | null>(null);
   const [showReview, setShowReview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<string, string>>>({});
-  const [result, setResult] = useState<{ ok: boolean; message: string; txHash?: string } | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; message: string; txHash?: string; marketAddress?: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -187,6 +188,12 @@ export function CreateMarketBuilder() {
       return;
     }
 
+    const seedAmount = Number(initialLiquidity) || 0;
+    if (initialLiquidity.trim() && seedAmount < 0.02) {
+      setStatusMessage('Initial depth needs at least 0.02 USDC so both sides receive a seed.');
+      return;
+    }
+
     const cleanOutcomeOptions = outcomeOptions.map((option) => option.trim()).filter(Boolean);
     if (outcomeStyle === 'poll' && cleanOutcomeOptions.length < 2) {
       setStatusMessage('Add at least two poll options.');
@@ -198,7 +205,7 @@ export function CreateMarketBuilder() {
     setIsSubmitting(true);
     setStatusMessage('Submitting market creation to Arc...');
 
-    const result = await createMarket({
+    let result = await createMarket({
       type: selectedType,
       title,
       description,
@@ -213,6 +220,30 @@ export function CreateMarketBuilder() {
       outcomeOptions: outcomeStyle === 'poll' ? cleanOutcomeOptions : ['YES', 'NO'],
       collateral,
     });
+
+    if (result.ok && seedAmount > 0) {
+      if (!result.marketAddress) {
+        result = {
+          ...result,
+          message: `${result.message} Open the new market to add the initial depth.`,
+        };
+      } else {
+        setStatusMessage('Market created. Seeding balanced YES and NO depth...');
+        const seedResult = await addLiquidity({
+          marketId: result.marketAddress,
+          amount: seedAmount,
+          payWith: collateral,
+        });
+        result = {
+          ok: true,
+          message: seedResult.ok
+            ? `${result.message} Initial depth added: ${seedResult.message}`
+            : `${result.message} Initial depth can be added from the market page: ${seedResult.message}`,
+          txHash: seedResult.txHash ?? result.txHash,
+          marketAddress: result.marketAddress,
+        };
+      }
+    }
 
     setIsSubmitting(false);
     setStatusMessage(result.ok ? '' : result.message);
@@ -519,6 +550,19 @@ export function CreateMarketBuilder() {
               />
               {fieldErrors.closeDate ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.closeDate}</p> : null}
             </div>
+            <div>
+              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Creator funded depth</label>
+              <input
+                value={initialLiquidity}
+                onChange={(event) => setInitialLiquidity(event.target.value)}
+                placeholder="Optional amount to seed both sides"
+                inputMode="decimal"
+                className={`mt-1 ${inputClass()}`}
+              />
+              <p className="mt-2 text-[11px] leading-5 text-muted/80">
+                If set, Presto creates the market then splits this amount evenly into YES and NO shares.
+              </p>
+            </div>
           </div>
         </section>
 
@@ -620,6 +664,12 @@ export function CreateMarketBuilder() {
               <div className="flex justify-between gap-4">
                 <dt className="text-muted">Mode</dt>
                 <dd className="text-right font-bold text-white">{resolutionMode}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-muted">Initial depth</dt>
+                <dd className="text-right font-bold text-white">
+                  {Number(initialLiquidity) > 0 ? `${initialLiquidity} ${collateral}` : 'Add later'}
+                </dd>
               </div>
             </dl>
 

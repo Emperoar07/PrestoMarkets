@@ -1,8 +1,9 @@
-import { isAddress, parseUnits } from 'viem';
-import { getArcConfig } from './arcConfig';
+import { createPublicClient, http, isAddress, parseEventLogs, parseUnits, type Address, type Hex } from 'viem';
+import { getArcConfig, getArcChainId } from './arcConfig';
 import { buildMarketMetadataURI } from './marketMetadata';
 import { getCircleSession, refreshCircleSessionIfNeeded, type CircleSession } from './walletProvider';
 import { requestCircleConfirmation, type CircleConfirmDetails } from './circleConfirm';
+import { prestoMarketFactoryAbi } from './contracts';
 import type { CreateLiveMarketInput, LiveActionResult } from './liveActions';
 import type { MarketType } from './markets';
 
@@ -221,6 +222,27 @@ function getMarketKind(type: MarketType): number {
   return 0;
 }
 
+async function readCreatedMarketAddress(txHash: string): Promise<Address | undefined> {
+  const config = getArcConfig();
+  if (!config.rpcUrl || !txHash) return undefined;
+  const publicClient = createPublicClient({
+    chain: {
+      id: getArcChainId(),
+      name: 'Arc Testnet',
+      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
+      rpcUrls: { default: { http: [config.rpcUrl] as [string] } },
+    },
+    transport: http(config.rpcUrl),
+  });
+  const receipt = await publicClient.getTransactionReceipt({ hash: txHash as Hex });
+  const created = parseEventLogs({
+    abi: prestoMarketFactoryAbi,
+    eventName: 'MarketCreated',
+    logs: receipt.logs,
+  })[0];
+  return created?.args.market;
+}
+
 function getCloseTimestamp(closeDate: string): bigint {
   const closeTime = Math.floor(new Date(closeDate).getTime() / 1000);
   if (!Number.isFinite(closeTime) || closeTime <= Math.floor(Date.now() / 1000)) {
@@ -259,7 +281,8 @@ export async function createCircleMarket(input: CreateLiveMarketInput): Promise<
         ],
       },
     });
-    return { ok: true, message: 'Live market created via Circle wallet.', txHash: txHash as `0x${string}` };
+    const marketAddress = await readCreatedMarketAddress(txHash).catch(() => undefined);
+    return { ok: true, message: 'Live market created via Circle wallet.', txHash: txHash as `0x${string}`, marketAddress };
   } catch (error) {
     const pending = pendingResultFromError(error, 'Market creation');
     if (pending) return pending;
