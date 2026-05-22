@@ -124,43 +124,52 @@ function getCatFromUrl() {
 }
 
 // ─── Breaking news panel ──────────────────────────────────────────────────────
-function BreakingNewsPanel({ markets }: { markets: AppMarket[] }) {
-  const items = markets
-    .filter((m) => m.status === 'Closing soon' || m.status === 'Open')
-    .sort((a, b) => parseVolume(b.volume) - parseVolume(a.volume))
-    .slice(0, 5);
+// Pulls real crypto news from /api/news/breaking, which itself fetches Cointelegraph,
+// Decrypt, The Block, CoinDesk, and TechCrunch Crypto RSS, ranks them, and caches the
+// result for 24h. The agent's market drafts and the news feed are separate concerns.
+type NewsItem = { title: string; url: string; source: string; publishedAt: string };
+
+function BreakingNewsPanel() {
+  const [items, setItems] = useState<NewsItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/news/breaking')
+      .then((r) => r.json())
+      .then((data: { items?: NewsItem[] }) => { if (!cancelled) setItems(data.items ?? []); })
+      .catch(() => { if (!cancelled) setItems([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <div className="rounded-[16px] border border-white/[0.06] bg-[#0d1520] p-5">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-[15px] font-black text-white">Breaking news</h3>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4a5568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
+        <span className="text-[10px] font-black uppercase tracking-widest text-[#4a5568]">Daily</span>
       </div>
-      {items.length === 0 ? (
-        <p className="text-xs text-[#4a5568]">No markets closing soon.</p>
+      {loading ? (
+        <p className="text-xs text-[#4a5568]">Loading…</p>
+      ) : items.length === 0 ? (
+        <p className="text-xs text-[#4a5568]">News feed unavailable right now.</p>
       ) : (
         <ol className="space-y-4">
-          {items.map((market, i) => {
-            const yes = market.outcomes.find((o) => o.label === 'YES') ?? market.outcomes[0];
-            return (
-              <li key={market.id}>
-                <Link href={`/markets/${market.id}`} className="flex items-start gap-3 group">
-                  <span className="mt-0.5 w-4 shrink-0 text-[11px] font-black text-[#334155]">{i + 1}</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="line-clamp-2 text-[13px] font-bold leading-snug text-[#cbd5e1] group-hover:text-white transition-colors">
-                      {market.title}
-                    </p>
-                    <div className="mt-1 flex items-center gap-2">
-                      <span className="text-sm font-black text-white">{yes.odds}%</span>
-                      <span className="text-[11px] font-bold text-[#4ade80]">↑ chance</span>
-                    </div>
-                  </div>
-                </Link>
-              </li>
-            );
-          })}
+          {items.slice(0, 5).map((item, i) => (
+            <li key={item.url}>
+              <a href={item.url} target="_blank" rel="noreferrer" className="flex items-start gap-3 group">
+                <span className="mt-0.5 w-4 shrink-0 text-[11px] font-black text-[#334155]">{i + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="line-clamp-2 text-[13px] font-bold leading-snug text-[#cbd5e1] group-hover:text-white transition-colors">
+                    {item.title}
+                  </p>
+                  <p className="mt-1 text-[10.5px] font-bold uppercase tracking-widest text-[#4a5568]">
+                    {item.source}
+                  </p>
+                </div>
+              </a>
+            </li>
+          ))}
         </ol>
       )}
     </div>
@@ -300,7 +309,7 @@ export function MarketsExplorer() {
           favor of letting the market grid speak for itself. */}
       {showSidePanels ? (
         <div className="mb-8 grid gap-4 md:grid-cols-2">
-          <BreakingNewsPanel markets={markets} />
+          <BreakingNewsPanel />
           <HotTopicsPanel markets={markets} topics={dynamicTopics} />
         </div>
       ) : null}

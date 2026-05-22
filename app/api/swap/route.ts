@@ -51,9 +51,9 @@ function knownStableAddresses(): Set<string> {
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
-  const kitKey = (process.env.NEXT_PUBLIC_CIRCLE_KIT_KEY ?? '').trim();
+  const kitKey = (process.env.CIRCLE_KIT_KEY ?? '').trim();
   if (!kitKey) {
-    return NextResponse.json({ error: 'NEXT_PUBLIC_CIRCLE_KIT_KEY is not set' }, { status: 500 });
+    return NextResponse.json({ error: 'CIRCLE_KIT_KEY is not set' }, { status: 500 });
   }
 
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? req.headers.get('x-real-ip') ?? 'unknown';

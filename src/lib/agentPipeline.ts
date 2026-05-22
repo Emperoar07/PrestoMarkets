@@ -364,7 +364,8 @@ async function draftWithGemini(trend: TrendItem, category: string): Promise<Gemi
   if (!apiKey) throw new Error('GEMINI_API_KEY not set');
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  // gemini-1.5-flash was deprecated in 2026; gemini-2.0-flash is the current free-tier default.
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
   const now = new Date();
   const closeDate30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];

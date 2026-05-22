@@ -28,6 +28,7 @@ export function buildX402PaymentRequired(priceUsd = '0.001') {
       {
         scheme: 'exact',
         network: 'arcTestnet',
+        amount: String(Math.round(Number(priceUsd) * 1_000_000)), // Circle Gateway x402 field
         maxAmountRequired: String(Math.round(Number(priceUsd) * 1_000_000)), // USDC 6-decimal base units
         resource: 'presto-markets/api/v1/markets',
         description: 'Presto Markets real-time prediction market data',
@@ -42,28 +43,102 @@ export function buildX402PaymentRequired(priceUsd = '0.001') {
   };
 }
 
+type X402Record = Record<string, unknown>;
+
+function asRecord(value: unknown): X402Record {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as X402Record : {};
+}
+
+function firstString(records: X402Record[], keys: string[]): string {
+  for (const record of records) {
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    }
+  }
+  return '';
+}
+
+function sameAddress(a: string, b: string): boolean {
+  return Boolean(a && b) && a.toLowerCase() === b.toLowerCase();
+}
+
+function sameText(a: string, b: string): boolean {
+  return Boolean(a && b) && a.toLowerCase() === b.toLowerCase();
+}
+
+function sameBaseUnitAmount(a: string, b: string): boolean {
+  if (!/^\d+$/.test(a) || !/^\d+$/.test(b)) return false;
+  try {
+    return BigInt(a) === BigInt(b);
+  } catch {
+    return false;
+  }
+}
+
+function buildGatewayPaymentRequirements(priceUsd: string) {
+  const accepted = buildX402PaymentRequired(priceUsd).accepts[0];
+  return {
+    scheme: accepted.scheme,
+    network: accepted.network,
+    asset: accepted.asset,
+    amount: accepted.amount,
+    payTo: accepted.payTo,
+    maxTimeoutSeconds: accepted.maxTimeoutSeconds,
+    extra: accepted.extra,
+  };
+}
+
 // Verify an X402 payment header.
-// Structural check: validates EIP-3009 authorization shape and expiry.
+// Structural check: validates EIP-3009 authorization shape, exact Arc USDC terms, and expiry.
 // Signature check: delegated to Circle Gateway facilitator when CIRCLE_GATEWAY_FACILITATOR_URL is set.
-export async function verifyX402Payment(paymentHeader: string): Promise<boolean> {
+export async function verifyX402Payment(paymentHeader: string, priceUsd = '0.001'): Promise<boolean> {
   if (!paymentHeader) return false;
   try {
     const decoded = Buffer.from(paymentHeader, 'base64').toString('utf-8');
-    const parsed = JSON.parse(decoded) as Record<string, unknown>;
+    const parsed = JSON.parse(decoded) as X402Record;
 
     // Must be a valid x402 envelope
     if (!parsed?.x402Version || !parsed?.payload) return false;
 
-    const payload = parsed.payload as Record<string, unknown>;
-    const auth = (payload?.authorization ?? payload) as Record<string, unknown>;
+    const paymentRequired = buildX402PaymentRequired(priceUsd).accepts[0];
+    const gatewayRequirements = buildGatewayPaymentRequirements(priceUsd);
+    const payload = asRecord(parsed.payload);
+    const auth = asRecord(payload?.authorization ?? payload);
+    const accepted = asRecord(parsed.accepted ?? payload.accepted);
+    const paymentRequirements = asRecord(parsed.paymentRequirements);
+    const requirementRecords = Array.isArray(parsed.accepts)
+      ? (parsed.accepts.map(asRecord))
+      : [];
+    const records = [auth, accepted, payload, parsed, paymentRequirements, ...requirementRecords];
 
     // Must contain EIP-3009 TransferWithAuthorization fields
     const required = ['from', 'to', 'value', 'validAfter', 'validBefore', 'nonce'];
     if (!required.every((k) => auth[k] !== undefined)) return false;
 
-    // Must not be expired
+    // Must be the exact market-data payment we advertised: Arc Testnet, exact USDC amount,
+    // known recipient, and this API resource.
+    const scheme = firstString(records, ['scheme']);
+    const network = firstString(records, ['network', 'chain']);
+    const asset = firstString(records, ['asset', 'token', 'tokenAddress']);
+    const resource = firstString(records, ['resource']);
+    const recipient = firstString([auth, payload, parsed], ['to', 'payTo', 'recipient']);
+    const amount = firstString([auth, accepted, payload, parsed], ['value', 'amount', 'maxAmountRequired']);
+
+    if (scheme !== 'exact') return false;
+    if (!sameText(network, paymentRequired.network)) return false;
+    if (!sameAddress(asset, paymentRequired.asset)) return false;
+    if (resource && resource !== paymentRequired.resource) return false;
+    if (!sameAddress(recipient, paymentRequired.payTo)) return false;
+    if (!sameBaseUnitAmount(amount, paymentRequired.maxAmountRequired)) return false;
+
+    // Must be currently valid and not expired.
+    const validAfter = Number(auth.validAfter);
     const validBefore = Number(auth.validBefore);
-    if (!Number.isFinite(validBefore) || validBefore < Math.floor(Date.now() / 1000)) return false;
+    const now = Math.floor(Date.now() / 1000);
+    if (!Number.isFinite(validAfter) || validAfter > now) return false;
+    if (!Number.isFinite(validBefore) || validBefore < now) return false;
 
     // Must have signature components
     if (!auth.v || !auth.r || !auth.s) return false;
@@ -76,10 +151,15 @@ export async function verifyX402Payment(paymentHeader: string): Promise<boolean>
     const res = await fetch(`${facilitatorUrl.replace(/\/$/, '')}/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payment: parsed }),
+      body: JSON.stringify({
+        paymentPayload: parsed,
+        paymentRequirements: gatewayRequirements,
+      }),
     });
 
-    return res.ok;
+    if (!res.ok) return false;
+    const result = await res.json().catch(() => null) as { isValid?: boolean } | null;
+    return result?.isValid === true;
   } catch {
     return false;
   }

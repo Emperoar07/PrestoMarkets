@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Verify payment ──
-  const valid = await verifyX402Payment(paymentHeader);
+  const valid = await verifyX402Payment(paymentHeader, PRICE_USD);
   if (!valid) {
     return NextResponse.json(
       { error: 'Invalid or expired payment. Obtain a fresh signed EIP-3009 authorization.' },
