@@ -9,7 +9,6 @@
  */
 
 import Groq from 'groq-sdk';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { agentCreateMarket } from './agentWallet';
 import { callLlmJson, extractJsonObject } from './llmFallback';
 import { fetchOnchainMarkets } from './onchainMarkets';
@@ -360,13 +359,10 @@ function isDuplicateMarket(draft: GeminiDraft, trend: TrendItem, existingMarkets
 }
 
 async function draftWithGemini(trend: TrendItem, category: string): Promise<GeminiDraft> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY not set');
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  // gemini-1.5-flash was deprecated in 2026; gemini-2.0-flash is the current free-tier default.
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
+  // Function name kept for git history; the model is whichever provider in the fallback
+  // chain (Anthropic -> Groq -> OpenRouter -> Cerebras -> Together) responds first. Direct
+  // Gemini was a single point of failure: free-tier quota on some Google Cloud projects
+  // is allocated as 0, returning 429 'limit: 0' indefinitely.
   const now = new Date();
   const closeDate30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const closeDate7 = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -394,16 +390,11 @@ Return JSON only:
   "type": "Prediction|Opinion|Opportunity"
 }`;
 
-  const result = await model.generateContent({
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: 'application/json', temperature: 0.4, maxOutputTokens: 512 },
-  });
-
-  const raw = result.response.text();
-  const parsed = JSON.parse(raw) as Partial<GeminiDraft>;
+  const result = await callLlmJson({ task: 'reasoning', prompt, maxTokens: 512, temperature: 0.4 });
+  const parsed = extractJsonObject(result.text) as Partial<GeminiDraft>;
 
   if (!parsed.title || !parsed.rules || !parsed.sourceOfTruth || !parsed.closeDate) {
-    throw new Error('Gemini returned incomplete draft');
+    throw new Error(`Draft (${result.provider} ${result.model}) returned incomplete fields.`);
   }
 
   return {
