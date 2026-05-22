@@ -3,6 +3,7 @@ import { getArcConfig, getArcChainId } from './arcConfig';
 import { buildMarketMetadataURI } from './marketMetadata';
 import { getCircleSession, refreshCircleSessionIfNeeded, type CircleSession } from './walletProvider';
 import { requestCircleConfirmation, type CircleConfirmDetails } from './circleConfirm';
+import { getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
 import { prestoMarketFactoryAbi } from './contracts';
 import type { CreateLiveMarketInput, LiveActionResult } from './liveActions';
 import type { MarketType } from './markets';
@@ -257,6 +258,29 @@ export async function createCircleMarket(input: CreateLiveMarketInput): Promise<
     const config = requireArcConfig();
     if (!isAddress(input.resolver)) {
       throw new Error('Resolver must be a valid wallet address.');
+    }
+    // Pre-pay agent resolution gas via a separate Circle PIN challenge if Agent assisted.
+    if (isAgentResolutionMode(input.resolutionMode) && isAddress(input.resolver)) {
+      const feeHuman = getResolveFeeUsdc();
+      const feeAmount = parseUnits(feeHuman, 6);
+      if (feeAmount > BigInt(0)) {
+        await runContractExecution({
+          session,
+          contractAddress: config.usdcAddress!,
+          abiFunctionSignature: 'transfer(address,uint256)',
+          abiParameters: [input.resolver, feeAmount.toString()],
+          refId: `presto-resolve-fee-${Date.now()}`,
+          preview: {
+            label: `Prepay resolve fee · $${feeHuman} USDC`,
+            action: `Pre-funds the Presto agent so it has Arc gas to auto-resolve this market when it closes. Sent directly to ${input.resolver.slice(0, 6)}…${input.resolver.slice(-4)}.`,
+            amountDisplay: `$${feeHuman} USDC`,
+            parameters: [
+              `recipient: ${input.resolver.slice(0, 6)}…${input.resolver.slice(-4)} (agent wallet)`,
+              `amount: $${feeHuman} USDC`,
+            ],
+          },
+        });
+      }
     }
     const closeStamp = getCloseTimestamp(input.closeDate);
     const closeReadable = new Date(Number(closeStamp) * 1000).toLocaleString();

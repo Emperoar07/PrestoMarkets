@@ -24,6 +24,7 @@ import {
   resolveCircleMarket,
 } from './circleActions';
 import { executeSwap, type StableSymbol } from './swap';
+import { getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
 
 function isCircleWallet(): boolean {
   return getStoredConnectedWallet()?.mode === 'circle-user-controlled';
@@ -187,6 +188,32 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
 
     if (!isAddress(input.resolver)) {
       throw new Error('Resolver must be a valid wallet address.');
+    }
+
+    // Pre-pay the agent's resolution gas if the creator picked Agent assisted. Direct
+    // USDC transfer to the agent's wallet — when auto-resolve runs the balance is already
+    // there. Throws on insufficient balance so the user knows to fund USDC first.
+    if (isAgentResolutionMode(input.resolutionMode) && isAddress(input.resolver)) {
+      const feeAmount = parseUnits(getResolveFeeUsdc(), 6);
+      if (feeAmount > BigInt(0)) {
+        const balance = await withRetry(() => publicClient.readContract({
+          address: config.usdcAddress,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [account],
+        }));
+        if (balance < feeAmount) {
+          throw new Error(`Need at least $${getResolveFeeUsdc()} USDC to prepay the agent's resolve gas. You have $${Number(formatUnits(balance, 6)).toFixed(2)}.`);
+        }
+        const feeTx = await walletClient.writeContract({
+          account,
+          address: config.usdcAddress,
+          abi: erc20Abi,
+          functionName: 'transfer',
+          args: [input.resolver as Address, feeAmount],
+        });
+        await withRetry(() => publicClient.waitForTransactionReceipt({ hash: feeTx }));
+      }
     }
 
     const hash = await walletClient.writeContract({

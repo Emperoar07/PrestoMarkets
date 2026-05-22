@@ -9,6 +9,7 @@ import type { MarketType, ResolutionMode } from '@/lib/markets';
 import { useAppState } from '@/lib/appState';
 import { createMarketCategories } from '@/lib/categories';
 import { CloseDatePicker } from './CloseDatePicker';
+import { getResolveFeeUsdc } from '@/lib/resolveFee';
 
 const marketTypes: MarketType[] = ['Prediction', 'Opinion', 'Opportunity'];
 const resolutionModes: ResolutionMode[] = ['Human resolver', 'Community resolver', 'Agent assisted'];
@@ -469,7 +470,9 @@ export function CreateMarketBuilder() {
               />
               {fieldErrors.resolver ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.resolver}</p> : null}
               {resolutionMode === 'Agent assisted' && agentAddress && resolver.trim().toLowerCase() === agentAddress.toLowerCase() ? (
-                <p className="mt-1.5 text-[11px] text-cyan/80">Auto-filled with the Presto agent wallet.</p>
+                <p className="mt-1.5 text-[11px] text-cyan/80">
+                  Auto-filled with the Presto agent wallet. Launching this market also prepays a <span className="font-black">${getResolveFeeUsdc()} USDC</span> resolve fee to the agent so it has gas to auto-settle.
+                </p>
               ) : null}
             </div>
           </div>
@@ -667,6 +670,12 @@ export function CreateMarketBuilder() {
                 <dt className="text-muted">Mode</dt>
                 <dd className="text-right font-bold text-white">{resolutionMode}</dd>
               </div>
+              {resolutionMode === 'Agent assisted' ? (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-muted">Agent resolve fee</dt>
+                  <dd className="text-right font-bold text-cyan">${getResolveFeeUsdc()} USDC</dd>
+                </div>
+              ) : null}
               <div className="flex justify-between gap-4">
                 <dt className="text-muted">Initial depth</dt>
                 <dd className="text-right font-bold text-white">
