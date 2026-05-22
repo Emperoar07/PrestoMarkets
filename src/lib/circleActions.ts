@@ -1,7 +1,7 @@
 import { isAddress, parseUnits } from 'viem';
 import { getArcConfig } from './arcConfig';
 import { buildMarketMetadataURI } from './marketMetadata';
-import { getCircleSession, type CircleSession } from './walletProvider';
+import { getCircleSession, refreshCircleSessionIfNeeded, type CircleSession } from './walletProvider';
 import { requestCircleConfirmation, type CircleConfirmDetails } from './circleConfirm';
 import type { CreateLiveMarketInput, LiveActionResult } from './liveActions';
 import type { MarketType } from './markets';
@@ -10,7 +10,10 @@ const ARC_EXPLORER_ADDRESS = 'https://testnet.arcscan.app/address/';
 
 const MIN_TRADE_USDC = 0.01;
 const TX_POLL_INTERVAL_MS = 2_000;
-const TX_POLL_TIMEOUT_MS = 120_000;
+// Circle's transaction indexer can lag 2-3 minutes during peak load even though Arc itself
+// finalizes in <1s. Use a generous 4-minute window so we don't show a 'failed' UI for a tx
+// that's just slow to surface.
+const TX_POLL_TIMEOUT_MS = 240_000;
 
 type CircleTxStatus =
   | 'INITIATED'
@@ -69,23 +72,28 @@ async function executeChallenge(session: CircleSession, challengeId: string): Pr
   });
 }
 
-async function waitForTx(session: CircleSession, transactionId: string): Promise<string> {
+async function waitForTx(session: CircleSession, transactionId: string): Promise<{ txHash: string; pending: boolean }> {
   const started = Date.now();
+  let lastTxHash = '';
   while (Date.now() - started < TX_POLL_TIMEOUT_MS) {
     const tx = await callProvider<CircleTransaction>({
       action: 'getTransaction',
       userToken: session.userToken,
       transactionId,
     });
+    if (tx.txHash) lastTxHash = tx.txHash;
     if (tx.state === 'CONFIRMED' || tx.state === 'COMPLETE') {
-      return tx.txHash ?? '';
+      return { txHash: tx.txHash ?? '', pending: false };
     }
     if (tx.state === 'FAILED' || tx.state === 'CANCELLED' || tx.state === 'DENIED') {
       throw new Error(`Circle transaction ${tx.state.toLowerCase()}: ${tx.errorReason ?? 'no reason given'}`);
     }
     await new Promise((r) => setTimeout(r, TX_POLL_INTERVAL_MS));
   }
-  throw new Error('Circle transaction timed out waiting for confirmation.');
+  // Timeout reached but no terminal failure — Arc finalizes in <1s so the tx is almost
+  // certainly already onchain; Circle's indexer is just slow. Return what we have so the
+  // UI can show a pending state with the explorer link instead of an error.
+  return { txHash: lastTxHash, pending: true };
 }
 
 async function runContractExecution(input: {
@@ -137,7 +145,27 @@ async function runContractExecution(input: {
 
   await executeChallenge(input.session, challengeId);
   const transactionId = await findRecentTransactionId(input.session, anchor);
-  return waitForTx(input.session, transactionId);
+  const waitResult = await waitForTx(input.session, transactionId);
+  if (waitResult.pending) {
+    // Tag the error string so action wrappers can convert this into a friendly
+    // 'submitted, still confirming' result instead of an error toast.
+    throw new Error(`__CIRCLE_PENDING__:${waitResult.txHash}`);
+  }
+  return waitResult.txHash;
+}
+
+const PENDING_TAG = '__CIRCLE_PENDING__:';
+
+function pendingResultFromError(err: unknown, label: string): { ok: boolean; message: string; txHash?: `0x${string}` } | null {
+  const msg = err instanceof Error ? err.message : '';
+  if (!msg.startsWith(PENDING_TAG)) return null;
+  const hashPart = msg.slice(PENDING_TAG.length).trim();
+  const hash = hashPart && hashPart !== 'undefined' ? hashPart : '';
+  return {
+    ok: true,
+    message: `${label} submitted. Confirming on Arc — refresh in a moment if you don't see it yet.`,
+    txHash: hash ? (hash as `0x${string}`) : undefined,
+  };
 }
 
 type ListedTransaction = {
@@ -166,8 +194,10 @@ async function findRecentTransactionId(session: CircleSession, anchorMs: number)
   throw new Error('Could not locate the transaction after challenge approval.');
 }
 
-function requireSession(): CircleSession {
-  const session = getCircleSession();
+async function requireSession(): Promise<CircleSession> {
+  // Auto-refresh the userToken if it's near Circle's 60-minute expiry. The user keeps
+  // transacting without re-signing in for as long as the tab is open.
+  const session = await refreshCircleSessionIfNeeded();
   if (!session) {
     throw new Error('Circle wallet session expired — sign in again.');
   }
@@ -201,11 +231,13 @@ function getCloseTimestamp(closeDate: string): bigint {
 
 export async function createCircleMarket(input: CreateLiveMarketInput): Promise<LiveActionResult> {
   try {
-    const session = requireSession();
+    const session = await requireSession();
     const config = requireArcConfig();
     if (!isAddress(input.resolver)) {
       throw new Error('Resolver must be a valid wallet address.');
     }
+    const closeStamp = getCloseTimestamp(input.closeDate);
+    const closeReadable = new Date(Number(closeStamp) * 1000).toLocaleString();
     const txHash = await runContractExecution({
       session,
       contractAddress: config.factoryAddress!,
@@ -213,20 +245,31 @@ export async function createCircleMarket(input: CreateLiveMarketInput): Promise<
       // Every Circle abiParameter scalar must be a string. Numbers cause error code 2.
       abiParameters: [
         input.resolver,
-        getCloseTimestamp(input.closeDate).toString(),
+        closeStamp.toString(),
         buildMarketMetadataURI(input),
         String(getMarketKind(input.type)),
       ],
+      preview: {
+        label: `Launch "${input.title.slice(0, 60)}${input.title.length > 60 ? '…' : ''}"`,
+        action: `Deploys a new ${input.type} market via the Presto factory. The resolver address you picked will sign settlement.`,
+        parameters: [
+          `resolver: ${input.resolver.slice(0, 6)}…${input.resolver.slice(-4)}`,
+          `closes: ${closeReadable}`,
+          `kind: ${input.type}`,
+        ],
+      },
     });
     return { ok: true, message: 'Live market created via Circle wallet.', txHash: txHash as `0x${string}` };
   } catch (error) {
+    const pending = pendingResultFromError(error, 'Market creation');
+    if (pending) return pending;
     return { ok: false, message: error instanceof Error ? error.message : 'Market creation failed.' };
   }
 }
 
 export async function buyCircleShares(input: { marketAddress: string; outcome: 'YES' | 'NO'; amount: number }): Promise<LiveActionResult> {
   try {
-    const session = requireSession();
+    const session = await requireSession();
     const config = requireArcConfig();
     if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
     if (!Number.isFinite(input.amount) || input.amount < MIN_TRADE_USDC) {
@@ -234,12 +277,22 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: '
     }
     const amount = parseUnits(String(input.amount), 6).toString();
 
+    const humanAmount = `$${Number(input.amount).toFixed(2)} USDC`;
     await runContractExecution({
       session,
       contractAddress: config.usdcAddress!,
       abiFunctionSignature: 'approve(address,uint256)',
       abiParameters: [input.marketAddress, amount],
-      refId: `presto-approve-${input.marketAddress}`,
+      refId: `presto-approve-${input.marketAddress}-${Date.now()}`,
+      preview: {
+        label: `Approve USDC for ${input.outcome} buy`,
+        action: `Lets the market contract pull ${humanAmount} from your wallet for this trade. You sign one approval, then the actual buy in the next step.`,
+        amountDisplay: humanAmount,
+        parameters: [
+          `spender: ${input.marketAddress.slice(0, 6)}…${input.marketAddress.slice(-4)}`,
+          `amount: ${humanAmount} (${amount} base units)`,
+        ],
+      },
     });
 
     const txHash = await runContractExecution({
@@ -247,17 +300,28 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: '
       contractAddress: input.marketAddress,
       abiFunctionSignature: 'buy(uint8,uint256)',
       abiParameters: [input.outcome === 'YES' ? '0' : '1', amount],
-      refId: `presto-buy-${input.marketAddress}`,
+      refId: `presto-buy-${input.marketAddress}-${Date.now()}`,
+      preview: {
+        label: `Buy ${input.outcome} · ${humanAmount}`,
+        action: `Mints ${input.outcome} shares for this market against your approved USDC.`,
+        amountDisplay: humanAmount,
+        parameters: [
+          `outcome: ${input.outcome} (${input.outcome === 'YES' ? '0' : '1'})`,
+          `amount: ${humanAmount}`,
+        ],
+      },
     });
     return { ok: true, message: `Bought ${input.outcome} shares via Circle wallet.`, txHash: txHash as `0x${string}` };
   } catch (error) {
+    const pending = pendingResultFromError(error, `Buy ${input.outcome}`);
+    if (pending) return pending;
     return { ok: false, message: error instanceof Error ? error.message : 'Buy transaction failed.' };
   }
 }
 
 export async function resolveCircleMarket(input: { marketAddress: string; outcome: 'YES' | 'NO'; resolutionURI: string }): Promise<LiveActionResult> {
   try {
-    const session = requireSession();
+    const session = await requireSession();
     if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
     const txHash = await runContractExecution({
       session,
@@ -267,13 +331,15 @@ export async function resolveCircleMarket(input: { marketAddress: string; outcom
     });
     return { ok: true, message: 'Market resolved via Circle wallet.', txHash: txHash as `0x${string}` };
   } catch (error) {
+    const pending = pendingResultFromError(error, 'Market resolution');
+    if (pending) return pending;
     return { ok: false, message: error instanceof Error ? error.message : 'Resolve transaction failed.' };
   }
 }
 
 async function noArgAction(marketAddress: string, signature: string, label: string): Promise<LiveActionResult> {
   try {
-    const session = requireSession();
+    const session = await requireSession();
     if (!isAddress(marketAddress)) throw new Error('Market address is invalid.');
     const txHash = await runContractExecution({
       session,
@@ -283,6 +349,8 @@ async function noArgAction(marketAddress: string, signature: string, label: stri
     });
     return { ok: true, message: `${label} via Circle wallet.`, txHash: txHash as `0x${string}` };
   } catch (error) {
+    const pending = pendingResultFromError(error, label);
+    if (pending) return pending;
     return { ok: false, message: error instanceof Error ? error.message : `${label} failed.` };
   }
 }

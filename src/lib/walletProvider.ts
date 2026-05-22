@@ -16,6 +16,10 @@ export type CircleSession = {
   userToken: string;
   encryptionKey: string;
   walletId: string;
+  /** Stable Circle userId — lets us call POST /users/token to mint a fresh userToken without re-PIN. */
+  userId?: string;
+  /** Epoch ms when this userToken was issued. Tokens are hard-capped at 60min by Circle. */
+  issuedAt?: number;
 };
 
 // Circle's userToken + encryptionKey grant impersonation against Circle's API for the user's
@@ -25,12 +29,50 @@ export type CircleSession = {
 // user out of Circle and they must re-authenticate. Acceptable.
 let circleSessionRef: CircleSession | null = null;
 
+// Hard-coded by Circle: userToken expires after 60 minutes. We refresh at 50 to leave headroom.
+const USER_TOKEN_REFRESH_AT_MS = 50 * 60_000;
+
 export function getCircleSession(): CircleSession | null {
   return circleSessionRef;
 }
 
 function setCircleSession(session: CircleSession | null) {
   circleSessionRef = session;
+}
+
+/**
+ * If the current Circle session's userToken is older than ~50 minutes, mint a fresh one from
+ * the stored userId so the user can keep transacting without re-signing in. Returns the
+ * (possibly refreshed) session. If no userId is stored (older sessions before this field was
+ * added) or the refresh call fails, returns the existing session and lets the caller hit the
+ * expired-token path.
+ */
+export async function refreshCircleSessionIfNeeded(): Promise<CircleSession | null> {
+  const current = circleSessionRef;
+  if (!current) return null;
+  const ageMs = current.issuedAt ? Date.now() - current.issuedAt : Infinity;
+  if (ageMs < USER_TOKEN_REFRESH_AT_MS) return current;
+  if (!current.userId) return current;
+  try {
+    const refreshed = await callCircleWalletProvider<CircleLoginResult>({
+      action: 'session',
+      userId: current.userId,
+    });
+    if (refreshed?.userToken && refreshed.encryptionKey) {
+      const next: CircleSession = {
+        ...current,
+        userToken: refreshed.userToken,
+        encryptionKey: refreshed.encryptionKey,
+        issuedAt: Date.now(),
+      };
+      setCircleSession(next);
+      return next;
+    }
+  } catch {
+    // Refresh failed (network / Circle outage); let the caller fall through with the stale
+    // token. Circle will return 401 and our existing flow will surface the re-auth prompt.
+  }
+  return current;
 }
 
 export type CircleSocialProvider = 'google';
@@ -343,6 +385,8 @@ async function finishCircleWalletLogin(input: {
     userToken: input.login.userToken,
     encryptionKey: input.login.encryptionKey,
     walletId: wallet.id,
+    userId: input.login.userID || input.login.userId || input.userHint,
+    issuedAt: Date.now(),
   });
 
   return {

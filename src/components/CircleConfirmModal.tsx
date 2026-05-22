@@ -39,6 +39,10 @@ export function CircleConfirmModal() {
             </div>
           ) : null}
           <div className="flex items-baseline justify-between gap-4">
+            <dt className="text-muted">Network fee</dt>
+            <dd className="text-right font-bold text-white">{details.gasDisplay ?? '~$0.01 USDC (Arc gas)'}</dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-4">
             <dt className="text-muted">Function</dt>
             <dd className="text-right font-mono text-[12px] text-white">{details.functionSignature}</dd>
           </div>

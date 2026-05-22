@@ -20,6 +20,8 @@ export type CircleConfirmDetails = {
   parameters?: string[];
   /** Optional explorer link for the contract. */
   contractExplorerUrl?: string;
+  /** Optional gas estimate display (e.g. '~$0.01 USDC' for Arc). Defaults are populated downstream. */
+  gasDisplay?: string;
 };
 
 type PendingRequest = {
