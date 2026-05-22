@@ -136,7 +136,7 @@ async function ensureArc(provider: EthereumProvider) {
       params: [{
         chainId: ARC_CHAIN_HEX,
         chainName: 'Arc Testnet',
-        nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
+        nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
         rpcUrls: [process.env.NEXT_PUBLIC_ARC_RPC_URL || 'https://rpc.testnet.arc.network'],
       }],
     });
@@ -392,11 +392,15 @@ async function executeCircleChallenge(input: {
   const { W3SSdk } = await import('@circle-fin/w3s-pw-web-sdk');
   const sdk = createStyledCircleSdk(new W3SSdk({
     appSettings: { appId: input.appId },
-    authentication: {
-      userToken: input.userToken,
-      encryptionKey: input.encryptionKey,
-    },
   }));
+
+  // The Circle Web SDK requires a device session before executing wallet
+  // challenges, even when the user has already completed email/social/PIN auth.
+  await sdk.getDeviceId();
+  sdk.setAuthentication({
+    userToken: input.userToken,
+    encryptionKey: input.encryptionKey,
+  });
 
   await new Promise<void>((resolve, reject) => {
     sdk.execute(input.challengeId, (error) => {

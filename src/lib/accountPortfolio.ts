@@ -114,7 +114,7 @@ function createClient() {
     chain: {
       id: getArcChainId(),
       name: 'Arc Testnet',
-      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
+      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
       rpcUrls: {
         default: { http: [config.rpcUrl] },
       },

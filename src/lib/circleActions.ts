@@ -48,7 +48,14 @@ async function executeChallenge(session: CircleSession, challengeId: string): Pr
   const { W3SSdk } = await import('@circle-fin/w3s-pw-web-sdk');
   const sdk = new W3SSdk({
     appSettings: { appId: session.appId },
-    authentication: { userToken: session.userToken, encryptionKey: session.encryptionKey },
+  });
+
+  // Circle's Web SDK needs a device session before challenge execution, and the
+  // auth pair must be applied to the SDK instance that runs this challenge.
+  await sdk.getDeviceId();
+  sdk.setAuthentication({
+    userToken: session.userToken,
+    encryptionKey: session.encryptionKey,
   });
 
   await new Promise<void>((resolve, reject) => {

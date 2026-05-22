@@ -10,8 +10,8 @@
 
 import Groq from 'groq-sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import Anthropic from '@anthropic-ai/sdk';
 import { agentCreateMarket } from './agentWallet';
+import { callLlmJson, extractJsonObject } from './llmFallback';
 import { fetchOnchainMarkets } from './onchainMarkets';
 import type { CreateLiveMarketInput } from './liveActions';
 import type { AgentMarketMetadata } from './marketMetadata';
@@ -184,6 +184,46 @@ async function fetchSportsTrends(): Promise<TrendItem[]> {
   });
 }
 
+async function fetchDecryptTrends(): Promise<TrendItem[]> {
+  return fetchRssTrends({
+    url: 'https://decrypt.co/feed',
+    source: 'decrypt',
+    limit: 3,
+  });
+}
+
+async function fetchTheBlockTrends(): Promise<TrendItem[]> {
+  return fetchRssTrends({
+    url: 'https://www.theblock.co/rss.xml',
+    source: 'theblock',
+    limit: 3,
+  });
+}
+
+async function fetchTechCrunchTrends(): Promise<TrendItem[]> {
+  return fetchRssTrends({
+    url: 'https://techcrunch.com/feed/',
+    source: 'techcrunch',
+    limit: 3,
+  });
+}
+
+async function fetchHackerNewsTrends(): Promise<TrendItem[]> {
+  return fetchRssTrends({
+    url: 'https://hnrss.org/frontpage',
+    source: 'hackernews',
+    limit: 3,
+  });
+}
+
+async function fetchBbcTrends(): Promise<TrendItem[]> {
+  return fetchRssTrends({
+    url: 'http://feeds.bbci.co.uk/news/rss.xml',
+    source: 'bbc',
+    limit: 3,
+  });
+}
+
 function interleave(...lists: TrendItem[][]): TrendItem[] {
   const out: TrendItem[] = [];
   const max = Math.max(...lists.map((l) => l.length));
@@ -196,18 +236,25 @@ function interleave(...lists: TrendItem[][]): TrendItem[] {
 }
 
 async function fetchTrends(): Promise<TrendItem[]> {
-  const [grokX, googleNews, cryptoNews, sports, serper] = await Promise.all([
+  const [grokX, googleNews, cryptoNews, decrypt, theBlock, techCrunch, hackerNews, bbc, sports, serper] = await Promise.all([
     fetchGrokXTrends().catch(() => [] as TrendItem[]),
     fetchGoogleNewsTrends().catch(() => [] as TrendItem[]),
     fetchCryptoNewsTrends().catch(() => [] as TrendItem[]),
+    fetchDecryptTrends().catch(() => [] as TrendItem[]),
+    fetchTheBlockTrends().catch(() => [] as TrendItem[]),
+    fetchTechCrunchTrends().catch(() => [] as TrendItem[]),
+    fetchHackerNewsTrends().catch(() => [] as TrendItem[]),
+    fetchBbcTrends().catch(() => [] as TrendItem[]),
     fetchSportsTrends().catch(() => [] as TrendItem[]),
     fetchSerperTrends().catch(() => [] as TrendItem[]),
   ]);
-  const merged = interleave(grokX, googleNews, cryptoNews, sports, serper);
+  // Interleave so the agent sees a diverse first pass across X social signal, general news,
+  // crypto-specific outlets, tech, sports, and search-derived stories.
+  const merged = interleave(grokX, googleNews, cryptoNews, decrypt, theBlock, techCrunch, hackerNews, bbc, sports, serper);
   if (merged.length === 0) {
-    throw new Error('No trend sources returned items. Check XAI_API_KEY, SERPER_API_KEY, or network access to RSS feeds.');
+    throw new Error('No trend sources returned items. Check XAI_API_KEY, SERPER_API_KEY, or network access to the RSS feeds.');
   }
-  return merged.slice(0, 14);
+  return merged.slice(0, 18);
 }
 
 // ── Stage 2: Groq classification ──────────────────────────────────────────
@@ -377,8 +424,6 @@ type SafetyResult = {
 };
 
 async function safetyCheckWithHaiku(draft: GeminiDraft): Promise<SafetyResult> {
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
   const prompt = `You are a safety reviewer for a prediction market platform. Evaluate this market draft.
 
 Title: "${draft.title}"
@@ -398,19 +443,12 @@ Reject if ANY of:
 Return JSON only:
 {
   "pass": true/false,
-  "confidence": 0.0–1.0,
+  "confidence": 0.0-1.0,
   "reason": "one sentence"
 }`;
 
-  const message = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 256,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  const text = message.content[0]?.type === 'text' ? message.content[0].text : '{}';
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  const parsed = JSON.parse(jsonMatch?.[0] ?? '{}') as Partial<SafetyResult>;
+  const result = await callLlmJson({ task: 'safety', prompt, maxTokens: 256 });
+  const parsed = extractJsonObject(result.text) as Partial<SafetyResult>;
 
   return {
     pass: parsed.pass ?? false,

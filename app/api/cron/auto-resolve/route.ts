@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 import { agentResolveMarket, getAgentAddress } from '@/lib/agentWallet';
+import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
 import { getAgentIdentityStatus, recordResolutionReputation } from '@/lib/agentIdentity';
 import type { AppMarket } from '@/lib/appState';
 
@@ -104,7 +104,6 @@ async function resolveMarket(market: AppMarket): Promise<ResolutionResult> {
     };
   }
 
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const researchPrompt = `You are an autonomous resolution oracle for a prediction market platform.
 
 Market: "${market.title}"
@@ -136,17 +135,8 @@ Return JSON only:
   "sources": ["url1", "url2"]
 }`;
 
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 512,
-    messages: [{ role: 'user', content: researchPrompt }],
-  });
-
-  const text = message.content[0]?.type === 'text' ? message.content[0].text : '';
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('No JSON in oracle response');
-
-  const parsed = JSON.parse(jsonMatch[0]) as {
+  const llmResult = await callLlmJson({ task: 'reasoning', prompt: researchPrompt, maxTokens: 512 });
+  const parsed = extractJsonObject(llmResult.text) as {
     outcome: string;
     outcomeIndex: number;
     confidence: number;

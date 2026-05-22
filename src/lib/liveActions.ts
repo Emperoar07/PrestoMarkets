@@ -47,7 +47,7 @@ function getArcChain() {
   return {
     id: getArcChainId(),
     name: 'Arc Testnet',
-    nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
+    nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
     rpcUrls: {
       default: { http: ['https://rpc.testnet.arc.network'] as [string] },
     },
@@ -161,7 +161,7 @@ async function getClients() {
         params: [{
           chainId: ARC_CHAIN_HEX,
           chainName: 'Arc Testnet',
-          nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
+          nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
           rpcUrls: [config.rpcUrl],
         }],
       });

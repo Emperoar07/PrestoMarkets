@@ -123,83 +123,6 @@ function getCatFromUrl() {
   return new URLSearchParams(window.location.search).get('cat') ?? 'Trending';
 }
 
-// ─── Featured market hero (Polymarket-style large card) ───────────────────────
-function FeaturedMarket({ market }: { market: AppMarket }) {
-  const yes = market.outcomes.find((o) => o.label === 'YES') ?? market.outcomes[0];
-  const no = market.outcomes.find((o) => o.label === 'NO') ?? market.outcomes[1] ?? yes;
-  const isLive = market.status === 'Open' || market.status === 'Closing soon';
-
-  return (
-    <Link
-      href={`/markets/${market.id}`}
-      className="group flex flex-col overflow-hidden rounded-[18px] border border-white/[0.06] bg-[#0d1520] transition-all hover:border-white/[0.1]"
-    >
-      {/* Header */}
-      <div className="flex items-start gap-4 p-6 pb-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-[12px] bg-[#111b2e]">
-          {market.imageURI ? (
-            <img src={market.imageURI} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <span className="text-sm font-black text-cyan">{market.category.slice(0, 2).toUpperCase()}</span>
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-[#4a5568]">
-            {market.category}
-            {isLive ? <span className="ml-2 inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-red-400" />Live</span> : null}
-          </p>
-          <h2 className="mt-1 text-[22px] font-black leading-snug tracking-tight text-white">
-            {market.title}
-          </h2>
-        </div>
-      </div>
-
-      {/* Outcome rows */}
-      <div className="px-6 py-2 space-y-2">
-        {[yes, no].map((outcome) => (
-          <div key={outcome.label} className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="text-sm font-bold text-white">{outcome.label === 'YES' ? 'Yes' : 'No'}</span>
-              <span className={`text-lg font-black ${outcome.label === 'YES' ? 'text-white' : 'text-[#64748b]'}`}>
-                {outcome.odds}%
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="rounded-[8px] bg-[#0a3320] px-4 py-1.5 text-xs font-bold text-[#4ade80] hover:bg-[#0d4429]"
-                onClick={(e) => e.preventDefault()}
-              >
-                Buy Yes
-              </button>
-              <button
-                type="button"
-                className="rounded-[8px] bg-[#2d1010] px-4 py-1.5 text-xs font-bold text-[#f87171] hover:bg-[#3d1515]"
-                onClick={(e) => e.preventDefault()}
-              >
-                Buy No
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Chart */}
-      <div className="px-6 pt-3">
-        <MarketSignalChart market={market} compact />
-      </div>
-
-      {/* Footer */}
-      <div className="flex items-center justify-between border-t border-white/[0.04] px-6 py-4 mt-2">
-        <span className="text-sm font-bold text-[#4a5568]">{market.volume} Vol.</span>
-        <span className="text-sm font-bold text-[#4a5568]">
-          {market.closeLabel ? `Ends ${market.closeLabel}` : market.status}
-        </span>
-      </div>
-    </Link>
-  );
-}
-
 // ─── Breaking news panel ──────────────────────────────────────────────────────
 function BreakingNewsPanel({ markets }: { markets: AppMarket[] }) {
   const items = markets
@@ -368,24 +291,17 @@ export function MarketsExplorer() {
   const visibleMarkets = sortMarkets(filtered, sortKey);
   const totalVolume = markets.reduce((sum, m) => sum + parseVolume(m.volume), 0);
 
-  // Featured = highest-volume market overall (shown when no search/topic filter active)
-  const featuredMarket = markets.length > 0
-    ? [...markets].sort((a, b) => parseVolume(b.volume) - parseVolume(a.volume))[0]
-    : null;
-
-  const showHero = !isLoadingMarkets && featuredMarket && !searchValue && activeHotTopic === 'All';
+  const showSidePanels = !isLoadingMarkets && markets.length > 0 && !searchValue && activeHotTopic === 'All';
 
   return (
     <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-36 md:px-7">
 
-      {/* ── Hero: featured market + sidebar ── */}
-      {showHero ? (
-        <div className="mb-10 grid gap-4 lg:grid-cols-[1fr_300px] xl:grid-cols-[1fr_320px]">
-          <FeaturedMarket market={featuredMarket} />
-          <div className="flex flex-col gap-4">
-            <BreakingNewsPanel markets={markets} />
-            <HotTopicsPanel markets={markets} topics={dynamicTopics} />
-          </div>
+      {/* Side panels: breaking + hot topics. The big featured-market hero was removed in
+          favor of letting the market grid speak for itself. */}
+      {showSidePanels ? (
+        <div className="mb-8 grid gap-4 md:grid-cols-2">
+          <BreakingNewsPanel markets={markets} />
+          <HotTopicsPanel markets={markets} topics={dynamicTopics} />
         </div>
       ) : null}
 

@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { isAddress } from 'viem';
+import { getArcConfig } from '@/lib/arcConfig';
 
 function envClean(name: string, fallback = ''): string {
   return (process.env[name] ?? fallback).trim();
@@ -64,6 +66,14 @@ type CircleErrorBody = {
   errors?: Array<{ message?: string; error?: string; code?: string | number }>;
 };
 
+const allowedMarketSignatures = new Set([
+  'buy(uint8,uint256)',
+  'resolve(uint8,string)',
+  'cancel()',
+  'claim()',
+  'refund()',
+]);
+
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
@@ -79,6 +89,12 @@ function normalizeCircleError(data: unknown, fallback: string) {
   const code = body.code || nestedError?.code;
 
   return code ? `${message} (${code})` : message;
+}
+
+function unwrapCircleData(data: unknown): unknown {
+  if (!data || typeof data !== 'object') return data;
+  const body = data as Record<string, unknown>;
+  return body.data ?? data;
 }
 
 function requireCircleConfig() {
@@ -98,6 +114,26 @@ function requireCircleConfig() {
   }
 
   return { apiKey, appId };
+}
+
+function isAllowedContractExecution(input: CircleRequestBody): boolean {
+  if (!input.contractAddress || !isAddress(input.contractAddress)) return false;
+  if (!input.abiFunctionSignature) return false;
+
+  const config = getArcConfig();
+  const contract = input.contractAddress.toLowerCase();
+  const factory = config.factoryAddress?.toLowerCase();
+  const usdc = config.usdcAddress?.toLowerCase();
+
+  if (factory && contract === factory) {
+    return input.abiFunctionSignature === 'createMarket(address,uint256,string,uint8)';
+  }
+
+  if (usdc && contract === usdc) {
+    return input.abiFunctionSignature === 'approve(address,uint256)';
+  }
+
+  return allowedMarketSignatures.has(input.abiFunctionSignature);
 }
 
 async function circleFetch(path: string, input: RequestInit & { userToken?: string } = {}) {
@@ -122,7 +158,7 @@ async function circleFetch(path: string, input: RequestInit & { userToken?: stri
     return jsonError(normalizeCircleError(data, 'Circle wallet request failed.'), response.status);
   }
 
-  return NextResponse.json(data.data ?? data, { status: response.status });
+  return NextResponse.json(unwrapCircleData(data), { status: response.status });
 }
 
 export async function POST(request: Request) {
@@ -229,6 +265,9 @@ export async function POST(request: Request) {
       if (!body.walletId) return jsonError('walletId is required.');
       if (!body.contractAddress) return jsonError('contractAddress is required.');
       if (!body.abiFunctionSignature) return jsonError('abiFunctionSignature is required.');
+      if (!isAllowedContractExecution(body)) {
+        return jsonError('Contract execution is not allowlisted for Presto Markets.', 403);
+      }
 
       // Circle's REST contractExecution expects bare top-level feeLevel (per the batch-operations
       // example in their docs). All abiParameter scalars must be strings — passing a JS number
@@ -256,10 +295,12 @@ export async function POST(request: Request) {
       if (!body.userToken) return jsonError('userToken is required.');
       if (!body.transactionId) return jsonError('transactionId is required.');
 
-      return circleFetch(`/v1/w3s/transactions/${encodeURIComponent(body.transactionId)}`, {
+      const response = await circleFetch(`/v1/w3s/transactions/${encodeURIComponent(body.transactionId)}`, {
         method: 'GET',
         userToken: body.userToken,
       });
+      const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+      return NextResponse.json(payload.transaction ?? payload, { status: response.status });
     }
 
     if (action === 'findTransactionByChallenge') {

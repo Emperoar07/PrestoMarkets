@@ -4,7 +4,7 @@ import { arcTestnet } from 'wagmi/chains';
 
 export const arcTestnetChain = {
   ...arcTestnet,
-  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
+  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
   rpcUrls: {
     default: {
       http: [process.env.NEXT_PUBLIC_ARC_RPC_URL || 'https://rpc.testnet.arc.network'],
