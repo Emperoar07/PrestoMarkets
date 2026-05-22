@@ -14,40 +14,8 @@ Circle User Controlled Wallets power app native onboarding with email, Google, a
 
 The agent system watches live signals, drafts market ideas, and can create labeled agent markets. Human creators can still create markets directly, and resolvers can use evidence tools when settling outcomes.
 
-Portfolio, activity, charts, categories, and market detail pages are designed around readable public signal data rather than hidden execution assumptions.
-
-## Run Locally
-
-```bash
-cp .env.local.example .env.local
-npm install
-npm run dev
-```
-
-Open `http://localhost:3000`.
+Portfolio, activity, charts, categories, and market detail pages are designed around readable public signal data rather than hidden execution assumptions
 
 Required environment variables are listed in `.env.local.example`.
 
 Testnet USDC is available from `https://faucet.circle.com`.
-
-## Main Pages
-
-`/` is the Presto landing page.
-
-`/markets` is the live market explorer.
-
-`/markets/create` creates a new market.
-
-`/markets/[id]` opens a market detail page for trading, liquidity, charting, and settlement.
-
-`/portfolio` shows wallet positions.
-
-`/activity` shows recent account activity.
-
-`/docs` explains the product, legal notes, privacy policy, cookie policy, and terms of use.
-
-`/roadmap` and `/build-rails` show the product direction and current Circle and Arc rails.
-
-## Architecture
-
-See `ARCHITECTURE.md` for the deeper technical map.
