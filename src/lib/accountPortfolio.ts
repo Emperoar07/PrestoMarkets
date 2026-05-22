@@ -29,6 +29,10 @@ export type AccountPortfolioSnapshot = {
   previews: Record<string, AccountMarketPreview>;
 };
 
+export type AccountPortfolioOptions = {
+  includeActivity?: boolean;
+};
+
 const sharesBoughtEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'SharesBought')!;
 const claimedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'Claimed')!;
 const refundedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'Refunded')!;
@@ -131,7 +135,11 @@ async function fetchMarketCostBasis(
   return fetchMarketCostBasisIndexed(client, marketAddress, account);
 }
 
-export async function fetchAccountPortfolio(markets: AppMarket[], accountAddress?: string | null): Promise<AccountPortfolioSnapshot> {
+export async function fetchAccountPortfolio(
+  markets: AppMarket[],
+  accountAddress?: string | null,
+  options: AccountPortfolioOptions = {},
+): Promise<AccountPortfolioSnapshot> {
   const emptySnapshot = { positions: [], activity: [], previews: {} };
 
   if (!accountAddress || !isAddress(accountAddress)) {
@@ -208,9 +216,12 @@ export async function fetchAccountPortfolio(markets: AppMarket[], accountAddress
     });
   }));
 
-  const activity = await fetchRecentAccountActivity(client, markets, account);
-  const createdActivity = await fetchRecentCreatedMarkets(client, markets, account).catch(() => [] as PortfolioActivity[]);
-  const combined = [...createdActivity, ...activity].sort((a, b) => b.time.localeCompare(a.time));
+  const combined = options.includeActivity
+    ? [
+      ...(await fetchRecentCreatedMarkets(client, markets, account).catch(() => [] as PortfolioActivity[])),
+      ...(await fetchRecentAccountActivity(client, markets, account)),
+    ].sort((a, b) => b.time.localeCompare(a.time))
+    : [];
 
   return { positions, activity: combined.slice(0, 24), previews };
 }

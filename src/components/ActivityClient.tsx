@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAppState } from '@/lib/appState';
 import type { PortfolioActivity } from '@/lib/portfolio';
@@ -17,26 +17,86 @@ const filters: { id: Filter; label: string }[] = [
 ];
 
 const ARC_EXPLORER_BASE = 'https://testnet.arcscan.app/tx/';
+const PAGE_SIZE = 10;
+
+type ActivityResponse = {
+  ok: boolean;
+  items?: PortfolioActivity[];
+  nextCursor?: string | null;
+  error?: string;
+};
 
 function iconFor(kind: PortfolioActivity['kind']) {
   if (kind === 'create') return { glyph: '+', tone: 'text-cyan', bg: 'bg-cyan/10' };
-  if (kind === 'win') return { glyph: '↑', tone: 'text-mint', bg: 'bg-mint/10' };
-  if (kind === 'refund') return { glyph: '↻', tone: 'text-cyan', bg: 'bg-cyan/10' };
-  if (kind === 'in') return { glyph: '↓', tone: 'text-cyan', bg: 'bg-cyan/10' };
-  return { glyph: '↑', tone: 'text-red-300', bg: 'bg-red-400/10' };
+  if (kind === 'win') return { glyph: '^', tone: 'text-mint', bg: 'bg-mint/10' };
+  if (kind === 'refund') return { glyph: '~', tone: 'text-cyan', bg: 'bg-cyan/10' };
+  if (kind === 'in') return { glyph: 'v', tone: 'text-cyan', bg: 'bg-cyan/10' };
+  return { glyph: '^', tone: 'text-red-300', bg: 'bg-red-400/10' };
 }
 
 function headlineFor(item: PortfolioActivity): string {
-  if (item.kind === 'create') return `Created market`;
+  if (item.kind === 'create') return 'Created market';
   if (item.kind === 'win') return `Won ${item.detail}`;
   if (item.kind === 'refund') return `Refunded ${item.detail}`;
   if (item.kind === 'in') return `Received ${item.detail}`;
-  return `${item.label} · ${item.detail}`;
+  return `${item.label} - ${item.detail}`;
 }
 
 export function ActivityClient() {
-  const { activity, connectedWallet, isLoadingAccount } = useAppState();
+  const { connectedWallet } = useAppState();
+  const [activity, setActivity] = useState<PortfolioActivity[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadActivity = useCallback(async (nextCursor?: string | null) => {
+    if (!connectedWallet?.address) return;
+
+    if (nextCursor) {
+      setIsLoadingMore(true);
+    } else {
+      setIsLoading(true);
+      setActivity([]);
+      setCursor(null);
+    }
+    setError(null);
+
+    try {
+      const params = new URLSearchParams({
+        account: connectedWallet.address,
+        limit: PAGE_SIZE.toString(),
+      });
+      if (nextCursor) params.set('cursor', nextCursor);
+
+      const response = await fetch(`/api/activity?${params.toString()}`, { cache: 'no-store' });
+      const data = await response.json() as ActivityResponse;
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Unable to load activity.');
+      }
+
+      setActivity((current) => nextCursor ? [...current, ...(data.items ?? [])] : data.items ?? []);
+      setCursor(data.nextCursor ?? null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load activity.');
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+    }
+  }, [connectedWallet?.address]);
+
+  useEffect(() => {
+    if (!connectedWallet?.address) {
+      setActivity([]);
+      setCursor(null);
+      setError(null);
+      return;
+    }
+
+    void loadActivity(null);
+  }, [connectedWallet?.address, loadActivity]);
 
   const visible = useMemo(() => {
     if (filter === 'all') return activity;
@@ -80,8 +140,12 @@ export function ActivityClient() {
             ))}
           </div>
 
-          {isLoadingAccount && activity.length === 0 ? (
-            <p className="mt-12 text-center text-[14px] text-muted">Loading activity…</p>
+          {isLoading && activity.length === 0 ? (
+            <p className="mt-12 text-center text-[14px] text-muted">Loading latest activity...</p>
+          ) : error ? (
+            <p className="mt-12 rounded-[10px] border border-red-400/20 bg-red-500/10 px-5 py-6 text-center text-[14px] text-red-100">
+              {error}
+            </p>
           ) : visible.length === 0 ? (
             <p className="mt-12 text-center text-[14px] text-muted">
               {filter === 'all'
@@ -113,7 +177,7 @@ export function ActivityClient() {
                             rel="noreferrer"
                             className="text-[11px] font-bold text-cyan/80 transition-colors hover:text-cyan"
                           >
-                            explorer ↗
+                            explorer
                           </a>
                         ) : null}
                       </div>
@@ -125,12 +189,25 @@ export function ActivityClient() {
           )}
 
           {activity.length > 0 ? (
-            <p className="mt-10 text-center text-[12px] text-muted/70">
-              Showing recent activity from Arc logs. For older history,{' '}
-              <Link href="/portfolio" className="font-bold text-cyan/80 hover:text-cyan">
-                see portfolio →
-              </Link>
-            </p>
+            <div className="mt-10 flex flex-col items-center gap-3 text-center">
+              {cursor ? (
+                <button
+                  type="button"
+                  onClick={() => void loadActivity(cursor)}
+                  disabled={isLoadingMore}
+                  className="rounded-full border border-cyan/40 bg-cyan/10 px-5 py-2 text-[12px] font-black text-cyan transition hover:bg-cyan/15 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {isLoadingMore ? 'Loading...' : 'See more'}
+                </button>
+              ) : null}
+              <p className="text-[12px] text-muted/70">
+                Showing {activity.length} row{activity.length === 1 ? '' : 's'} from Arc logs. Position values live on{' '}
+                <Link href="/portfolio" className="font-bold text-cyan/80 hover:text-cyan">
+                  portfolio
+                </Link>
+                .
+              </p>
+            </div>
           ) : null}
         </>
       )}

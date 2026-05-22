@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
 import { useAppState } from '@/lib/appState';
@@ -23,7 +24,7 @@ function formatUsd(value: number) {
 }
 
 export function PortfolioClient() {
-  const { markets, positions, activity, connectedWallet, isLoadingAccount } = useAppState();
+  const { markets, positions, connectedWallet, isLoadingAccount } = useAppState();
   const positionValue = positions.reduce((sum, position) => sum + parseUsd(position.value), 0);
   const claimableValue = positions
     .filter((position) => position.status === 'Claimable')
@@ -112,26 +113,15 @@ export function PortfolioClient() {
           <div className="border-b border-line p-6">
             <h2 className="text-xl font-black text-white">Activity</h2>
           </div>
-          <div className="divide-y divide-line">
-            {activity.length > 0 ? activity.map((item) => (
-              <div key={`${item.label}-${item.market}-${item.time}-${item.detail}`} className="flex flex-col justify-between gap-4 p-6 md:flex-row md:items-center">
-                <div>
-                  <p className="font-black text-white">{item.label}</p>
-                  <p className="mt-1 text-sm text-muted">{item.market}</p>
-                  <p className="mt-1 text-sm text-muted">{item.detail}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={`rounded-full border px-3 py-1 text-xs font-black ${statusStyle[item.status]}`}>
-                    {item.status}
-                  </span>
-                  <span className="text-sm font-bold text-muted">{item.time}</span>
-                </div>
-              </div>
-            )) : (
-              <div className="p-6 text-sm leading-6 text-muted">
-                {connectedWallet ? 'No recent account activity was found in the latest Arc log window.' : 'Connect a wallet to load recent buy, claim, and refund events.'}
-              </div>
-            )}
+          <div className="p-6 text-sm leading-6 text-muted">
+            {connectedWallet
+              ? 'Recent account events now load on the dedicated Activity page in paginated batches.'
+              : 'Connect a wallet to load recent buy, claim, and refund events.'}
+            {connectedWallet ? (
+              <Link href="/activity" className="ml-2 font-black text-cyan transition-colors hover:text-cyan/80">
+                Open activity
+              </Link>
+            ) : null}
           </div>
         </section>
       </main>

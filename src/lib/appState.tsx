@@ -131,7 +131,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setIsLoadingAccount(true);
 
     try {
-      const snapshot = await fetchAccountPortfolio(markets, connectedWallet?.address);
+      const snapshot = await fetchAccountPortfolio(markets, connectedWallet?.address, { includeActivity: false });
       setPositions(snapshot.positions);
       setActivity(snapshot.activity);
       setAccountPreviews(snapshot.previews);
