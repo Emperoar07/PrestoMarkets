@@ -25,7 +25,15 @@ export function CreateMarketBuilder() {
   const [selectedType, setSelectedType] = useState<MarketType>('Prediction');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('');
+  const [categories, setCategories] = useState<string[]>([]);
+  const category = categories[0] ?? '';
+  function toggleCategory(value: string) {
+    setCategories((prev) => {
+      if (prev.includes(value)) return prev.filter((c) => c !== value);
+      if (prev.length >= 4) return prev;
+      return [...prev, value];
+    });
+  }
   const [rules, setRules] = useState('');
   const [sourceOfTruth, setSourceOfTruth] = useState('');
   const [closeDate, setCloseDate] = useState('');
@@ -195,6 +203,7 @@ export function CreateMarketBuilder() {
       title,
       description,
       category,
+      categories,
       closeDate: parsedCloseDate.toISOString(),
       rules,
       sourceOfTruth,
@@ -439,17 +448,40 @@ export function CreateMarketBuilder() {
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">03 — Settings</p>
           <div className="mt-5 space-y-7">
             <div>
-              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Category</label>
-              <select
-                value={category}
-                onChange={(event) => setCategory(event.target.value)}
-                className={`mt-1 ${inputClass()} appearance-none cursor-pointer`}
-              >
-                <option value="" className="bg-[#0b1322]">Pick one…</option>
-                {createMarketCategories.map((item) => (
-                  <option key={item} value={item} className="bg-[#0b1322]">{item}</option>
-                ))}
-              </select>
+              <div className="flex items-baseline justify-between">
+                <label className="text-[12px] font-bold uppercase tracking-wider text-muted">
+                  Categories <span className="text-muted/60">(pick up to 4)</span>
+                </label>
+                <span className="text-[11px] font-bold text-muted/70">{categories.length}/4</span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {createMarketCategories.map((item) => {
+                  const isActive = categories.includes(item);
+                  const atCap = !isActive && categories.length >= 4;
+                  return (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => toggleCategory(item)}
+                      disabled={atCap}
+                      className={`rounded-full border px-3 py-1.5 text-[12px] font-black transition-colors ${
+                        isActive
+                          ? 'border-cyan/50 bg-cyan/10 text-cyan'
+                          : atCap
+                            ? 'cursor-not-allowed border-white/[0.05] text-muted/40'
+                            : 'border-white/[0.08] text-muted hover:border-white/20 hover:text-white/80'
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  );
+                })}
+              </div>
+              {categories.length > 0 ? (
+                <p className="mt-2 text-[11px] text-muted/70">
+                  Primary tag: <span className="font-black text-white">{categories[0]}</span>
+                </p>
+              ) : null}
             </div>
             <div>
               <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Collateral</label>

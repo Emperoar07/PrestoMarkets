@@ -20,7 +20,10 @@ export type Market = {
   title: string;
   description: string;
   imageURI?: string;
+  /** Primary category (kept for backward compat). Use `categories` for the full list. */
   category: string;
+  /** Up to 4 categories tagging this market. Always includes `category` as the first entry. */
+  categories?: string[];
   volume: string;
   liquidity: string;
   closeLabel: string;

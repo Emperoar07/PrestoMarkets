@@ -266,6 +266,7 @@ type GroqClassification = {
   worthy: boolean;
   momentumScore: number;
   category: string;
+  categories?: string[];
   reason: string;
 };
 
@@ -291,24 +292,39 @@ Return JSON only:
   "worthy": true/false,
   "momentumScore": 0.0–1.0,
   "category": "Crypto|DeFi|AI|Politics|Tech|Sports|Markets|Arc|Web3",
+  "categories": ["primary", "secondary", "..."],
   "reason": "one sentence"
-}`;
+}
+
+For "categories": return 1-4 tags from the same allowlist as "category". The first should
+equal "category". Add secondary tags only if they're genuinely relevant (e.g. a Bitcoin ETF
+ruling could be ["Crypto", "Markets", "Politics"]).`;
 
   const completion = await groq.chat.completions.create({
     model: 'llama-3.3-70b-versatile',
     messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
     temperature: 0.3,
-    max_tokens: 256,
+    max_tokens: 320,
   });
 
   const raw = completion.choices[0]?.message?.content ?? '{}';
-  const parsed = JSON.parse(raw) as Partial<GroqClassification>;
+  const parsed = JSON.parse(raw) as Partial<GroqClassification> & { categories?: unknown };
+
+  let categories: string[] | undefined;
+  if (Array.isArray(parsed.categories)) {
+    categories = parsed.categories
+      .filter((c): c is string => typeof c === 'string')
+      .map((c) => c.trim())
+      .filter(Boolean)
+      .slice(0, 4);
+  }
 
   return {
     worthy: parsed.worthy ?? false,
     momentumScore: Math.min(1, Math.max(0, parsed.momentumScore ?? 0)),
-    category: parsed.category ?? 'Crypto',
+    category: parsed.category ?? categories?.[0] ?? 'Crypto',
+    categories,
     reason: parsed.reason ?? '',
   };
 }
@@ -322,6 +338,10 @@ type GeminiDraft = {
   sourceOfTruth: string;
   closeDate: string;
   type: 'Prediction' | 'Opinion' | 'Opportunity';
+  /** When the question is non-binary (e.g. "which of these will happen first?"), the drafter
+   * may return 2-6 outcome labels and the contract treats it as a poll. Empty / undefined
+   * keeps the default binary YES/NO behavior. */
+  outcomeOptions?: string[];
 };
 
 function isSafeHttpUrl(value: string | undefined): value is string {
@@ -428,20 +448,26 @@ Context: "${trend.query}"
 Category: "${category}"
 
 Rules for a good market:
-- Title must be a clear YES/NO question under 90 characters
-- Rules must define exactly when YES wins and when NO wins
+- Title must be a clear question under 90 characters (binary YES/NO, OR a multi-option poll)
+- Rules must define exactly when each outcome wins
 - Source of truth must be a specific verifiable public source
 - Close date should be ${closeDate7} for fast-moving news or ${closeDate30} for slower events
 - Type: "Prediction" for binary events, "Opinion" for community preference, "Opportunity" for opportunity sizing
+
+For most questions, leave "outcomeOptions" empty and the market defaults to YES/NO. When the
+question is naturally multi-choice (e.g. "Which of these will happen first?" or "Which candidate
+will win?"), return 3 to 6 short labels (max 40 chars each) in "outcomeOptions". Do not include
+YES/NO if you provide poll options.
 
 Return JSON only:
 {
   "title": "...",
   "description": "one sentence description",
-  "rules": "YES wins if... Otherwise NO wins.",
+  "rules": "Concise resolution rules for each outcome.",
   "sourceOfTruth": "specific public source (e.g. CoinGecko, official announcement, SEC filing)",
   "closeDate": "YYYY-MM-DD",
-  "type": "Prediction|Opinion|Opportunity"
+  "type": "Prediction|Opinion|Opportunity",
+  "outcomeOptions": ["Option A", "Option B", "Option C"]
 }`;
 
   const result = await callLlmJson({ task: 'reasoning', prompt, maxTokens: 512, temperature: 0.4 });
@@ -451,12 +477,23 @@ Return JSON only:
     throw new Error(`Draft (${result.provider} ${result.model}) returned incomplete fields.`);
   }
 
+  // Only carry poll options through when there are at least 3 — anything less is binary.
+  let outcomeOptions: string[] | undefined;
+  if (Array.isArray(parsed.outcomeOptions)) {
+    const cleaned = parsed.outcomeOptions
+      .filter((o): o is string => typeof o === 'string')
+      .map((o) => o.trim().slice(0, 40))
+      .filter(Boolean);
+    if (cleaned.length >= 3 && cleaned.length <= 6) outcomeOptions = cleaned;
+  }
+
   return {
     title: parsed.title,
     description: parsed.description ?? parsed.title,
     rules: parsed.rules,
     sourceOfTruth: parsed.sourceOfTruth,
     closeDate: parsed.closeDate,
+    outcomeOptions,
     type: (parsed.type as GeminiDraft['type']) ?? 'Prediction',
   };
 }
@@ -518,12 +555,14 @@ async function createOnchain(
     title: draft.title,
     description: draft.description,
     category: classification.category,
+    categories: classification.categories,
     closeDate: draft.closeDate,
     rules: draft.rules,
     sourceOfTruth: draft.sourceOfTruth,
     resolver: 'Presto Agent',
     resolutionMode: 'Agent assisted',
     imageURI,
+    outcomeOptions: draft.outcomeOptions,
     agent: {
       createdByType: 'agent',
       agentName: 'Presto Agent',

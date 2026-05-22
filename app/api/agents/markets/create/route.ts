@@ -14,6 +14,7 @@ type AgentCreateMarketRequest = {
   title: string;
   description: string;
   category: string;
+  categories?: string[];
   closeDate?: string;
   closeInHours?: number;
   rules: string;
@@ -21,6 +22,7 @@ type AgentCreateMarketRequest = {
   resolver?: string;
   resolutionMode?: ResolutionMode;
   imageURI?: string;
+  outcomeOptions?: string[];
   agent?: Omit<AgentMarketMetadata, 'createdByType'>;
 };
 
@@ -89,12 +91,18 @@ export async function POST(req: NextRequest) {
       title: sanitizeFeedText(body.title.trim()),
       description: sanitizeFeedText(body.description.trim()),
       category: body.category.trim(),
+      categories: Array.isArray(body.categories)
+        ? body.categories.map((c) => sanitizeFeedText(String(c).trim())).filter(Boolean).slice(0, 4)
+        : undefined,
       closeDate: resolveCloseDate(body),
       rules: sanitizeFeedText(body.rules.trim()),
       sourceOfTruth: sanitizeFeedText(body.sourceOfTruth.trim()),
       resolver: resolverAddress ?? 'Presto Agent',
       resolutionMode: body.resolutionMode ?? 'Agent assisted',
       imageURI: body.imageURI?.trim() || undefined,
+      outcomeOptions: Array.isArray(body.outcomeOptions)
+        ? body.outcomeOptions.map((o) => sanitizeFeedText(String(o).trim())).filter(Boolean).slice(0, 12)
+        : undefined,
       agent: {
         createdByType: 'agent',
         agentName: cleanString(body.agent?.agentName) ?? 'Presto Trend Agent',

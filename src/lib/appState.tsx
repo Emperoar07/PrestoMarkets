@@ -47,6 +47,7 @@ type CreateMarketInput = {
   title: string;
   description: string;
   category: string;
+  categories?: string[];
   closeDate: string;
   rules: string;
   sourceOfTruth: string;

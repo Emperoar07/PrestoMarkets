@@ -272,29 +272,21 @@ export function MarketsExplorer() {
 
   const filtered = markets.filter((market) => {
     const search = searchValue.trim().toLowerCase();
-    if (search.length > 0) {
-      const matches =
-        market.title.toLowerCase().includes(search) ||
-        market.description.toLowerCase().includes(search) ||
-        market.category.toLowerCase().includes(search);
-      if (!matches) return false;
-    }
-    if (activeHotTopic !== 'All') {
-      const topic = activeHotTopic.toLowerCase();
-      return (
-        market.title.toLowerCase().includes(topic) ||
-        market.description.toLowerCase().includes(topic) ||
-        market.category.toLowerCase().includes(topic)
-      );
-    }
+    // Always check categories[] in addition to the legacy single category field. Markets
+    // created before multi-category will only have `category`; new ones have `categories[]`
+    // (with `category` mirroring categories[0]). matchesKeyword folds both into one check.
+    const cats = market.categories ?? (market.category ? [market.category] : []);
+    const catBlob = cats.join(' ').toLowerCase();
+    const matchesKeyword = (needle: string) =>
+      market.title.toLowerCase().includes(needle) ||
+      market.description.toLowerCase().includes(needle) ||
+      catBlob.includes(needle);
+
+    if (search.length > 0 && !matchesKeyword(search)) return false;
+    if (activeHotTopic !== 'All') return matchesKeyword(activeHotTopic.toLowerCase());
     if (activeCategory === 'Breaking') return market.status === 'Closing soon';
     if (activeCategory === 'Trending' || activeCategory === 'New') return true;
-    const cat = activeCategory.toLowerCase();
-    return (
-      market.category.toLowerCase().includes(cat) ||
-      market.title.toLowerCase().includes(cat) ||
-      market.description.toLowerCase().includes(cat)
-    );
+    return matchesKeyword(activeCategory.toLowerCase());
   });
 
   const visibleMarkets = sortMarkets(filtered, sortKey);

@@ -152,11 +152,13 @@ export function buildMarketMetadata(input: BuildMarketMetadataInput): MarketMeta
     ?.map((option) => option.trim())
     .filter(Boolean)
     .map((option) => trunc(option, MAX.outcomeOption) ?? option);
+  const categories = normalizeCategories(input);
 
   return {
     name: trunc(input.title, MAX.title) ?? input.title,
     description: trunc(input.description, MAX.description) ?? input.description,
-    category: input.category,
+    category: categories[0] ?? input.category,
+    categories,
     imageURI: input.imageURI,
     outcomeOptions,
     rules: trunc(input.rules, MAX.rules) ?? input.rules,
@@ -195,6 +197,14 @@ export function parseMarketMetadata(metadataURI: string): Partial<MarketMetadata
   // creation rather than rendering javascript:/data:text/html into the UI.
   if (!isSafeImage(parsed.imageURI)) parsed.imageURI = undefined;
   if (!isSafeUrl(parsed.trendUrl)) parsed.trendUrl = undefined;
+  if (parsed.categories) {
+    parsed.categories = parsed.categories
+      .filter((c): c is string => typeof c === 'string')
+      .map((c) => c.trim().slice(0, 40))
+      .filter(Boolean)
+      .slice(0, MAX_CATEGORIES);
+    if (parsed.categories.length === 0) parsed.categories = undefined;
+  }
   if (parsed.outcomeOptions) {
     parsed.outcomeOptions = parsed.outcomeOptions
       .filter((option): option is string => typeof option === 'string')

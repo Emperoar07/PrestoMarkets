@@ -133,7 +133,10 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     description: metadata?.description || `Onchain ${marketType.toLowerCase()} market created from metadata ${titleSource}.`,
     imageURI: metadata?.imageURI || metadata?.image,
     pollOptions: metadata?.outcomeOptions,
-    category: metadata?.category || 'Onchain',
+    category: metadata?.categories?.[0] || metadata?.category || 'Onchain',
+    categories: metadata?.categories && metadata.categories.length > 0
+      ? metadata.categories
+      : (metadata?.category ? [metadata.category] : undefined),
     volume: formatOnchainUsd(totalCollateral),
     liquidity: formatOnchainUsd(collateralValue),
     closeLabel: getCloseLabel(status, closeTime),
