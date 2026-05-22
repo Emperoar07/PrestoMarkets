@@ -53,6 +53,7 @@ export async function GET(req: NextRequest) {
     type: m.type,
     status: m.status,
     outcomes: m.outcomes.map((o) => ({ label: o.label, odds: o.odds })),
+    pollOptions: m.pollOptions,
     volume: m.volume,
     liquidity: m.liquidity,
     closeLabel: m.closeLabel,

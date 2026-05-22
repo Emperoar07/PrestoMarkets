@@ -22,9 +22,10 @@ const statusStyle: Record<MarketStatus, string> = {
 const quickAmounts = [10, 25, 100, 500];
 
 export function MarketDetailClient({ marketId }: { marketId: string }) {
-  const { accountPreviews, connectedWallet, getMarket, placeTrade, resolveMarket, cancelMarket, claimMarket, refundMarket } = useAppState();
+  const { accountPreviews, connectedWallet, getMarket, placeTrade, addLiquidity, resolveMarket, cancelMarket, claimMarket, refundMarket } = useAppState();
   const market = getMarket(marketId);
   const [selectedOutcome, setSelectedOutcome] = useState<'YES' | 'NO'>('YES');
+  const [tradeMode, setTradeMode] = useState<'buy' | 'liquidity'>('buy');
   const [amount, setAmount] = useState('25');
   const [resolutionURI, setResolutionURI] = useState('');
   const [agentOutcome, setAgentOutcome] = useState<'YES' | 'NO' | 'CANCEL'>('YES');
@@ -76,6 +77,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const entryPrice = activeOutcome.odds / 100;
   const estimatedShares = amountValue > 0 ? amountValue / entryPrice : 0;
   const potentialReturn = estimatedShares > 0 ? estimatedShares * 1 : 0;
+  const liquiditySideAmount = amountValue > 0 ? amountValue / 2 : 0;
   const canTrade = market.status === 'Open' || market.status === 'Closing soon';
   const accountPreview = accountPreviews[market.id];
   const claimableAmount = Number(accountPreview?.claimable.replace(/[$,]/g, '') || 0);
@@ -231,6 +233,28 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               </div>
             ) : null}
 
+            {market.pollOptions && market.pollOptions.length > 2 ? (
+              <div className="mt-6 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-base font-black text-white">Poll options</h2>
+                  <span className="rounded-full border border-cyan/25 bg-cyan/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-cyan">
+                    Metadata
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-2 md:grid-cols-2">
+                  {market.pollOptions.map((option, index) => (
+                    <div key={`${option}-${index}`} className="flex items-center justify-between rounded-[12px] border border-white/[0.06] bg-[#0d1520] px-4 py-3">
+                      <span className="font-bold text-white">{option}</span>
+                      <span className="text-sm font-black text-muted">{index < 2 ? `${market.outcomes[index]?.odds ?? 0}%` : 'Display only'}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs leading-5 text-muted">
+                  This market was authored with poll-style metadata. The current Arc V1 contract still settles and trades the binary YES / NO rails.
+                </p>
+              </div>
+            ) : null}
+
             {/* Signal chart */}
             <div className="mt-8">
               <MarketSignalChart market={market} />
@@ -371,11 +395,30 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
           <aside className="h-fit lg:sticky lg:top-24">
             <div className="rounded-[18px] border border-white/[0.06] bg-[#141e30] p-5">
 
+              <div className="mb-4 grid grid-cols-2 rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-1">
+                {([
+                  ['buy', 'Buy'],
+                  ['liquidity', 'Add liquidity'],
+                ] as const).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setTradeMode(mode)}
+                    className={`rounded-[9px] py-2 text-sm font-black transition-colors ${
+                      tradeMode === mode ? 'bg-[#1a2540] text-white' : 'text-muted hover:text-white'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
               {/* YES / NO toggle */}
-              <div className="grid grid-cols-2 gap-2">
+              <div className={`grid grid-cols-2 gap-2 ${tradeMode === 'liquidity' ? 'opacity-70' : ''}`}>
                 <button
                   type="button"
                   onClick={() => setSelectedOutcome('YES')}
+                  disabled={tradeMode === 'liquidity'}
                   className={`rounded-[12px] border py-4 text-center transition-all ${
                     selectedOutcome === 'YES'
                       ? 'border-cyan/40 bg-cyan/10 shadow-[0_0_16px_-4px_rgba(37,192,244,0.3)]'
@@ -390,6 +433,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <button
                   type="button"
                   onClick={() => setSelectedOutcome('NO')}
+                  disabled={tradeMode === 'liquidity'}
                   className={`rounded-[12px] border py-4 text-center transition-all ${
                     selectedOutcome === 'NO'
                       ? 'border-red-400/40 bg-red-400/10 shadow-[0_0_16px_-4px_rgba(248,113,113,0.2)]'
@@ -472,28 +516,43 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               {/* Trade summary */}
               <div className="mt-5 space-y-2.5 border-t border-white/[0.06] pt-5">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted">Signal price</span>
-                  <span className="font-black text-white">{yesOutcome.odds}¢ per share</span>
+                  <span className="text-muted">{tradeMode === 'liquidity' ? 'Liquidity method' : 'Signal price'}</span>
+                  <span className="font-black text-white">{tradeMode === 'liquidity' ? 'Balanced YES + NO' : `${activeOutcome.odds}¢ per share`}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted">Shares (1:1 {payWith})</span>
-                  <span className="font-black text-white">{estimatedShares > 0 ? estimatedShares.toFixed(2) : '—'}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted">Settlement preview</span>
-                  <span className={`font-black ${potentialReturn > amountValue ? 'text-mint' : 'text-white'}`}>
-                    {potentialReturn > 0 ? `${unit}${potentialReturn.toFixed(2)}` : '—'}
+                  <span className="text-muted">{tradeMode === 'liquidity' ? 'Each side' : `Shares (1:1 ${payWith})`}</span>
+                  <span className="font-black text-white">
+                    {tradeMode === 'liquidity'
+                      ? liquiditySideAmount > 0 ? `${unit}${liquiditySideAmount.toFixed(2)} YES / NO` : '—'
+                      : estimatedShares > 0 ? estimatedShares.toFixed(2) : '—'}
                   </span>
                 </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted">{tradeMode === 'liquidity' ? 'Position' : 'Settlement preview'}</span>
+                  <span className={`font-black ${potentialReturn > amountValue ? 'text-mint' : 'text-white'}`}>
+                    {tradeMode === 'liquidity'
+                      ? 'Neutral depth'
+                      : potentialReturn > 0 ? `${unit}${potentialReturn.toFixed(2)}` : '—'}
+                  </span>
+                </div>
+                {tradeMode === 'liquidity' ? (
+                  <p className="rounded-[10px] border border-cyan/15 bg-cyan/[0.05] px-3 py-2 text-xs leading-5 text-muted">
+                    V1 liquidity is fixed-share depth: the app buys equal YES and NO shares for you. This is not an AMM LP token yet.
+                  </p>
+                ) : null}
               </div>
 
               {/* Buy button */}
               <button
                 type="button"
-                onClick={() => void runAction(() => placeTrade({ marketId, outcome: selectedOutcome, amount: amountValue, payWith }))}
+                onClick={() => void runAction(() => (
+                  tradeMode === 'liquidity'
+                    ? addLiquidity({ marketId, amount: amountValue, payWith })
+                    : placeTrade({ marketId, outcome: selectedOutcome, amount: amountValue, payWith })
+                ))}
                 disabled={!canTrade || isSubmitting || amountValue <= 0}
                 className={`mt-5 w-full rounded-[12px] py-4 font-black tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
-                  selectedOutcome === 'YES'
+                  tradeMode === 'liquidity' || selectedOutcome === 'YES'
                     ? 'bg-cyan text-ink hover:opacity-90'
                     : 'bg-red-400 text-white hover:opacity-90'
                 }`}
@@ -501,6 +560,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 {!canTrade ? 'Market not open'
                   : isSubmitting ? 'Submitting...'
                   : amountValue <= 0 ? 'Enter an amount'
+                  : tradeMode === 'liquidity' ? `Add liquidity · ${unit}${amountValue}`
                   : `Buy ${selectedOutcome} · ${unit}${amountValue}`}
               </button>
 

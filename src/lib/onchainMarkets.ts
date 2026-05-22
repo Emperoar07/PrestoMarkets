@@ -132,6 +132,7 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     title: metadata?.name || `Arc market ${index + 1}`,
     description: metadata?.description || `Onchain ${marketType.toLowerCase()} market created from metadata ${titleSource}.`,
     imageURI: metadata?.imageURI || metadata?.image,
+    pollOptions: metadata?.outcomeOptions,
     category: metadata?.category || 'Onchain',
     volume: formatOnchainUsd(totalCollateral),
     liquidity: formatOnchainUsd(collateralValue),

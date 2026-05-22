@@ -81,6 +81,7 @@ export type CreateLiveMarketInput = {
   resolver: string;
   resolutionMode: string;
   imageURI?: string;
+  outcomeOptions?: string[];
   collateral?: 'USDC' | 'EURC';
   agent?: AgentMarketMetadata;
 };
@@ -289,6 +290,45 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: 'YE
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Buy transaction failed.' };
   }
+}
+
+export async function addLiveLiquidity(input: { marketAddress: string; amount: number; payWith?: StableSymbol }): Promise<LiveActionResult> {
+  if (!Number.isFinite(input.amount) || input.amount < MIN_TRADE_USDC * 2) {
+    return { ok: false, message: `Balanced liquidity needs at least $${(MIN_TRADE_USDC * 2).toFixed(2)} USDC.` };
+  }
+
+  const half = input.amount / 2;
+  const yesResult = await buyLiveShares({
+    marketAddress: input.marketAddress,
+    outcome: 'YES',
+    amount: half,
+    payWith: input.payWith,
+  });
+
+  if (!yesResult.ok) {
+    return { ok: false, message: `YES side liquidity failed: ${yesResult.message}` };
+  }
+
+  const noResult = await buyLiveShares({
+    marketAddress: input.marketAddress,
+    outcome: 'NO',
+    amount: half,
+    payWith: input.payWith,
+  });
+
+  if (!noResult.ok) {
+    return {
+      ok: false,
+      message: `NO side liquidity failed after YES succeeded. You now hold directional YES exposure: ${noResult.message}`,
+      txHash: yesResult.txHash,
+    };
+  }
+
+  return {
+    ok: true,
+    message: `Added balanced liquidity: $${half.toFixed(2)} YES and $${half.toFixed(2)} NO.`,
+    txHash: noResult.txHash ?? yesResult.txHash,
+  };
 }
 
 export async function resolveLiveMarket(input: { marketAddress: string; outcome: 'YES' | 'NO'; resolutionURI: string }): Promise<LiveActionResult> {

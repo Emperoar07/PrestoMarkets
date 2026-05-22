@@ -45,6 +45,7 @@ export type Market = {
   momentumScore?: number;
   safetyScore?: number;
   feeMode: string;
+  pollOptions?: string[];
   outcomes: MarketOutcome[];
   activity: MarketActivity[];
 };

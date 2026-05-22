@@ -23,6 +23,7 @@ export type TrendItem = {
   query: string;
   source: string;
   url?: string;
+  imageUrl?: string;
 };
 
 export type MarketDraft = CreateLiveMarketInput & {
@@ -143,6 +144,8 @@ async function fetchRssTrends(input: { url: string; source: string; limit?: numb
   const titleRegex = /<title>(?:<!\[CDATA\[)?([^<\]]+?)(?:\]\]>)?<\/title>/i;
   const linkRegex = /<link>([^<]+)<\/link>/i;
   const descRegex = /<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i;
+  const mediaRegex = /<(?:media:content|media:thumbnail)\b[^>]*url=["']([^"']+)["'][^>]*>/i;
+  const enclosureRegex = /<enclosure\b[^>]*url=["']([^"']+)["'][^>]*type=["']image\/[^"']+["'][^>]*>/i;
   const limit = input.limit ?? 4;
 
   let match: RegExpExecArray | null;
@@ -151,10 +154,11 @@ async function fetchRssTrends(input: { url: string; source: string; limit?: numb
     const rawTitle = titleRegex.exec(block)?.[1]?.trim();
     const link = linkRegex.exec(block)?.[1]?.trim();
     const rawDesc = descRegex.exec(block)?.[1]?.replace(/<[^>]+>/g, '').trim();
+    const imageUrl = mediaRegex.exec(block)?.[1]?.trim() ?? enclosureRegex.exec(block)?.[1]?.trim();
     if (!rawTitle) continue;
     const title = sanitizeFeedText(rawTitle);
     const desc = rawDesc ? sanitizeFeedText(rawDesc) : undefined;
-    items.push({ topic: title, query: desc?.slice(0, 240) ?? title, source: input.source, url: link });
+    items.push({ topic: title, query: desc?.slice(0, 240) ?? title, source: input.source, url: link, imageUrl });
   }
   return items;
 }
@@ -320,6 +324,56 @@ type GeminiDraft = {
   type: 'Prediction' | 'Opinion' | 'Opportunity';
 };
 
+function isSafeHttpUrl(value: string | undefined): value is string {
+  if (!value) return false;
+  try {
+    const protocol = new URL(value).protocol;
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function absolutizeUrl(value: string, base: string): string | undefined {
+  try {
+    return new URL(value, base).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined> {
+  if (isSafeHttpUrl(trend.imageUrl)) return trend.imageUrl;
+  if (!isSafeHttpUrl(trend.url)) return undefined;
+
+  try {
+    const res = await fetch(trend.url, {
+      headers: { 'User-Agent': 'PrestoMarketsAgent/1.0' },
+      signal: AbortSignal.timeout(4_000),
+    });
+    if (!res.ok) return undefined;
+
+    const html = (await res.text()).slice(0, 500_000);
+    const patterns = [
+      /<meta\b[^>]*(?:property|name)=["']og:image(?::secure_url)?["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+      /<meta\b[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']og:image(?::secure_url)?["'][^>]*>/i,
+      /<meta\b[^>]*(?:property|name)=["']twitter:image["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+      /<meta\b[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']twitter:image["'][^>]*>/i,
+    ];
+
+    for (const pattern of patterns) {
+      const raw = pattern.exec(html)?.[1];
+      if (!raw) continue;
+      const image = absolutizeUrl(raw, trend.url);
+      if (isSafeHttpUrl(image)) return image;
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+}
+
 function normalizeText(value: string) {
   return value
     .toLowerCase()
@@ -458,6 +512,7 @@ async function createOnchain(
   safety: SafetyResult,
 ): Promise<PipelineResult> {
   const agentConfidence = String(Math.round(safety.confidence * 100)) + '%';
+  const imageURI = await fetchTrendImageURI(trend);
   const input: MarketDraft = {
     type: draft.type,
     title: draft.title,
@@ -468,6 +523,7 @@ async function createOnchain(
     sourceOfTruth: draft.sourceOfTruth,
     resolver: 'Presto Agent',
     resolutionMode: 'Agent assisted',
+    imageURI,
     agent: {
       createdByType: 'agent',
       agentName: 'Presto Agent',
@@ -496,6 +552,10 @@ async function createOnchain(
 // ── Main pipeline ──────────────────────────────────────────────────────────
 
 const CONFIDENCE_THRESHOLD = 0.8;
+// Per-run cap: even if there are open slots under the active-market cap, the agent should
+// not burst-create multiple markets in a single cron invocation. With cron daily this means
+// at most 1 new market per day; if you upgrade to sub-daily cron it caps the burst per tick.
+const AGENT_PER_RUN_CAP = Math.max(1, Number(process.env.PRESTO_AGENT_PER_RUN_CAP ?? 1));
 // Cap the number of *active* agent-created markets (Open or Closing soon). Once a market
 // resolves or cancels, a slot frees up. Tunable via env so we can raise it once we trust the
 // pipeline more. Default 2 for safety while we're early.
@@ -522,7 +582,17 @@ export async function runAgentPipeline(): Promise<PipelineResult[]> {
     }];
   }
 
+  let createdThisRun = 0;
   for (const trend of trends) {
+    if (createdThisRun >= AGENT_PER_RUN_CAP) {
+      results.push({
+        ok: false,
+        topic: trend.topic,
+        stage: 'cap',
+        reason: `Per-run cap (${AGENT_PER_RUN_CAP}) reached. The agent only creates ${AGENT_PER_RUN_CAP} market per cron tick to avoid bursts; remaining trends carry over to the next run.`,
+      });
+      break;
+    }
     if (activeAgentMarkets >= AGENT_ACTIVE_MARKET_CAP) {
       results.push({
         ok: false,
@@ -564,7 +634,10 @@ export async function runAgentPipeline(): Promise<PipelineResult[]> {
       // Stage 5: onchain
       const result = await createOnchain(draft, trend, classification, safety);
       results.push(result);
-      if (result.ok) activeAgentMarkets += 1;
+      if (result.ok) {
+        activeAgentMarkets += 1;
+        createdThisRun += 1;
+      }
     } catch (e) {
       results.push({ ok: false, topic: trend.topic, stage: 'pipeline', reason: String(e) });
     }

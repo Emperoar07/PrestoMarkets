@@ -50,6 +50,20 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
         </div>
       </div>
 
+      {market.pollOptions && market.pollOptions.length > 2 ? (
+        <div className="mt-4 grid gap-1.5">
+          {market.pollOptions.slice(0, 4).map((option, index) => (
+            <div key={`${option}-${index}`} className="flex items-center justify-between rounded-[8px] bg-white/[0.03] px-3 py-1.5">
+              <span className="truncate text-[11px] font-bold text-[#cbd5e1]">{option}</span>
+              <span className="text-[11px] font-black text-[#64748b]">{index < 2 ? market.outcomes[index]?.odds ?? 0 : 0}%</span>
+            </div>
+          ))}
+          {market.pollOptions.length > 4 ? (
+            <p className="text-[10px] font-bold text-[#64748b]">+{market.pollOptions.length - 4} more options</p>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* Odds row: probability + Yes/No buy buttons */}
       <div className="mt-4 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">

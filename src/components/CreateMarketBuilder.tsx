@@ -32,6 +32,8 @@ export function CreateMarketBuilder() {
   const [resolver, setResolver] = useState('');
   const [resolutionMode, setResolutionMode] = useState<ResolutionMode>('Human resolver');
   const [imageURI, setImageURI] = useState('');
+  const [outcomeStyle, setOutcomeStyle] = useState<'binary' | 'poll'>('binary');
+  const [outcomeOptions, setOutcomeOptions] = useState(['YES', 'NO']);
   const [collateral, setCollateral] = useState<'USDC' | 'EURC'>('USDC');
   const [agentAddress, setAgentAddress] = useState<string | null>(null);
   const [showReview, setShowReview] = useState(false);
@@ -131,6 +133,18 @@ export function CreateMarketBuilder() {
     reader.readAsDataURL(file);
   }
 
+  function updateOutcomeOption(index: number, value: string) {
+    setOutcomeOptions((current) => current.map((option, i) => (i === index ? value : option)));
+  }
+
+  function addOutcomeOption() {
+    setOutcomeOptions((current) => [...current, `Option ${current.length + 1}`].slice(0, 12));
+  }
+
+  function removeOutcomeOption(index: number) {
+    setOutcomeOptions((current) => current.filter((_, i) => i !== index));
+  }
+
   function getCloseDateLabel() {
     if (!closeDate) return 'Set a close date before launching';
 
@@ -165,6 +179,12 @@ export function CreateMarketBuilder() {
       return;
     }
 
+    const cleanOutcomeOptions = outcomeOptions.map((option) => option.trim()).filter(Boolean);
+    if (outcomeStyle === 'poll' && cleanOutcomeOptions.length < 2) {
+      setStatusMessage('Add at least two poll options.');
+      return;
+    }
+
     const parsedCloseDate = new Date(closeDate);
 
     setIsSubmitting(true);
@@ -181,6 +201,7 @@ export function CreateMarketBuilder() {
       resolver,
       resolutionMode,
       imageURI: imageURI.trim() || undefined,
+      outcomeOptions: outcomeStyle === 'poll' ? cleanOutcomeOptions : ['YES', 'NO'],
       collateral,
     });
 
@@ -287,6 +308,72 @@ export function CreateMarketBuilder() {
         <section className="mt-16">
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">02 — Resolution</p>
           <div className="mt-5 space-y-7">
+            <div>
+              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Outcome style</label>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {([
+                  ['binary', 'Binary', 'Tradable YES / NO market on the current Arc factory.'],
+                  ['poll', 'Poll', 'Add multiple visible options for richer market context. V1 trading still settles YES / NO.'],
+                ] as const).map(([value, label, copy]) => {
+                  const isActive = outcomeStyle === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setOutcomeStyle(value)}
+                      className={`rounded-[12px] border p-4 text-left transition-colors ${
+                        isActive ? 'border-cyan/40 bg-cyan/[0.06] text-white' : 'border-white/[0.06] text-muted hover:border-white/15'
+                      }`}
+                    >
+                      <span className="block text-sm font-black">{label}</span>
+                      <span className="mt-1.5 block text-xs leading-5 text-muted/80">{copy}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {outcomeStyle === 'poll' ? (
+                <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#0d1520] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[11px] font-black uppercase tracking-widest text-muted">Poll options</p>
+                    <button
+                      type="button"
+                      onClick={addOutcomeOption}
+                      className="rounded-full border border-cyan/25 px-3 py-1 text-[11px] font-black text-cyan transition-colors hover:bg-cyan/10"
+                    >
+                      Add option
+                    </button>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {outcomeOptions.map((option, index) => (
+                      <div key={`${index}-${option}`} className="flex items-center gap-2">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/[0.04] text-[11px] font-black text-muted">
+                          {index + 1}
+                        </span>
+                        <input
+                          value={option}
+                          onChange={(event) => updateOutcomeOption(index, event.target.value)}
+                          className="flex-1 rounded-[10px] border border-white/[0.06] bg-[#0a1120] px-3 py-2 text-sm text-white outline-none transition-colors placeholder:text-[#3d4a63] focus:border-cyan/40"
+                          placeholder={`Option ${index + 1}`}
+                        />
+                        {outcomeOptions.length > 2 ? (
+                          <button
+                            type="button"
+                            onClick={() => removeOutcomeOption(index)}
+                            className="rounded-[10px] border border-white/[0.06] px-3 py-2 text-xs font-black text-muted hover:border-red-400/30 hover:text-red-300"
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-muted">
+                    Current deployed markets still trade as binary YES / NO. These options are saved into metadata for display and future multi-outcome contracts.
+                  </p>
+                </div>
+              ) : null}
+            </div>
             <div>
               <label className="text-[12px] font-bold uppercase tracking-wider text-muted">How will this resolve?</label>
               <textarea
@@ -469,6 +556,20 @@ export function CreateMarketBuilder() {
 
             {imageURI ? (
               <img src={imageURI} alt={title || 'Market picture'} className="mt-4 h-40 w-full rounded-[10px] object-cover" />
+            ) : null}
+
+            {outcomeStyle === 'poll' ? (
+              <div className="mt-5 rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-4">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-muted">Poll options</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {outcomeOptions.map((option, index) => (
+                    <div key={`${index}-${option}`} className="rounded-[10px] border border-white/[0.06] px-3 py-2 text-sm font-bold text-white">
+                      {option || `Option ${index + 1}`}
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs leading-5 text-muted">Saved as market metadata. V1 onchain settlement remains binary.</p>
+              </div>
             ) : null}
 
             <dl className="mt-5 space-y-2.5 border-t border-white/[0.06] pt-5 text-[13px]">

@@ -18,9 +18,13 @@ export type AgentMarketMetadata = {
 export type MarketMetadata = AgentMarketMetadata & {
   name: string;
   description: string;
+  /** Primary category (kept for backward compat with markets created before multi-category). */
   category: string;
+  /** Up to MAX_CATEGORIES tags. Empty = derive from category alone. */
+  categories?: string[];
   imageURI?: string;
   image?: string;
+  outcomeOptions?: string[];
   rules: string;
   sourceOfTruth: string;
   resolutionMode: ResolutionMode;
@@ -32,17 +36,39 @@ export type BuildMarketMetadataInput = {
   title: string;
   description: string;
   category: string;
+  categories?: string[];
   rules: string;
   sourceOfTruth: string;
   resolutionMode: ResolutionMode | string;
   imageURI?: string;
+  outcomeOptions?: string[];
   collateral?: 'USDC' | 'EURC';
   agent?: AgentMarketMetadata;
 };
 
+export const MAX_CATEGORIES = 4;
+
+/** Normalize a categories list: dedupe, trim, max length, max count. Always returns at least [primary]. */
+export function normalizeCategories(input: { category: string; categories?: string[] }): string[] {
+  const list = [input.category, ...(input.categories ?? [])]
+    .filter((c): c is string => typeof c === 'string')
+    .map((c) => c.trim())
+    .filter(Boolean);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const c of list) {
+    const key = c.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c.slice(0, 40));
+    if (out.length >= MAX_CATEGORIES) break;
+  }
+  return out;
+}
+
 const DATA_PREFIX = 'data:application/json,';
 
-const MAX = { title: 200, description: 1000, rules: 2000, sourceOfTruth: 500, agentReason: 500, trendUrl: 300, imageURI: 500_000 };
+const MAX = { title: 200, description: 1000, rules: 2000, sourceOfTruth: 500, agentReason: 500, trendUrl: 300, imageURI: 500_000, outcomeOption: 80 };
 const MIN = { title: 8, description: 12, rules: 20, sourceOfTruth: 10 };
 
 const SAFE_URL_SCHEMES = new Set(['http:', 'https:']);
@@ -110,15 +136,29 @@ export function validateMetadataInputs(input: BuildMarketMetadataInput): void {
   assertMinLength(input.sourceOfTruth, MIN.sourceOfTruth, 'Source of truth');
   assertSafeImage(input.imageURI);
   assertSafeUrl(input.agent?.trendUrl, 'Agent trend URL');
+  if (input.outcomeOptions) {
+    const cleanOptions = input.outcomeOptions.map((option) => option.trim()).filter(Boolean);
+    if (cleanOptions.length < 2) throw new Error('Add at least two poll options.');
+    if (cleanOptions.length > 12) throw new Error('Poll options are capped at 12.');
+    if (new Set(cleanOptions.map((option) => option.toLowerCase())).size !== cleanOptions.length) {
+      throw new Error('Poll options must be unique.');
+    }
+  }
 }
 
 export function buildMarketMetadata(input: BuildMarketMetadataInput): MarketMetadata {
   validateMetadataInputs(input);
+  const outcomeOptions = input.outcomeOptions
+    ?.map((option) => option.trim())
+    .filter(Boolean)
+    .map((option) => trunc(option, MAX.outcomeOption) ?? option);
+
   return {
     name: trunc(input.title, MAX.title) ?? input.title,
     description: trunc(input.description, MAX.description) ?? input.description,
     category: input.category,
     imageURI: input.imageURI,
+    outcomeOptions,
     rules: trunc(input.rules, MAX.rules) ?? input.rules,
     sourceOfTruth: trunc(input.sourceOfTruth, MAX.sourceOfTruth) ?? input.sourceOfTruth,
     resolutionMode: input.resolutionMode as ResolutionMode,
@@ -155,5 +195,12 @@ export function parseMarketMetadata(metadataURI: string): Partial<MarketMetadata
   // creation rather than rendering javascript:/data:text/html into the UI.
   if (!isSafeImage(parsed.imageURI)) parsed.imageURI = undefined;
   if (!isSafeUrl(parsed.trendUrl)) parsed.trendUrl = undefined;
+  if (parsed.outcomeOptions) {
+    parsed.outcomeOptions = parsed.outcomeOptions
+      .filter((option): option is string => typeof option === 'string')
+      .map((option) => option.trim())
+      .filter(Boolean)
+      .slice(0, 12);
+  }
   return parsed;
 }
