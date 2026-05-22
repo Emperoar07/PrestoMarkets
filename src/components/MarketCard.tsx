@@ -44,18 +44,6 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
               {market.title}
             </h3>
           </div>
-          {market.categories && market.categories.length > 0 ? (
-            <div className="mt-1 flex flex-wrap items-center gap-1">
-              {market.categories.slice(0, 2).map((cat) => (
-                <span key={cat} className="rounded-full bg-white/[0.04] px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-widest text-[#8fa0b4]">
-                  {cat}
-                </span>
-              ))}
-              {market.categories.length > 2 ? (
-                <span className="text-[9.5px] font-bold text-[#4a5568]">+{market.categories.length - 2}</span>
-              ) : null}
-            </div>
-          ) : null}
           {isAgentMarket && market.agentName ? (
             <p className="mt-1 truncate text-[10px] font-bold text-[#6b7c90]">{market.agentName}</p>
           ) : null}

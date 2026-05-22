@@ -175,9 +175,14 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               <span className={`rounded-full border px-3 py-1 text-[11px] font-black ${statusStyle[market.status]}`}>
                 {market.status}
               </span>
-              <span className="rounded-full border border-white/[0.06] bg-white/[0.04] px-3 py-1 text-[11px] font-black text-[#8fa0b4]">
-                {market.category}
-              </span>
+              {(market.categories?.length ? market.categories : [market.category]).map((cat) => (
+                <span
+                  key={cat}
+                  className="rounded-full border border-white/[0.06] bg-white/[0.04] px-3 py-1 text-[11px] font-black text-[#8fa0b4]"
+                >
+                  {cat}
+                </span>
+              ))}
               {isAgentMarket ? (
                 <span className="rounded-full border border-cyan/35 bg-cyan/10 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-cyan">
                   Agent
