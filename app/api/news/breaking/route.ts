@@ -90,7 +90,7 @@ function rank(items: { item: NewsItem; weight: number }[]): NewsItem[] {
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(item);
-    if (out.length >= 8) break;
+    if (out.length >= 15) break;
   }
   return out;
 }

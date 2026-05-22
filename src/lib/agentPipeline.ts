@@ -520,8 +520,37 @@ function interleave(...lists: TrendItem[][]): TrendItem[] {
   return out;
 }
 
+// Top 3 breaking-news items the homepage panel surfaces with the "Agent pick" badge. We
+// fetch the same crypto-first RSS feeds the /api/news/breaking endpoint ranks, sort by
+// recency, and prepend the freshest 3 so they're the first trends the per-run cap targets.
+async function fetchBreakingNewsPriority(): Promise<TrendItem[]> {
+  const sources = await Promise.all([
+    fetchCryptoNewsTrends().catch(() => [] as TrendItem[]),
+    fetchDecryptTrends().catch(() => [] as TrendItem[]),
+    fetchTheBlockTrends().catch(() => [] as TrendItem[]),
+  ]);
+  const flat = sources.flat();
+  // The RSS parser doesn't expose pubDate yet; the items come back already ordered by
+  // recency per outlet, so interleaving across outlets approximates a recency mix.
+  const seen = new Set<string>();
+  const out: TrendItem[] = [];
+  outer: for (let i = 0; i < 5; i++) {
+    for (const list of sources) {
+      const item = list[i];
+      if (!item) continue;
+      const key = item.topic.toLowerCase().slice(0, 60);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ ...item, source: `breaking-${item.source}` });
+      if (out.length >= 3) break outer;
+    }
+  }
+  return out;
+}
+
 async function fetchTrends(): Promise<TrendItem[]> {
-  const [grokX, cryptoPrices, sportsScores, liveScoreFootball, sportDb, googleNews, cryptoNews, decrypt, theBlock, techCrunch, hackerNews, bbc, sports, serper] = await Promise.all([
+  const [breaking, grokX, cryptoPrices, sportsScores, liveScoreFootball, sportDb, googleNews, cryptoNews, decrypt, theBlock, techCrunch, hackerNews, bbc, sports, serper] = await Promise.all([
+    fetchBreakingNewsPriority().catch(() => [] as TrendItem[]),
     fetchGrokXTrends().catch(() => [] as TrendItem[]),
     fetchCryptoPriceSignals().catch(() => [] as TrendItem[]),
     fetchSportsScoreSignals().catch(() => [] as TrendItem[]),
@@ -537,9 +566,11 @@ async function fetchTrends(): Promise<TrendItem[]> {
     fetchSportsTrends().catch(() => [] as TrendItem[]),
     fetchSerperTrends().catch(() => [] as TrendItem[]),
   ]);
-  // Interleave so the agent sees a diverse first pass across X social signal, general news,
-  // live price/sports signals, crypto-specific outlets, tech, sports, and search-derived stories.
-  const merged = interleave(grokX, cryptoPrices, sportsScores, liveScoreFootball, sportDb, googleNews, cryptoNews, decrypt, theBlock, techCrunch, hackerNews, bbc, sports, serper);
+  // Breaking news goes FIRST so under per-run cap=1 the agent's daily creation is always
+  // tied to a story the homepage news panel is also surfacing. The rest interleaves across
+  // X social signal, live price/sports signals, general news, tech, sports, search-derived.
+  const interleaved = interleave(grokX, cryptoPrices, sportsScores, liveScoreFootball, sportDb, googleNews, cryptoNews, decrypt, theBlock, techCrunch, hackerNews, bbc, sports, serper);
+  const merged = [...breaking, ...interleaved];
   if (merged.length === 0) {
     throw new Error('No trend sources returned items. Check XAI_API_KEY, SERPER_API_KEY, or network access to the RSS feeds.');
   }

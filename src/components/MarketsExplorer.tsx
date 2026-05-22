@@ -143,6 +143,9 @@ function BreakingNewsPanel() {
     return () => { cancelled = true; };
   }, []);
 
+  const visible = items.slice(0, 5);
+  const remaining = Math.max(0, items.length - visible.length);
+
   return (
     <div className="rounded-[16px] border border-white/[0.06] bg-[#0d1520] p-5">
       <div className="mb-4 flex items-center justify-between">
@@ -151,11 +154,11 @@ function BreakingNewsPanel() {
       </div>
       {loading ? (
         <p className="text-xs text-[#4a5568]">Loading…</p>
-      ) : items.length === 0 ? (
+      ) : visible.length === 0 ? (
         <p className="text-xs text-[#4a5568]">News feed unavailable right now.</p>
       ) : (
         <ol className="space-y-4">
-          {items.slice(0, 5).map((item, i) => (
+          {visible.map((item, i) => (
             <li key={item.url}>
               <a href={item.url} target="_blank" rel="noreferrer" className="flex items-start gap-3 group">
                 <span className="mt-0.5 w-4 shrink-0 text-[11px] font-black text-[#334155]">{i + 1}</span>
@@ -163,8 +166,13 @@ function BreakingNewsPanel() {
                   <p className="line-clamp-2 text-[13px] font-bold leading-snug text-[#cbd5e1] group-hover:text-white transition-colors">
                     {item.title}
                   </p>
-                  <p className="mt-1 text-[10.5px] font-bold uppercase tracking-widest text-[#4a5568]">
-                    {item.source}
+                  <p className="mt-1 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-widest text-[#4a5568]">
+                    <span>{item.source}</span>
+                    {i < 3 ? (
+                      <span className="rounded-full border border-cyan/30 bg-cyan/10 px-1.5 py-0.5 text-[9px] tracking-[0.14em] text-cyan">
+                        Agent pick
+                      </span>
+                    ) : null}
                   </p>
                 </div>
               </a>
@@ -172,6 +180,12 @@ function BreakingNewsPanel() {
           ))}
         </ol>
       )}
+      {remaining > 0 ? (
+        <Link href="/news" className="mt-5 flex items-center justify-between border-t border-white/[0.04] pt-4 text-[12px] font-bold text-cyan/80 transition-colors hover:text-cyan">
+          <span>See {remaining} more</span>
+          <span>→</span>
+        </Link>
+      ) : null}
     </div>
   );
 }

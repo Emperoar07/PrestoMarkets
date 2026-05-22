@@ -8,6 +8,7 @@ import { SiteFooter } from './SiteFooter';
 import type { MarketType, ResolutionMode } from '@/lib/markets';
 import { useAppState } from '@/lib/appState';
 import { createMarketCategories } from '@/lib/categories';
+import { CloseDatePicker } from './CloseDatePicker';
 
 const marketTypes: MarketType[] = ['Prediction', 'Opinion', 'Opportunity'];
 const resolutionModes: ResolutionMode[] = ['Human resolver', 'Community resolver', 'Agent assisted'];
@@ -541,12 +542,13 @@ export function CreateMarketBuilder() {
             </div>
             <div>
               <label className="text-[12px] font-bold uppercase tracking-wider text-muted">When does it close?</label>
-              <input
-                type="datetime-local"
+              <CloseDatePicker
                 value={closeDate}
-                onChange={(e) => setField('closeDate', e.target.value, setCloseDate)}
-                onBlur={(e) => blurField('closeDate', e.target.value)}
-                className={`mt-1 ${inputClass(fieldErrors.closeDate)} [color-scheme:dark]`}
+                onChange={(v) => setField('closeDate', v, setCloseDate)}
+                onBlur={() => blurField('closeDate', closeDate)}
+                placeholder="Pick a date and time"
+                className="mt-1"
+                errored={Boolean(fieldErrors.closeDate)}
               />
               {fieldErrors.closeDate ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.closeDate}</p> : null}
             </div>
