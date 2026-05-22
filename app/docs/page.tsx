@@ -5,37 +5,39 @@ import { SiteFooter } from '@/components/SiteFooter';
 const guide = [
   {
     h: 'Create a market',
-    p: 'Anyone can create a market from the app. Pick a type (Prediction, Opinion, Opportunity), set the close date, write the rules + source of truth, assign a resolver. The autonomous agent can also draft and post markets. Those carry an Agent badge.',
+    p: 'Choose a market type, category, close date, rules, source of truth, resolver, and optional image. The form turns that into a live Arc market with clear public metadata.',
   },
   {
-    h: 'Trade',
-    p: 'V1 mints fixed YES / NO shares against USDC. Buying deposits collateral and mints shares. There is no sell path or AMM. Positions are held to settlement.',
+    h: 'Trade outcomes',
+    p: 'Buy YES or NO with stablecoin collateral. The app shows the outcome, amount, expected shares, wallet, and contract call before you sign.',
+  },
+  {
+    h: 'Add liquidity',
+    p: 'Add balanced depth by splitting your amount into YES and NO shares. This gives each market a cleaner starting signal while keeping the settlement math easy to read.',
   },
   {
     h: 'Resolve and settle',
-    p: 'After close, only the configured resolver can resolve or cancel. The resolver console surfaces agent-assisted evidence, but the settle button stays locked until the resolver verifies the source of truth themselves.',
+    p: 'The resolver follows the written rules and source of truth, adds evidence, and signs the final result. Agent evidence can help the resolver move faster while keeping the outcome auditable.',
   },
   {
-    h: 'Portfolio',
-    p: 'Shows actual cost basis (indexed incrementally in your browser), open-position signal marks, claim previews, refund previews, and realized payouts. Activity reads live Arc logs.',
+    h: 'Track your position',
+    p: 'Portfolio and activity pages show wallet specific positions, cost basis, claim previews, refund previews, and recent market actions from Arc.',
   },
 ];
 
 const liquidity = [
-  'Keep V1 fixed-share settlement as the honest baseline, with no hidden exit liquidity.',
-  'Index historical trades and maker intent so depth is measurable.',
-  'Add a limit order book layer: resting bids/asks, visible spread, cancelable maker orders.',
-  'After audit, route market buys through resting liquidity first; price in maker rewards.',
+  'Seed each new market with a balanced YES and NO share purchase.',
+  'Show visible share counts so traders understand how much exposure they receive.',
+  'Record activity clearly so market depth, volume, and resolver history are easy to inspect.',
+  'Extend liquidity with richer maker flows once the current share model is stable and reviewed.',
 ];
 
 const terms = [
-  'Testnet application. Not financial, legal, tax, or investment advice.',
-  'Markets resolve only by the written rules, source of truth, and evidence recorded for that market.',
-  'Agent-generated evidence is advisory. The resolver signs settlement and bears responsibility.',
-  'Agent-created markets are labeled, but review rules and close time yourself before trading.',
-  'You are responsible for wallet security and transaction review. Testnet assets have no guaranteed value.',
-  'Do not run real-value markets until audit + dispute paths are complete.',
-  'Circle, RainbowKit, Arc, Vercel each have their own terms. They apply.',
+  'Presto provides market creation, trading, and settlement tools for Arc based prediction markets.',
+  'Each market is governed by its own rules, source of truth, resolver, close time, and evidence record.',
+  'You are responsible for reviewing wallet prompts, transaction details, and market terms before signing.',
+  'Agent created markets are labeled so users can understand when automation helped create the market.',
+  'Circle, Arc, wallet providers, hosting providers, and connected services apply their own terms where used.',
 ];
 
 export default function DocsPage() {
@@ -47,13 +49,13 @@ export default function DocsPage() {
           <span>←</span> Back home
         </Link>
         <p className="mt-6 text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Docs</p>
-        <h1 className="mt-3 text-[clamp(32px,4vw,46px)] font-black tracking-tight text-white">How Presto works.</h1>
+        <h1 className="mt-3 text-[clamp(32px,4vw,46px)] font-black tracking-tight text-white">Presto Markets guide.</h1>
         <p className="mt-4 text-[15px] leading-7 text-muted">
-          A short guide to the current app, market flow, liquidity plan, and the risk you take on.
+          Presto Markets is a fast prediction market app on Arc. It uses stablecoin native rails, Circle powered onboarding, and clear market rules so public signals can be created, traded, and settled with confidence.
         </p>
 
         <section className="mt-12 border-t border-white/[0.06] pt-8">
-          <h2 className="text-sm font-black uppercase tracking-[0.18em] text-cyan">The flow</h2>
+          <h2 className="text-sm font-black uppercase tracking-[0.18em] text-cyan">How it works</h2>
           <div className="mt-5 space-y-7">
             {guide.map((g) => (
               <div key={g.h}>
@@ -65,9 +67,9 @@ export default function DocsPage() {
         </section>
 
         <section className="mt-12 border-t border-white/[0.06] pt-8">
-          <h2 className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Liquidity, eventually</h2>
+          <h2 className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Liquidity plan</h2>
           <p className="mt-4 text-[15px] leading-7 text-muted">
-            Polymarket made depth visible: bids, asks, spread. Presto should follow that, not hide execution quality inside a pool.
+            Presto treats liquidity as readable market depth. The goal is to make every share purchase, balanced depth action, and settlement path understandable from the UI.
           </p>
           <ol className="mt-5 space-y-3 text-[15px] leading-7 text-white/90">
             {liquidity.map((item, i) => (
@@ -80,38 +82,43 @@ export default function DocsPage() {
         </section>
 
         <section className="mt-12 border-t border-white/[0.06] pt-8">
-          <h2 className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Reading the charts</h2>
+          <h2 className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Charts and signals</h2>
           <div className="mt-5 space-y-5 text-[15px] leading-7 text-muted">
-            <p><span className="font-black text-white">YES signal.</span> The live YES share ratio as a probability signal. It's market sentiment, not a tradeable quote.</p>
-            <p><span className="font-black text-white">Volume / collateral.</span> How much activity backs the signal. Not available exit depth.</p>
-            <p><span className="font-black text-white">Future depth.</span> Once the order book ships, you'll see bid/ask depth, spread, and maker liquidity.</p>
+            <p><span className="font-black text-white">YES signal.</span> The green line tracks YES share strength over time.</p>
+            <p><span className="font-black text-white">NO signal.</span> The red line tracks NO share strength over time.</p>
+            <p><span className="font-black text-white">Volume.</span> Volume helps users see how much activity supports the signal.</p>
           </div>
         </section>
 
         <section id="terms-of-use" className="mt-12 border-t border-white/[0.06] pt-8">
-          <h2 className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Terms &amp; risk</h2>
-          <ul className="mt-5 space-y-3 text-[15px] leading-7 text-muted">
+          <h2 className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Legal</h2>
+          <div className="mt-5 space-y-3 text-[15px] leading-7 text-muted">
             {terms.map((item) => (
-              <li key={item} className="flex gap-3">
-                <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-muted/60" />
-                <span>{item}</span>
-              </li>
+              <p key={item}>{item}</p>
             ))}
-          </ul>
+          </div>
         </section>
 
         <section id="privacy-policy" className="mt-12 border-t border-white/[0.06] pt-8">
-          <h2 className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Privacy</h2>
+          <h2 className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Privacy Policy</h2>
           <p className="mt-4 text-[15px] leading-7 text-muted">
-            Wallet connection state lives in your browser. Circle, RainbowKit, Vercel, and your wallet provider each process data under their own policies. Don't put private keys or sensitive personal info into market metadata.
+            Wallet connection state and selected UI preferences may live in your browser. Circle, wallet providers, and connected services process their own data under their own policies. Market metadata should stay public, clear, and safe to display.
           </p>
         </section>
 
         <section id="cookie-policy" className="mt-12 border-t border-white/[0.06] pt-8">
-          <h2 className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Cookies</h2>
+          <h2 className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Cookie Policy</h2>
           <p className="mt-4 text-[15px] leading-7 text-muted">
-            Presto uses local / session storage for wallet sessions and UI state. Core market reads don't require tracking cookies, but connected providers may set their own.
+            Presto uses browser storage for wallet sessions and interface state. Connected providers may use cookies or similar storage for authentication and security.
           </p>
+        </section>
+
+        <section className="mt-12 border-t border-white/[0.06] pt-8">
+          <h2 className="text-sm font-black uppercase tracking-[0.18em] text-cyan">Terms of Use</h2>
+          <p className="mt-4 text-[15px] leading-7 text-muted">
+            By using Presto, you agree to review market rules, source material, resolver evidence, wallet prompts, and transaction details before taking action.
+          </p>
+          <p className="mt-8 text-[13px] font-bold text-muted">© 2026 Presto. All rights reserved.</p>
         </section>
       </main>
       <SiteFooter />

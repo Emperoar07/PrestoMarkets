@@ -19,17 +19,17 @@ const phases = [
       'Circle user-controlled wallet signing for all Arc transactions',
       'External EVM wallets via RainbowKit',
       'Autonomous agent registered on ERC-8004 (ID 16339)',
-      'Incremental localStorage cost-basis indexer',
+      'Incremental browser cost-basis indexer',
       'EURC and USDC collateral selector',
     ],
   },
   {
     title: 'Next',
     items: [
-      'Persistent activity index (Vercel KV or Postgres)',
-      'Dispute window with bonded challenges before payouts finalize',
-      'Sell path / AMM exit before settlement',
-      'Paymaster so users skip native gas entirely',
+      'Persistent activity index with Vercel KV or Postgres',
+      'Dispute window with bonded challenges and clear escalation rules',
+      'Richer liquidity depth for market makers and traders',
+      'Paymaster support for smoother stablecoin fee handling',
     ],
   },
   {
@@ -38,7 +38,7 @@ const phases = [
       'Bridge Kit + CCTP for cross-chain market funding',
       'Gateway for unified multi-chain USDC balance',
       'Multi-currency markets beyond USDC / EURC',
-      'Mainnet launch after audit + dispute design',
+      'Mainnet launch path with reviewed contracts and dispute design',
     ],
   },
 ];
@@ -72,7 +72,7 @@ export default function RoadmapPage() {
         <p className="mt-6 text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Roadmap</p>
         <h1 className="mt-3 text-[clamp(32px,4vw,46px)] font-black tracking-tight text-white">Where Presto is, and what's next.</h1>
         <p className="mt-4 text-[15px] leading-7 text-muted">
-          Markets first, infrastructure after. We add Circle and Arc rails when they meaningfully improve onboarding, funding, or settlement. Not before.
+          Markets first, infrastructure after. We add Circle and Arc rails when they meaningfully improve onboarding, funding, or settlement.
         </p>
 
         {phases.map((phase) => (

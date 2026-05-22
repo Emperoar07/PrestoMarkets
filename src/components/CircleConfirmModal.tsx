@@ -40,7 +40,7 @@ export function CircleConfirmModal() {
           ) : null}
           <div className="flex items-baseline justify-between gap-4">
             <dt className="text-muted">Network fee</dt>
-            <dd className="text-right font-bold text-white">{details.gasDisplay ?? '~$0.01 USDC (Arc gas)'}</dd>
+            <dd className="text-right font-bold text-white">{details.gasDisplay ?? '~$0.01 USDC'}</dd>
           </div>
           <div className="flex items-baseline justify-between gap-4">
             <dt className="text-muted">Function</dt>
@@ -92,7 +92,7 @@ export function CircleConfirmModal() {
             onClick={() => resolve(true)}
             className="flex-1 border-l border-white/[0.06] bg-cyan py-3.5 text-[13px] font-black text-ink transition-opacity hover:opacity-90"
           >
-            Continue to PIN →
+            Continue to PIN
           </button>
         </div>
       </section>

@@ -74,9 +74,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const noOutcome = market.outcomes.find((o) => o.label === 'NO') ?? market.outcomes[1] ?? yesOutcome;
   const activeOutcome = selectedOutcome === 'YES' ? yesOutcome : noOutcome;
   const amountValue = Number(amount) || 0;
-  const entryPrice = activeOutcome.odds / 100;
-  const estimatedShares = amountValue > 0 ? amountValue / entryPrice : 0;
-  const potentialReturn = estimatedShares > 0 ? estimatedShares * 1 : 0;
+  const estimatedShares = amountValue > 0 ? amountValue : 0;
+  const potentialReturn = estimatedShares;
   const liquiditySideAmount = amountValue > 0 ? amountValue / 2 : 0;
   const canTrade = market.status === 'Open' || market.status === 'Closing soon';
   const accountPreview = accountPreviews[market.id];
@@ -525,10 +524,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   <span className="font-black text-white">{tradeMode === 'liquidity' ? 'Balanced YES + NO' : `${activeOutcome.odds}¢ per share`}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted">{tradeMode === 'liquidity' ? 'Each side' : `Shares (1:1 ${payWith})`}</span>
+                  <span className="text-muted">Total shares</span>
                   <span className="font-black text-white">
                     {tradeMode === 'liquidity'
-                      ? liquiditySideAmount > 0 ? `${unit}${liquiditySideAmount.toFixed(2)} YES / NO` : '—'
+                      ? liquiditySideAmount > 0 ? `${liquiditySideAmount.toFixed(2)} YES + ${liquiditySideAmount.toFixed(2)} NO` : '—'
                       : estimatedShares > 0 ? estimatedShares.toFixed(2) : '—'}
                   </span>
                 </div>
@@ -542,7 +541,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
                 {tradeMode === 'liquidity' ? (
                   <p className="rounded-[10px] border border-cyan/15 bg-cyan/[0.05] px-3 py-2 text-xs leading-5 text-muted">
-                    V1 liquidity is fixed-share depth: the app buys equal YES and NO shares for you. This is not an AMM LP token yet.
+                    The app splits your amount evenly into YES and NO shares so the market has balanced starting depth.
                   </p>
                 ) : null}
               </div>

@@ -242,9 +242,8 @@ export function MarketsExplorer() {
     function syncFromUrl() {
       const params = new URLSearchParams(window.location.search);
       const cat = params.get('cat') ?? 'Trending';
-      const q = params.get('q') ?? '';
       setActiveCategory(cat);
-      setSearchValue(q);
+      setSearchValue('');
       setSortKey(cat === 'Breaking' ? 'ending' : cat === 'New' ? 'newest' : 'volume');
     }
 
@@ -252,6 +251,7 @@ export function MarketsExplorer() {
       const cat = (event as CustomEvent<string>).detail ?? 'Trending';
       setActiveCategory(cat);
       setActiveHotTopic('All');
+      setSearchValue('');
       setSortKey(cat === 'Breaking' ? 'ending' : cat === 'New' ? 'newest' : 'volume');
     }
 

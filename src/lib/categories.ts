@@ -22,6 +22,13 @@ export const primaryMarketCategories = [
 
 export const topicMarketCategories = [
   'All',
+  'BTC',
+  'ETH',
+  'SOL',
+  'POL',
+  'Football',
+  'Basketball',
+  'Tennis',
   'Trump',
   'Iran',
   'Trump-Xi Summit',
@@ -39,4 +46,13 @@ export const topicMarketCategories = [
 
 // Clean topical categories for market creation. Excludes view filters (Trending/Breaking/New)
 // and short-lived trend tags (those belong to the hot-topics surface, not creation taxonomy).
-export const createMarketCategories = [...topicNavCategories] as const;
+export const createMarketCategories = [
+  ...topicNavCategories,
+  'BTC',
+  'ETH',
+  'SOL',
+  'POL',
+  'Football',
+  'Basketball',
+  'Tennis',
+] as const;

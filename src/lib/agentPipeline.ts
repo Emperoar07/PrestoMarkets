@@ -179,12 +179,294 @@ async function fetchCryptoNewsTrends(): Promise<TrendItem[]> {
   });
 }
 
+const cryptoPriceAssets = [
+  { id: 'bitcoin', cmcSymbol: 'BTC', symbol: 'BTC', category: 'BTC', threshold: 0.035 },
+  { id: 'ethereum', cmcSymbol: 'ETH', symbol: 'ETH', category: 'ETH', threshold: 0.045 },
+  { id: 'solana', cmcSymbol: 'SOL', symbol: 'SOL', category: 'SOL', threshold: 0.06 },
+  { id: 'polygon-ecosystem-token', cmcSymbol: 'POL', symbol: 'POL', category: 'POL', threshold: 0.065 },
+] as const;
+
+function buildCryptoPriceSignal(input: {
+  symbol: string;
+  id: string;
+  provider: string;
+  source: string;
+  price: number;
+  change?: number;
+  threshold: number;
+  url: string;
+}): TrendItem {
+  const settleDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const settleLabel = settleDate.toISOString().slice(0, 10);
+  const direction = (input.change ?? 0) >= 0 ? 'above' : 'below';
+  const target = direction === 'above'
+    ? Math.ceil(input.price * (1 + input.threshold))
+    : Math.floor(input.price * (1 - input.threshold));
+  const formattedPrice = `$${input.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  const formattedTarget = `$${target.toLocaleString()}`;
+
+  return {
+    topic: `Will ${input.symbol} trade ${direction} ${formattedTarget} by ${settleLabel}?`,
+    query: [
+      `${input.symbol} current ${input.provider} price is ${formattedPrice}.`,
+      Number.isFinite(input.change) ? `24h change is ${(input.change as number).toFixed(2)}%.` : '',
+      `Create an objective price prediction market using ${input.provider} ${input.id} USD price as source of truth.`,
+    ].filter(Boolean).join(' '),
+    source: input.source,
+    url: input.url,
+  };
+}
+
+async function fetchCoinGeckoPriceSignals(): Promise<TrendItem[]> {
+  const ids = cryptoPriceAssets.map((asset) => asset.id).join(',');
+  const apiKey = process.env.COINGECKO_API_KEY || process.env.NEXT_PUBLIC_COINGECKO_API_KEY;
+  const headers: HeadersInit = apiKey ? { 'x-cg-demo-api-key': apiKey } : {};
+  const res = await fetch(
+    `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true`,
+    {
+      headers,
+      next: { revalidate: 300 },
+    },
+  );
+
+  if (!res.ok) return [];
+  const data = await res.json() as Record<string, { usd?: number; usd_24h_change?: number; last_updated_at?: number }>;
+
+  return cryptoPriceAssets.flatMap((asset) => {
+    const price = data[asset.id]?.usd;
+    if (!Number.isFinite(price)) return [];
+    return [buildCryptoPriceSignal({
+      symbol: asset.symbol,
+      id: asset.id,
+      provider: 'CoinGecko',
+      source: 'coingecko-price',
+      price: price as number,
+      change: data[asset.id]?.usd_24h_change,
+      threshold: asset.threshold,
+      url: `https://www.coingecko.com/en/coins/${asset.id}`,
+    })];
+  });
+}
+
+async function fetchCoinMarketCapPriceSignals(): Promise<TrendItem[]> {
+  const apiKey = process.env.COINMARKETCAP_API_KEY || process.env.CMC_API_KEY;
+  if (!apiKey) return [];
+
+  const symbols = cryptoPriceAssets.map((asset) => asset.cmcSymbol).join(',');
+  const res = await fetch(
+    `https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?symbol=${symbols}&convert=USD`,
+    {
+      headers: { 'X-CMC_PRO_API_KEY': apiKey },
+      next: { revalidate: 300 },
+    },
+  );
+  if (!res.ok) return [];
+
+  const data = await res.json() as {
+    data?: Record<string, Array<{
+      slug?: string;
+      quote?: { USD?: { price?: number; percent_change_24h?: number } };
+    }> | {
+      slug?: string;
+      quote?: { USD?: { price?: number; percent_change_24h?: number } };
+    }>;
+  };
+
+  return cryptoPriceAssets.flatMap((asset) => {
+    const raw = data.data?.[asset.cmcSymbol];
+    const item = Array.isArray(raw) ? raw[0] : raw;
+    const quote = item?.quote?.USD;
+    if (!Number.isFinite(quote?.price)) return [];
+
+    return [buildCryptoPriceSignal({
+      symbol: asset.symbol,
+      id: item?.slug || asset.id,
+      provider: 'CoinMarketCap',
+      source: 'coinmarketcap-price',
+      price: quote?.price as number,
+      change: quote?.percent_change_24h,
+      threshold: asset.threshold,
+      url: `https://coinmarketcap.com/currencies/${item?.slug || asset.id}/`,
+    })];
+  });
+}
+
+async function fetchCryptoPriceSignals(): Promise<TrendItem[]> {
+  const [coinGecko, coinMarketCap] = await Promise.all([
+    fetchCoinGeckoPriceSignals().catch(() => [] as TrendItem[]),
+    fetchCoinMarketCapPriceSignals().catch(() => [] as TrendItem[]),
+  ]);
+
+  // Prefer no-key CoinGecko when available, then fill gaps from CoinMarketCap.
+  const seen = new Set<string>();
+  return [...coinGecko, ...coinMarketCap].filter((item) => {
+    const symbol = cryptoPriceAssets.find((asset) => item.topic.includes(asset.symbol))?.symbol ?? item.topic;
+    if (seen.has(symbol)) return false;
+    seen.add(symbol);
+    return true;
+  });
+}
+
 async function fetchSportsTrends(): Promise<TrendItem[]> {
   return fetchRssTrends({
     url: 'https://www.espn.com/espn/rss/news',
     source: 'espn',
     limit: 3,
   });
+}
+
+const sportsDbSports = [
+  { sport: 'Soccer', category: 'Football', source: 'thesportsdb-football' },
+  { sport: 'Basketball', category: 'Basketball', source: 'thesportsdb-basketball' },
+  { sport: 'Tennis', category: 'Tennis', source: 'thesportsdb-tennis' },
+] as const;
+
+function formatSportsDbDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
+  const apiKey = process.env.THESPORTSDB_API_KEY || '123';
+  const dates = [new Date(), new Date(Date.now() + 24 * 60 * 60 * 1000)];
+  const requests = sportsDbSports.flatMap((sport) => dates.map(async (date) => {
+    const day = formatSportsDbDate(date);
+    const url = `https://www.thesportsdb.com/api/v1/json/${apiKey}/eventsday.php?d=${day}&s=${encodeURIComponent(sport.sport)}`;
+    const res = await fetch(url, { next: { revalidate: 900 } });
+    if (!res.ok) return [] as TrendItem[];
+    const data = await res.json() as {
+      events?: Array<{
+        idEvent?: string;
+        strEvent?: string;
+        strHomeTeam?: string;
+        strAwayTeam?: string;
+        intHomeScore?: string | null;
+        intAwayScore?: string | null;
+        strStatus?: string | null;
+        dateEvent?: string;
+        strTimestamp?: string;
+        strThumb?: string | null;
+      }>;
+    };
+
+    return (data.events ?? []).slice(0, 3).flatMap((event): TrendItem[] => {
+      const home = sanitizeFeedText(event.strHomeTeam || '');
+      const away = sanitizeFeedText(event.strAwayTeam || '');
+      if (!home || !away) return [];
+      const score = event.intHomeScore && event.intAwayScore
+        ? `${event.intHomeScore}-${event.intAwayScore}`
+        : 'not started';
+      const status = event.strStatus || 'scheduled';
+      const eventDate = event.dateEvent || day;
+
+      return [{
+        topic: `Will ${home} beat ${away} on ${eventDate}?`,
+        query: [
+          `${sport.category} fixture from TheSportsDB.`,
+          `Match: ${home} vs ${away}.`,
+          `Current score/status: ${score}, ${status}.`,
+          'Create a market that resolves from the final official match result.',
+        ].join(' '),
+        source: sport.source,
+        url: event.idEvent ? `https://www.thesportsdb.com/event/${event.idEvent}` : undefined,
+        imageUrl: event.strThumb || undefined,
+      }];
+    });
+  }));
+
+  const batches = await Promise.all(requests);
+  return batches.flat().slice(0, 9);
+}
+
+async function fetchLiveScoreFootballSignals(): Promise<TrendItem[]> {
+  const key = process.env.LIVESCORE_API_KEY;
+  const secret = process.env.LIVESCORE_API_SECRET;
+  if (!key || !secret) return [];
+
+  const res = await fetch(
+    `https://livescore-api.com/api-client/matches/live.json?key=${encodeURIComponent(key)}&secret=${encodeURIComponent(secret)}`,
+    { next: { revalidate: 120 } },
+  );
+  if (!res.ok) return [];
+
+  const data = await res.json() as {
+    data?: {
+      match?: Array<{
+        id?: number;
+        status?: string;
+        scheduled?: string;
+        home?: { name?: string; logo?: string };
+        away?: { name?: string; logo?: string };
+        scores?: { score?: string };
+      }>;
+    };
+  };
+
+  return (data.data?.match ?? []).slice(0, 6).flatMap((match): TrendItem[] => {
+    const home = sanitizeFeedText(match.home?.name || '');
+    const away = sanitizeFeedText(match.away?.name || '');
+    if (!home || !away) return [];
+
+    return [{
+      topic: `Will ${home} beat ${away} in their live match?`,
+      query: [
+        'Football live score from LiveScore API.',
+        `Match: ${home} vs ${away}.`,
+        `Current score/status: ${match.scores?.score || 'unknown'}, ${match.status || 'live'}.`,
+        'Create a market that resolves from the final official match result.',
+      ].join(' '),
+      source: 'livescore-api-football',
+      url: match.id ? `https://livescore-api.com/api-client/scores/events.json?id=${match.id}` : undefined,
+      imageUrl: match.home?.logo || match.away?.logo,
+    }];
+  });
+}
+
+async function fetchSportDbSignals(): Promise<TrendItem[]> {
+  const apiKey = process.env.SPORTDB_API_KEY;
+  if (!apiKey) return [];
+
+  const endpoints = [
+    { url: 'https://api.sportdb.dev/api/football/live', category: 'Football', source: 'sportdb-football' },
+    { url: 'https://api.sportdb.dev/api/basketball/live', category: 'Basketball', source: 'sportdb-basketball' },
+  ] as const;
+
+  const batches = await Promise.all(endpoints.map(async (endpoint) => {
+    const res = await fetch(endpoint.url, {
+      headers: { 'X-API-Key': apiKey },
+      next: { revalidate: 120 },
+    });
+    if (!res.ok) return [] as TrendItem[];
+
+    const data = await res.json() as {
+      data?: unknown[];
+      matches?: unknown[];
+      events?: unknown[];
+    };
+    const rows = (data.data ?? data.matches ?? data.events ?? []) as Array<Record<string, unknown>>;
+
+    return rows.slice(0, 5).flatMap((row): TrendItem[] => {
+      const home = sanitizeFeedText(String(row.home_team ?? row.homeTeam ?? row.home ?? row.team_home ?? ''));
+      const away = sanitizeFeedText(String(row.away_team ?? row.awayTeam ?? row.away ?? row.team_away ?? ''));
+      if (!home || !away || home === 'undefined' || away === 'undefined') return [];
+      const status = String(row.status ?? row.match_status ?? 'live');
+      const score = String(row.score ?? row.current_score ?? `${row.home_score ?? '?'}-${row.away_score ?? '?'}`);
+      const eventId = String(row.id ?? row.event_id ?? '');
+
+      return [{
+        topic: `Will ${home} beat ${away} in their live ${endpoint.category.toLowerCase()} match?`,
+        query: [
+          `${endpoint.category} live score from SportDB.`,
+          `Match: ${home} vs ${away}.`,
+          `Current score/status: ${score}, ${status}.`,
+          'Create a market that resolves from the final official match result.',
+        ].join(' '),
+        source: endpoint.source,
+        url: eventId ? `${endpoint.url}/${eventId}` : endpoint.url,
+      }];
+    });
+  }));
+
+  return batches.flat().slice(0, 8);
 }
 
 async function fetchDecryptTrends(): Promise<TrendItem[]> {
@@ -239,8 +521,12 @@ function interleave(...lists: TrendItem[][]): TrendItem[] {
 }
 
 async function fetchTrends(): Promise<TrendItem[]> {
-  const [grokX, googleNews, cryptoNews, decrypt, theBlock, techCrunch, hackerNews, bbc, sports, serper] = await Promise.all([
+  const [grokX, cryptoPrices, sportsScores, liveScoreFootball, sportDb, googleNews, cryptoNews, decrypt, theBlock, techCrunch, hackerNews, bbc, sports, serper] = await Promise.all([
     fetchGrokXTrends().catch(() => [] as TrendItem[]),
+    fetchCryptoPriceSignals().catch(() => [] as TrendItem[]),
+    fetchSportsScoreSignals().catch(() => [] as TrendItem[]),
+    fetchLiveScoreFootballSignals().catch(() => [] as TrendItem[]),
+    fetchSportDbSignals().catch(() => [] as TrendItem[]),
     fetchGoogleNewsTrends().catch(() => [] as TrendItem[]),
     fetchCryptoNewsTrends().catch(() => [] as TrendItem[]),
     fetchDecryptTrends().catch(() => [] as TrendItem[]),
@@ -252,12 +538,12 @@ async function fetchTrends(): Promise<TrendItem[]> {
     fetchSerperTrends().catch(() => [] as TrendItem[]),
   ]);
   // Interleave so the agent sees a diverse first pass across X social signal, general news,
-  // crypto-specific outlets, tech, sports, and search-derived stories.
-  const merged = interleave(grokX, googleNews, cryptoNews, decrypt, theBlock, techCrunch, hackerNews, bbc, sports, serper);
+  // live price/sports signals, crypto-specific outlets, tech, sports, and search-derived stories.
+  const merged = interleave(grokX, cryptoPrices, sportsScores, liveScoreFootball, sportDb, googleNews, cryptoNews, decrypt, theBlock, techCrunch, hackerNews, bbc, sports, serper);
   if (merged.length === 0) {
     throw new Error('No trend sources returned items. Check XAI_API_KEY, SERPER_API_KEY, or network access to the RSS feeds.');
   }
-  return merged.slice(0, 18);
+  return merged.slice(0, 24);
 }
 
 // ── Stage 2: Groq classification ──────────────────────────────────────────
@@ -291,12 +577,14 @@ Return JSON only:
 {
   "worthy": true/false,
   "momentumScore": 0.0–1.0,
-  "category": "Crypto|DeFi|AI|Politics|Tech|Sports|Markets|Arc|Web3",
+  "category": "Crypto|BTC|ETH|SOL|POL|Sports|Football|Basketball|Tennis|DeFi|AI|Politics|Tech|Markets|Arc|Web3",
   "categories": ["primary", "secondary", "..."],
   "reason": "one sentence"
 }
 
-For "categories": return 1-4 tags from the same allowlist as "category". The first should
+For "categories": return 1-4 tags from the same allowlist as "category". Use BTC, ETH, SOL,
+or POL for token-specific price markets. Use Football, Basketball, or Tennis for sport result
+markets. The first should
 equal "category". Add secondary tags only if they're genuinely relevant (e.g. a Bitcoin ETF
 ruling could be ["Crypto", "Markets", "Politics"]).`;
 

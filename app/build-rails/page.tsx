@@ -9,14 +9,14 @@ const done = [
   'External EVM wallets (MetaMask, WalletConnect) work inline through RainbowKit.',
   'Agent registered on ERC-8004 (ID 16339) with daily cron-driven market drafting.',
   'EURC + USDC collateral selector at market creation.',
-  'Incremental localStorage cost-basis indexer replaces from-block-0 log scans.',
+  'Incremental browser cost-basis indexer keeps portfolio reads responsive.',
 ];
 
 const next = [
-  'Persistent activity index. KV or Postgres backing the portfolio reads.',
-  'Dispute window with bonded challenges before payouts finalize.',
-  'Sell / AMM exit path before settlement.',
-  'Paymaster so users skip native gas entirely.',
+  'Persistent activity index backed by KV or Postgres.',
+  'Dispute window with bonded challenges and clear escalation rules.',
+  'Richer liquidity depth for market makers and traders.',
+  'Paymaster support for smoother stablecoin fee handling.',
 ];
 
 export default function BuildRailsPage() {

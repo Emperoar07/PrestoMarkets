@@ -27,7 +27,6 @@ export function SiteHeader() {
   const isLandingPage = pathname === '/';
   const showWallet = !isLandingPage;
   const isExplorePage = pathname === '/markets' || pathname.startsWith('/markets/');
-  const syncsExploreSearch = pathname === '/markets';
   const isDocsPage = pathname === '/docs' || pathname === '/roadmap' || pathname === '/build-rails';
   const showSearchBar = !isLandingPage && !isDocsPage;
   // Category tab row only on the markets explorer itself — not market detail pages, not
@@ -45,12 +44,8 @@ export function SiteHeader() {
   const categoryScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!syncsExploreSearch || typeof window === 'undefined') {
-      setSearchValue('');
-      return;
-    }
-    setSearchValue(new URLSearchParams(window.location.search).get('q') ?? '');
-  }, [syncsExploreSearch]);
+    setSearchValue('');
+  }, [pathname]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -88,17 +83,8 @@ export function SiteHeader() {
 
   function updateExploreSearch(value: string) {
     setSearchValue(value);
-    // On /markets we sync the URL in place. On any other page we navigate to /markets with
-    // the query, so search works from /portfolio, /activity, /markets/create, market detail,
-    // etc. — basically anywhere the bar is shown.
-    const params = new URLSearchParams();
-    if (value) params.set('q', value);
-    const target = `/markets${params.toString() ? `?${params.toString()}` : ''}`;
-    if (syncsExploreSearch) {
-      router.replace(target, { scroll: false });
-    } else {
-      router.push(target);
-    }
+    // Keep search in memory only so refresh returns to a clean explorer.
+    if (pathname !== '/markets') router.push('/markets');
     window.dispatchEvent(new CustomEvent('presto:market-search', { detail: value }));
   }
 
@@ -113,27 +99,29 @@ export function SiteHeader() {
     } else {
       router.push(target);
     }
+    setSearchValue('');
+    window.dispatchEvent(new CustomEvent('presto:market-search', { detail: '' }));
     window.dispatchEvent(new CustomEvent('presto:category-change', { detail: cat }));
   }
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 border-b border-white/[0.06] bg-[#090e1a]/90 backdrop-blur-xl">
       {/* Row 1: brand (left) · search (middle, fills gap) · nav (right) */}
-      <div className="mx-auto flex h-[66px] max-w-[1400px] items-center gap-6 px-4 md:px-7">
-        <div className="shrink-0">
+      <div className="mx-auto flex min-h-[66px] max-w-[1400px] flex-wrap items-center gap-3 px-4 py-3 md:h-[66px] md:flex-nowrap md:gap-6 md:px-7 md:py-0">
+        <div className="order-1 shrink-0">
           <BrandMark />
         </div>
-        <div className="hidden flex-1 justify-start md:flex">
+        <div className="order-3 w-full justify-start md:order-2 md:flex md:flex-1">
           {showSearchBar ? (
             <input
               value={searchValue}
               onChange={(event) => updateExploreSearch(event.target.value)}
               placeholder="Search markets…"
-              className="w-full max-w-[420px] rounded-lg border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-[13px] font-medium text-white outline-none transition-colors placeholder:text-[#334155] focus:border-cyan/40"
+              className="w-full rounded-lg border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-[13px] font-medium text-white outline-none transition-colors placeholder:text-[#334155] focus:border-cyan/40 md:max-w-[520px]"
             />
           ) : null}
         </div>
-        <nav className="ml-auto flex shrink-0 items-center gap-3">
+        <nav className="scrollbar-hide order-2 -mx-1 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto px-1 md:order-3 md:ml-auto md:flex-none md:shrink-0 md:gap-3 md:overflow-visible md:px-0">
           <Link href="/markets" className={navLinkClass(isExplorePage && !isCreatePage)}>
             Explore Markets
           </Link>
