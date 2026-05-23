@@ -457,8 +457,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               ) : null}
 
               {isBinaryMarket ? (
-                <>
-              {/* YES / NO toggle */}
               <div className={`grid grid-cols-2 gap-2 ${tradeMode === 'liquidity' ? 'opacity-70' : ''}`}>
                 <button
                   type="button"
@@ -492,7 +490,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </button>
               </div>
 
-                </>
               ) : (
                 <div className={`grid grid-cols-1 gap-2 ${tradeMode === 'liquidity' ? 'opacity-70' : ''}`}>
                   {market.outcomes.map((outcome, index) => {
@@ -641,6 +638,17 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 ) : null}
               </div>
 
+              {/* Status message (shown above buy button so users see errors before retrying) */}
+              {message ? (
+                <p className={`mt-4 rounded-[10px] border px-3 py-2 text-xs leading-5 ${
+                  message.toLowerCase().includes('fail') || message.toLowerCase().includes('error') || message.toLowerCase().includes('insufficient') || message.toLowerCase().includes('expired')
+                    ? 'border-red-400/25 bg-red-400/10 text-red-200'
+                    : 'border-mint/25 bg-mint/10 text-mint'
+                }`}>
+                  {message}
+                </p>
+              ) : null}
+
               {/* Buy button */}
               <button
                 type="button"
@@ -724,23 +732,16 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
               ) : null}
 
-              {/* Resolver controls */}
-              <div className="mt-5 border-t border-white/[0.06] pt-5">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-muted">Resolver</p>
-                  {isResolver ? (
+              {/* Resolver controls — only shown to the resolver. Non-resolvers already see
+                  the resolver address in the left-column "Resolution rules" block. */}
+              {canAccessResolverActions ? (
+                <div className="mt-5 border-t border-white/[0.06] pt-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Resolver</p>
                     <span className="rounded-full bg-cyan/10 px-2 py-0.5 text-[10px] font-black text-cyan ring-1 ring-cyan/20">
                       You are the resolver
                     </span>
-                  ) : null}
-                </div>
-
-                {/* Resolver address */}
-                <p className="mt-2 truncate text-xs text-[#475569]">
-                  {market.resolverAddress || market.resolver}
-                </p>
-
-                {canAccessResolverActions ? (
+                  </div>
                   <div className="mt-4 space-y-4">
                     <div className="rounded-[14px] border border-cyan/20 bg-cyan/[0.06] p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -925,25 +926,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                       </p>
                     ) : null}
                   </div>
-                ) : (
-                  <p className="mt-2 text-xs leading-5 text-muted">
-                    {isResolver && !isClosedForResolution
-                      ? 'Resolution unlocks after the market close time. You can prepare evidence now, but settlement must wait.'
-                      : connectedWallet
-                      ? 'Only the resolver wallet can settle or cancel this market.'
-                      : 'Connect the resolver wallet to access settlement controls.'}
-                  </p>
-                )}
-              </div>
-
-              {/* Status message */}
-              {message ? (
-                <p className={`mt-4 rounded-[12px] border px-4 py-3 text-sm font-bold ${
-                  message.toLowerCase().includes('fail') || message.toLowerCase().includes('error') || message.toLowerCase().includes('insufficient')
-                    ? 'border-red-400/25 bg-red-400/10 text-red-200'
-                    : 'border-mint/25 bg-mint/10 text-mint'
-                }`}>
-                  {message}
+                </div>
+              ) : isResolver && !isClosedForResolution ? (
+                <p className="mt-5 border-t border-white/[0.06] pt-5 text-xs leading-5 text-muted">
+                  Resolution unlocks after the market close time. You can prepare evidence now, but settlement must wait.
                 </p>
               ) : null}
             </div>
