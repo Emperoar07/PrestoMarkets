@@ -165,13 +165,8 @@ function BreakingNewsPanel() {
                   <p className="line-clamp-2 text-[13px] font-bold leading-snug text-[#cbd5e1] group-hover:text-white transition-colors">
                     {item.title}
                   </p>
-                  <p className="mt-1 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-widest text-[#4a5568]">
-                    <span>{item.source}</span>
-                    {i < 3 ? (
-                      <span className="rounded-full border border-cyan/30 bg-cyan/10 px-1.5 py-0.5 text-[9px] tracking-[0.14em] text-cyan">
-                        Agent pick
-                      </span>
-                    ) : null}
+                  <p className="mt-1 text-[10.5px] font-bold uppercase tracking-widest text-[#4a5568]">
+                    {item.source}
                   </p>
                 </div>
               </a>

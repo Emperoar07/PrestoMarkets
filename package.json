@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "next build --webpack",
     "test:contracts": "hardhat test",
-    "deploy:arc": "hardhat run scripts/deploy-arc.cjs --network arc"
+    "deploy:arc": "hardhat run scripts/deploy-arc.cjs --network arc",
+    "deploy:arc:v2": "hardhat run scripts/deploy-arc-v2.cjs --network arc"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

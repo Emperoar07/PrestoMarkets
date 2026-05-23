@@ -4,7 +4,7 @@ export type ResolutionMode = 'Human resolver' | 'Community resolver' | 'Agent as
 export type MarketCreatedByType = 'user' | 'admin' | 'agent';
 
 export type MarketOutcome = {
-  label: 'YES' | 'NO';
+  label: string;
   odds: number;
   liquidity: string;
 };

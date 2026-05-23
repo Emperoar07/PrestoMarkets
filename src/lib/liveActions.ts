@@ -11,7 +11,7 @@ import {
   type Hex,
 } from 'viem';
 import { getArcConfig, getArcChainId } from './arcConfig';
-import { erc20Abi, prestoMarketAbi, prestoMarketFactoryAbi } from './contracts';
+import { erc20Abi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { getStoredConnectedWallet } from './walletProvider';
 import { buildMarketMetadataURI, type AgentMarketMetadata } from './marketMetadata';
 import type { MarketType } from './markets';
@@ -108,8 +108,20 @@ function requireConfig() {
   return {
     ...config,
     factoryAddress: config.factoryAddress as Address,
+    multiOutcomeFactoryAddress: isAddress(config.multiOutcomeFactoryAddress) ? config.multiOutcomeFactoryAddress as Address : undefined,
     usdcAddress: config.usdcAddress as Address,
   };
+}
+
+function cleanOutcomeOptions(input: CreateLiveMarketInput) {
+  const cleaned = (input.outcomeOptions ?? [])
+    .map((option) => option.trim())
+    .filter(Boolean);
+  return cleaned.length >= 2 ? cleaned : ['YES', 'NO'];
+}
+
+function shouldUseMultiOutcomeFactory(input: CreateLiveMarketInput) {
+  return cleanOutcomeOptions(input).length > 2;
 }
 
 function getMarketKind(type: MarketType) {
@@ -216,22 +228,37 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
       }
     }
 
+    const outcomeOptions = cleanOutcomeOptions(input);
+    const useMultiOutcome = shouldUseMultiOutcomeFactory(input);
+    const factoryAddress = useMultiOutcome ? config.multiOutcomeFactoryAddress : config.factoryAddress;
+    const factoryAbi = useMultiOutcome ? prestoMultiOutcomeMarketFactoryAbi : prestoMarketFactoryAbi;
+
+    if (!factoryAddress) {
+      throw new Error('Set NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS before launching poll markets.');
+    }
+
     const hash = await walletClient.writeContract({
       account,
-      address: config.factoryAddress,
-      abi: prestoMarketFactoryAbi,
+      address: factoryAddress,
+      abi: factoryAbi,
       functionName: 'createMarket',
-      args: [
+      args: useMultiOutcome ? [
         input.resolver as Address,
         getCloseTimestamp(input.closeDate),
-        buildMarketMetadataURI(input),
+        buildMarketMetadataURI({ ...input, outcomeOptions }),
+        getMarketKind(input.type),
+        outcomeOptions.length,
+      ] : [
+        input.resolver as Address,
+        getCloseTimestamp(input.closeDate),
+        buildMarketMetadataURI({ ...input, outcomeOptions }),
         getMarketKind(input.type),
       ],
     });
 
     const receipt = await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
     const created = parseEventLogs({
-      abi: prestoMarketFactoryAbi,
+      abi: factoryAbi,
       eventName: 'MarketCreated',
       logs: receipt.logs,
     })[0];
@@ -243,7 +270,7 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
   }
 }
 
-export async function buyLiveShares(input: { marketAddress: string; outcome: 'YES' | 'NO'; amount: number; payWith?: StableSymbol }): Promise<LiveActionResult> {
+export async function buyLiveShares(input: { marketAddress: string; outcome: string; outcomeIndex?: number; amount: number; payWith?: StableSymbol }): Promise<LiveActionResult> {
   if (isCircleWallet()) {
     if (input.payWith && input.payWith !== 'USDC') {
       return { ok: false, message: 'Paying with EURC requires an external EVM wallet. Circle app wallets sign through PIN per call and cannot batch a swap.' };
@@ -317,7 +344,7 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: 'YE
       address: marketAddress,
       abi: prestoMarketAbi,
       functionName: 'buy',
-      args: [input.outcome === 'YES' ? 0 : 1, amount],
+      args: [input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1), amount],
     });
 
     await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
@@ -367,7 +394,7 @@ export async function addLiveLiquidity(input: { marketAddress: string; amount: n
   };
 }
 
-export async function resolveLiveMarket(input: { marketAddress: string; outcome: 'YES' | 'NO'; resolutionURI: string }): Promise<LiveActionResult> {
+export async function resolveLiveMarket(input: { marketAddress: string; outcome: string; outcomeIndex?: number; resolutionURI: string }): Promise<LiveActionResult> {
   if (isCircleWallet()) return resolveCircleMarket(input);
   try {
     const { account, publicClient, walletClient } = await getClients();
@@ -381,7 +408,7 @@ export async function resolveLiveMarket(input: { marketAddress: string; outcome:
       address: input.marketAddress as Address,
       abi: prestoMarketAbi,
       functionName: 'resolve',
-      args: [input.outcome === 'YES' ? 0 : 1, input.resolutionURI],
+      args: [input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1), input.resolutionURI],
     });
 
     await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));

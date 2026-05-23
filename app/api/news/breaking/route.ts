@@ -9,7 +9,9 @@
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
-export const revalidate = 86400;
+// 8h fetch-cache for upstream RSS calls. Combined with the Cache-Control header below,
+// the ranking refreshes ~3x per day instead of once.
+export const revalidate = 28800;
 
 type NewsItem = {
   title: string;
@@ -17,6 +19,8 @@ type NewsItem = {
   source: string;
   publishedAt: string;
   excerpt?: string;
+  /** How many outlets currently covering this story. Higher = trending. */
+  coverageCount?: number;
 };
 
 type Feed = {
@@ -74,22 +78,73 @@ async function fetchFeed(feed: Feed): Promise<{ items: NewsItem[]; weight: numbe
   }
 }
 
+// Loose title fingerprint for cross-outlet clustering. We don't want exact-title matches
+// (each outlet rewords) — we want "is this the same story?". Tokenize, drop stopwords,
+// keep the 4 strongest noun-like tokens (length >= 4), sort, hash. Two articles about the
+// same event from two outlets will share most of these tokens and produce the same key.
+const STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'from', 'this', 'that', 'has', 'have', 'was', 'were',
+  'are', 'will', 'would', 'could', 'should', 'into', 'over', 'after', 'before', 'about',
+  'amid', 'amidst', 'against', 'between', 'their', 'they', 'them', 'these', 'those',
+  'said', 'says', 'amid', 'while', 'when', 'where', 'what', 'which', 'how', 'why',
+]);
+
+function clusterKey(title: string): string {
+  const tokens = title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length >= 4 && !STOPWORDS.has(t));
+  const top = Array.from(new Set(tokens)).slice(0, 4).sort();
+  return top.join(' ');
+}
+
+type ClusterEntry = { item: NewsItem; weight: number };
+
 function rank(items: { item: NewsItem; weight: number }[]): NewsItem[] {
   const now = Date.now();
-  const scored = items.map(({ item, weight }) => {
-    const ageHours = Math.max(0, (now - Date.parse(item.publishedAt)) / 3_600_000);
+
+  // Cluster items that look like the same story across outlets.
+  const clusters = new Map<string, ClusterEntry[]>();
+  for (const entry of items) {
+    const key = clusterKey(entry.item.title);
+    if (!key) continue;
+    if (!clusters.has(key)) clusters.set(key, []);
+    clusters.get(key)!.push(entry);
+  }
+
+  // Score each cluster by:
+  //   recency: exp(-ageHours / 24) on the freshest member
+  //   momentum: sqrt(coverage count across outlets) — multiple outlets = trending
+  //   source weight: best source weight in the cluster
+  // Then pick the freshest member as the cluster's representative.
+  const scored = Array.from(clusters.values()).map((cluster) => {
+    let bestRepresentative = cluster[0];
+    let freshestAt = Date.parse(cluster[0].item.publishedAt);
+    let bestWeight = cluster[0].weight;
+    for (const entry of cluster) {
+      const t = Date.parse(entry.item.publishedAt);
+      if (t > freshestAt) {
+        freshestAt = t;
+        bestRepresentative = entry;
+      }
+      if (entry.weight > bestWeight) bestWeight = entry.weight;
+    }
+    const ageHours = Math.max(0, (now - freshestAt) / 3_600_000);
     const recency = Math.exp(-ageHours / 24);
-    return { item, score: weight * recency };
+    const momentum = Math.sqrt(cluster.length);
+    return {
+      item: bestRepresentative.item,
+      score: bestWeight * recency * momentum,
+      coverageCount: cluster.length,
+    };
   });
+
   scored.sort((a, b) => b.score - a.score);
 
-  const seen = new Set<string>();
   const out: NewsItem[] = [];
-  for (const { item } of scored) {
-    const key = item.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 60);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(item);
+  for (const { item, coverageCount } of scored) {
+    out.push({ ...item, coverageCount });
     if (out.length >= 15) break;
   }
   return out;
@@ -104,7 +159,9 @@ export async function GET() {
     { items: ranked, generatedAt: new Date().toISOString() },
     {
       headers: {
-        'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=21600',
+        // Cap refreshes at ~3 per day: 24h / 8h = 3. SWR keeps the previous ranking
+        // visible while a new one rebuilds, so users never see "loading".
+        'Cache-Control': 'public, s-maxage=28800, stale-while-revalidate=86400',
       },
     },
   );

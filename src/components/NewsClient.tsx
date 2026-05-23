@@ -9,6 +9,8 @@ type NewsItem = {
   source: string;
   publishedAt: string;
   excerpt?: string;
+  /** Number of outlets covering this story; high = trending. */
+  coverageCount?: number;
 };
 
 function relativeTime(iso: string): string {
@@ -73,6 +75,12 @@ export function NewsClient() {
                       <span className="text-cyan/80">{item.source}</span>
                       <span className="opacity-50">·</span>
                       <span>{relativeTime(item.publishedAt)}</span>
+                      {(item.coverageCount ?? 0) >= 3 ? (
+                        <>
+                          <span className="opacity-50">·</span>
+                          <span className="text-amber-300">trending · {item.coverageCount} outlets</span>
+                        </>
+                      ) : null}
                     </p>
                   </div>
                 </a>

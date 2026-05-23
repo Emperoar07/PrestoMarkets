@@ -32,13 +32,13 @@ import type { PortfolioActivity, Position } from './portfolio';
 import type { StableSymbol } from './swap';
 import { readPayWith, writePayWith } from './payWithStore';
 
-type OutcomeLabel = 'YES' | 'NO';
+type OutcomeLabel = string;
 
 export type AppMarket = Market & {
   source: 'onchain';
   closeDate?: string;
   createdAt: string;
-  winningOutcomeLabel?: 'YES' | 'NO';
+  winningOutcomeLabel?: string;
   resolutionURI?: string;
 };
 
@@ -69,9 +69,9 @@ type AppStateValue = {
   refreshMarkets: () => Promise<void>;
   refreshAccountPortfolio: () => Promise<void>;
   createMarket: (input: CreateMarketInput) => Promise<LiveActionResult>;
-  placeTrade: (input: { marketId: string; outcome: OutcomeLabel; amount: number; payWith?: StableSymbol }) => Promise<LiveActionResult>;
+  placeTrade: (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; amount: number; payWith?: StableSymbol }) => Promise<LiveActionResult>;
   addLiquidity: (input: { marketId: string; amount: number; payWith?: StableSymbol }) => Promise<LiveActionResult>;
-  resolveMarket: (input: { marketId: string; outcome: OutcomeLabel; resolutionURI: string }) => Promise<LiveActionResult>;
+  resolveMarket: (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; resolutionURI: string }) => Promise<LiveActionResult>;
   cancelMarket: (marketId: string) => Promise<LiveActionResult>;
   claimMarket: (marketId: string) => Promise<LiveActionResult>;
   refundMarket: (marketId: string) => Promise<LiveActionResult>;
@@ -158,10 +158,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return result;
   }, [refreshMarkets, refreshAccountPortfolio]);
 
-  const placeTrade = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; amount: number; payWith?: StableSymbol }) => {
+  const placeTrade = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; amount: number; payWith?: StableSymbol }) => {
     const result = await buyLiveShares({
       marketAddress: input.marketId,
       outcome: input.outcome,
+      outcomeIndex: input.outcomeIndex,
       amount: input.amount,
       payWith: input.payWith,
     });
@@ -201,10 +202,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return result;
   }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
 
-  const resolveMarket = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; resolutionURI: string }) => {
+  const resolveMarket = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; resolutionURI: string }) => {
     const result = await resolveLiveMarket({
       marketAddress: input.marketId,
       outcome: input.outcome,
+      outcomeIndex: input.outcomeIndex,
       resolutionURI: input.resolutionURI,
     });
     if (result.ok) {

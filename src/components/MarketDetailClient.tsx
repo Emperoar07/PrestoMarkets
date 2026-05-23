@@ -24,7 +24,7 @@ const quickAmounts = [10, 25, 100, 500];
 export function MarketDetailClient({ marketId }: { marketId: string }) {
   const { accountPreviews, connectedWallet, getMarket, placeTrade, addLiquidity, resolveMarket, cancelMarket, claimMarket, refundMarket } = useAppState();
   const market = getMarket(marketId);
-  const [selectedOutcome, setSelectedOutcome] = useState<'YES' | 'NO'>('YES');
+  const [selectedOutcome, setSelectedOutcome] = useState('YES');
   const [tradeMode, setTradeMode] = useState<'buy' | 'liquidity'>('buy');
   const [orderMode, setOrderMode] = useState<'market' | 'limit'>('market');
   const [amount, setAmount] = useState('25');
@@ -52,6 +52,13 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     if (stored) setPayWith(stored);
   }, [connectedWallet?.address, marketId]);
 
+  useEffect(() => {
+    if (!market?.outcomes.length) return;
+    if (!market.outcomes.some((outcome) => outcome.label === selectedOutcome)) {
+      setSelectedOutcome(market.outcomes[0].label);
+    }
+  }, [market?.id, market?.outcomes, selectedOutcome]);
+
   function choosePayWith(symbol: StableSymbol) {
     setPayWith(symbol);
     writePayWith(connectedWallet?.address, marketId, symbol);
@@ -74,7 +81,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
   const yesOutcome = market.outcomes.find((o) => o.label === 'YES') ?? market.outcomes[0];
   const noOutcome = market.outcomes.find((o) => o.label === 'NO') ?? market.outcomes[1] ?? yesOutcome;
-  const activeOutcome = selectedOutcome === 'YES' ? yesOutcome : noOutcome;
+  const activeOutcomeIndex = Math.max(0, market.outcomes.findIndex((outcome) => outcome.label === selectedOutcome));
+  const activeOutcome = market.outcomes[activeOutcomeIndex] ?? yesOutcome;
+  const isBinaryMarket = market.outcomes.length <= 2;
   const amountValue = Number(amount) || 0;
   const estimatedShares = amountValue > 0 ? amountValue : 0;
   const potentialReturn = estimatedShares;
@@ -259,12 +268,12 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   {market.pollOptions.map((option, index) => (
                     <div key={`${option}-${index}`} className="flex items-center justify-between rounded-[12px] border border-white/[0.06] bg-[#0d1520] px-4 py-3">
                       <span className="font-bold text-white">{option}</span>
-                      <span className="text-sm font-black text-muted">{index < 2 ? `${market.outcomes[index]?.odds ?? 0}%` : 'Display only'}</span>
+                      <span className="text-sm font-black text-muted">{market.outcomes[index]?.odds ?? 0}%</span>
                     </div>
                   ))}
                 </div>
                 <p className="mt-3 text-xs leading-5 text-muted">
-                  This market was authored with poll-style metadata. The current Arc V1 contract still settles and trades the binary YES / NO rails.
+                  This market uses poll-style outcome metadata. V2 markets trade and resolve these outcomes directly when the multi-outcome factory is configured.
                 </p>
               </div>
             ) : null}
@@ -447,6 +456,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
               ) : null}
 
+              {isBinaryMarket ? (
+                <>
               {/* YES / NO toggle */}
               <div className={`grid grid-cols-2 gap-2 ${tradeMode === 'liquidity' ? 'opacity-70' : ''}`}>
                 <button
@@ -480,6 +491,36 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   </p>
                 </button>
               </div>
+
+                </>
+              ) : (
+                <div className={`grid grid-cols-1 gap-2 ${tradeMode === 'liquidity' ? 'opacity-70' : ''}`}>
+                  {market.outcomes.map((outcome, index) => {
+                    const active = selectedOutcome === outcome.label;
+                    const cyanSide = index === 0;
+                    return (
+                      <button
+                        key={`${outcome.label}-${index}`}
+                        type="button"
+                        onClick={() => setSelectedOutcome(outcome.label)}
+                        disabled={tradeMode === 'liquidity'}
+                        className={`rounded-[12px] border px-4 py-4 text-left transition-all ${
+                          active
+                            ? cyanSide
+                              ? 'border-cyan/40 bg-cyan/10 shadow-[0_0_16px_-4px_rgba(37,192,244,0.3)]'
+                              : 'border-red-400/40 bg-red-400/10 shadow-[0_0_16px_-4px_rgba(248,113,113,0.2)]'
+                            : 'border-white/[0.06] bg-[#0f172a] hover:border-white/10'
+                        }`}
+                      >
+                        <p className="truncate text-xs font-black text-muted">Buy {outcome.label}</p>
+                        <p className={`mt-1 text-2xl font-black ${active ? (cyanSide ? 'text-cyan' : 'text-red-300') : 'text-white'}`}>
+                          {outcome.odds}Â¢
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Amount input */}
               <div className="mt-5">
@@ -573,7 +614,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   <span className="text-muted">{tradeMode === 'liquidity' ? 'Liquidity method' : 'Signal price'}</span>
                   <span className="font-black text-white">
                     {tradeMode === 'liquidity'
-                      ? 'Balanced YES + NO'
+                      ? isBinaryMarket ? 'Balanced YES + NO' : 'Balanced first two outcomes'
                       : isLimitOrder ? `${limitPrice || '0'}¢ limit` : `${activeOutcome.odds}¢ per share`}
                   </span>
                 </div>
@@ -581,7 +622,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   <span className="text-muted">Total shares</span>
                   <span className="font-black text-white">
                     {tradeMode === 'liquidity'
-                      ? liquiditySideAmount > 0 ? `${liquiditySideAmount.toFixed(2)} YES + ${liquiditySideAmount.toFixed(2)} NO` : '—'
+                      ? liquiditySideAmount > 0 ? `${liquiditySideAmount.toFixed(2)} ${market.outcomes[0]?.label ?? 'YES'} + ${liquiditySideAmount.toFixed(2)} ${market.outcomes[1]?.label ?? 'NO'}` : '—'
                       : estimatedShares > 0 ? estimatedShares.toFixed(2) : '—'}
                   </span>
                 </div>
@@ -595,7 +636,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
                 {tradeMode === 'liquidity' ? (
                   <p className="rounded-[10px] border border-cyan/15 bg-cyan/[0.05] px-3 py-2 text-xs leading-5 text-muted">
-                    The app splits your amount evenly into YES and NO shares so the market has balanced starting depth.
+                    The app splits your amount evenly into the first two outcomes so the market has balanced starting depth.
                   </p>
                 ) : null}
               </div>
@@ -606,11 +647,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 onClick={() => void runAction(() => (
                   tradeMode === 'liquidity'
                     ? addLiquidity({ marketId, amount: amountValue, payWith })
-                    : placeTrade({ marketId, outcome: selectedOutcome, amount: amountValue, payWith })
+                    : placeTrade({ marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, amount: amountValue, payWith })
                 ))}
                 disabled={!canTrade || isSubmitting || amountValue <= 0 || isLimitOrder}
                 className={`mt-5 w-full rounded-[12px] py-4 font-black tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
-                  tradeMode === 'liquidity' || selectedOutcome === 'YES'
+                  tradeMode === 'liquidity' || activeOutcomeIndex === 0
                     ? 'bg-cyan text-ink hover:opacity-90'
                     : 'bg-red-400 text-white hover:opacity-90'
                 }`}
@@ -854,22 +895,21 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void runAction(() => resolveMarket({ marketId, outcome: 'YES', resolutionURI }))}
-                        disabled={isSubmitting || !canSubmitResolution}
-                        className="rounded-[10px] bg-cyan/10 py-2.5 text-xs font-black text-cyan ring-1 ring-cyan/25 transition-all hover:bg-cyan/15 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Resolve YES
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void runAction(() => resolveMarket({ marketId, outcome: 'NO', resolutionURI }))}
-                        disabled={isSubmitting || !canSubmitResolution}
-                        className="rounded-[10px] bg-red-400/10 py-2.5 text-xs font-black text-red-300 ring-1 ring-red-400/20 transition-all hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Resolve NO
-                      </button>
+                      {market.outcomes.map((outcome, index) => (
+                        <button
+                          key={`resolve-${outcome.label}-${index}`}
+                          type="button"
+                          onClick={() => void runAction(() => resolveMarket({ marketId, outcome: outcome.label, outcomeIndex: index, resolutionURI }))}
+                          disabled={isSubmitting || !canSubmitResolution}
+                          className={`rounded-[10px] py-2.5 text-xs font-black ring-1 transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+                            index === 0
+                              ? 'bg-cyan/10 text-cyan ring-cyan/25 hover:bg-cyan/15'
+                              : 'bg-red-400/10 text-red-300 ring-red-400/20 hover:bg-red-400/15'
+                          }`}
+                        >
+                          Resolve {outcome.label}
+                        </button>
+                      ))}
                     </div>
                     <button
                       type="button"
@@ -978,4 +1018,3 @@ function MarketNewsTieIn({ trendUrl, trendSource, marketTitle }: { trendUrl: str
     </section>
   );
 }
-

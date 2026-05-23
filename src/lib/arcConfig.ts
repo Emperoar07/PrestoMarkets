@@ -14,6 +14,7 @@ export function getArcConfig() {
   const usdcAddress = publicEnv(process.env.NEXT_PUBLIC_USDC_ADDRESS);
   const eurcAddress = publicEnv(process.env.NEXT_PUBLIC_EURC_ADDRESS) || '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
   const factoryAddress = publicEnv(process.env.NEXT_PUBLIC_MARKET_FACTORY_ADDRESS);
+  const multiOutcomeFactoryAddress = publicEnv(process.env.NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS);
 
   return {
     chainId,
@@ -21,6 +22,7 @@ export function getArcConfig() {
     usdcAddress,
     eurcAddress,
     factoryAddress,
+    multiOutcomeFactoryAddress,
     circlePaymasterEnabled: process.env.NEXT_PUBLIC_CIRCLE_PAYMASTER_ENABLED === 'true',
     circleWalletsEnabled: process.env.NEXT_PUBLIC_CIRCLE_WALLETS_ENABLED === 'true',
     circleBridgeKitEnabled: process.env.NEXT_PUBLIC_CIRCLE_BRIDGE_KIT_ENABLED === 'true',
@@ -52,6 +54,11 @@ export function getArcReadinessItems(): ArcReadinessItem[] {
       label: 'Market factory',
       value: config.factoryAddress || 'Set NEXT_PUBLIC_MARKET_FACTORY_ADDRESS',
       ready: config.factoryAddress.length > 0,
+    },
+    {
+      label: 'Multi-outcome factory',
+      value: config.multiOutcomeFactoryAddress || 'Set NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS',
+      ready: config.multiOutcomeFactoryAddress.length > 0,
     },
   ];
 }

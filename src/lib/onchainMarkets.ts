@@ -1,6 +1,6 @@
 import { createPublicClient, formatUnits, http, type Address } from 'viem';
 import { getArcConfig, getArcChainId } from './arcConfig';
-import { prestoMarketAbi, prestoMarketFactoryAbi } from './contracts';
+import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { isSafeResolutionUri, parseMarketMetadata } from './marketMetadata';
 import type { AppMarket } from './appState';
 import type { MarketStatus, MarketType, ResolutionMode } from './markets';
@@ -76,15 +76,10 @@ function formatOnchainUsd(value: bigint) {
   return `$${amount.toFixed(0)}`;
 }
 
-function getOdds(yesShares: bigint, noShares: bigint) {
-  const total = yesShares + noShares;
-
-  if (total === BigInt(0)) {
-    return { yes: 50, no: 50 };
-  }
-
-  const yes = Math.round(Number((yesShares * BigInt(100)) / total));
-  return { yes, no: 100 - yes };
+function getOutcomeOdds(shares: bigint[]) {
+  const total = shares.reduce((sum, item) => sum + item, BigInt(0));
+  if (total === BigInt(0)) return shares.map(() => Math.round(100 / Math.max(shares.length, 1)));
+  return shares.map((item) => Math.round(Number((item * BigInt(100)) / total)));
 }
 
 async function readMarket(client: ReturnType<typeof createPublicClient>, address: Address, index: number): Promise<AppMarket> {
@@ -100,8 +95,6 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     totalCollateral,
     resolvedCollateral,
     resolutionURI,
-    yesShares,
-    noShares,
   ] = await Promise.all([
     client.readContract({ address, abi: prestoMarketAbi, functionName: 'creator' }),
     client.readContract({ address, abi: prestoMarketAbi, functionName: 'resolver' }),
@@ -114,17 +107,34 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     client.readContract({ address, abi: prestoMarketAbi, functionName: 'totalCollateral' }),
     client.readContract({ address, abi: prestoMarketAbi, functionName: 'resolvedCollateral' }),
     client.readContract({ address, abi: prestoMarketAbi, functionName: 'resolutionURI' }),
-    client.readContract({ address, abi: prestoMarketAbi, functionName: 'totalShares', args: [0] }),
-    client.readContract({ address, abi: prestoMarketAbi, functionName: 'totalShares', args: [1] }),
   ]);
+
+  const metadata = parseMarketMetadata(metadataURI);
+  const outcomeLabels = metadata?.outcomeOptions && metadata.outcomeOptions.length >= 2
+    ? metadata.outcomeOptions
+    : ['YES', 'NO'];
+  const outcomeCount = await client
+    .readContract({ address, abi: prestoMarketAbi, functionName: 'outcomeCount' })
+    .then((value) => Number(value))
+    .catch(() => outcomeLabels.length > 2 ? outcomeLabels.length : 2);
+  const cappedOutcomeCount = Math.max(2, Math.min(outcomeCount, 12));
+  const labels = Array.from({ length: cappedOutcomeCount }, (_, i) => outcomeLabels[i] ?? `Outcome ${i + 1}`);
+  const shares = await Promise.all(
+    labels.map((_, outcomeIndex) => client.readContract({
+      address,
+      abi: prestoMarketAbi,
+      functionName: 'totalShares',
+      args: [outcomeIndex],
+    })),
+  );
 
   const kind = Number(marketKind);
   const status = getStatus(Number(state), closeTime);
-  const odds = getOdds(yesShares, noShares);
+  const odds = getOutcomeOdds(shares);
   const marketType = getMarketType(kind);
   const collateralValue = status === 'Resolved' ? resolvedCollateral : totalCollateral;
   const titleSource = metadataURI.trim().length > 0 ? metadataURI : `Market ${index + 1}`;
-  const metadata = parseMarketMetadata(metadataURI);
+  const winningLabel = labels[Number(winningOutcome)] ?? `Outcome ${Number(winningOutcome) + 1}`;
 
   return {
     id: address.toLowerCase(),
@@ -132,7 +142,7 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     title: metadata?.name || `Arc market ${index + 1}`,
     description: metadata?.description || `Onchain ${marketType.toLowerCase()} market created from metadata ${titleSource}.`,
     imageURI: metadata?.imageURI || metadata?.image,
-    pollOptions: metadata?.outcomeOptions,
+    pollOptions: labels.length > 2 ? labels : metadata?.outcomeOptions,
     category: metadata?.categories?.[0] || metadata?.category || 'Onchain',
     categories: metadata?.categories && metadata.categories.length > 0
       ? metadata.categories
@@ -148,11 +158,11 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     resolutionMode: metadata?.resolutionMode || getResolutionMode(kind),
     sourceOfTruth: metadata?.sourceOfTruth || metadataURI || 'Metadata URI was not set at creation.',
     rules: resolutionURI && isSafeResolutionUri(resolutionURI)
-      ? `Resolved with evidence: ${resolutionURI}. Winning outcome: ${winningOutcome === 0 ? 'YES' : 'NO'}.`
+      ? `Resolved with evidence: ${resolutionURI}. Winning outcome: ${winningLabel}.`
       : resolutionURI
-        ? `Resolved. Winning outcome: ${winningOutcome === 0 ? 'YES' : 'NO'}. Evidence URI was rejected as unsafe.`
+        ? `Resolved. Winning outcome: ${winningLabel}. Evidence URI was rejected as unsafe.`
         : metadata?.rules || 'Rules live in the market metadata URI. Resolver evidence is published after settlement.',
-    winningOutcomeLabel: status === 'Resolved' ? (winningOutcome === 0 ? 'YES' : 'NO') : undefined,
+    winningOutcomeLabel: status === 'Resolved' ? winningLabel : undefined,
     resolutionURI: isSafeResolutionUri(resolutionURI) ? resolutionURI : undefined,
     createdBy: truncateAddress(creator),
     createdByType: metadata?.createdByType,
@@ -167,13 +177,16 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     momentumScore: metadata?.momentumScore,
     safetyScore: metadata?.safetyScore,
     feeMode: Number(protocolFeeBps) > 0 ? `${protocolFeeBps} bps protocol fee` : 'No protocol fee',
-    outcomes: [
-      { label: 'YES', odds: odds.yes, liquidity: formatOnchainUsd(yesShares) },
-      { label: 'NO', odds: odds.no, liquidity: formatOnchainUsd(noShares) },
-    ],
+    outcomes: labels.map((label, outcomeIndex) => ({
+      label,
+      odds: odds[outcomeIndex] ?? 0,
+      liquidity: formatOnchainUsd(shares[outcomeIndex] ?? BigInt(0)),
+    })),
     activity: [
-      { label: 'YES shares', value: formatOnchainUsd(yesShares) },
-      { label: 'NO shares', value: formatOnchainUsd(noShares) },
+      ...labels.slice(0, 4).map((label, outcomeIndex) => ({
+        label: `${label} shares`,
+        value: formatOnchainUsd(shares[outcomeIndex] ?? BigInt(0)),
+      })),
       { label: 'Collateral', value: formatOnchainUsd(totalCollateral) },
     ],
     source: 'onchain',
@@ -185,7 +198,7 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
 export async function fetchOnchainMarkets() {
   const config = getArcConfig();
 
-  if (!config.rpcUrl || !config.factoryAddress) {
+  if (!config.rpcUrl || (!config.factoryAddress && !config.multiOutcomeFactoryAddress)) {
     return [];
   }
 
@@ -202,28 +215,34 @@ export async function fetchOnchainMarkets() {
     transport: http(config.rpcUrl),
   });
 
-  const factoryAddress = config.factoryAddress as Address;
-  const marketCount = await withRetry(() => client.readContract({
-    address: factoryAddress,
-    abi: prestoMarketFactoryAbi,
-    functionName: 'marketCount',
-  }));
-
-  const count = Math.min(Number(marketCount), MAX_MARKETS);
-  const indices = Array.from({ length: count }, (_, i) => i);
+  const factories = [
+    config.factoryAddress ? { address: config.factoryAddress as Address, abi: prestoMarketFactoryAbi } : null,
+    config.multiOutcomeFactoryAddress ? { address: config.multiOutcomeFactoryAddress as Address, abi: prestoMultiOutcomeMarketFactoryAbi } : null,
+  ].filter(Boolean) as { address: Address; abi: typeof prestoMarketFactoryAbi | typeof prestoMultiOutcomeMarketFactoryAbi }[];
   const marketAddresses: Address[] = [];
 
-  for (let i = 0; i < indices.length; i += MARKET_BATCH_SIZE) {
-    const batch = indices.slice(i, i + MARKET_BATCH_SIZE);
-    const batchAddresses = await Promise.all(
-      batch.map((index) => withRetry(() => client.readContract({
-        address: factoryAddress,
-        abi: prestoMarketFactoryAbi,
-        functionName: 'markets',
-        args: [BigInt(index)],
-      }))),
-    );
-    marketAddresses.push(...batchAddresses);
+  for (const factory of factories) {
+    const marketCount = await withRetry(() => client.readContract({
+      address: factory.address,
+      abi: factory.abi,
+      functionName: 'marketCount',
+    }));
+
+    const count = Math.min(Number(marketCount), MAX_MARKETS);
+    const indices = Array.from({ length: count }, (_, i) => i);
+
+    for (let i = 0; i < indices.length; i += MARKET_BATCH_SIZE) {
+      const batch = indices.slice(i, i + MARKET_BATCH_SIZE);
+      const batchAddresses = await Promise.all(
+        batch.map((index) => withRetry(() => client.readContract({
+          address: factory.address,
+          abi: factory.abi,
+          functionName: 'markets',
+          args: [BigInt(index)],
+        }))),
+      );
+      marketAddresses.push(...batchAddresses);
+    }
   }
 
   const markets: AppMarket[] = [];

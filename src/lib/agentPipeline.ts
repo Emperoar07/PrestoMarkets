@@ -11,6 +11,7 @@
 import Groq from 'groq-sdk';
 import { agentCreateMarket } from './agentWallet';
 import { callLlmJson, extractJsonObject } from './llmFallback';
+import { AGENT_PLATFORM_CONTEXT } from './agentContext';
 import { fetchOnchainMarkets } from './onchainMarkets';
 import type { CreateLiveMarketInput } from './liveActions';
 import type { AgentMarketMetadata } from './marketMetadata';
@@ -584,6 +585,8 @@ type GroqClassification = {
   momentumScore: number;
   category: string;
   categories?: string[];
+  /** Suggested market type the drafter should target. The drafter is free to override. */
+  suggestedMarketType?: 'Prediction' | 'Opinion' | 'Opportunity';
   reason: string;
 };
 
@@ -593,31 +596,45 @@ async function classifyWithGroq(trend: TrendItem): Promise<GroqClassification> {
 
   const groq = new Groq({ apiKey });
 
-  const prompt = `You are a prediction market analyst. Evaluate this topic for market creation.
+  const prompt = `${AGENT_PLATFORM_CONTEXT}
+
+---
+
+You are the classifier stage of the pipeline. Evaluate this trend for market creation.
 
 Topic: "${trend.topic}"
 Context: "${trend.query}"
+Source: "${trend.source}"
 
-A good prediction market topic:
-- Has a clear YES/NO binary outcome
-- Is resolvable within 7–90 days using public sources
-- Has measurable stakes (crypto price, regulatory decision, product launch, election, etc.)
+A good market topic:
+- Has a clear binary outcome (YES/NO) OR a small set of discrete outcomes (poll-style)
+- Is resolvable within 7-90 days from a verifiable public source
+- Has measurable stakes (price level, regulatory decision, launch, election, sports result)
 - Is NOT defamatory, hate speech, or about personal harm
 
 Return JSON only:
 {
   "worthy": true/false,
-  "momentumScore": 0.0–1.0,
+  "momentumScore": 0.0-1.0,
   "category": "Crypto|BTC|ETH|SOL|POL|Sports|Football|Basketball|Tennis|DeFi|AI|Politics|Tech|Markets|Arc|Web3",
   "categories": ["primary", "secondary", "..."],
+  "suggestedMarketType": "Prediction" | "Opinion" | "Opportunity",
   "reason": "one sentence"
 }
 
-For "categories": return 1-4 tags from the same allowlist as "category". Use BTC, ETH, SOL,
-or POL for token-specific price markets. Use Football, Basketball, or Tennis for sport result
-markets. The first should
-equal "category". Add secondary tags only if they're genuinely relevant (e.g. a Bitcoin ETF
-ruling could be ["Crypto", "Markets", "Politics"]).`;
+categories: 1-4 tags from the allowlist. Use BTC/ETH/SOL/POL for token-specific price
+markets. Use Football/Basketball/Tennis for sport result markets. First entry equals
+"category". Add secondary tags only when genuinely relevant.
+
+suggestedMarketType — pick based on the topic nature:
+- "Prediction" — verifiable external event (price target, election result, launch date)
+- "Opinion" — community sentiment / preference (which protocol is better, will a proposal
+  be perceived as net-positive, will users prefer X over Y)
+- "Opportunity" — capital / builder allocation signals (will N devs join, will TVL hit X,
+  will an ecosystem attract this many users)
+DO NOT default to Prediction. If the topic is really about how people FEEL about something
+rather than what will HAPPEN, pick Opinion. If it's about future capital/builder flow,
+pick Opportunity.`;
 
   const completion = await groq.chat.completions.create({
     model: 'llama-3.3-70b-versatile',
@@ -751,32 +768,82 @@ function isDuplicateMarket(draft: GeminiDraft, trend: TrendItem, existingMarkets
   });
 }
 
-async function draftWithGemini(trend: TrendItem, category: string): Promise<GeminiDraft> {
+type DraftContext = {
+  /** Suggested market type from the classifier ("Prediction" | "Opinion" | "Opportunity"). */
+  suggestedType?: 'Prediction' | 'Opinion' | 'Opportunity';
+  /** Counts of the agent's existing active markets by type so the drafter can push diversity. */
+  mix?: { Prediction: number; Opinion: number; Opportunity: number };
+};
+
+async function draftWithGemini(trend: TrendItem, category: string, ctx: DraftContext = {}): Promise<GeminiDraft> {
   // Function name kept for git history; the model is whichever provider in the fallback
   // chain (Anthropic -> Groq -> OpenRouter -> Cerebras -> Together) responds first. Direct
   // Gemini was a single point of failure: free-tier quota on some Google Cloud projects
   // is allocated as 0, returning 429 'limit: 0' indefinitely.
   const now = new Date();
-  const closeDate30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const closeDate7 = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const isoDays = (d: number) => new Date(now.getTime() + d * 86_400_000).toISOString().split('T')[0];
+  const isoHours = (h: number) => new Date(now.getTime() + h * 3_600_000).toISOString().slice(0, 16);
+  // Today + tomorrow + future anchors so the model can pick a tight close for breaking
+  // news instead of always defaulting to 7 or 30 days.
+  const anchors = {
+    sixHours: isoHours(6),
+    today: isoHours(20),
+    tomorrow: isoDays(1),
+    threeDays: isoDays(3),
+    sevenDays: isoDays(7),
+    thirtyDays: isoDays(30),
+    ninetyDays: isoDays(90),
+  };
+  const mix = ctx.mix ?? { Prediction: 0, Opinion: 0, Opportunity: 0 };
+  const totalActive = mix.Prediction + mix.Opinion + mix.Opportunity;
+  const underrepresented = totalActive === 0
+    ? null
+    : (['Opinion', 'Opportunity', 'Prediction'] as const)
+        .map((t) => ({ t, share: mix[t] / totalActive }))
+        .sort((a, b) => a.share - b.share)[0].t;
 
-  const prompt = `You are a prediction market designer. Create a binary YES/NO market from this trend.
+  const prompt = `${AGENT_PLATFORM_CONTEXT}
+
+---
+
+You are the drafter stage. Create a market from this trend.
 
 Topic: "${trend.topic}"
 Context: "${trend.query}"
 Category: "${category}"
+Classifier suggested type: ${ctx.suggestedType ?? '(none — pick yourself)'}
+Current active-agent-market mix: Prediction ${mix.Prediction}, Opinion ${mix.Opinion}, Opportunity ${mix.Opportunity}${underrepresented ? ` — prefer ${underrepresented} unless the topic is genuinely a poor fit` : ''}
 
 Rules for a good market:
-- Title must be a clear question under 90 characters (binary YES/NO, OR a multi-option poll)
+- Title must be a clear question under 90 characters (binary YES/NO OR a multi-option poll)
 - Rules must define exactly when each outcome wins
 - Source of truth must be a specific verifiable public source
-- Close date should be ${closeDate7} for fast-moving news or ${closeDate30} for slower events
-- Type: "Prediction" for binary events, "Opinion" for community preference, "Opportunity" for opportunity sizing
 
-For most questions, leave "outcomeOptions" empty and the market defaults to YES/NO. When the
-question is naturally multi-choice (e.g. "Which of these will happen first?" or "Which candidate
-will win?"), return 3 to 6 short labels (max 40 chars each) in "outcomeOptions". Do not include
-YES/NO if you provide poll options.
+Close-date guidance — pick the SHORTEST horizon that still gives the source time to resolve.
+DO NOT default to 7 or 30 days; match the timeframe to the actual event:
+- Live sports fixture or game tonight: closeDate = ${anchors.today} (today, ~20:00)
+- News breaking right now that resolves within hours: closeDate = ${anchors.sixHours}
+- News that resolves tomorrow (decisions due next day, fixtures next day): ${anchors.tomorrow}
+- Multi-day story (legal ruling, vote, conference outcome): ${anchors.threeDays}
+- Weekly cycle (product launch, earnings, weekly fixtures): ${anchors.sevenDays}
+- Monthly cycle (regulator decisions, monthly metrics, mid-term forecasts): ${anchors.thirtyDays}
+- Long-horizon (quarterly, end-of-quarter price targets): up to ${anchors.ninetyDays}
+
+If the trend looks like a 24h news cycle, do NOT set a 30-day close. Pick today or tomorrow.
+
+Type guidance — REREAD the platform context above. Don't reflexively pick Prediction:
+- "Prediction" — externally verifiable factual outcome (price target, election result, launch date)
+- "Opinion" — community sentiment / preference (will users prefer X over Y, will a proposal be perceived as net-positive)
+- "Opportunity" — capital / builder allocation signals (will N devs join, will TVL hit X)
+
+If the classifier suggested Opinion or Opportunity, take that suggestion seriously unless the
+topic obviously fits a different type. If multiple agent markets are already the same type,
+prefer the underrepresented type to keep variety on the platform.
+
+For most binary questions, leave "outcomeOptions" empty (defaults to YES/NO). When the
+question is naturally multi-choice ("Which of these will happen first?", "Which candidate
+will win?"), return 3 to 6 short labels (max 40 chars each). Do not include YES/NO if you
+provide poll options.
 
 Return JSON only:
 {
@@ -919,10 +986,42 @@ const AGENT_PER_RUN_CAP = Math.max(1, Number(process.env.PRESTO_AGENT_PER_RUN_CA
 // pipeline more. Default 2 for safety while we're early.
 const AGENT_ACTIVE_MARKET_CAP = Math.max(0, Number(process.env.PRESTO_AGENT_ACTIVE_MARKET_CAP ?? 2));
 
+function countAgentMarketTypeMix(markets: AppMarket[]): { Prediction: number; Opinion: number; Opportunity: number } {
+  const out = { Prediction: 0, Opinion: 0, Opportunity: 0 };
+  for (const m of markets) {
+    if (m.createdByType !== 'agent') continue;
+    if (m.status !== 'Open' && m.status !== 'Closing soon') continue;
+    if (m.type === 'Prediction' || m.type === 'Opinion' || m.type === 'Opportunity') out[m.type] += 1;
+  }
+  return out;
+}
+
 function countActiveAgentMarkets(markets: AppMarket[]): number {
   return markets.filter((m) =>
     m.createdByType === 'agent' && (m.status === 'Open' || m.status === 'Closing soon')
   ).length;
+}
+
+// Minimum momentum the classifier must return for a trend to even reach the drafter.
+// Anything weaker is filtered out before we spend draft + safety budget.
+const MIN_MOMENTUM = 0.6;
+// Composite signal threshold for actually creating onchain. Even if a trend passes
+// the classifier and safety, we only create when it's a strong signal worth a market.
+// composite = momentum * safety.confidence
+const MIN_COMPOSITE_SIGNAL = 0.62;
+
+// Weighted-random pick from the top N candidates so we don't always favor the same
+// source ordering. Returns the original index of the picked candidate.
+function weightedRandomPick<T>(items: { item: T; weight: number }[]): T | null {
+  if (items.length === 0) return null;
+  const total = items.reduce((s, x) => s + Math.max(0, x.weight), 0);
+  if (total <= 0) return items[Math.floor(Math.random() * items.length)].item;
+  let roll = Math.random() * total;
+  for (const x of items) {
+    roll -= Math.max(0, x.weight);
+    if (roll <= 0) return x.item;
+  }
+  return items[items.length - 1].item;
 }
 
 export async function runAgentPipeline(): Promise<PipelineResult[]> {
@@ -930,7 +1029,8 @@ export async function runAgentPipeline(): Promise<PipelineResult[]> {
   const existingMarkets = await fetchOnchainMarkets().catch(() => []);
   const results: PipelineResult[] = [];
 
-  let activeAgentMarkets = countActiveAgentMarkets(existingMarkets);
+  const activeAgentMarkets = countActiveAgentMarkets(existingMarkets);
+  const typeMix = countAgentMarketTypeMix(existingMarkets);
   if (activeAgentMarkets >= AGENT_ACTIVE_MARKET_CAP) {
     return [{
       ok: false,
@@ -940,38 +1040,59 @@ export async function runAgentPipeline(): Promise<PipelineResult[]> {
     }];
   }
 
-  let createdThisRun = 0;
+  // Stage 2 first-pass: classify every trend so we can rank by signal strength globally.
+  // Cheap (Groq is fast + free) and lets us pick the BEST candidate instead of the first
+  // one that happens to pass.
+  type Scored = { trend: TrendItem; classification: GroqClassification };
+  const scored: Scored[] = [];
   for (const trend of trends) {
-    if (createdThisRun >= AGENT_PER_RUN_CAP) {
-      results.push({
-        ok: false,
-        topic: trend.topic,
-        stage: 'cap',
-        reason: `Per-run cap (${AGENT_PER_RUN_CAP}) reached. The agent only creates ${AGENT_PER_RUN_CAP} market per cron tick to avoid bursts; remaining trends carry over to the next run.`,
-      });
-      break;
-    }
-    if (activeAgentMarkets >= AGENT_ACTIVE_MARKET_CAP) {
-      results.push({
-        ok: false,
-        topic: trend.topic,
-        stage: 'cap',
-        reason: `Active-market cap (${AGENT_ACTIVE_MARKET_CAP}) reached during this run.`,
-      });
-      break;
-    }
     try {
-      // Stage 2: classify
       const classification = await classifyWithGroq(trend);
-      if (!classification.worthy || classification.momentumScore < 0.5) {
+      if (!classification.worthy || classification.momentumScore < MIN_MOMENTUM) {
         results.push({ ok: false, topic: trend.topic, stage: 'classify', reason: classification.reason });
         continue;
       }
+      scored.push({ trend, classification });
+    } catch (e) {
+      results.push({ ok: false, topic: trend.topic, stage: 'classify', reason: String(e) });
+    }
+  }
 
-      // Stage 3: draft
+  if (scored.length === 0) {
+    return [...results, {
+      ok: false,
+      topic: '(pipeline)',
+      stage: 'signal',
+      reason: `No trend cleared the momentum gate (>= ${MIN_MOMENTUM}). Skipping creation for this tick.`,
+    }];
+  }
+
+  // Sort by momentum desc, take the top half, then weighted-random pick by momentum so
+  // the same hot source doesn't always win. This is the "randomize when creating a new
+  // market" — same signal floor, but variety across runs.
+  scored.sort((a, b) => b.classification.momentumScore - a.classification.momentumScore);
+  const topPool = scored.slice(0, Math.max(3, Math.ceil(scored.length / 2)));
+
+  // Try candidates in pulled-from-pool order until one passes draft + safety + onchain.
+  // Per-run cap still applies so we create at most AGENT_PER_RUN_CAP markets per tick.
+  let createdThisRun = 0;
+  let liveActive = activeAgentMarkets;
+  const pool = [...topPool];
+
+  while (createdThisRun < AGENT_PER_RUN_CAP && liveActive < AGENT_ACTIVE_MARKET_CAP && pool.length > 0) {
+    const picked = weightedRandomPick(pool.map((s) => ({ item: s, weight: s.classification.momentumScore })));
+    if (!picked) break;
+    const idx = pool.indexOf(picked);
+    if (idx >= 0) pool.splice(idx, 1);
+    const { trend, classification } = picked;
+
+    try {
       let draft: GeminiDraft;
       try {
-        draft = await draftWithGemini(trend, classification.category);
+        draft = await draftWithGemini(trend, classification.category, {
+          suggestedType: classification.suggestedMarketType,
+          mix: typeMix,
+        });
       } catch (e) {
         results.push({ ok: false, topic: trend.topic, stage: 'draft', reason: String(e) });
         continue;
@@ -982,23 +1103,47 @@ export async function runAgentPipeline(): Promise<PipelineResult[]> {
         continue;
       }
 
-      // Stage 4: safety
       const safety = await safetyCheckWithHaiku(draft);
       if (!safety.pass || safety.confidence < CONFIDENCE_THRESHOLD) {
         results.push({ ok: false, topic: trend.topic, stage: 'safety', reason: safety.reason });
         continue;
       }
 
-      // Stage 5: onchain
+      // Composite signal gate: even past safety, only proceed if the trend was strong.
+      const composite = classification.momentumScore * safety.confidence;
+      if (composite < MIN_COMPOSITE_SIGNAL) {
+        results.push({
+          ok: false,
+          topic: trend.topic,
+          stage: 'signal',
+          reason: `Composite signal ${composite.toFixed(2)} below threshold ${MIN_COMPOSITE_SIGNAL}. Skipping weak market.`,
+        });
+        continue;
+      }
+
       const result = await createOnchain(draft, trend, classification, safety);
       results.push(result);
       if (result.ok) {
-        activeAgentMarkets += 1;
+        liveActive += 1;
         createdThisRun += 1;
+        // Reflect the new market in the type mix so subsequent picks (when per-run cap > 1)
+        // see the updated distribution.
+        if (draft.type === 'Prediction' || draft.type === 'Opinion' || draft.type === 'Opportunity') {
+          typeMix[draft.type] += 1;
+        }
       }
     } catch (e) {
       results.push({ ok: false, topic: trend.topic, stage: 'pipeline', reason: String(e) });
     }
+  }
+
+  if (createdThisRun === 0 && results.every((r) => !r.ok)) {
+    results.push({
+      ok: false,
+      topic: '(pipeline)',
+      stage: 'signal',
+      reason: 'Pool exhausted without a strong enough composite signal. Better to wait than ship a weak market.',
+    });
   }
 
   return results;

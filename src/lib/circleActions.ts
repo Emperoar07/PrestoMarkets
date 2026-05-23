@@ -4,7 +4,7 @@ import { buildMarketMetadataURI } from './marketMetadata';
 import { getCircleSession, refreshCircleSessionIfNeeded, type CircleSession } from './walletProvider';
 import { requestCircleConfirmation, type CircleConfirmDetails } from './circleConfirm';
 import { getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
-import { prestoMarketFactoryAbi } from './contracts';
+import { prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import type { CreateLiveMarketInput, LiveActionResult } from './liveActions';
 import type { MarketType } from './markets';
 
@@ -217,13 +217,24 @@ function requireArcConfig() {
   return config;
 }
 
+function cleanOutcomeOptions(input: CreateLiveMarketInput) {
+  const cleaned = (input.outcomeOptions ?? [])
+    .map((option) => option.trim())
+    .filter(Boolean);
+  return cleaned.length >= 2 ? cleaned : ['YES', 'NO'];
+}
+
+function shouldUseMultiOutcomeFactory(input: CreateLiveMarketInput) {
+  return cleanOutcomeOptions(input).length > 2;
+}
+
 function getMarketKind(type: MarketType): number {
   if (type === 'Opinion') return 1;
   if (type === 'Opportunity') return 2;
   return 0;
 }
 
-async function readCreatedMarketAddress(txHash: string): Promise<Address | undefined> {
+async function readCreatedMarketAddress(txHash: string, multiOutcome = false): Promise<Address | undefined> {
   const config = getArcConfig();
   if (!config.rpcUrl || !txHash) return undefined;
   const publicClient = createPublicClient({
@@ -237,7 +248,7 @@ async function readCreatedMarketAddress(txHash: string): Promise<Address | undef
   });
   const receipt = await publicClient.getTransactionReceipt({ hash: txHash as Hex });
   const created = parseEventLogs({
-    abi: prestoMarketFactoryAbi,
+    abi: multiOutcome ? prestoMultiOutcomeMarketFactoryAbi : prestoMarketFactoryAbi,
     eventName: 'MarketCreated',
     logs: receipt.logs,
   })[0];
@@ -284,15 +295,29 @@ export async function createCircleMarket(input: CreateLiveMarketInput): Promise<
     }
     const closeStamp = getCloseTimestamp(input.closeDate);
     const closeReadable = new Date(Number(closeStamp) * 1000).toLocaleString();
+    const outcomeOptions = cleanOutcomeOptions(input);
+    const useMultiOutcome = shouldUseMultiOutcomeFactory(input);
+    const factoryAddress = useMultiOutcome ? config.multiOutcomeFactoryAddress : config.factoryAddress;
+    if (!factoryAddress || !isAddress(factoryAddress)) {
+      throw new Error('Set NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS before launching poll markets.');
+    }
     const txHash = await runContractExecution({
       session,
-      contractAddress: config.factoryAddress!,
-      abiFunctionSignature: 'createMarket(address,uint256,string,uint8)',
+      contractAddress: factoryAddress,
+      abiFunctionSignature: useMultiOutcome
+        ? 'createMarket(address,uint256,string,uint8,uint8)'
+        : 'createMarket(address,uint256,string,uint8)',
       // Every Circle abiParameter scalar must be a string. Numbers cause error code 2.
-      abiParameters: [
+      abiParameters: useMultiOutcome ? [
         input.resolver,
         closeStamp.toString(),
-        buildMarketMetadataURI(input),
+        buildMarketMetadataURI({ ...input, outcomeOptions }),
+        String(getMarketKind(input.type)),
+        String(outcomeOptions.length),
+      ] : [
+        input.resolver,
+        closeStamp.toString(),
+        buildMarketMetadataURI({ ...input, outcomeOptions }),
         String(getMarketKind(input.type)),
       ],
       preview: {
@@ -305,7 +330,7 @@ export async function createCircleMarket(input: CreateLiveMarketInput): Promise<
         ],
       },
     });
-    const marketAddress = await readCreatedMarketAddress(txHash).catch(() => undefined);
+    const marketAddress = await readCreatedMarketAddress(txHash, useMultiOutcome).catch(() => undefined);
     return { ok: true, message: 'Live market created via Circle wallet.', txHash: txHash as `0x${string}`, marketAddress };
   } catch (error) {
     const pending = pendingResultFromError(error, 'Market creation');
@@ -314,7 +339,7 @@ export async function createCircleMarket(input: CreateLiveMarketInput): Promise<
   }
 }
 
-export async function buyCircleShares(input: { marketAddress: string; outcome: 'YES' | 'NO'; amount: number }): Promise<LiveActionResult> {
+export async function buyCircleShares(input: { marketAddress: string; outcome: string; outcomeIndex?: number; amount: number }): Promise<LiveActionResult> {
   try {
     const session = await requireSession();
     const config = requireArcConfig();
@@ -346,7 +371,7 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: '
       session,
       contractAddress: input.marketAddress,
       abiFunctionSignature: 'buy(uint8,uint256)',
-      abiParameters: [input.outcome === 'YES' ? '0' : '1', amount],
+      abiParameters: [String(input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1)), amount],
       refId: `presto-buy-${input.marketAddress}-${Date.now()}`,
       preview: {
         label: `Buy ${input.outcome} · ${humanAmount}`,
@@ -366,7 +391,7 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: '
   }
 }
 
-export async function resolveCircleMarket(input: { marketAddress: string; outcome: 'YES' | 'NO'; resolutionURI: string }): Promise<LiveActionResult> {
+export async function resolveCircleMarket(input: { marketAddress: string; outcome: string; outcomeIndex?: number; resolutionURI: string }): Promise<LiveActionResult> {
   try {
     const session = await requireSession();
     if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
@@ -374,7 +399,7 @@ export async function resolveCircleMarket(input: { marketAddress: string; outcom
       session,
       contractAddress: input.marketAddress,
       abiFunctionSignature: 'resolve(uint8,string)',
-      abiParameters: [input.outcome === 'YES' ? '0' : '1', input.resolutionURI],
+      abiParameters: [String(input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1)), input.resolutionURI],
     });
     return { ok: true, message: 'Market resolved via Circle wallet.', txHash: txHash as `0x${string}` };
   } catch (error) {

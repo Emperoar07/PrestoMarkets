@@ -355,7 +355,7 @@ export function CreateMarketBuilder() {
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 {([
                   ['binary', 'Binary', 'Tradable YES / NO market on the current Arc factory.'],
-                  ['poll', 'Poll', 'Add multiple visible options for richer market context. V1 trading still settles YES / NO.'],
+                  ['poll', 'Poll', 'Create multiple outcome options when the V2 factory is configured.'],
                 ] as const).map(([value, label, copy]) => {
                   const isActive = outcomeStyle === value;
                   return (
@@ -411,7 +411,7 @@ export function CreateMarketBuilder() {
                     ))}
                   </div>
                   <p className="mt-3 text-xs leading-5 text-muted">
-                    Current deployed markets still trade as binary YES / NO. These options are saved into metadata for display and future multi-outcome contracts.
+                    Poll markets route to the multi-outcome factory when `NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS` is configured.
                   </p>
                 </div>
               ) : null}

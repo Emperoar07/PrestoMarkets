@@ -39,6 +39,49 @@ export const prestoMarketFactoryAbi = [
   },
 ] as const;
 
+export const prestoMultiOutcomeMarketFactoryAbi = [
+  {
+    type: 'function',
+    name: 'marketCount',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'markets',
+    stateMutability: 'view',
+    inputs: [{ name: '', type: 'uint256' }],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    type: 'function',
+    name: 'createMarket',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'resolver', type: 'address' },
+      { name: 'closeTime', type: 'uint256' },
+      { name: 'metadataURI', type: 'string' },
+      { name: 'marketKind', type: 'uint8' },
+      { name: 'outcomeCount', type: 'uint8' },
+    ],
+    outputs: [{ name: 'market', type: 'address' }],
+  },
+  {
+    type: 'event',
+    name: 'MarketCreated',
+    inputs: [
+      { name: 'market', type: 'address', indexed: true },
+      { name: 'creator', type: 'address', indexed: true },
+      { name: 'resolver', type: 'address', indexed: true },
+      { name: 'marketKind', type: 'uint8', indexed: false },
+      { name: 'closeTime', type: 'uint256', indexed: false },
+      { name: 'metadataURI', type: 'string', indexed: false },
+      { name: 'outcomeCount', type: 'uint8', indexed: false },
+    ],
+  },
+] as const;
+
 export const prestoMarketAbi = [
   {
     type: 'function',
@@ -71,6 +114,13 @@ export const prestoMarketAbi = [
   {
     type: 'function',
     name: 'marketKind',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint8' }],
+  },
+  {
+    type: 'function',
+    name: 'outcomeCount',
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'uint8' }],
