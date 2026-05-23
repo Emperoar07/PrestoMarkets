@@ -33,9 +33,16 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-2 text-[13.5px] font-bold leading-snug tracking-tight text-white">
-            {market.title}
-          </h3>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {isResolved ? (
+              <span className="rounded-full border border-cyan/25 bg-cyan/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-cyan">
+                Resolved
+              </span>
+            ) : null}
+            <h3 className="line-clamp-2 text-[13.5px] font-bold leading-snug tracking-tight text-white">
+              {market.title}
+            </h3>
+          </div>
         </div>
       </div>
 
@@ -80,7 +87,7 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
                 : 'bg-white/[0.04] text-[#64748b]'
             }`}
           >
-            {isLive ? 'Buy Yes' : 'Closed'}
+            {isLive ? 'Buy Yes' : isResolved ? 'Resolved' : 'Closed'}
           </button>
           {isLive ? (
             <button

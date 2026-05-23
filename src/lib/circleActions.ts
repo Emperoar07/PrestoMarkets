@@ -12,10 +12,11 @@ const ARC_EXPLORER_ADDRESS = 'https://testnet.arcscan.app/address/';
 
 const MIN_TRADE_USDC = 0.01;
 const TX_POLL_INTERVAL_MS = 2_000;
-// Circle's transaction indexer can lag 2-3 minutes during peak load even though Arc itself
-// finalizes in <1s. Use a generous 4-minute window so we don't show a 'failed' UI for a tx
-// that's just slow to surface.
-const TX_POLL_TIMEOUT_MS = 240_000;
+// Arc finalizes quickly, so once Circle exposes a tx hash we verify the Arc receipt directly.
+// If Circle does not expose a hash fast enough, return a pending result instead of trapping
+// users in a long spinner.
+const TX_POLL_TIMEOUT_MS = 75_000;
+const ARC_RECEIPT_TIMEOUT_MS = 20_000;
 
 type CircleTxStatus =
   | 'INITIATED'
@@ -34,6 +35,27 @@ type CircleTransaction = {
   txHash?: string;
   errorReason?: string;
 };
+
+async function waitForArcReceipt(txHash: string): Promise<boolean> {
+  if (!txHash) return false;
+  const publicClient = getPublicClient();
+  const deadline = Date.now() + ARC_RECEIPT_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    const receipt = await publicClient
+      .getTransactionReceipt({ hash: txHash as Hex })
+      .catch(() => null);
+
+    if (receipt) {
+      if (receipt.status === 'success') return true;
+      throw new Error('Arc transaction reverted.');
+    }
+
+    await new Promise((r) => setTimeout(r, 1_500));
+  }
+
+  return false;
+}
 
 async function callProvider<T>(body: Record<string, unknown>): Promise<T> {
   const response = await fetch('/api/circle/wallet/provider', {
@@ -83,7 +105,12 @@ async function waitForTx(session: CircleSession, transactionId: string): Promise
       userToken: session.userToken,
       transactionId,
     });
-    if (tx.txHash) lastTxHash = tx.txHash;
+    if (tx.txHash) {
+      lastTxHash = tx.txHash;
+      if (await waitForArcReceipt(tx.txHash)) {
+        return { txHash: tx.txHash, pending: false };
+      }
+    }
     if (tx.state === 'CONFIRMED' || tx.state === 'COMPLETE') {
       return { txHash: tx.txHash ?? '', pending: false };
     }

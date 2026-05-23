@@ -123,14 +123,19 @@ function isAllowedContractExecution(input: CircleRequestBody): boolean {
   const config = getArcConfig();
   const contract = input.contractAddress.toLowerCase();
   const factory = config.factoryAddress?.toLowerCase();
+  const multiOutcomeFactory = config.multiOutcomeFactoryAddress?.toLowerCase();
   const usdc = config.usdcAddress?.toLowerCase();
 
   if (factory && contract === factory) {
     return input.abiFunctionSignature === 'createMarket(address,uint256,string,uint8)';
   }
 
+  if (multiOutcomeFactory && contract === multiOutcomeFactory) {
+    return input.abiFunctionSignature === 'createMarket(address,uint256,string,uint8,uint8)';
+  }
+
   if (usdc && contract === usdc) {
-    return input.abiFunctionSignature === 'approve(address,uint256)';
+    return input.abiFunctionSignature === 'approve(address,uint256)' || input.abiFunctionSignature === 'transfer(address,uint256)';
   }
 
   return allowedMarketSignatures.has(input.abiFunctionSignature);
