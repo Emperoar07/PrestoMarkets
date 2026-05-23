@@ -1,0 +1,37 @@
+name: Agent tick
+
+# Pings the Presto agent cron endpoints on a 2-hour cadence so the agent
+# gets more chances per day to surface a market-worthy trend. Vercel's own
+# daily cron stays as a fallback heartbeat. The signal-threshold gate
+# inside the pipeline decides whether each tick actually creates a market,
+# so most ticks legitimately skip (which is the intended behavior).
+#
+# Required GitHub Actions secrets:
+#   APP_URL       - production base URL, e.g. https://presto-markets.vercel.app
+#   CRON_SECRET   - matches the CRON_SECRET env var set in Vercel
+
+on:
+  schedule:
+    # Every 2 hours, on the hour
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger market-factory cron
+        run: |
+          curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/market-factory" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n" \
+            --fail-with-body
+
+      - name: Trigger auto-resolve cron
+        if: ${{ always() }}
+        run: |
+          curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/auto-resolve" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n" \
+            --fail-with-body
