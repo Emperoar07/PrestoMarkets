@@ -378,7 +378,7 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: s
         action: `Mints ${input.outcome} shares for this market against your approved USDC.`,
         amountDisplay: humanAmount,
         parameters: [
-          `outcome: ${input.outcome} (${input.outcome === 'YES' ? '0' : '1'})`,
+          `outcome: ${input.outcome} (${input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1)})`,
           `amount: ${humanAmount}`,
         ],
       },

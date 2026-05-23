@@ -1,0 +1,8 @@
+{
+  "chainName": "arc-testnet",
+  "chainId": 5042002,
+  "multiOutcomeMarketFactory": "0xd2961F0e52a1F1Af787cf3722E90459dC0995F2c",
+  "collateral": "0x3600000000000000000000000000000000000000",
+  "deployedAt": "2026-05-23T03:38:29.530Z",
+  "deployer": "0x659eEAF9Be1fB881959D883385D03B0Ef5D778E0"
+}

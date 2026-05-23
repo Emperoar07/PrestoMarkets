@@ -181,7 +181,7 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
       label,
       odds: odds[outcomeIndex] ?? 0,
       liquidity: formatOnchainUsd(shares[outcomeIndex] ?? BigInt(0)),
-    })),
+    })) as AppMarket['outcomes'],
     activity: [
       ...labels.slice(0, 4).map((label, outcomeIndex) => ({
         label: `${label} shares`,
