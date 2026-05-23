@@ -11,6 +11,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export type LlmTask = 'safety' | 'reasoning';
 
@@ -45,6 +46,10 @@ function envClean(name: string): string {
   return (process.env[name] ?? '').trim();
 }
 
+function uniqueStrings(values: Array<string | undefined>): string[] {
+  return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value))));
+}
+
 function isRetryableHttpStatus(status: number): boolean {
   return status === 401 || status === 402 || status === 429 || status === 403 || (status >= 500 && status <= 599);
 }
@@ -70,6 +75,37 @@ async function callAnthropic(input: LlmCallInput): Promise<ProviderResult | null
     // Non-retryable Anthropic failure (network etc.) — bubble up so we try the next provider.
     return null;
   }
+}
+
+async function callGemini(input: LlmCallInput): Promise<ProviderResult | null> {
+  const key = envClean('GEMINI_API_KEY') || envClean('GOOGLE_GENERATIVE_AI_API_KEY');
+  if (!key) return null;
+
+  const models = uniqueStrings([
+    envClean(input.task === 'reasoning' ? 'GEMINI_REASONING_MODEL' : 'GEMINI_SAFETY_MODEL'),
+    envClean('GEMINI_MARKET_MODEL'),
+    'gemini-1.5-flash',
+  ]);
+
+  for (const model of models) {
+    try {
+      const genAI = new GoogleGenerativeAI(key);
+      const result = await genAI.getGenerativeModel({ model }).generateContent({
+        contents: [{ role: 'user', parts: [{ text: input.prompt }] }],
+        generationConfig: {
+          maxOutputTokens: input.maxTokens ?? (input.task === 'reasoning' ? 1024 : 256),
+          temperature: input.temperature ?? 0.2,
+          ...((input.jsonMode ?? true) ? { responseMimeType: 'application/json' } : {}),
+        },
+      });
+      const text = result.response.text();
+      if (text) return { text, provider: 'gemini', model };
+    } catch (err) {
+      console.warn(`[llm-fallback] gemini ${model} threw:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  return null;
 }
 
 async function callOpenAiCompatible(input: {
@@ -104,17 +140,44 @@ async function callOpenAiCompatible(input: {
   }
 }
 
+async function callOpenAiCompatibleModels(input: {
+  baseUrl: string;
+  apiKey: string;
+  models: string[];
+  provider: string;
+  basePayload: Omit<OpenAiChatPayload, 'model'>;
+}): Promise<ProviderResult | null> {
+  for (const model of input.models) {
+    const result = await callOpenAiCompatible({
+      baseUrl: input.baseUrl,
+      apiKey: input.apiKey,
+      model,
+      provider: input.provider,
+      payload: {
+        ...input.basePayload,
+        model,
+      },
+    });
+    if (result) return result;
+  }
+
+  return null;
+}
+
 async function callGroq(input: LlmCallInput): Promise<ProviderResult | null> {
   const key = envClean('GROQ_API_KEY');
   if (!key) return null;
-  const model = 'llama-3.3-70b-versatile';
-  return callOpenAiCompatible({
+  const models = uniqueStrings([
+    envClean(input.task === 'reasoning' ? 'GROQ_REASONING_MODEL' : 'GROQ_SAFETY_MODEL'),
+    envClean('GROQ_MARKET_MODEL'),
+    'llama-3.1-8b-instant',
+  ]);
+  return callOpenAiCompatibleModels({
     baseUrl: 'https://api.groq.com/openai/v1',
     apiKey: key,
-    model,
+    models,
     provider: 'groq',
-    payload: {
-      model,
+    basePayload: {
       messages: [{ role: 'user', content: input.prompt }],
       max_tokens: input.maxTokens ?? (input.task === 'reasoning' ? 1024 : 256),
       temperature: input.temperature ?? 0.2,
@@ -126,17 +189,18 @@ async function callGroq(input: LlmCallInput): Promise<ProviderResult | null> {
 async function callOpenRouter(input: LlmCallInput): Promise<ProviderResult | null> {
   const key = envClean('OPENROUTER_API_KEY');
   if (!key) return null;
-  // OpenRouter's free Gemini 2.0 Flash Exp model. Strong general reasoning, zero cost.
-  const model = input.task === 'reasoning'
-    ? 'google/gemini-2.0-flash-exp:free'
-    : 'meta-llama/llama-3.1-70b-instruct:free';
-  return callOpenAiCompatible({
+  const models = uniqueStrings([
+    envClean(input.task === 'reasoning' ? 'OPENROUTER_REASONING_MODEL' : 'OPENROUTER_SAFETY_MODEL'),
+    envClean('OPENROUTER_MODEL'),
+    'qwen/qwen3-235b-a22b:free',
+    'meta-llama/llama-3.2-3b-instruct:free',
+  ]);
+  return callOpenAiCompatibleModels({
     baseUrl: 'https://openrouter.ai/api/v1',
     apiKey: key,
-    model,
+    models,
     provider: 'openrouter',
-    payload: {
-      model,
+    basePayload: {
       messages: [{ role: 'user', content: input.prompt }],
       max_tokens: input.maxTokens ?? (input.task === 'reasoning' ? 1024 : 256),
       temperature: input.temperature ?? 0.2,
@@ -147,14 +211,18 @@ async function callOpenRouter(input: LlmCallInput): Promise<ProviderResult | nul
 async function callCerebras(input: LlmCallInput): Promise<ProviderResult | null> {
   const key = envClean('CEREBRAS_API_KEY');
   if (!key) return null;
-  const model = 'llama-3.3-70b';
-  return callOpenAiCompatible({
+  const models = uniqueStrings([
+    envClean(input.task === 'reasoning' ? 'CEREBRAS_REASONING_MODEL' : 'CEREBRAS_SAFETY_MODEL'),
+    envClean('CEREBRAS_MODEL'),
+    'gpt-oss-120b',
+    'qwen-3-32b',
+  ]);
+  return callOpenAiCompatibleModels({
     baseUrl: 'https://api.cerebras.ai/v1',
     apiKey: key,
-    model,
+    models,
     provider: 'cerebras',
-    payload: {
-      model,
+    basePayload: {
       messages: [{ role: 'user', content: input.prompt }],
       max_tokens: input.maxTokens ?? (input.task === 'reasoning' ? 1024 : 256),
       temperature: input.temperature ?? 0.2,
@@ -165,14 +233,18 @@ async function callCerebras(input: LlmCallInput): Promise<ProviderResult | null>
 async function callTogether(input: LlmCallInput): Promise<ProviderResult | null> {
   const key = envClean('TOGETHER_API_KEY');
   if (!key) return null;
-  const model = 'meta-llama/Llama-3.3-70B-Instruct-Turbo';
-  return callOpenAiCompatible({
+  const models = uniqueStrings([
+    envClean(input.task === 'reasoning' ? 'TOGETHER_REASONING_MODEL' : 'TOGETHER_SAFETY_MODEL'),
+    envClean('TOGETHER_MODEL'),
+    'meta-llama/Llama-3.3-70B-Instruct-Turbo',
+    'Qwen/Qwen2.5-7B-Instruct-Turbo',
+  ]);
+  return callOpenAiCompatibleModels({
     baseUrl: 'https://api.together.xyz/v1',
     apiKey: key,
-    model,
+    models,
     provider: 'together',
-    payload: {
-      model,
+    basePayload: {
       messages: [{ role: 'user', content: input.prompt }],
       max_tokens: input.maxTokens ?? (input.task === 'reasoning' ? 1024 : 256),
       temperature: input.temperature ?? 0.2,
@@ -185,7 +257,7 @@ async function callTogether(input: LlmCallInput): Promise<ProviderResult | null>
  * answered first. Caller is expected to JSON.parse it (or extract a JSON object from it).
  */
 export async function callLlmJson(input: LlmCallInput): Promise<ProviderResult> {
-  const chain = [callAnthropic, callGroq, callOpenRouter, callCerebras, callTogether];
+  const chain = [callAnthropic, callGemini, callGroq, callOpenRouter, callCerebras, callTogether];
   for (const fn of chain) {
     const result = await fn(input);
     if (result) return result;

@@ -2,13 +2,12 @@
  * Autonomous agent pipeline: trends → classify → draft → safety → onchain
  *
  * Stage 1  Serper: fetch trending topics (no X API needed)
- * Stage 2  Groq Llama: classify momentum + market-worthiness
- * Stage 3  Gemini Flash: draft title, rules, closeDate, category
- * Stage 4  Claude Haiku: safety gate (rejects vague / defamatory / unresolvable)
+ * Stage 2  LLM fallback: classify momentum + market-worthiness
+ * Stage 3  LLM fallback: draft title, rules, closeDate, category
+ * Stage 4  LLM fallback: safety gate (rejects vague / defamatory / unresolvable)
  * Stage 5  agentCreateMarket: submit onchain if confidence ≥ 0.8
  */
 
-import Groq from 'groq-sdk';
 import { agentCreateMarket } from './agentWallet';
 import { callLlmJson, extractJsonObject } from './llmFallback';
 import { AGENT_PLATFORM_CONTEXT } from './agentContext';
@@ -578,7 +577,7 @@ async function fetchTrends(): Promise<TrendItem[]> {
   return merged.slice(0, 24);
 }
 
-// ── Stage 2: Groq classification ──────────────────────────────────────────
+// ── Stage 2: market signal classification ─────────────────────────────────
 
 type GroqClassification = {
   worthy: boolean;
@@ -590,12 +589,7 @@ type GroqClassification = {
   reason: string;
 };
 
-async function classifyWithGroq(trend: TrendItem): Promise<GroqClassification> {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) throw new Error('GROQ_API_KEY not set');
-
-  const groq = new Groq({ apiKey });
-
+async function classifyTrend(trend: TrendItem): Promise<GroqClassification> {
   const prompt = `${AGENT_PLATFORM_CONTEXT}
 
 ---
@@ -636,16 +630,8 @@ DO NOT default to Prediction. If the topic is really about how people FEEL about
 rather than what will HAPPEN, pick Opinion. If it's about future capital/builder flow,
 pick Opportunity.`;
 
-  const completion = await groq.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
-    messages: [{ role: 'user', content: prompt }],
-    response_format: { type: 'json_object' },
-    temperature: 0.3,
-    max_tokens: 320,
-  });
-
-  const raw = completion.choices[0]?.message?.content ?? '{}';
-  const parsed = JSON.parse(raw) as Partial<GroqClassification> & { categories?: unknown };
+  const result = await callLlmJson({ task: 'safety', prompt, maxTokens: 320, temperature: 0.3 });
+  const parsed = extractJsonObject(result.text) as Partial<GroqClassification> & { categories?: unknown };
 
   let categories: string[] | undefined;
   if (Array.isArray(parsed.categories)) {
@@ -661,6 +647,7 @@ pick Opportunity.`;
     momentumScore: Math.min(1, Math.max(0, parsed.momentumScore ?? 0)),
     category: parsed.category ?? categories?.[0] ?? 'Crypto',
     categories,
+    suggestedMarketType: parsed.suggestedMarketType,
     reason: parsed.reason ?? '',
   };
 }
@@ -777,7 +764,7 @@ type DraftContext = {
 
 async function draftWithGemini(trend: TrendItem, category: string, ctx: DraftContext = {}): Promise<GeminiDraft> {
   // Function name kept for git history; the model is whichever provider in the fallback
-  // chain (Anthropic -> Groq -> OpenRouter -> Cerebras -> Together) responds first. Direct
+  // chain responds first. Direct
   // Gemini was a single point of failure: free-tier quota on some Google Cloud projects
   // is allocated as 0, returning 429 'limit: 0' indefinitely.
   const now = new Date();
@@ -1041,13 +1028,13 @@ export async function runAgentPipeline(): Promise<PipelineResult[]> {
   }
 
   // Stage 2 first-pass: classify every trend so we can rank by signal strength globally.
-  // Cheap (Groq is fast + free) and lets us pick the BEST candidate instead of the first
+  // The shared LLM fallback keeps this alive when a free provider is rate-limited.
   // one that happens to pass.
   type Scored = { trend: TrendItem; classification: GroqClassification };
   const scored: Scored[] = [];
   for (const trend of trends) {
     try {
-      const classification = await classifyWithGroq(trend);
+      const classification = await classifyTrend(trend);
       if (!classification.worthy || classification.momentumScore < MIN_MOMENTUM) {
         results.push({ ok: false, topic: trend.topic, stage: 'classify', reason: classification.reason });
         continue;

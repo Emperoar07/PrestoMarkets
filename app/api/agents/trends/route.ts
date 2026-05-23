@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createMarketCategories } from '@/lib/categories';
 import type { MarketType } from '@/lib/markets';
+import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
 
 type TrendRequest = {
   trendText: string;
@@ -100,35 +101,22 @@ async function draftWithGemini(input: TrendRequest): Promise<GeminiMarketDraft |
   return JSON.parse(json) as GeminiMarketDraft;
 }
 
-async function classifyWithGroq(input: TrendRequest, draft: MarketDraft) {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return null;
+async function classifyWithFallback(input: TrendRequest, draft: MarketDraft) {
+  const prompt = [
+    'Score this prediction market candidate.',
+    'Return only JSON with safetyScore, momentumScore, duplicateRisk, shouldCreate, reason.',
+    JSON.stringify({
+      trend: input,
+      draft: {
+        title: draft.title,
+        rules: draft.rules,
+        sourceOfTruth: draft.sourceOfTruth,
+      },
+    }),
+  ].join('\n\n');
 
-  const { default: Groq } = await import('groq-sdk');
-  const groq = new Groq({ apiKey });
-  const completion = await groq.chat.completions.create({
-    model: process.env.GROQ_MARKET_MODEL || 'llama-3.1-8b-instant',
-    temperature: 0,
-    messages: [
-      {
-        role: 'system',
-        content: 'Score this prediction market candidate. Return only JSON with safetyScore, momentumScore, duplicateRisk, shouldCreate, reason.',
-      },
-      {
-        role: 'user',
-        content: JSON.stringify({
-          trend: input,
-          draft: {
-            title: draft.title,
-            rules: draft.rules,
-            sourceOfTruth: draft.sourceOfTruth,
-          },
-        }),
-      },
-    ],
-  });
-  const text = completion.choices[0]?.message?.content ?? '{}';
-  return JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? text) as {
+  const result = await callLlmJson({ task: 'safety', prompt, maxTokens: 256, temperature: 0 });
+  return extractJsonObject(result.text) as {
     safetyScore?: number;
     momentumScore?: number;
     shouldCreate?: boolean;
@@ -180,17 +168,17 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const groq = await classifyWithGroq(input, draft);
-    if (groq) {
+    const score = await classifyWithFallback(input, draft);
+    if (score) {
       draft.agent = {
         ...draft.agent,
-        agentReason: groq.reason || draft.agent.agentReason,
-        momentumScore: clampScore(groq.momentumScore, draft.agent.momentumScore),
-        safetyScore: clampScore(groq.safetyScore, draft.agent.safetyScore),
+        agentReason: score.reason || draft.agent.agentReason,
+        momentumScore: clampScore(score.momentumScore, draft.agent.momentumScore),
+        safetyScore: clampScore(score.safetyScore, draft.agent.safetyScore),
       };
     }
   } catch {
-    // Groq is an optional second opinion; do not block fallback or Gemini drafts.
+    // The second opinion is optional; do not block fallback or Gemini drafts.
   }
 
   const shouldAutoCreate = draft.agent.momentumScore >= 70 && draft.agent.safetyScore >= 75;
