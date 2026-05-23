@@ -135,11 +135,6 @@ export function SiteHeader() {
               Activity
             </Link>
           ) : null}
-          {!isLandingPage ? (
-            <Link href="/news" className={navLinkClass(pathname === '/news')}>
-              News
-            </Link>
-          ) : null}
           <a href={dexUrl} className={navLinkClass()}>
             DEX
           </a>

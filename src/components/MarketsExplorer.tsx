@@ -150,7 +150,6 @@ function BreakingNewsPanel() {
     <div className="rounded-[16px] border border-white/[0.06] bg-[#0d1520] p-5">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-[15px] font-black text-white">Breaking news</h3>
-        <span className="text-[10px] font-black uppercase tracking-widest text-[#4a5568]">Daily</span>
       </div>
       {loading ? (
         <p className="text-xs text-[#4a5568]">Loading…</p>
@@ -181,9 +180,8 @@ function BreakingNewsPanel() {
         </ol>
       )}
       {remaining > 0 ? (
-        <Link href="/news" className="mt-5 flex items-center justify-between border-t border-white/[0.04] pt-4 text-[12px] font-bold text-cyan/80 transition-colors hover:text-cyan">
-          <span>See {remaining} more</span>
-          <span>→</span>
+        <Link href="/news" className="mt-5 block border-t border-white/[0.04] pt-4 text-[12px] font-bold text-cyan/80 transition-colors hover:text-cyan">
+          See {remaining} more
         </Link>
       ) : null}
     </div>

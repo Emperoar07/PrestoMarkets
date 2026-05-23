@@ -44,16 +44,12 @@ export function NewsClient() {
 
   return (
     <main className="mx-auto max-w-3xl px-5 pb-20 pt-36 md:px-6 md:pt-44">
-      <Link href="/markets" className="inline-flex items-center gap-1.5 text-[12px] font-bold text-muted transition-colors hover:text-cyan">
-        <span>←</span> Back to markets
+      <Link href="/" className="inline-flex rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-4 py-2 text-[12px] font-bold text-muted transition-colors hover:border-cyan/30 hover:text-cyan">
+        Back home
       </Link>
       <h1 className="mt-6 text-[clamp(28px,3.5vw,40px)] font-black tracking-tight text-white">Breaking news.</h1>
-      <p className="mt-3 max-w-xl text-[15px] leading-7 text-muted">
-        The full ranked feed the agent reads from. Top 3 stories each day get drafted into
-        prediction markets. Sources: Cointelegraph, Decrypt, The Block, CoinDesk, TechCrunch.
-      </p>
 
-      <section className="mt-12 border-t border-white/[0.06] pt-8">
+      <section className="mt-10 border-t border-white/[0.06] pt-8">
         {loading ? (
           <p className="text-center text-[14px] text-muted">Loading…</p>
         ) : error ? (
@@ -79,7 +75,6 @@ export function NewsClient() {
                       <span>{relativeTime(item.publishedAt)}</span>
                     </p>
                   </div>
-                  <span className="self-center text-[11px] font-bold text-cyan/70 transition-colors group-hover:text-cyan">↗</span>
                 </a>
               </li>
             ))}

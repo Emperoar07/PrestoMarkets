@@ -13,6 +13,15 @@ These contracts are Phase 3 scaffolds for a public Arc Testnet market pilot.
 - Protocol fee scaffold with a 5 percent maximum
 - Hardhat tests for market buying, settlement, claims, refunds, fees, factory creation, and owner controls
 
+## V2 Multi Outcome Scaffold
+
+- Two to twelve outcome fixed-share markets
+- Outcome-specific share accounting
+- Resolver settlement by outcome index
+- Winner claims from the resolved collateral snapshot
+- Canceled market refunds across every outcome
+- Separate factory so the live binary factory can stay stable while V2 is tested
+
 ## Testing
 
 ```bash
