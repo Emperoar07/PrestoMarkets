@@ -16,7 +16,6 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
   const isClosingSoon = market.status === 'Closing soon';
   const isLive = market.status === 'Open' || isClosingSoon;
   const isResolved = market.status === 'Resolved';
-  const isAgentMarket = market.createdByType === 'agent';
   const isEurc = market.collateral === 'EURC';
 
   return (
@@ -34,19 +33,9 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {isAgentMarket ? (
-              <span className="rounded-full border border-cyan/25 bg-cyan/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-cyan">
-                Agent
-              </span>
-            ) : null}
-            <h3 className="line-clamp-2 text-[13.5px] font-bold leading-snug tracking-tight text-white">
-              {market.title}
-            </h3>
-          </div>
-          {isAgentMarket && market.agentName ? (
-            <p className="mt-1 truncate text-[10px] font-bold text-[#6b7c90]">{market.agentName}</p>
-          ) : null}
+          <h3 className="line-clamp-2 text-[13.5px] font-bold leading-snug tracking-tight text-white">
+            {market.title}
+          </h3>
         </div>
       </div>
 
