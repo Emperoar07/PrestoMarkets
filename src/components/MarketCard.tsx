@@ -74,16 +74,22 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
         <div className="flex shrink-0 items-center gap-1.5">
           <button
             type="button"
-            className="rounded-[8px] bg-[#0a3320] px-3 py-2 text-xs font-bold text-[#4ade80] transition-colors hover:bg-[#0d4429] active:scale-95"
+            className={`rounded-[8px] px-3 py-2 text-xs font-bold transition-colors ${
+              isLive
+                ? 'bg-[#0a3320] text-[#4ade80] hover:bg-[#0d4429] active:scale-95'
+                : 'bg-white/[0.04] text-[#64748b]'
+            }`}
           >
-            Buy Yes
+            {isLive ? 'Buy Yes' : 'Closed'}
           </button>
-          <button
-            type="button"
-            className="rounded-[8px] bg-[#2d1010] px-3 py-2 text-xs font-bold text-[#f87171] transition-colors hover:bg-[#3d1515] active:scale-95"
-          >
-            Buy No
-          </button>
+          {isLive ? (
+            <button
+              type="button"
+              className="rounded-[8px] bg-[#2d1010] px-3 py-2 text-xs font-bold text-[#f87171] transition-colors hover:bg-[#3d1515] active:scale-95"
+            >
+              Buy No
+            </button>
+          ) : null}
         </div>
       </div>
 

@@ -99,6 +99,15 @@ function getPositionValuation(input: {
     };
   }
 
+  if (input.market.status === 'Closed') {
+    return {
+      value: costBasis,
+      costBasis,
+      valuationLabel: 'Awaiting resolution',
+      pnl: 0,
+    };
+  }
+
   return {
     value: 0,
     costBasis,

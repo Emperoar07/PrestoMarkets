@@ -159,6 +159,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [refreshMarkets, refreshAccountPortfolio]);
 
   const placeTrade = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; amount: number; payWith?: StableSymbol }) => {
+    const market = markets.find((item) => item.id === input.marketId);
+    if (!market || (market.status !== 'Open' && market.status !== 'Closing soon')) {
+      return { ok: false, message: 'This market is closed for trading.' };
+    }
+
     const result = await buyLiveShares({
       marketAddress: input.marketId,
       outcome: input.outcome,
@@ -181,9 +186,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       await refreshAccountPortfolio();
     }
     return result;
-  }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
+  }, [markets, connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
 
   const addLiquidity = useCallback(async (input: { marketId: string; amount: number; payWith?: StableSymbol }) => {
+    const market = markets.find((item) => item.id === input.marketId);
+    if (!market || (market.status !== 'Open' && market.status !== 'Closing soon')) {
+      return { ok: false, message: 'This market is closed for liquidity.' };
+    }
+
     const result = await addLiveLiquidity({
       marketAddress: input.marketId,
       amount: input.amount,
@@ -200,7 +210,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       await refreshAccountPortfolio();
     }
     return result;
-  }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
+  }, [markets, connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
 
   const resolveMarket = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; resolutionURI: string }) => {
     const result = await resolveLiveMarket({

@@ -193,6 +193,32 @@ async function getClients() {
   return { account, config, publicClient, walletClient };
 }
 
+async function assertMarketOpenForTrading(
+  publicClient: ReturnType<typeof createPublicClient>,
+  marketAddress: Address,
+) {
+  const [state, closeTime] = await Promise.all([
+    withRetry(() => publicClient.readContract({
+      address: marketAddress,
+      abi: prestoMarketAbi,
+      functionName: 'state',
+    })),
+    withRetry(() => publicClient.readContract({
+      address: marketAddress,
+      abi: prestoMarketAbi,
+      functionName: 'closeTime',
+    })),
+  ]);
+
+  if (Number(state) !== 0) {
+    throw new Error('This market is already settled and cannot be traded.');
+  }
+
+  if (Number(closeTime) <= Math.floor(Date.now() / 1000)) {
+    throw new Error('This market is closed for trading.');
+  }
+}
+
 export async function createLiveMarket(input: CreateLiveMarketInput): Promise<LiveActionResult> {
   if (isCircleWallet()) return createCircleMarket(input);
   try {
@@ -296,6 +322,8 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
     // settles in USDC at the contract level. Circle's swap response returns estimatedAmount as
     // a base-units string (e.g. '10800000' for 10.8 USDC) — use BigInt directly, NOT parseUnits.
     const marketAddress = input.marketAddress as Address;
+    await assertMarketOpenForTrading(publicClient, marketAddress);
+
     let amount: bigint;
     if (input.payWith === 'EURC') {
       const swapResult = await executeSwap({

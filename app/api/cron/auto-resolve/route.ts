@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
-import { agentResolveMarket, getAgentAddress } from '@/lib/agentWallet';
+import { agentCancelMarket, agentResolveMarket, getAgentAddress } from '@/lib/agentWallet';
 import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
 import { getAgentIdentityStatus, recordResolutionReputation } from '@/lib/agentIdentity';
 import type { AppMarket } from '@/lib/appState';
@@ -9,8 +9,9 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 type ResolutionResult =
-  | { ok: true; marketId: string; title: string; outcome: string; txHash: string; confidence: number }
-  | { ok: false; marketId: string; title: string; reason: string };
+  | { ok: true; action: 'resolved'; marketId: string; title: string; outcome: string; txHash: string; confidence: number }
+  | { ok: true; action: 'canceled'; marketId: string; title: string; txHash: string; reason: string }
+  | { ok: false; action: 'skipped'; marketId: string; title: string; reason: string };
 
 const MIN_AUTO_RESOLVE_CONFIDENCE = 0.85;
 
@@ -83,25 +84,37 @@ async function fetchLiveEvidence(market: AppMarket): Promise<{ snippets: string;
 }
 
 async function resolveMarket(market: AppMarket): Promise<ResolutionResult> {
-  const declaredSourceUrls = extractSourceUrls(market.sourceOfTruth);
-  if (declaredSourceUrls.length === 0) {
+  async function cancelWithReason(reason: string): Promise<ResolutionResult> {
+    const result = await agentCancelMarket(market.id);
+    if (!result.ok) {
+      return {
+        ok: false,
+        action: 'skipped',
+        marketId: market.id,
+        title: market.title,
+        reason: `${reason} Cancellation failed: ${result.error ?? 'unknown error'}`,
+      };
+    }
+
     return {
-      ok: false,
+      ok: true,
+      action: 'canceled',
       marketId: market.id,
       title: market.title,
-      reason: 'Auto-resolution skipped: sourceOfTruth has no concrete URL to verify.',
+      txHash: result.txHash as string,
+      reason,
     };
+  }
+
+  const declaredSourceUrls = extractSourceUrls(market.sourceOfTruth);
+  if (declaredSourceUrls.length === 0) {
+    return cancelWithReason('Auto-canceled: sourceOfTruth has no concrete URL to verify.');
   }
 
   const { snippets: liveEvidence, sources: searchSources } = await fetchLiveEvidence(market);
   const hasLiveEvidence = liveEvidence.length > 0 && searchSources.length > 0;
   if (!hasLiveEvidence) {
-    return {
-      ok: false,
-      marketId: market.id,
-      title: market.title,
-      reason: 'Auto-resolution skipped: no live evidence found on declared source-of-truth domains.',
-    };
+    return cancelWithReason('Auto-canceled: no live evidence found on declared source-of-truth domains.');
   }
 
   const researchPrompt = `You are an autonomous resolution oracle for a prediction market platform.
@@ -159,12 +172,7 @@ Return JSON only:
     .filter(isSafeHttpUrl)
     .slice(0, 8);
   if (parsed.outcome === 'CANCEL' || parsed.confidence < MIN_AUTO_RESOLVE_CONFIDENCE) {
-    return {
-      ok: false,
-      marketId: market.id,
-      title: market.title,
-      reason: `Oracle skipped (confidence=${parsed.confidence.toFixed(2)}, outcome=${parsed.outcome}): ${parsed.evidenceSummary}`,
-    };
+    return cancelWithReason(`Auto-canceled by oracle (confidence=${parsed.confidence.toFixed(2)}, outcome=${parsed.outcome}): ${parsed.evidenceSummary}`);
   }
 
   // Derive outcomeIndex from the canonical outcome string instead of trusting the LLM's
@@ -176,6 +184,7 @@ Return JSON only:
   else {
     return {
       ok: false,
+      action: 'skipped',
       marketId: market.id,
       title: market.title,
       reason: `Oracle returned an unrecognised outcome string "${parsed.outcome}".`,
@@ -199,11 +208,12 @@ Return JSON only:
   const resolutionURI = `data:application/json,${encodeURIComponent(JSON.stringify(resolutionReport))}`;
   const result = await agentResolveMarket(market.id, derivedIndex, resolutionURI);
   if (!result.ok) {
-    return { ok: false, marketId: market.id, title: market.title, reason: result.error ?? 'Onchain resolve failed' };
+    return { ok: false, action: 'skipped', marketId: market.id, title: market.title, reason: result.error ?? 'Onchain resolve failed' };
   }
 
   return {
     ok: true,
+    action: 'resolved',
     marketId: market.id,
     title: market.title,
     outcome: parsed.outcome,
@@ -239,7 +249,7 @@ export async function GET(req: NextRequest) {
     });
 
     if (expired.length === 0) {
-      return NextResponse.json({ ok: true, ran: new Date().toISOString(), resolved: 0, results: [] });
+      return NextResponse.json({ ok: true, ran: new Date().toISOString(), resolved: 0, canceled: 0, results: [] });
     }
 
     const identityStatus = await getAgentIdentityStatus().catch(() => null);
@@ -251,7 +261,7 @@ export async function GET(req: NextRequest) {
         const result = await resolveMarket(market);
         results.push(result);
 
-        if (agentErc8004Id && result.ok) {
+        if (agentErc8004Id && result.ok && result.action === 'resolved') {
           const score = result.confidence >= 0.95 ? 95 : result.confidence >= 0.85 ? 85 : 75;
           await recordResolutionReputation(
             agentErc8004Id,
@@ -263,6 +273,7 @@ export async function GET(req: NextRequest) {
       } catch (error) {
         results.push({
           ok: false,
+          action: 'skipped',
           marketId: market.id,
           title: market.title,
           reason: error instanceof Error ? error.message : String(error),
@@ -275,7 +286,8 @@ export async function GET(req: NextRequest) {
       ran: new Date().toISOString(),
       agentAddress,
       expired: expired.length,
-      resolved: results.filter((result) => result.ok).length,
+      resolved: results.filter((result) => result.ok && result.action === 'resolved').length,
+      canceled: results.filter((result) => result.ok && result.action === 'canceled').length,
       results,
     });
   } catch (error) {

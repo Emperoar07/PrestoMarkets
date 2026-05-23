@@ -46,13 +46,13 @@ function getStatus(state: number, closeTime: bigint): MarketStatus {
   const closeMs = Number(closeTime) * 1000;
   const diff = closeMs - Date.now();
 
-  if (diff <= 0) return 'Open';
+  if (diff <= 0) return 'Closed';
   if (diff <= CLOSING_SOON_MS) return 'Closing soon';
   return 'Open';
 }
 
 function getCloseLabel(status: MarketStatus, closeTime: bigint) {
-  if (status === 'Resolved' || status === 'Canceled') return status;
+  if (status === 'Resolved' || status === 'Canceled' || status === 'Closed') return status;
 
   const diff = Number(closeTime) * 1000 - Date.now();
 

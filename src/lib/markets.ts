@@ -1,5 +1,5 @@
 export type MarketType = 'Prediction' | 'Opinion' | 'Opportunity';
-export type MarketStatus = 'Open' | 'Closing soon' | 'Resolved' | 'Canceled' | 'Draft';
+export type MarketStatus = 'Open' | 'Closing soon' | 'Closed' | 'Resolved' | 'Canceled' | 'Draft';
 export type ResolutionMode = 'Human resolver' | 'Community resolver' | 'Agent assisted';
 export type MarketCreatedByType = 'user' | 'admin' | 'agent';
 

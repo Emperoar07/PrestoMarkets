@@ -4,7 +4,7 @@ import { buildMarketMetadataURI } from './marketMetadata';
 import { getCircleSession, refreshCircleSessionIfNeeded, type CircleSession } from './walletProvider';
 import { requestCircleConfirmation, type CircleConfirmDetails } from './circleConfirm';
 import { getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
-import { prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
+import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import type { CreateLiveMarketInput, LiveActionResult } from './liveActions';
 import type { MarketType } from './markets';
 
@@ -217,6 +217,47 @@ function requireArcConfig() {
   return config;
 }
 
+function getPublicClient() {
+  const config = getArcConfig();
+  if (!config.rpcUrl) {
+    throw new Error('NEXT_PUBLIC_ARC_RPC_URL is required for live Arc reads.');
+  }
+
+  return createPublicClient({
+    chain: {
+      id: getArcChainId(),
+      name: 'Arc Testnet',
+      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
+      rpcUrls: { default: { http: [config.rpcUrl] as [string] } },
+    },
+    transport: http(config.rpcUrl),
+  });
+}
+
+async function assertMarketOpenForTrading(marketAddress: Address) {
+  const publicClient = getPublicClient();
+  const [state, closeTime] = await Promise.all([
+    publicClient.readContract({
+      address: marketAddress,
+      abi: prestoMarketAbi,
+      functionName: 'state',
+    }),
+    publicClient.readContract({
+      address: marketAddress,
+      abi: prestoMarketAbi,
+      functionName: 'closeTime',
+    }),
+  ]);
+
+  if (Number(state) !== 0) {
+    throw new Error('This market is already settled and cannot be traded.');
+  }
+
+  if (Number(closeTime) <= Math.floor(Date.now() / 1000)) {
+    throw new Error('This market is closed for trading.');
+  }
+}
+
 function cleanOutcomeOptions(input: CreateLiveMarketInput) {
   const cleaned = (input.outcomeOptions ?? [])
     .map((option) => option.trim())
@@ -344,6 +385,7 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: s
     const session = await requireSession();
     const config = requireArcConfig();
     if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
+    await assertMarketOpenForTrading(input.marketAddress as Address);
     if (!Number.isFinite(input.amount) || input.amount < MIN_TRADE_USDC) {
       throw new Error(`Minimum trade is $${MIN_TRADE_USDC} USDC.`);
     }

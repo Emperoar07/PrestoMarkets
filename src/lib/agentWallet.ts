@@ -117,6 +117,25 @@ export async function agentResolveMarket(marketAddress: string, outcomeIndex: nu
   }
 }
 
+export async function agentCancelMarket(marketAddress: string) {
+  try {
+    if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
+    const { account, publicClient, walletClient } = getClients();
+
+    const hash = await walletClient.writeContract({
+      account,
+      address: marketAddress as Address,
+      abi: prestoMarketAbi,
+      functionName: 'cancel',
+    });
+
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    return { ok: true, txHash: hash };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Agent cancellation failed.' };
+  }
+}
+
 // Buy outcome shares onchain from the agent wallet (approve USDC → call buy)
 // Used by the liquidity bot to properly mint shares, not just transfer USDC
 export async function agentBuyShares(

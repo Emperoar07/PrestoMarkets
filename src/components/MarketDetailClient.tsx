@@ -14,6 +14,7 @@ import type { MarketStatus } from '@/lib/markets';
 const statusStyle: Record<MarketStatus, string> = {
   Open: 'border-mint/25 bg-mint/10 text-mint',
   'Closing soon': 'border-yellow-400/25 bg-yellow-400/10 text-yellow-200',
+  Closed: 'border-orange-300/25 bg-orange-300/10 text-orange-200',
   Resolved: 'border-cyan/25 bg-cyan/10 text-cyan',
   Canceled: 'border-red-400/25 bg-red-400/10 text-red-200',
   Draft: 'border-line bg-ink text-muted',
@@ -98,7 +99,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const connectedAddress = connectedWallet?.address.toLowerCase();
   const resolverAddress = market.resolverAddress?.toLowerCase();
   const isResolver = Boolean(connectedAddress && resolverAddress && connectedAddress === resolverAddress);
-  const isClosedForResolution = market.closeLabel === 'Closed';
+  const isClosedForResolution = market.status === 'Closed' || market.closeLabel === 'Closed';
   const canAccessResolverActions = isResolver && !hasSettlementRecord;
   const canUseResolverActions = canAccessResolverActions && isClosedForResolution;
   const resolverChecksPassed = confirmSource && confirmRules && confirmHuman;
