@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { buildAgentResolutionReport } from '@/lib/agentResolution';
 import type { AppMarket } from '@/lib/appState';
@@ -18,7 +18,7 @@ function rateLimit(ip: string) {
   return true;
 }
 
-const SYSTEM_PROMPT = `You are Presto Markets' resolution oracle — an AI agent that researches prediction market questions and produces evidence reports. Your job is evidence preparation only; you never settle a market yourself.
+const SYSTEM_PROMPT = `You are Presto Markets' resolution oracle - an AI agent that researches prediction market questions and produces evidence reports. Your job is evidence preparation only; you never settle a market yourself.
 
 Rules you must follow:
 - Only use publicly verifiable primary sources (news, official stats, on-chain data).
@@ -105,18 +105,18 @@ Return ONLY valid JSON matching this schema:
   });
   const text3 = res3.content.find((b) => b.type === 'text')?.text ?? '';
 
-  const judgePrompt = \`You are the Meta-Agent Judge. Three separate AI researchers have produced evidence reports for the following prediction market:
+  const judgePrompt = `You are the Meta-Agent Judge. Three separate AI researchers have produced evidence reports for the following prediction market:
   
-Title: \${market.title}
-Rules: \${market.rules ?? 'Standard YES/NO binary resolution.'}
+Title: ${market.title}
+Rules: ${market.rules ?? 'Standard YES/NO binary resolution.'}
 
 Here are their reports:
 === Researcher 1 ===
-\${text1}
+${text1}
 === Researcher 2 ===
-\${text2}
+${text2}
 === Researcher 3 ===
-\${text3}
+${text3}
 
 Your job is to resolve any contradictions, weigh their confidence scores, and output the final, calibrated verdict.
 Return ONLY valid JSON matching this schema:
@@ -126,7 +126,7 @@ Return ONLY valid JSON matching this schema:
   "sources": ["url1", "url2"],
   "evidenceSummary": "Two to four sentences of timestamped evidence, noting if researchers disagreed.",
   "uncertainty": "Any missing data or reasons a human should review before settling."
-}\`;
+}`;
 
   const judgeMessage = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
@@ -175,6 +175,6 @@ Return ONLY valid JSON matching this schema:
     report: report.report,
     dataUri: report.dataUri,
     pretty: report.pretty,
-    poweredBy: 'Circle Agent Stack · Claude Ensemble (2x Sonnet, 1x Haiku) · Arc Testnet ERC-8004',
+    poweredBy: 'Circle Agent Stack - Claude Ensemble (2x Sonnet, 1x Haiku) - Arc Testnet ERC-8004',
   });
 }

@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { getCircleWalletsClient, ARC_CONTRACTS } from '@/lib/circleAgents';
 import { agentBuyShares } from '@/lib/agentWallet';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 import { fetchWithX402 } from '@/lib/x402Client';
 
-// GET — return liquidity analysis across markets
+// GET - return liquidity analysis across markets
 export async function GET(req: NextRequest) {
   const apiKey = req.headers.get('x-api-key');
   const validKey = process.env.PRESTO_AGENT_API_KEY;
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
         );
         walletBalance = usdcBalance?.amount ?? '0';
       } catch {
-        // wallet not found or API error — proceed with null balance
+        // wallet not found or API error - proceed with null balance
       }
     }
   }
@@ -52,11 +52,11 @@ export async function GET(req: NextRequest) {
       maxPositionSize: '$25',
       description: 'Deposits USDC into thin markets (liquidity < $50) to ensure minimum depth for new traders.',
     },
-    poweredBy: 'Circle Developer-Controlled Wallets · Arc Testnet ERC-8183 · @circle-fin/x402-batching',
+    poweredBy: 'Circle Developer-Controlled Wallets - Arc Testnet ERC-8183 - @circle-fin/x402-batching',
   });
 }
 
-// POST — trigger liquidity provision for a specific market
+// POST - trigger liquidity provision for a specific market
 export async function POST(req: NextRequest) {
   const apiKey = req.headers.get('x-api-key');
   const validKey = process.env.PRESTO_AGENT_API_KEY;
@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
   if (!noResult.ok) {
     return NextResponse.json(
       {
-        error: `NO buy failed after YES succeeded — agent holds directional YES exposure: ${noResult.error}`,
+        error: `NO buy failed after YES succeeded - agent holds directional YES exposure: ${noResult.error}`,
         partialSuccess: true,
         yesTxHash: yesResult.txHash,
       },
@@ -155,9 +155,9 @@ export async function POST(req: NextRequest) {
     noTxHash: noResult.txHash,
     marketAddress: body.marketAddress,
     amountUsdc: body.amount,
-    note: stoaVerdict 
-      ? \`Bought \${yesStr} YES and \${noStr} NO based on Stoa's analysis (\${stoaVerdict}, Kelly \${kellyFraction})\`
+    note: stoaVerdict
+      ? `Bought ${yesStr} YES and ${noStr} NO based on Stoa's analysis (${stoaVerdict}, Kelly ${kellyFraction})`
       : 'Bought YES and NO shares sequentially to provide neutral liquidity depth.',
-    poweredBy: 'Presto Agent Wallet · Stoa x402 · Arc Testnet',
+    poweredBy: 'Presto Agent Wallet - Stoa x402 - Arc Testnet',
   });
 }
