@@ -172,12 +172,12 @@ export async function fetchAccountPortfolio(
     const outcomeLabels = market.outcomes.length > 0 ? market.outcomes.map((outcome) => outcome.label) : ['YES', 'NO'];
     const [outcomeShareValues, claimPreview, refundable, hasClaimed, costBasis] = await Promise.all([
       Promise.all(outcomeLabels.map((_, outcomeIndex) =>
-        client.readContract({ address, abi: prestoMarketAbi, functionName: 'sharesOf', args: [outcomeIndex, account] }),
+        client.readContract({ address, abi: prestoMarketAbi, functionName: 'sharesOf', args: [outcomeIndex, account] }).catch(() => BigInt(0)),
       )),
-      client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewClaim', args: [account] }),
-      client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewRefund', args: [account] }),
-      client.readContract({ address, abi: prestoMarketAbi, functionName: 'claimed', args: [account] }),
-      fetchMarketCostBasis(client, address, account),
+      client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewClaim', args: [account] }).catch(() => [BigInt(0), BigInt(0)] as const),
+      client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewRefund', args: [account] }).catch(() => BigInt(0)),
+      client.readContract({ address, abi: prestoMarketAbi, functionName: 'claimed', args: [account] }).catch(() => false),
+      fetchMarketCostBasis(client, address, account).catch(() => ({ yes: 0, no: 0 })),
     ]);
     const claimable = claimPreview[0];
     const yesIndex = outcomeLabels.findIndex((label) => label.toUpperCase() === 'YES');
