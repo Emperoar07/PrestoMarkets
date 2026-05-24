@@ -180,6 +180,31 @@ export async function agentBuyShares(
   }
 }
 
+export async function agentTransferUsdc(toAddress: string, amountUsdc: string) {
+  try {
+    if (!isAddress(toAddress)) throw new Error('Invalid destination address.');
+    const { account, publicClient, walletClient } = getClients();
+    const config = getArcConfig();
+    if (!config.usdcAddress || !isAddress(config.usdcAddress)) throw new Error('USDC address not configured.');
+
+    const amount = parseUnits(amountUsdc, 6);
+    const usdcAddress = config.usdcAddress as Address;
+
+    const hash = await walletClient.writeContract({
+      account,
+      address: usdcAddress,
+      abi: erc20Abi,
+      functionName: 'transfer',
+      args: [toAddress as Address, amount],
+    });
+
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    return { ok: true, txHash: hash };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'USDC transfer failed.' };
+  }
+}
+
 export function getAgentAddress(): string | null {
   const pk = process.env.AGENT_PRIVATE_KEY ?? process.env.PRESTO_AGENT_PRIVATE_KEY;
   if (!pk) return null;

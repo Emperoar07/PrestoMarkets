@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCircleWalletsClient, ARC_CONTRACTS } from '@/lib/circleAgents';
 import { agentBuyShares } from '@/lib/agentWallet';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
+import { fetchWithX402 } from '@/lib/x402Client';
 
 // GET — return liquidity analysis across markets
 export async function GET(req: NextRequest) {
@@ -75,7 +76,8 @@ export async function POST(req: NextRequest) {
   }
 
   const markets = await fetchOnchainMarkets();
-  if (!markets.some(m => m.id === body.marketAddress.toLowerCase())) {
+  const market = markets.find(m => m.id === body.marketAddress.toLowerCase());
+  if (!market) {
     return NextResponse.json({ error: 'marketAddress is not a legitimate factory-deployed Presto market' }, { status: 403 });
   }
 
@@ -84,10 +86,50 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'amount must be between 0 and 25 USDC' }, { status: 400 });
   }
 
-  // Sequential: buy YES first, then NO. Parallel risks directional exposure if one side fails.
-  const halfAmount = (amountNum / 2).toFixed(6);
+  // --- Stoa x402 Integration ---
+  const stoaUrl = process.env.STOA_API_URL || 'https://stoa.blockrun.ai/api/x402/analyze';
+  let stoaVerdict = null;
+  let kellyFraction = 0.5; // Default to symmetric
 
-  const yesResult = await agentBuyShares(body.marketAddress, 0, halfAmount);
+  try {
+    const stoaRes = await fetchWithX402(stoaUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        url: `https://presto.markets/market/${market.id}`, // Pass dummy URL in case Stoa requires it
+        title: market.title, 
+        description: market.description 
+      })
+    });
+    
+    if (stoaRes.ok) {
+      const data = await stoaRes.json();
+      if (data.verdict) stoaVerdict = data.verdict.toUpperCase();
+      if (typeof data.kellyFraction === 'number') kellyFraction = data.kellyFraction;
+    }
+  } catch (error) {
+    console.error('Stoa x402 analysis failed:', error);
+    // Proceed with symmetric liquidity if Stoa fails
+  }
+
+  // Directional weighting based on Stoa's Kelly Fraction.
+  // We treat Stoa's "BUY" as YES and "SELL" as NO.
+  // If PASS or failed, we deploy 50/50.
+  let yesAmount = amountNum / 2;
+  let noAmount = amountNum / 2;
+  
+  if (stoaVerdict === 'BUY' || stoaVerdict === 'YES') {
+    yesAmount = amountNum * kellyFraction;
+    noAmount = amountNum * (1 - kellyFraction);
+  } else if (stoaVerdict === 'SELL' || stoaVerdict === 'NO') {
+    noAmount = amountNum * kellyFraction;
+    yesAmount = amountNum * (1 - kellyFraction);
+  }
+
+  const yesStr = yesAmount.toFixed(6);
+  const noStr = noAmount.toFixed(6);
+
+  const yesResult = await agentBuyShares(body.marketAddress, 0, yesStr);
   if (!yesResult.ok) {
     return NextResponse.json(
       { error: `YES buy failed (NO not attempted): ${yesResult.error}`, partialSuccess: false },
@@ -95,7 +137,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const noResult = await agentBuyShares(body.marketAddress, 1, halfAmount);
+  const noResult = await agentBuyShares(body.marketAddress, 1, noStr);
   if (!noResult.ok) {
     return NextResponse.json(
       {
@@ -113,7 +155,9 @@ export async function POST(req: NextRequest) {
     noTxHash: noResult.txHash,
     marketAddress: body.marketAddress,
     amountUsdc: body.amount,
-    note: 'Bought YES and NO shares sequentially to provide neutral liquidity depth.',
-    poweredBy: 'Presto Agent Wallet · Arc Testnet',
+    note: stoaVerdict 
+      ? \`Bought \${yesStr} YES and \${noStr} NO based on Stoa's analysis (\${stoaVerdict}, Kelly \${kellyFraction})\`
+      : 'Bought YES and NO shares sequentially to provide neutral liquidity depth.',
+    poweredBy: 'Presto Agent Wallet · Stoa x402 · Arc Testnet',
   });
 }

@@ -77,14 +77,66 @@ Return ONLY valid JSON matching this schema:
   "uncertainty": "Any missing data or reasons a human should review before settling."
 }`;
 
-  const message = await anthropic.messages.create({
+  // Execute sequentially to respect free-tier concurrency limits
+  const res1 = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
+    temperature: 0.1,
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: userPrompt }],
   });
+  const text1 = res1.content.find((b) => b.type === 'text')?.text ?? '';
 
-  const text = message.content.find((b) => b.type === 'text')?.text ?? '';
+  const res2 = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1024,
+    temperature: 0.7,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: userPrompt }],
+  });
+  const text2 = res2.content.find((b) => b.type === 'text')?.text ?? '';
+
+  const res3 = await anthropic.messages.create({
+    model: 'claude-haiku-4-3',
+    max_tokens: 1024,
+    temperature: 0.4,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: userPrompt }],
+  });
+  const text3 = res3.content.find((b) => b.type === 'text')?.text ?? '';
+
+  const judgePrompt = \`You are the Meta-Agent Judge. Three separate AI researchers have produced evidence reports for the following prediction market:
+  
+Title: \${market.title}
+Rules: \${market.rules ?? 'Standard YES/NO binary resolution.'}
+
+Here are their reports:
+=== Researcher 1 ===
+\${text1}
+=== Researcher 2 ===
+\${text2}
+=== Researcher 3 ===
+\${text3}
+
+Your job is to resolve any contradictions, weigh their confidence scores, and output the final, calibrated verdict.
+Return ONLY valid JSON matching this schema:
+{
+  "outcome": "YES" | "NO" | "CANCEL",
+  "confidence": "High" | "Medium" | "Low",
+  "sources": ["url1", "url2"],
+  "evidenceSummary": "Two to four sentences of timestamped evidence, noting if researchers disagreed.",
+  "uncertainty": "Any missing data or reasons a human should review before settling."
+}\`;
+
+  const judgeMessage = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1024,
+    temperature: 0.2,
+    system: 'You are a master Meta-Agent Judge. You output ONLY valid JSON.',
+    messages: [{ role: 'user', content: judgePrompt }],
+  });
+
+  const text = judgeMessage.content.find((b) => b.type === 'text')?.text ?? '';
 
   let parsed: {
     outcome: 'YES' | 'NO' | 'CANCEL';
@@ -108,7 +160,7 @@ Return ONLY valid JSON matching this schema:
     confidence: parsed.confidence,
     evidenceNotes: parsed.evidenceSummary + (parsed.uncertainty ? `\n\nUncertainty: ${parsed.uncertainty}` : ''),
     evidenceSources: (parsed.sources ?? []).join('\n'),
-    operator: 'Presto Resolution Oracle (Claude claude-sonnet-4-6)',
+    operator: 'Presto Resolution Oracle (Claude Ensemble Judge)',
   });
 
   return NextResponse.json({
@@ -123,6 +175,6 @@ Return ONLY valid JSON matching this schema:
     report: report.report,
     dataUri: report.dataUri,
     pretty: report.pretty,
-    poweredBy: 'Circle Agent Stack · Claude claude-sonnet-4-6 · Arc Testnet ERC-8004',
+    poweredBy: 'Circle Agent Stack · Claude Ensemble (2x Sonnet, 1x Haiku) · Arc Testnet ERC-8004',
   });
 }
