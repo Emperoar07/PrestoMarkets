@@ -112,7 +112,10 @@ export function SiteHeader() {
   function updateExploreSearch(value: string) {
     setSearchValue(value);
     // Keep search in memory only so refresh returns to a clean explorer.
-    if (pathname !== '/markets') router.push('/markets');
+    if (pathname !== '/markets') {
+      window.dispatchEvent(new Event('presto:navigate-start'));
+      router.push('/markets');
+    }
     window.dispatchEvent(new CustomEvent('presto:market-search', { detail: value }));
   }
 
@@ -125,6 +128,7 @@ export function SiteHeader() {
     if (pathname === '/markets') {
       router.replace(target, { scroll: false });
     } else {
+      window.dispatchEvent(new Event('presto:navigate-start'));
       router.push(target);
     }
     setSearchValue('');

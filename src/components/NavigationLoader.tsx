@@ -1,0 +1,63 @@
+'use client';
+
+import { usePathname, useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { BrandLoader } from './BrandLoader';
+
+export function NavigationLoader() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  // Clear loading state when the route changes
+  useEffect(() => {
+    setIsNavigating(false);
+  }, [pathname, searchParams]);
+
+  useEffect(() => {
+    const handleAnchorClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const anchor = target.closest('a');
+      
+      if (!anchor) return;
+      if (e.defaultPrevented) return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (anchor.hasAttribute('download')) return;
+      if (anchor.getAttribute('target') === '_blank') return;
+      
+      const href = anchor.getAttribute('href');
+      if (!href) return;
+      
+      try {
+        const url = new URL(href, window.location.origin);
+        // Only trigger for same-origin local routes
+        if (url.origin !== window.location.origin) return;
+        
+        // If it's the exact same page, don't show loader
+        if (url.pathname === pathname && url.search === searchParams.toString()) return;
+
+        setIsNavigating(true);
+      } catch {
+        // Invalid URL
+      }
+    };
+
+    const handleCustomNavigate = () => setIsNavigating(true);
+
+    document.addEventListener('click', handleAnchorClick, { capture: true });
+    window.addEventListener('presto:navigate-start', handleCustomNavigate);
+    
+    return () => {
+      document.removeEventListener('click', handleAnchorClick, { capture: true });
+      window.removeEventListener('presto:navigate-start', handleCustomNavigate);
+    };
+  }, [pathname, searchParams]);
+
+  if (!isNavigating) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#020617]/50 backdrop-blur-md">
+      <BrandLoader />
+    </div>
+  );
+}

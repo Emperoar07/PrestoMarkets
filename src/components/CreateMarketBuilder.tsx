@@ -256,7 +256,10 @@ export function CreateMarketBuilder() {
   function dismissResult() {
     const wasOk = result?.ok;
     setResult(null);
-    if (wasOk) router.push('/markets');
+    if (wasOk) {
+      window.dispatchEvent(new Event('presto:navigate-start'));
+      router.push('/markets');
+    }
   }
 
   const inputBase = 'w-full bg-transparent text-white placeholder:text-[#3d4a63] outline-none transition-colors text-[15px] py-3 border-b';
