@@ -199,7 +199,7 @@ function buildCryptoPriceSignal(input: {
 
 async function fetchCoinGeckoPriceSignals(): Promise<TrendItem[]> {
   const ids = cryptoPriceAssets.map((asset) => asset.id).join(',');
-  const apiKey = process.env.COINGECKO_API_KEY || process.env.NEXT_PUBLIC_COINGECKO_API_KEY;
+  const apiKey = process.env.COINGECKO_API_KEY;
   const headers: HeadersInit = apiKey ? { 'x-cg-demo-api-key': apiKey } : {};
   const res = await fetch(
     `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true`,

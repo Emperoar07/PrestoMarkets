@@ -168,11 +168,6 @@ export function SiteHeader() {
               Portfolio
             </Link>
           ) : null}
-          {!isLandingPage ? (
-            <Link href="/agent" className={navLinkClass(pathname === '/agent')}>
-              Agent
-            </Link>
-          ) : null}
           <a href={dexUrl} className={navLinkClass()}>
             DEX
           </a>

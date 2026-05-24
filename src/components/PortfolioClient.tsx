@@ -35,8 +35,7 @@ export function PortfolioClient() {
     <>
       <SiteHeader />
       <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-36 md:px-7 md:pt-40">
-        <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Portfolio</p>
-        <h1 className="mt-3 text-[clamp(34px,5vw,54px)] font-black tracking-tight text-white">My Shares</h1>
+        <h1 className="text-[clamp(44px,6vw,68px)] font-black tracking-tight text-white">Portfolio</h1>
         <p className="mt-3 max-w-2xl text-[14px] leading-[1.7] text-muted">
           Every row is read from live Arc market contracts for your connected wallet. Pick any share position to jump back to that market trade panel.
         </p>
