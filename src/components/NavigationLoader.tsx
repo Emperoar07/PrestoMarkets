@@ -34,7 +34,7 @@ export function NavigationLoader() {
         if (url.origin !== window.location.origin) return;
         
         // If it's the exact same page, don't show loader
-        if (url.pathname === pathname && url.search === searchParams.toString()) return;
+        if (url.pathname === pathname && url.searchParams.toString() === searchParams.toString()) return;
 
         setIsNavigating(true);
       } catch {
