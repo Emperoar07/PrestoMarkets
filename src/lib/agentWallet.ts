@@ -12,7 +12,8 @@ import {
   type Hex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { getArcConfig, getArcChainId } from './arcConfig';
+import { arcTestnet } from 'viem/chains';
+import { getArcConfig } from './arcConfig';
 import { erc20Abi, prestoMarketFactoryAbi, prestoMarketAbi } from './contracts';
 import { buildMarketMetadataURI } from './marketMetadata';
 import type { CreateLiveMarketInput } from './liveActions';
@@ -47,20 +48,12 @@ function getClients() {
   if (!pk) throw new Error('AGENT_PRIVATE_KEY is not set — agent wallet unavailable.');
 
   const config = getArcConfig();
-  if (!config.rpcUrl) throw new Error('NEXT_PUBLIC_ARC_RPC_URL not set.');
   if (!isAddress(config.factoryAddress ?? '')) throw new Error('NEXT_PUBLIC_MARKET_FACTORY_ADDRESS not set.');
 
-  const chain = {
-    id: getArcChainId(),
-    name: 'Arc Testnet',
-    nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-    rpcUrls: { default: { http: [config.rpcUrl] as [string] } },
-  };
-
   const account = privateKeyToAccount(pk as Hex);
-  const transport = http(config.rpcUrl);
-  const publicClient = createPublicClient({ chain, transport });
-  const walletClient = createWalletClient({ account, chain, transport });
+  const transport = config.rpcUrl ? http(config.rpcUrl) : http();
+  const publicClient = createPublicClient({ chain: arcTestnet, transport });
+  const walletClient = createWalletClient({ account, chain: arcTestnet, transport });
 
   return {
     account,

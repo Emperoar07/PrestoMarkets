@@ -16,6 +16,7 @@ export type AgentMarketMetadata = {
 };
 
 export type MarketMetadata = AgentMarketMetadata & {
+  schema?: 'presto.market.v1';
   name: string;
   description: string;
   /** Primary category (kept for backward compat with markets created before multi-category). */
@@ -29,6 +30,14 @@ export type MarketMetadata = AgentMarketMetadata & {
   sourceOfTruth: string;
   resolutionMode: ResolutionMode;
   collateral?: 'USDC' | 'EURC';
+  rulesSchema?: {
+    type: MarketType;
+    outcomes: string[];
+    sourceOfTruth: string;
+    resolverMode: string;
+    closeRule: string;
+    settlementAsset: 'USDC' | 'EURC';
+  };
 };
 
 export type BuildMarketMetadataInput = {
@@ -155,6 +164,7 @@ export function buildMarketMetadata(input: BuildMarketMetadataInput): MarketMeta
   const categories = normalizeCategories(input);
 
   return {
+    schema: 'presto.market.v1',
     name: trunc(input.title, MAX.title) ?? input.title,
     description: trunc(input.description, MAX.description) ?? input.description,
     category: categories[0] ?? input.category,
@@ -165,6 +175,14 @@ export function buildMarketMetadata(input: BuildMarketMetadataInput): MarketMeta
     sourceOfTruth: trunc(input.sourceOfTruth, MAX.sourceOfTruth) ?? input.sourceOfTruth,
     resolutionMode: input.resolutionMode as ResolutionMode,
     collateral: input.collateral ?? 'USDC',
+    rulesSchema: {
+      type: input.type,
+      outcomes: outcomeOptions && outcomeOptions.length > 0 ? outcomeOptions : ['YES', 'NO'],
+      sourceOfTruth: trunc(input.sourceOfTruth, MAX.sourceOfTruth) ?? input.sourceOfTruth,
+      resolverMode: input.resolutionMode,
+      closeRule: 'Market closes at the onchain closeTime. Resolver settles against the written rules and source of truth.',
+      settlementAsset: input.collateral ?? 'USDC',
+    },
     createdByType: input.agent?.createdByType ?? 'user',
     agentName: input.agent?.agentName,
     agentSource: input.agent?.agentSource,

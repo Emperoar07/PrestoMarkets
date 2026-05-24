@@ -49,9 +49,31 @@ export async function fetchArcEurcBalance(address: string): Promise<string | nul
 }
 
 export async function fetchArcStableBalances(address: string): Promise<Record<StableSymbol, string | null>> {
-  const [usdc, eurc] = await Promise.all([
-    fetchArcUsdcBalance(address).catch(() => null),
-    fetchArcEurcBalance(address).catch(() => null),
+  const config = getArcConfig();
+  if (!config.rpcUrl || !isAddress(address)) return { USDC: null, EURC: null };
+
+  const client = createPublicClient({
+    chain: {
+      id: getArcChainId(),
+      name: 'Arc Testnet',
+      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
+      rpcUrls: { default: { http: [config.rpcUrl] } },
+    },
+    transport: http(config.rpcUrl),
+  });
+
+  const wallet = address as Address;
+  const [usdcRaw, eurcRaw] = await Promise.all([
+    config.usdcAddress && isAddress(config.usdcAddress)
+      ? client.readContract({ address: config.usdcAddress as Address, abi: erc20Abi, functionName: 'balanceOf', args: [wallet] }).catch(() => null)
+      : Promise.resolve(null),
+    config.eurcAddress && isAddress(config.eurcAddress)
+      ? client.readContract({ address: config.eurcAddress as Address, abi: erc20Abi, functionName: 'balanceOf', args: [wallet] }).catch(() => null)
+      : Promise.resolve(null),
   ]);
-  return { USDC: usdc, EURC: eurc };
+
+  return {
+    USDC: usdcRaw === null ? null : formatAmount(Number(formatUnits(usdcRaw, 6)), 'USDC'),
+    EURC: eurcRaw === null ? null : formatAmount(Number(formatUnits(eurcRaw, 6)), 'EURC'),
+  };
 }

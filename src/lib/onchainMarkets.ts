@@ -6,6 +6,9 @@ import type { AppMarket } from './appState';
 import type { MarketStatus, MarketType, ResolutionMode } from './markets';
 const MARKET_BATCH_SIZE = 20;
 const MAX_MARKETS = 500;
+const MARKET_CACHE_TTL_MS = 8_000;
+let marketCache: { at: number; markets: AppMarket[] } | null = null;
+let marketFetchInFlight: Promise<AppMarket[]> | null = null;
 
 async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -157,6 +160,14 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     resolverAddress: resolver,
     resolutionMode: metadata?.resolutionMode || getResolutionMode(kind),
     sourceOfTruth: metadata?.sourceOfTruth || metadataURI || 'Metadata URI was not set at creation.',
+    rulesSchema: metadata?.rulesSchema ?? {
+      type: marketType,
+      outcomes: labels,
+      sourceOfTruth: metadata?.sourceOfTruth || metadataURI || 'Metadata URI was not set at creation.',
+      resolverMode: metadata?.resolutionMode || getResolutionMode(kind),
+      closeRule: 'Market closes at the onchain closeTime. Resolver settles against the written rules and source of truth.',
+      settlementAsset: metadata?.collateral === 'EURC' ? 'EURC' : 'USDC',
+    },
     rules: resolutionURI && isSafeResolutionUri(resolutionURI)
       ? `Resolved with evidence: ${resolutionURI}. Winning outcome: ${winningLabel}.`
       : resolutionURI
@@ -195,7 +206,7 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
   };
 }
 
-export async function fetchOnchainMarkets() {
+async function readOnchainMarkets() {
   const config = getArcConfig();
 
   if (!config.rpcUrl || (!config.factoryAddress && !config.multiOutcomeFactoryAddress)) {
@@ -255,4 +266,26 @@ export async function fetchOnchainMarkets() {
   }
 
   return markets;
+}
+
+export async function fetchOnchainMarkets(options: { force?: boolean } = {}) {
+  const now = Date.now();
+  if (!options.force && marketCache && now - marketCache.at < MARKET_CACHE_TTL_MS) {
+    return marketCache.markets;
+  }
+
+  if (!options.force && marketFetchInFlight) {
+    return marketFetchInFlight;
+  }
+
+  marketFetchInFlight = readOnchainMarkets()
+    .then((markets) => {
+      marketCache = { at: Date.now(), markets };
+      return markets;
+    })
+    .finally(() => {
+      marketFetchInFlight = null;
+    });
+
+  return marketFetchInFlight;
 }

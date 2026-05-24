@@ -1,6 +1,15 @@
 import { NextResponse } from 'next/server';
 import { isAddress } from 'viem';
 import { getArcConfig } from '@/lib/arcConfig';
+import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
+import crypto from 'node:crypto';
+
+function hashUserId(rawUserId: string): string {
+  const secret = process.env.CIRCLE_USER_SECRET || process.env.CIRCLE_API_KEY;
+  if (!secret) throw new Error('Circle user secret is not configured.');
+  const hash = crypto.createHash('sha256').update(rawUserId + secret).digest('hex');
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
+}
 
 function envClean(name: string, fallback = ''): string {
   return (process.env[name] ?? fallback).trim();
@@ -116,7 +125,7 @@ function requireCircleConfig() {
   return { apiKey, appId };
 }
 
-function isAllowedContractExecution(input: CircleRequestBody): boolean {
+async function isAllowedContractExecution(input: CircleRequestBody): Promise<boolean> {
   if (!input.contractAddress || !isAddress(input.contractAddress)) return false;
   if (!input.abiFunctionSignature) return false;
 
@@ -138,7 +147,10 @@ function isAllowedContractExecution(input: CircleRequestBody): boolean {
     return input.abiFunctionSignature === 'approve(address,uint256)' || input.abiFunctionSignature === 'transfer(address,uint256)';
   }
 
-  return allowedMarketSignatures.has(input.abiFunctionSignature);
+  if (!allowedMarketSignatures.has(input.abiFunctionSignature)) return false;
+
+  const markets = await fetchOnchainMarkets();
+  return markets.some((market) => market.id.toLowerCase() === contract);
 }
 
 async function circleFetch(path: string, input: RequestInit & { userToken?: string } = {}) {
@@ -191,6 +203,7 @@ export async function POST(request: Request) {
 
     if (action === 'createUser') {
       if (!body.userId) return jsonError('userId is required.');
+      const hashedUserId = hashUserId(body.userId);
 
       const response = await fetch(`${circleBaseUrl}/v1/w3s/users`, {
         method: 'POST',
@@ -199,7 +212,7 @@ export async function POST(request: Request) {
           'Content-Type': 'application/json',
           Accept: 'application/json',
         },
-        body: JSON.stringify({ userId: body.userId }),
+        body: JSON.stringify({ userId: hashedUserId }),
       });
       const data = await response.json().catch(() => ({}));
 
@@ -207,16 +220,17 @@ export async function POST(request: Request) {
         return jsonError(normalizeCircleError(data, 'Circle user creation failed.'), response.status);
       }
 
-      return NextResponse.json(data.data ?? { userId: body.userId });
+      return NextResponse.json(data.data ?? { userId: hashedUserId });
     }
 
     if (action === 'session') {
       if (!body.userId) return jsonError('userId is required.');
+      const hashedUserId = hashUserId(body.userId);
 
       return circleFetch('/v1/w3s/users/token', {
         method: 'POST',
         body: JSON.stringify({
-          userId: body.userId,
+          userId: hashedUserId,
           idempotencyKey: crypto.randomUUID(),
         }),
       });
@@ -270,7 +284,7 @@ export async function POST(request: Request) {
       if (!body.walletId) return jsonError('walletId is required.');
       if (!body.contractAddress) return jsonError('contractAddress is required.');
       if (!body.abiFunctionSignature) return jsonError('abiFunctionSignature is required.');
-      if (!isAllowedContractExecution(body)) {
+      if (!await isAllowedContractExecution(body)) {
         return jsonError('Contract execution is not allowlisted for Presto Markets.', 403);
       }
 

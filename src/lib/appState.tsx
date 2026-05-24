@@ -66,7 +66,7 @@ type AppStateValue = {
   accountPreviews: Record<string, AccountMarketPreview>;
   isLoadingMarkets: boolean;
   isLoadingAccount: boolean;
-  refreshMarkets: () => Promise<void>;
+  refreshMarkets: (options?: { force?: boolean }) => Promise<AppMarket[]>;
   refreshAccountPortfolio: () => Promise<void>;
   createMarket: (input: CreateMarketInput) => Promise<LiveActionResult>;
   placeTrade: (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; amount: number; payWith?: StableSymbol }) => Promise<LiveActionResult>;
@@ -105,14 +105,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [isLoadingMarkets, setIsLoadingMarkets] = useState(true);
   const [isLoadingAccount, setIsLoadingAccount] = useState(false);
 
-  const refreshMarkets = useCallback(async () => {
+  const refreshMarkets = useCallback(async (options: { force?: boolean } = {}) => {
     setIsLoadingMarkets(true);
 
     try {
-      setMarkets(await fetchOnchainMarkets());
+      const nextMarkets = await fetchOnchainMarkets(options);
+      setMarkets(nextMarkets);
+      return nextMarkets;
     } catch (error) {
       console.warn('Unable to load onchain markets', error);
       setMarkets([]);
+      return [];
     } finally {
       setIsLoadingMarkets(false);
     }
@@ -149,24 +152,45 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void refreshAccountPortfolio();
   }, [refreshAccountPortfolio]);
 
+  const refreshAll = useCallback(async (options: { force?: boolean } = {}) => {
+    const nextMarkets = await refreshMarkets(options);
+    if (connectedWallet?.address) {
+      setIsLoadingAccount(true);
+      try {
+        const snapshot = await fetchAccountPortfolio(nextMarkets, connectedWallet.address, { includeActivity: false });
+        setPositions(snapshot.positions);
+        setActivity(snapshot.activity);
+        setAccountPreviews(snapshot.previews);
+      } catch (error) {
+        console.warn('Unable to load account portfolio', error);
+        setPositions([]);
+        setActivity([]);
+        setAccountPreviews({});
+      } finally {
+        setIsLoadingAccount(false);
+      }
+    } else {
+      await refreshAccountPortfolio();
+    }
+    window.dispatchEvent(new CustomEvent('presto:balances-refresh'));
+  }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
+
   const schedulePostTransactionRefresh = useCallback(() => {
     for (const delay of [4_000, 10_000, 20_000]) {
       window.setTimeout(() => {
-        void refreshMarkets();
-        void refreshAccountPortfolio();
+        void refreshAll({ force: true });
       }, delay);
     }
-  }, [refreshMarkets, refreshAccountPortfolio]);
+  }, [refreshAll]);
 
   const createMarket = useCallback(async (input: CreateMarketInput) => {
     const result = await createLiveMarket(input satisfies CreateLiveMarketInput);
     if (result.ok) {
-      await refreshMarkets();
-      await refreshAccountPortfolio();
+      await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }
     return result;
-  }, [refreshMarkets, refreshAccountPortfolio, schedulePostTransactionRefresh]);
+  }, [refreshAll, schedulePostTransactionRefresh]);
 
   const placeTrade = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; amount: number; payWith?: StableSymbol }) => {
     const market = markets.find((item) => item.id === input.marketId);
@@ -189,15 +213,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // Arc finalizes in sub-second blocks but public RPC takes ~1-2s to surface the new
       // sharesOf state. Refresh once immediately, then once more after a short delay so the
       // YOUR POSITION block updates without a manual reload.
-      void refreshMarkets();
-      void refreshAccountPortfolio();
+      void refreshAll({ force: true });
       await new Promise((r) => setTimeout(r, 1_800));
-      await refreshMarkets();
-      await refreshAccountPortfolio();
+      await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }
     return result;
-  }, [markets, connectedWallet?.address, refreshMarkets, refreshAccountPortfolio, schedulePostTransactionRefresh]);
+  }, [markets, connectedWallet?.address, refreshAll, schedulePostTransactionRefresh]);
 
   const addLiquidity = useCallback(async (input: { marketId: string; amount: number; payWith?: StableSymbol }) => {
     const market = markets.find((item) => item.id === input.marketId);
@@ -214,15 +236,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       writePayWith(connectedWallet?.address, input.marketId, input.payWith);
     }
     if (result.ok) {
-      void refreshMarkets();
-      void refreshAccountPortfolio();
+      void refreshAll({ force: true });
       await new Promise((r) => setTimeout(r, 1_800));
-      await refreshMarkets();
-      await refreshAccountPortfolio();
+      await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }
     return result;
-  }, [markets, connectedWallet?.address, refreshMarkets, refreshAccountPortfolio, schedulePostTransactionRefresh]);
+  }, [markets, connectedWallet?.address, refreshAll, schedulePostTransactionRefresh]);
 
   const resolveMarket = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; resolutionURI: string }) => {
     const result = await resolveLiveMarket({
@@ -232,44 +252,40 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       resolutionURI: input.resolutionURI,
     });
     if (result.ok) {
-      await refreshMarkets();
-      await refreshAccountPortfolio();
+      await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }
     return result;
-  }, [refreshMarkets, refreshAccountPortfolio, schedulePostTransactionRefresh]);
+  }, [refreshAll, schedulePostTransactionRefresh]);
 
   const cancelMarket = useCallback(async (marketId: string) => {
     const result = await cancelLiveMarket(marketId);
     if (result.ok) {
-      await refreshMarkets();
-      await refreshAccountPortfolio();
+      await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }
     return result;
-  }, [refreshMarkets, refreshAccountPortfolio, schedulePostTransactionRefresh]);
+  }, [refreshAll, schedulePostTransactionRefresh]);
 
   const claimMarket = useCallback(async (marketId: string) => {
     const payWith = readPayWith(connectedWallet?.address, marketId) ?? undefined;
     const result = await claimLiveMarket(marketId, payWith);
     if (result.ok) {
-      await refreshMarkets();
-      await refreshAccountPortfolio();
+      await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }
     return result;
-  }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio, schedulePostTransactionRefresh]);
+  }, [connectedWallet?.address, refreshAll, schedulePostTransactionRefresh]);
 
   const refundMarket = useCallback(async (marketId: string) => {
     const payWith = readPayWith(connectedWallet?.address, marketId) ?? undefined;
     const result = await refundLiveMarket(marketId, payWith);
     if (result.ok) {
-      await refreshMarkets();
-      await refreshAccountPortfolio();
+      await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }
     return result;
-  }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio, schedulePostTransactionRefresh]);
+  }, [connectedWallet?.address, refreshAll, schedulePostTransactionRefresh]);
 
   const getMarket = useCallback((id: string) => markets.find((market) => market.id === id), [markets]);
 

@@ -33,6 +33,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 });
   }
 
+  const agentKey = req.headers.get('x-api-key');
+  const validKey = process.env.PRESTO_AGENT_API_KEY;
+  if (!validKey || agentKey !== validKey) {
+    return NextResponse.json({ error: 'Unauthorized: PRESTO_AGENT_API_KEY required' }, { status: 401 });
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: 'Resolution oracle not configured (missing ANTHROPIC_API_KEY)' }, { status: 503 });

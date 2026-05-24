@@ -116,9 +116,14 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   async function runAction(action: () => Promise<{ ok: boolean; message: string; txHash?: string }>) {
     setIsSubmitting(true);
     setMessage('Waiting for wallet confirmation...');
-    const result = await action();
-    setIsSubmitting(false);
-    setMessage(result.message);
+    try {
+      const result = await action();
+      setMessage(result.message);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Transaction failed.');
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function prepareAgentReport() {
@@ -319,6 +324,14 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   <p className="mt-1.5 break-all text-sm leading-6 text-white">{market.resolverAddress || market.resolver}</p>
                   <p className="mt-1 text-xs text-cyan">{market.resolutionMode}</p>
                 </div>
+                {market.rulesSchema ? (
+                  <div className="md:col-span-2">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Machine-readable rules</p>
+                    <pre className="mt-2 max-h-56 overflow-auto rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-3 text-[11px] leading-5 text-[#cbd5e1]">
+                      {JSON.stringify({ schema: 'presto.market-rules.v1', ...market.rulesSchema }, null, 2)}
+                    </pre>
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -350,11 +363,28 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     <p className="mt-1.5 text-sm text-white">{market.safetyScore ?? 'Not scored'}</p>
                   </div>
                 </div>
+                <div className="mt-4 grid gap-3 border-t border-white/[0.06] pt-4 md:grid-cols-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Action receipt</p>
+                    <p className="mt-1.5 break-all text-sm text-white">create-market:{market.id}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Agent model</p>
+                    <p className="mt-1.5 text-sm text-white">{market.agentModel || 'Presto fallback model stack'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Resolver wallet</p>
+                    <p className="mt-1.5 break-all text-sm text-white">{market.resolverAddress || market.resolver}</p>
+                  </div>
+                </div>
                 {market.trendUrl ? (
                   <a href={market.trendUrl} target="_blank" rel="noreferrer" className="mt-4 inline-block break-all text-sm font-bold text-cyan hover:opacity-80">
                     View trend source
                   </a>
                 ) : null}
+                <a href="/agent" className="ml-0 mt-4 inline-block text-sm font-bold text-cyan hover:opacity-80 md:ml-4">
+                  View agent profile
+                </a>
               </div>
             ) : null}
 

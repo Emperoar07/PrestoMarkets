@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { BrandMark } from './BrandMark';
@@ -42,6 +42,18 @@ export function SiteHeader() {
   const [balanceMenuOpen, setBalanceMenuOpen] = useState(false);
   const balanceMenuRef = useRef<HTMLDivElement>(null);
   const categoryScrollRef = useRef<HTMLDivElement>(null);
+  const loadBalances = useCallback(async () => {
+    if (!connectedWallet?.address) {
+      setBalances({ USDC: null, EURC: null });
+      return;
+    }
+
+    try {
+      setBalances(await fetchArcStableBalances(connectedWallet.address));
+    } catch {
+      setBalances({ USDC: null, EURC: null });
+    }
+  }, [connectedWallet?.address]);
 
   useEffect(() => {
     setSearchValue('');
@@ -60,15 +72,31 @@ export function SiteHeader() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!connectedWallet?.address) {
-      setBalances({ USDC: null, EURC: null });
-      return undefined;
+    async function run() {
+      if (!connectedWallet?.address) {
+        setBalances({ USDC: null, EURC: null });
+        return;
+      }
+
+      try {
+        const nextBalances = await fetchArcStableBalances(connectedWallet.address);
+        if (!cancelled) setBalances(nextBalances);
+      } catch {
+        if (!cancelled) setBalances({ USDC: null, EURC: null });
+      }
     }
-    fetchArcStableBalances(connectedWallet.address)
-      .then((result) => { if (!cancelled) setBalances(result); })
-      .catch(() => { if (!cancelled) setBalances({ USDC: null, EURC: null }); });
+
+    void run();
     return () => { cancelled = true; };
   }, [connectedWallet?.address]);
+
+  useEffect(() => {
+    function handleBalanceRefresh() {
+      void loadBalances();
+    }
+    window.addEventListener('presto:balances-refresh', handleBalanceRefresh);
+    return () => window.removeEventListener('presto:balances-refresh', handleBalanceRefresh);
+  }, [loadBalances]);
 
   useEffect(() => {
     if (!balanceMenuOpen) return undefined;
@@ -138,6 +166,11 @@ export function SiteHeader() {
           {!isLandingPage ? (
             <Link href="/portfolio" className={navLinkClass(pathname === '/portfolio')}>
               Portfolio
+            </Link>
+          ) : null}
+          {!isLandingPage ? (
+            <Link href="/agent" className={navLinkClass(pathname === '/agent')}>
+              Agent
             </Link>
           ) : null}
           <a href={dexUrl} className={navLinkClass()}>

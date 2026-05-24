@@ -1,10 +1,11 @@
-import { createPublicClient, http, isAddress, parseEventLogs, parseUnits, type Address, type Hex } from 'viem';
-import { getArcConfig, getArcChainId } from './arcConfig';
+import { createPublicClient, formatUnits, http, isAddress, parseEventLogs, parseUnits, type Address, type Hex } from 'viem';
+import { arcTestnet } from 'viem/chains';
+import { getArcConfig } from './arcConfig';
 import { buildMarketMetadataURI } from './marketMetadata';
-import { getCircleSession, refreshCircleSessionIfNeeded, type CircleSession } from './walletProvider';
+import { getStoredConnectedWallet, refreshCircleSessionIfNeeded, type CircleSession } from './walletProvider';
 import { requestCircleConfirmation, type CircleConfirmDetails } from './circleConfirm';
 import { getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
-import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
+import { erc20Abi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import type { CreateLiveMarketInput, LiveActionResult } from './liveActions';
 import type { MarketType } from './markets';
 
@@ -276,12 +277,7 @@ function getPublicClient() {
   }
 
   return createPublicClient({
-    chain: {
-      id: getArcChainId(),
-      name: 'Arc Testnet',
-      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-      rpcUrls: { default: { http: [config.rpcUrl] as [string] } },
-    },
+    chain: arcTestnet,
     transport: http(config.rpcUrl),
   });
 }
@@ -310,6 +306,35 @@ async function assertMarketOpenForTrading(marketAddress: Address) {
   }
 }
 
+async function readCircleTradeFunding(input: {
+  marketAddress: Address;
+  ownerAddress: Address;
+  usdcAddress: Address;
+  amount: bigint;
+}) {
+  const publicClient = getPublicClient();
+  const [balance, allowance] = await Promise.all([
+    publicClient.readContract({
+      address: input.usdcAddress,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [input.ownerAddress],
+    }),
+    publicClient.readContract({
+      address: input.usdcAddress,
+      abi: erc20Abi,
+      functionName: 'allowance',
+      args: [input.ownerAddress, input.marketAddress],
+    }),
+  ]);
+
+  if (balance < input.amount) {
+    throw new Error(`Insufficient USDC balance. You have $${Number(formatUnits(balance, 6)).toFixed(2)} but this trade needs $${Number(formatUnits(input.amount, 6)).toFixed(2)}.`);
+  }
+
+  return { allowance };
+}
+
 function cleanOutcomeOptions(input: CreateLiveMarketInput) {
   const cleaned = (input.outcomeOptions ?? [])
     .map((option) => option.trim())
@@ -331,12 +356,7 @@ async function readCreatedMarketAddress(txHash: string, multiOutcome = false): P
   const config = getArcConfig();
   if (!config.rpcUrl || !txHash) return undefined;
   const publicClient = createPublicClient({
-    chain: {
-      id: getArcChainId(),
-      name: 'Arc Testnet',
-      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-      rpcUrls: { default: { http: [config.rpcUrl] as [string] } },
-    },
+    chain: arcTestnet,
     transport: http(config.rpcUrl),
   });
   const receipt = await publicClient.getTransactionReceipt({ hash: txHash as Hex });
@@ -438,14 +458,28 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: s
     const session = await requireSession();
     const config = requireArcConfig();
     if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
-    await assertMarketOpenForTrading(input.marketAddress as Address);
+    const marketAddress = input.marketAddress as Address;
+    const usdcAddress = config.usdcAddress! as Address;
+    await assertMarketOpenForTrading(marketAddress);
     if (!Number.isFinite(input.amount) || input.amount < MIN_TRADE_USDC) {
       throw new Error(`Minimum trade is $${MIN_TRADE_USDC} USDC.`);
     }
     const amount = parseUnits(String(input.amount), 6).toString();
+    const amountValue = BigInt(amount);
+    const ownerAddress = getStoredConnectedWallet()?.address;
+    if (!ownerAddress || !isAddress(ownerAddress)) {
+      throw new Error('Circle wallet address is missing. Sign in again.');
+    }
 
     const humanAmount = `$${Number(input.amount).toFixed(2)} USDC`;
-    await runContractExecution({
+    const funding = await readCircleTradeFunding({
+      marketAddress,
+      ownerAddress: ownerAddress as Address,
+      usdcAddress,
+      amount: amountValue,
+    });
+    if (funding.allowance < amountValue) {
+      await runContractExecution({
       session,
       contractAddress: config.usdcAddress!,
       abiFunctionSignature: 'approve(address,uint256)',
@@ -460,7 +494,8 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: s
           `amount: ${humanAmount} (${amount} base units)`,
         ],
       },
-    });
+      });
+    }
 
     const txHash = await runContractExecution({
       session,

@@ -1,28 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCircleWalletsClient, ARC_CONTRACTS } from '@/lib/circleAgents';
 import { agentBuyShares } from '@/lib/agentWallet';
+import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 
 // GET — return liquidity analysis across markets
 export async function GET(req: NextRequest) {
-  const client = getCircleWalletsClient();
-  const walletId = process.env.PRESTO_LIQUIDITY_WALLET_ID;
+  const apiKey = req.headers.get('x-api-key');
+  const validKey = process.env.PRESTO_AGENT_API_KEY;
+  const isAuthorized = Boolean(validKey && apiKey === validKey);
 
   let walletBalance: string | null = null;
   let walletAddress: string | null = null;
 
-  if (client && walletId) {
-    try {
-      const [walletRes, balRes] = await Promise.all([
-        client.getWallet({ id: walletId }),
-        client.getWalletTokenBalance({ id: walletId }),
-      ]);
-      walletAddress = walletRes.data?.wallet?.address ?? null;
-      const usdcBalance = balRes.data?.tokenBalances?.find(
-        (b) => b.token?.tokenAddress?.toLowerCase() === ARC_CONTRACTS.USDC.toLowerCase(),
-      );
-      walletBalance = usdcBalance?.amount ?? '0';
-    } catch {
-      // wallet not found or API error — proceed with null balance
+  if (isAuthorized) {
+    const client = getCircleWalletsClient();
+    const walletId = process.env.PRESTO_LIQUIDITY_WALLET_ID;
+    if (client && walletId) {
+      try {
+        const [walletRes, balRes] = await Promise.all([
+          client.getWallet({ id: walletId }),
+          client.getWalletTokenBalance({ id: walletId }),
+        ]);
+        walletAddress = walletRes.data?.wallet?.address ?? null;
+        const usdcBalance = balRes.data?.tokenBalances?.find(
+          (b) => b.token?.tokenAddress?.toLowerCase() === ARC_CONTRACTS.USDC.toLowerCase(),
+        );
+        walletBalance = usdcBalance?.amount ?? '0';
+      } catch {
+        // wallet not found or API error — proceed with null balance
+      }
     }
   }
 
@@ -31,9 +37,8 @@ export async function GET(req: NextRequest) {
     agent: {
       name: 'Presto Liquidity Agent',
       description: 'Autonomously funds prediction market liquidity using Circle Developer-Controlled Wallets on Arc Testnet.',
-      walletAddress,
-      usdcBalance: walletBalance,
-      configured: Boolean(client && walletId),
+      ...(isAuthorized ? { walletAddress, usdcBalance: walletBalance } : {}),
+      configured: Boolean(getCircleWalletsClient() && process.env.PRESTO_LIQUIDITY_WALLET_ID),
       arcContracts: {
         usdc: ARC_CONTRACTS.USDC,
         agenticCommerce: ARC_CONTRACTS.AgenticCommerce,
@@ -67,6 +72,11 @@ export async function POST(req: NextRequest) {
 
   if (!body.marketAddress || !body.amount) {
     return NextResponse.json({ error: 'marketAddress and amount are required' }, { status: 400 });
+  }
+
+  const markets = await fetchOnchainMarkets();
+  if (!markets.some(m => m.id === body.marketAddress.toLowerCase())) {
+    return NextResponse.json({ error: 'marketAddress is not a legitimate factory-deployed Presto market' }, { status: 403 });
   }
 
   const amountNum = Number(body.amount);

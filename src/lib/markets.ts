@@ -35,6 +35,14 @@ export type Market = {
   resolutionMode: ResolutionMode;
   sourceOfTruth: string;
   rules: string;
+  rulesSchema?: {
+    type: MarketType;
+    outcomes: string[];
+    sourceOfTruth: string;
+    resolverMode: string;
+    closeRule: string;
+    settlementAsset: 'USDC' | 'EURC';
+  };
   createdBy: string;
   createdByType?: MarketCreatedByType;
   creatorAddress?: string;
