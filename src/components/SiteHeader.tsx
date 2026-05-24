@@ -27,7 +27,7 @@ export function SiteHeader() {
   const isLandingPage = pathname === '/';
   const showWallet = !isLandingPage;
   const isExplorePage = pathname === '/markets' || pathname.startsWith('/markets/');
-  const isDocsPage = pathname === '/docs' || pathname === '/roadmap' || pathname === '/build-rails';
+  const isDocsPage = pathname === '/docs' || pathname === '/build-rails';
   const showSearchBar = !isLandingPage && !isDocsPage;
   // Category tab row only on the markets explorer itself — not market detail pages, not
   // portfolio/activity/create. Keeps secondary pages uncluttered.
@@ -133,6 +133,11 @@ export function SiteHeader() {
           {!isLandingPage ? (
             <Link href="/activity" className={navLinkClass(pathname === '/activity')}>
               Activity
+            </Link>
+          ) : null}
+          {!isLandingPage ? (
+            <Link href="/portfolio" className={navLinkClass(pathname === '/portfolio')}>
+              Portfolio
             </Link>
           ) : null}
           <a href={dexUrl} className={navLinkClass()}>

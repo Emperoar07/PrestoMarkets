@@ -16,6 +16,7 @@ const activityBlockWindow = BigInt(7_200);
 
 export type AccountMarketPreview = {
   marketId: string;
+  outcomeShares: Array<{ label: string; shares: string }>;
   yesShares: string;
   noShares: string;
   claimable: string;
@@ -59,7 +60,7 @@ function getPositionStatus(market: AppMarket, claimable: bigint, refundable: big
 
 function getPositionValuation(input: {
   market: AppMarket;
-  outcome: 'YES' | 'NO';
+  outcome: string;
   shares: bigint;
   costBasis: number;
   claimable: bigint;
@@ -168,18 +169,28 @@ export async function fetchAccountPortfolio(
     if (!isAddress(market.id)) return;
 
     const address = market.id as Address;
-    const [yesShares, noShares, claimPreview, refundable, hasClaimed, costBasis] = await Promise.all([
-      client.readContract({ address, abi: prestoMarketAbi, functionName: 'sharesOf', args: [0, account] }),
-      client.readContract({ address, abi: prestoMarketAbi, functionName: 'sharesOf', args: [1, account] }),
+    const outcomeLabels = market.outcomes.length > 0 ? market.outcomes.map((outcome) => outcome.label) : ['YES', 'NO'];
+    const [outcomeShareValues, claimPreview, refundable, hasClaimed, costBasis] = await Promise.all([
+      Promise.all(outcomeLabels.map((_, outcomeIndex) =>
+        client.readContract({ address, abi: prestoMarketAbi, functionName: 'sharesOf', args: [outcomeIndex, account] }),
+      )),
       client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewClaim', args: [account] }),
       client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewRefund', args: [account] }),
       client.readContract({ address, abi: prestoMarketAbi, functionName: 'claimed', args: [account] }),
       fetchMarketCostBasis(client, address, account),
     ]);
     const claimable = claimPreview[0];
+    const yesIndex = outcomeLabels.findIndex((label) => label.toUpperCase() === 'YES');
+    const noIndex = outcomeLabels.findIndex((label) => label.toUpperCase() === 'NO');
+    const yesShares = outcomeShareValues[yesIndex >= 0 ? yesIndex : 0] ?? BigInt(0);
+    const noShares = outcomeShareValues[noIndex >= 0 ? noIndex : 1] ?? BigInt(0);
 
     previews[market.id] = {
       marketId: market.id,
+      outcomeShares: outcomeLabels.map((label, outcomeIndex) => ({
+        label,
+        shares: formatShares(outcomeShareValues[outcomeIndex] ?? BigInt(0)),
+      })),
       yesShares: formatShares(yesShares),
       noShares: formatShares(noShares),
       claimable: formatUsdc(claimable),
@@ -187,16 +198,20 @@ export async function fetchAccountPortfolio(
       hasClaimed,
     };
 
-    ([
-      ['YES', yesShares],
-      ['NO', noShares],
-    ] as const).forEach(([outcome, shares]) => {
+    outcomeLabels.forEach((outcome, outcomeIndex) => {
+      const shares = outcomeShareValues[outcomeIndex] ?? BigInt(0);
       if (shares === BigInt(0)) return;
+      const fallbackCostBasis = toUsdcNumber(shares);
+      const legacyCostBasis = outcome.toUpperCase() === 'YES'
+        ? costBasis.yes
+        : outcome.toUpperCase() === 'NO'
+          ? costBasis.no
+          : fallbackCostBasis;
       const valuation = getPositionValuation({
         market,
         outcome,
         shares,
-        costBasis: outcome === 'YES' ? costBasis.yes : costBasis.no,
+        costBasis: legacyCostBasis,
         claimable: market.winningOutcomeLabel === outcome ? claimable : BigInt(0),
         refundable: market.status === 'Canceled' ? shares : BigInt(0),
         hasClaimed,
@@ -208,9 +223,7 @@ export async function fetchAccountPortfolio(
         outcome,
         shares: formatShares(shares),
         averagePrice: '$1.00',
-        currentPrice: outcome === 'YES'
-          ? `$${((market.outcomes.find((item) => item.label === 'YES')?.odds ?? 50) / 100).toFixed(2)}`
-          : `$${((market.outcomes.find((item) => item.label === 'NO')?.odds ?? 50) / 100).toFixed(2)}`,
+        currentPrice: `$${((market.outcomes.find((item) => item.label === outcome)?.odds ?? 50) / 100).toFixed(2)}`,
         value: formatUsdNumber(valuation.value),
         costBasis: formatUsdNumber(valuation.costBasis),
         pnl: formatSignedUsd(valuation.pnl),

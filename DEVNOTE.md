@@ -44,8 +44,7 @@ The app is a Next.js project with the Presto dark navy and cyan brand style. It 
 * Markets list page
 * Market create page
 * Market detail page
-* Portfolio placeholder
-* Roadmap page
+* Portfolio and My Shares page
 * Product rail notes for USDC, Paymaster, Wallets, Bridge Kit, CCTP, and Gateway
 * Contract scaffold for a simple USDC binary market and market factory
 * Live Arc factory reads and writes
@@ -141,7 +140,6 @@ Completed:
 * Create route
 * Market detail route
 * Portfolio route
-* Roadmap route
 
 ## Phase 1 Done
 
@@ -171,7 +169,7 @@ Already started:
 * Public rules fields
 * Source of truth fields
 * UI copy based on Arc prediction market positioning
-* Roadmap and rail planning pages
+* Docs and rail planning pages
 * Live Arc factory reads for deployed market discovery
 * Live Arc factory writes for market creation
 * Live market transactions for USDC approval, buy, resolve, claim, and refund flows

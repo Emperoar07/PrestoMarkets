@@ -24,9 +24,6 @@ export function SiteFooter() {
           <Link href="/build-rails" className="text-[12px] font-semibold text-[#94a3b8] transition-colors hover:text-[#25c0f4]">
             Build Rails
           </Link>
-          <Link href="/roadmap" className="text-[12px] font-semibold text-[#94a3b8] transition-colors hover:text-[#25c0f4]">
-            Roadmap
-          </Link>
         </div>
       </div>
     </footer>

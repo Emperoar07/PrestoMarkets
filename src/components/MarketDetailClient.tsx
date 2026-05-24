@@ -91,6 +91,12 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const liquiditySideAmount = amountValue > 0 ? amountValue / 2 : 0;
   const canTrade = market.status === 'Open' || market.status === 'Closing soon';
   const accountPreview = accountPreviews[market.id];
+  const displayedPositionShares = accountPreview?.outcomeShares?.length
+    ? accountPreview.outcomeShares
+    : [
+      { label: 'YES', shares: accountPreview?.yesShares ?? '0.00' },
+      { label: 'NO', shares: accountPreview?.noShares ?? '0.00' },
+    ];
   const claimableAmount = Number(accountPreview?.claimable.replace(/[$,]/g, '') || 0);
   const refundableAmount = Number(accountPreview?.refundable.replace(/[$,]/g, '') || 0);
   const canClaim = claimableAmount > 0 && !accountPreview?.hasClaimed;
@@ -416,7 +422,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
           </section>
 
           {/* ── Right aside — trade panel ── */}
-          <aside className="h-fit lg:sticky lg:top-24">
+          <aside id="trade-panel" className="h-fit scroll-mt-28 lg:sticky lg:top-24">
             <div className="rounded-[18px] border border-white/[0.06] bg-[#141e30] p-5">
 
               <div className="mb-4 grid grid-cols-2 rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-1">
@@ -678,14 +684,12 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <p className="text-[10px] font-black uppercase tracking-widest text-muted">Your position</p>
                 {connectedWallet ? (
                   <div className="mt-3 space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted">YES shares</span>
-                      <span className="font-black text-white">{accountPreview?.yesShares ?? '0.00'}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted">NO shares</span>
-                      <span className="font-black text-white">{accountPreview?.noShares ?? '0.00'}</span>
-                    </div>
+                    {displayedPositionShares.map((position) => (
+                      <div key={position.label} className="flex items-center justify-between gap-3 text-sm">
+                        <span className="truncate text-muted">{position.label} shares</span>
+                        <span className="shrink-0 font-black text-white">{position.shares}</span>
+                      </div>
+                    ))}
                     {claimableAmount > 0 ? (
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted">Claimable</span>

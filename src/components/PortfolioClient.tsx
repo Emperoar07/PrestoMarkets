@@ -36,9 +36,9 @@ export function PortfolioClient() {
       <SiteHeader />
       <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-36 md:px-7 md:pt-40">
         <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Portfolio</p>
-        <h1 className="mt-3 text-[clamp(34px,5vw,54px)] font-black tracking-tight text-white">Your market positions</h1>
+        <h1 className="mt-3 text-[clamp(34px,5vw,54px)] font-black tracking-tight text-white">My Shares</h1>
         <p className="mt-3 max-w-2xl text-[14px] leading-[1.7] text-muted">
-          Portfolio rows are read from live Arc market contracts for the connected wallet.
+          Every row is read from live Arc market contracts for your connected wallet. Pick any share position to jump back to that market trade panel.
         </p>
         <div className="mt-5 w-fit rounded-full border border-white/[0.06] bg-[#141e30] px-4 py-2 text-sm font-bold text-muted">
           {connectedWallet ? `Connected ${connectedWallet.address.slice(0, 6)}...${connectedWallet.address.slice(-4)}` : 'Connect a wallet to load positions'}
@@ -64,14 +64,19 @@ export function PortfolioClient() {
 
         <section className="mt-8 rounded-[16px] border border-white/[0.06] bg-[#141e30]">
           <div className="border-b border-line p-6">
-            <h2 className="text-xl font-black text-white">Positions</h2>
+            <h2 className="text-xl font-black text-white">Share positions</h2>
           </div>
           <div className="divide-y divide-line">
             {positions.length > 0 ? positions.map((position) => (
-              <div key={`${position.marketId}-${position.outcome}-${position.shares}`} className="grid gap-4 p-6 md:grid-cols-[1.5fr_repeat(5,1fr)_auto] md:items-center">
+              <Link
+                key={`${position.marketId}-${position.outcome}-${position.shares}`}
+                href={`/markets/${position.marketId}#trade-panel`}
+                className="grid gap-4 p-6 transition-colors hover:bg-white/[0.025] md:grid-cols-[1.5fr_repeat(5,1fr)_auto] md:items-center"
+              >
                 <div>
                   <p className="font-black text-white">{position.title}</p>
                   <p className="mt-1 text-sm text-muted">{position.outcome} shares</p>
+                  <p className="mt-2 text-xs font-black uppercase tracking-[0.16em] text-cyan">Open trade panel</p>
                 </div>
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Shares</p>
@@ -100,10 +105,10 @@ export function PortfolioClient() {
                 <span className={`w-fit rounded-full border px-3 py-1 text-xs font-black ${statusStyle[position.status]}`}>
                   {position.status}
                 </span>
-              </div>
+              </Link>
             )) : (
               <div className="p-6 text-sm leading-6 text-muted">
-                {connectedWallet ? 'No YES or NO shares were found for this wallet across the live factory markets.' : 'Connect a wallet to load YES and NO shares from live Arc market contracts.'}
+                {connectedWallet ? 'No shares were found for this wallet across the live factory markets.' : 'Connect a wallet to load your shares from live Arc market contracts.'}
               </div>
             )}
           </div>

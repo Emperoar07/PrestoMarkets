@@ -1,7 +1,7 @@
 export type Position = {
   marketId: string;
   title: string;
-  outcome: 'YES' | 'NO';
+  outcome: string;
   shares: string;
   averagePrice: string;
   currentPrice: string;
