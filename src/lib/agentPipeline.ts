@@ -12,6 +12,8 @@ import { agentCreateMarket } from './agentWallet';
 import { callLlmJson, extractJsonObject } from './llmFallback';
 import { AGENT_PLATFORM_CONTEXT } from './agentContext';
 import { fetchOnchainMarkets } from './onchainMarkets';
+import { sanitizeFeedText } from './feedSanitizer';
+import { assertPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
 import type { CreateLiveMarketInput } from './liveActions';
 import type { AgentMarketMetadata } from './marketMetadata';
 import type { AppMarket } from './appState';
@@ -111,28 +113,6 @@ async function fetchGrokXTrends(): Promise<TrendItem[]> {
       url: item.url,
     }))
     .slice(0, 6);
-}
-
-// Strip prompt-injection sentinels from third-party feed content before it reaches an LLM.
-// RSS sources (Google News aggregates third-party titles verbatim) are an open channel where
-// an attacker can plant "ignore previous instructions" style payloads. We neutralize the most
-// common patterns rather than trusting downstream LLMs to ignore them.
-const INJECTION_PATTERNS: RegExp[] = [
-  /ignore\s+(all\s+)?previous\s+(instructions|prompts|context)/gi,
-  /disregard\s+(all\s+)?(prior|previous|earlier)\s+(instructions|prompts|context)/gi,
-  /\bsystem\s*[:>]/gi,
-  /\bassistant\s*[:>]/gi,
-  /<\s*\/?\s*(system|assistant|user|instructions?)\s*>/gi,
-  /###+\s*(system|instruction|prompt)/gi,
-  /\[\s*(system|instruction|prompt)\s*\]/gi,
-];
-
-export function sanitizeFeedText(value: string): string {
-  let out = value;
-  for (const pattern of INJECTION_PATTERNS) {
-    out = out.replace(pattern, '[redacted]');
-  }
-  return out;
 }
 
 async function fetchRssTrends(input: { url: string; source: string; limit?: number }): Promise<TrendItem[]> {
@@ -667,16 +647,6 @@ type GeminiDraft = {
   outcomeOptions?: string[];
 };
 
-function isSafeHttpUrl(value: string | undefined): value is string {
-  if (!value) return false;
-  try {
-    const protocol = new URL(value).protocol;
-    return protocol === 'http:' || protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
 function absolutizeUrl(value: string, base: string): string | undefined {
   try {
     return new URL(value, base).toString();
@@ -690,8 +660,10 @@ async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined>
   if (!isSafeHttpUrl(trend.url)) return undefined;
 
   try {
+    await assertPublicHttpUrl(trend.url);
     const res = await fetch(trend.url, {
       headers: { 'User-Agent': 'PrestoMarketsAgent/1.0' },
+      redirect: 'manual',
       signal: AbortSignal.timeout(4_000),
     });
     if (!res.ok) return undefined;

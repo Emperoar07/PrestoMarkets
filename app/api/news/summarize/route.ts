@@ -8,12 +8,14 @@
 
 import { NextResponse } from 'next/server';
 import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
+import { sanitizeFeedText } from '@/lib/feedSanitizer';
+import { assertPublicHttpUrl, isSafeHttpUrl } from '@/lib/publicUrl';
 
 export const runtime = 'nodejs';
 export const revalidate = 86400;
 
 const MAX_BODY_BYTES = 200_000;
-const SAFE_URL_SCHEMES = new Set(['http:', 'https:']);
+const MAX_REDIRECTS = 3;
 
 const rateLimitWindowMs = 60_000;
 const rateLimitMax = 30;
@@ -34,14 +36,6 @@ function rateLimitOk(ip: string): boolean {
   return true;
 }
 
-function isSafeUrl(value: string): boolean {
-  try {
-    return SAFE_URL_SCHEMES.has(new URL(value).protocol);
-  } catch {
-    return false;
-  }
-}
-
 type ExtractedPage = {
   title: string;
   description: string;
@@ -57,18 +51,18 @@ function extractFromHtml(html: string): ExtractedPage {
   const ogTitle = firstMatch(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i, html);
   const twTitle = firstMatch(/<meta[^>]+name=["']twitter:title["'][^>]+content=["']([^"']+)["']/i, html);
   const tagTitle = firstMatch(/<title>([^<]+)<\/title>/i, html);
-  const title = (ogTitle || twTitle || tagTitle || '').trim().slice(0, 200);
+  const title = sanitizeFeedText(ogTitle || twTitle || tagTitle || '').slice(0, 200);
 
   const ogDesc = firstMatch(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i, html);
   const metaDesc = firstMatch(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i, html);
   const twDesc = firstMatch(/<meta[^>]+name=["']twitter:description["'][^>]+content=["']([^"']+)["']/i, html);
-  const description = (ogDesc || metaDesc || twDesc || '').trim().slice(0, 500);
+  const description = sanitizeFeedText(ogDesc || metaDesc || twDesc || '').slice(0, 500);
 
   const paras: string[] = [];
   const paraRegex = /<p\b[^>]*>([\s\S]*?)<\/p>/gi;
   let m: RegExpExecArray | null;
   while ((m = paraRegex.exec(html)) && paras.length < 5) {
-    const text = m[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    const text = sanitizeFeedText(m[1]);
     if (text.length > 40) paras.push(text);
   }
   const bodySnippet = paras.join(' ').slice(0, 1500);
@@ -88,17 +82,38 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
-  const url = (body.url ?? '').trim();
-  if (!url || !isSafeUrl(url)) {
+  let url = (body.url ?? '').trim();
+  if (!url || !isSafeHttpUrl(url)) {
     return NextResponse.json({ error: 'url must be a valid http(s) URL.' }, { status: 400 });
+  }
+
+  try {
+    await assertPublicHttpUrl(url);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Source URL is not supported.' },
+      { status: 400 },
+    );
   }
 
   let html = '';
   try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'PrestoMarketsNewsBot/1.0 (+https://presto-markets.vercel.app)' },
-      next: { revalidate: 86400 },
-    });
+    let res: Response | null = null;
+    for (let i = 0; i <= MAX_REDIRECTS; i++) {
+      res = await fetch(url, {
+        headers: { 'User-Agent': 'PrestoMarketsNewsBot/1.0 (+https://presto-markets.vercel.app)' },
+        next: { revalidate: 86400 },
+        redirect: 'manual',
+      });
+      if (![301, 302, 303, 307, 308].includes(res.status)) break;
+      const location = res.headers.get('location');
+      if (!location) break;
+      url = new URL(location, url).toString();
+      await assertPublicHttpUrl(url);
+    }
+    if (!res) {
+      return NextResponse.json({ error: 'Could not fetch source URL.' }, { status: 502 });
+    }
     if (!res.ok) {
       return NextResponse.json({ error: `Source returned ${res.status}` }, { status: 502 });
     }

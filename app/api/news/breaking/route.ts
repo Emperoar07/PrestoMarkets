@@ -7,6 +7,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { decodeHtmlEntities, sanitizeFeedText } from '@/lib/feedSanitizer';
 
 export const runtime = 'nodejs';
 // 8h fetch-cache for upstream RSS calls. Combined with the Cache-Control header below,
@@ -48,14 +49,16 @@ function parseRss(xml: string, source: string): NewsItem[] {
   let match: RegExpExecArray | null;
   while ((match = itemRegex.exec(xml))) {
     const block = match[1];
-    const title = titleRegex.exec(block)?.[1]?.trim();
+    const rawTitle = titleRegex.exec(block)?.[1]?.trim();
     const link = linkRegex.exec(block)?.[1]?.trim();
-    const desc = descRegex.exec(block)?.[1]?.replace(/<[^>]+>/g, '').trim();
+    const rawDesc = descRegex.exec(block)?.[1]?.trim();
     const date = dateRegex.exec(block)?.[1]?.trim();
+    const title = rawTitle ? sanitizeFeedText(rawTitle) : '';
+    const desc = rawDesc ? sanitizeFeedText(rawDesc) : undefined;
     if (!title || !link) continue;
     items.push({
       title,
-      url: link,
+      url: decodeHtmlEntities(link),
       source,
       publishedAt: date ? new Date(date).toISOString() : new Date().toISOString(),
       excerpt: desc?.slice(0, 200),

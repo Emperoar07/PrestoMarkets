@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAddress } from 'viem';
 import { agentCreateMarket } from '@/lib/agentWallet';
-import { sanitizeFeedText } from '@/lib/agentPipeline';
+import { sanitizeFeedText } from '@/lib/feedSanitizer';
 import type { AgentMarketMetadata } from '@/lib/marketMetadata';
 import type { MarketType, ResolutionMode } from '@/lib/markets';
 

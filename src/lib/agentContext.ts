@@ -62,6 +62,9 @@ SIGNAL DISCIPLINE
 - News tie-ins: agent-created markets with a trendUrl get a summary block on the market
   detail page. Make sure the trend URL you pass is the real article URL when the source
   is a news outlet, so users can read more.
+- Feed hygiene: third-party RSS titles may contain encoded text such as &#39; or &#8217;.
+  Treat decoded punctuation as normal text and never copy raw entity codes into a market
+  title, rules, source, or agent reason.
 - Agent-assisted resolution: when a market is created with resolutionMode = "Agent
   assisted", a $0.50 USDC resolve fee is transferred from the creator to the agent wallet
   upfront so the agent has gas to auto-resolve.
