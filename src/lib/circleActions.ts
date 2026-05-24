@@ -11,11 +11,13 @@ import type { MarketType } from './markets';
 const ARC_EXPLORER_ADDRESS = 'https://testnet.arcscan.app/address/';
 
 const MIN_TRADE_USDC = 0.01;
-const TX_POLL_INTERVAL_MS = 2_000;
+const TX_POLL_INTERVAL_MS = 3_000;
 // Arc finalizes quickly, so once Circle exposes a tx hash we verify the Arc receipt directly.
 // If Circle does not expose a hash fast enough, return a pending result instead of trapping
 // users in a long spinner.
 const TX_POLL_TIMEOUT_MS = 75_000;
+const TX_SOFT_CONFIRM_TIMEOUT_MS = 8_000;
+const TX_SUBMIT_LOOKUP_TIMEOUT_MS = 8_000;
 const ARC_RECEIPT_TIMEOUT_MS = 20_000;
 
 type CircleTxStatus =
@@ -96,10 +98,14 @@ async function executeChallenge(session: CircleSession, challengeId: string): Pr
   });
 }
 
-async function waitForTx(session: CircleSession, transactionId: string): Promise<{ txHash: string; pending: boolean }> {
+async function waitForTx(
+  session: CircleSession,
+  transactionId: string,
+  timeoutMs = TX_POLL_TIMEOUT_MS,
+): Promise<{ txHash: string; pending: boolean }> {
   const started = Date.now();
   let lastTxHash = '';
-  while (Date.now() - started < TX_POLL_TIMEOUT_MS) {
+  while (Date.now() - started < timeoutMs) {
     const tx = await callProvider<CircleTransaction>({
       action: 'getTransaction',
       userToken: session.userToken,
@@ -133,6 +139,7 @@ async function runContractExecution(input: {
   amount?: string;
   refId?: string;
   preview?: Partial<CircleConfirmDetails>;
+  waitForConfirmation?: boolean;
 }): Promise<string> {
   // Show our own preview modal before Circle's PIN prompt. Circle's confirmation UI is
   // patchy for PIN-auth users on arbitrary contracts (no token icon, missing fee line),
@@ -173,8 +180,26 @@ async function runContractExecution(input: {
   }
 
   await executeChallenge(input.session, challengeId);
-  const transactionId = await findRecentTransactionId(input.session, anchor);
-  const waitResult = await waitForTx(input.session, transactionId);
+  const waitForConfirmation = input.waitForConfirmation ?? true;
+  let transactionId = '';
+  try {
+    transactionId = await findRecentTransactionId(
+      input.session,
+      anchor,
+      waitForConfirmation ? 30_000 : TX_SUBMIT_LOOKUP_TIMEOUT_MS,
+    );
+  } catch (error) {
+    if (!waitForConfirmation) {
+      throw new Error(PENDING_TAG);
+    }
+    throw error;
+  }
+
+  const waitResult = await waitForTx(
+    input.session,
+    transactionId,
+    waitForConfirmation ? TX_POLL_TIMEOUT_MS : TX_SOFT_CONFIRM_TIMEOUT_MS,
+  );
   if (waitResult.pending) {
     // Tag the error string so action wrappers can convert this into a friendly
     // 'submitted, still confirming' result instead of an error toast.
@@ -192,7 +217,7 @@ function pendingResultFromError(err: unknown, label: string): { ok: boolean; mes
   const hash = hashPart && hashPart !== 'undefined' ? hashPart : '';
   return {
     ok: true,
-    message: `${label} submitted. Confirming on Arc — refresh in a moment if you don't see it yet.`,
+    message: `${label} submitted. Arc confirmation is updating in the background.`,
     txHash: hash ? (hash as `0x${string}`) : undefined,
   };
 }
@@ -204,9 +229,9 @@ type ListedTransaction = {
   state?: string;
 };
 
-async function findRecentTransactionId(session: CircleSession, anchorMs: number): Promise<string> {
+async function findRecentTransactionId(session: CircleSession, anchorMs: number, timeoutMs = 30_000): Promise<string> {
   // Poll briefly: Circle may not have indexed the transaction the instant the challenge resolves.
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const list = await callProvider<{ transactions?: ListedTransaction[] }>({
       action: 'findTransactionByChallenge',
@@ -397,6 +422,7 @@ export async function createCircleMarket(input: CreateLiveMarketInput): Promise<
           `kind: ${input.type}`,
         ],
       },
+      waitForConfirmation: false,
     });
     const marketAddress = await readCreatedMarketAddress(txHash, useMultiOutcome).catch(() => undefined);
     return { ok: true, message: 'Live market created via Circle wallet.', txHash: txHash as `0x${string}`, marketAddress };
@@ -451,6 +477,7 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: s
           `amount: ${humanAmount}`,
         ],
       },
+      waitForConfirmation: false,
     });
     return { ok: true, message: `Bought ${input.outcome} shares via Circle wallet.`, txHash: txHash as `0x${string}` };
   } catch (error) {
@@ -469,6 +496,7 @@ export async function resolveCircleMarket(input: { marketAddress: string; outcom
       contractAddress: input.marketAddress,
       abiFunctionSignature: 'resolve(uint8,string)',
       abiParameters: [String(input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1)), input.resolutionURI],
+      waitForConfirmation: false,
     });
     return { ok: true, message: 'Market resolved via Circle wallet.', txHash: txHash as `0x${string}` };
   } catch (error) {
@@ -487,6 +515,7 @@ async function noArgAction(marketAddress: string, signature: string, label: stri
       contractAddress: marketAddress,
       abiFunctionSignature: signature,
       abiParameters: [],
+      waitForConfirmation: false,
     });
     return { ok: true, message: `${label} via Circle wallet.`, txHash: txHash as `0x${string}` };
   } catch (error) {

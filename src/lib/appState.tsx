@@ -149,14 +149,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void refreshAccountPortfolio();
   }, [refreshAccountPortfolio]);
 
+  const schedulePostTransactionRefresh = useCallback(() => {
+    for (const delay of [4_000, 10_000, 20_000]) {
+      window.setTimeout(() => {
+        void refreshMarkets();
+        void refreshAccountPortfolio();
+      }, delay);
+    }
+  }, [refreshMarkets, refreshAccountPortfolio]);
+
   const createMarket = useCallback(async (input: CreateMarketInput) => {
     const result = await createLiveMarket(input satisfies CreateLiveMarketInput);
     if (result.ok) {
       await refreshMarkets();
       await refreshAccountPortfolio();
+      schedulePostTransactionRefresh();
     }
     return result;
-  }, [refreshMarkets, refreshAccountPortfolio]);
+  }, [refreshMarkets, refreshAccountPortfolio, schedulePostTransactionRefresh]);
 
   const placeTrade = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; amount: number; payWith?: StableSymbol }) => {
     const market = markets.find((item) => item.id === input.marketId);
@@ -184,9 +194,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       await new Promise((r) => setTimeout(r, 1_800));
       await refreshMarkets();
       await refreshAccountPortfolio();
+      schedulePostTransactionRefresh();
     }
     return result;
-  }, [markets, connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
+  }, [markets, connectedWallet?.address, refreshMarkets, refreshAccountPortfolio, schedulePostTransactionRefresh]);
 
   const addLiquidity = useCallback(async (input: { marketId: string; amount: number; payWith?: StableSymbol }) => {
     const market = markets.find((item) => item.id === input.marketId);
@@ -208,9 +219,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       await new Promise((r) => setTimeout(r, 1_800));
       await refreshMarkets();
       await refreshAccountPortfolio();
+      schedulePostTransactionRefresh();
     }
     return result;
-  }, [markets, connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
+  }, [markets, connectedWallet?.address, refreshMarkets, refreshAccountPortfolio, schedulePostTransactionRefresh]);
 
   const resolveMarket = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; resolutionURI: string }) => {
     const result = await resolveLiveMarket({
@@ -222,18 +234,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (result.ok) {
       await refreshMarkets();
       await refreshAccountPortfolio();
+      schedulePostTransactionRefresh();
     }
     return result;
-  }, [refreshMarkets, refreshAccountPortfolio]);
+  }, [refreshMarkets, refreshAccountPortfolio, schedulePostTransactionRefresh]);
 
   const cancelMarket = useCallback(async (marketId: string) => {
     const result = await cancelLiveMarket(marketId);
     if (result.ok) {
       await refreshMarkets();
       await refreshAccountPortfolio();
+      schedulePostTransactionRefresh();
     }
     return result;
-  }, [refreshMarkets, refreshAccountPortfolio]);
+  }, [refreshMarkets, refreshAccountPortfolio, schedulePostTransactionRefresh]);
 
   const claimMarket = useCallback(async (marketId: string) => {
     const payWith = readPayWith(connectedWallet?.address, marketId) ?? undefined;
@@ -241,9 +255,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (result.ok) {
       await refreshMarkets();
       await refreshAccountPortfolio();
+      schedulePostTransactionRefresh();
     }
     return result;
-  }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
+  }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio, schedulePostTransactionRefresh]);
 
   const refundMarket = useCallback(async (marketId: string) => {
     const payWith = readPayWith(connectedWallet?.address, marketId) ?? undefined;
@@ -251,9 +266,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (result.ok) {
       await refreshMarkets();
       await refreshAccountPortfolio();
+      schedulePostTransactionRefresh();
     }
     return result;
-  }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
+  }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio, schedulePostTransactionRefresh]);
 
   const getMarket = useCallback((id: string) => markets.find((market) => market.id === id), [markets]);
 

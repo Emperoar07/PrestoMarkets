@@ -9,7 +9,7 @@ function envClean(name: string, fallback = ''): string {
 const circleBaseUrl = envClean('CIRCLE_BASE_URL', 'https://api.circle.com');
 
 const rateLimitWindow = 60_000;
-const rateLimitMax = 20;
+const rateLimitMax = 80;
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 
 function checkRateLimit(ip: string): boolean {
