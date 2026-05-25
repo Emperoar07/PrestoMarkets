@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAddress } from 'viem';
-import { agentCreateMarket } from '@/lib/agentWallet';
+import { agentCreateMarket, getAgentAddress } from '@/lib/agentWallet';
+import { getAgentIdentityStatus } from '@/lib/agentIdentity';
 import { sanitizeFeedText } from '@/lib/feedSanitizer';
 import type { AgentMarketMetadata } from '@/lib/marketMetadata';
 import type { MarketType, ResolutionMode } from '@/lib/markets';
@@ -82,6 +83,19 @@ export async function POST(req: NextRequest) {
       throw new Error(
         'PRESTO_AGENT_RESOLVER_ADDRESS must be explicitly configured and valid. ' +
         'Agent markets cannot be created without a trusted resolver.'
+      );
+    }
+
+    const agentAddress = getAgentAddress();
+    if (!agentAddress) {
+      throw new Error('AGENT_PRIVATE_KEY must be configured to verify agent identity.');
+    }
+
+    const identityStatus = await getAgentIdentityStatus();
+    if (!identityStatus.registered) {
+      return NextResponse.json(
+        { error: 'Agent is not registered on Arc ERC-8004 IdentityRegistry. Register the agent before creating markets.' },
+        { status: 500 }
       );
     }
 
