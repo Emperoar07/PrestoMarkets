@@ -73,14 +73,16 @@ export async function POST(req: NextRequest) {
     assertNonEmpty(body.sourceOfTruth, 'sourceOfTruth');
     assertAgentScores(body.agent);
 
-    // Always resolve to the agent wallet — never trust a caller-supplied resolver address.
+    // Resolver address must be explicitly configured. Never allow undefined as fallback.
     // A compromised API key must not be able to redirect resolution to an arbitrary address.
     const resolverAddress = process.env.PRESTO_AGENT_RESOLVER_ADDRESS
-      ?? process.env.NEXT_PUBLIC_MARKET_RESOLVER_ADDRESS
-      ?? undefined; // agentCreateMarket will default to the agent wallet address
+      ?? process.env.NEXT_PUBLIC_MARKET_RESOLVER_ADDRESS;
 
-    if (resolverAddress && !isAddress(resolverAddress)) {
-      throw new Error('PRESTO_AGENT_RESOLVER_ADDRESS must be a valid EVM address.');
+    if (!resolverAddress || !isAddress(resolverAddress)) {
+      throw new Error(
+        'PRESTO_AGENT_RESOLVER_ADDRESS must be explicitly configured and valid. ' +
+        'Agent markets cannot be created without a trusted resolver.'
+      );
     }
 
     const result = await agentCreateMarket({

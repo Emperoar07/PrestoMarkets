@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { isAddress } from 'viem';
+import { isAddress, type Address } from 'viem';
 import { getArcConfig } from '@/lib/arcConfig';
-import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
+import { fetchOnchainMarkets, getPublicClient } from '@/lib/onchainMarkets';
+import { prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from '@/lib/contracts';
 import crypto from 'node:crypto';
 
 function hashUserId(rawUserId: string): string {
@@ -125,6 +126,56 @@ function requireCircleConfig() {
   return { apiKey, appId };
 }
 
+async function isFactoryDeployedMarket(marketAddress: Address, config: ReturnType<typeof getArcConfig>): Promise<boolean> {
+  try {
+    const publicClient = getPublicClient();
+    const factories = [];
+
+    if (config.factoryAddress) {
+      factories.push({
+        address: config.factoryAddress as Address,
+        abi: prestoMarketFactoryAbi,
+      });
+    }
+    if (config.multiOutcomeFactoryAddress) {
+      factories.push({
+        address: config.multiOutcomeFactoryAddress as Address,
+        abi: prestoMultiOutcomeMarketFactoryAbi,
+      });
+    }
+
+    for (const factory of factories) {
+      try {
+        const marketCount = await publicClient.readContract({
+          address: factory.address,
+          abi: factory.abi,
+          functionName: 'marketCount',
+        });
+
+        for (let i = 0; i < Number(marketCount); i++) {
+          const market = await publicClient.readContract({
+            address: factory.address,
+            abi: factory.abi,
+            functionName: 'markets',
+            args: [BigInt(i)],
+          });
+
+          if ((market as Address).toLowerCase() === marketAddress.toLowerCase()) {
+            return true;
+          }
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return false;
+  } catch (error) {
+    console.error('[circle-security] Failed to verify market provenance:', error);
+    return false;
+  }
+}
+
 async function isAllowedContractExecution(input: CircleRequestBody): Promise<boolean> {
   if (!input.contractAddress || !isAddress(input.contractAddress)) return false;
   if (!input.abiFunctionSignature) return false;
@@ -150,7 +201,12 @@ async function isAllowedContractExecution(input: CircleRequestBody): Promise<boo
   if (!allowedMarketSignatures.has(input.abiFunctionSignature)) return false;
 
   const markets = await fetchOnchainMarkets();
-  return markets.some((market) => market.id.toLowerCase() === contract);
+  if (markets.some((market) => market.id.toLowerCase() === contract)) {
+    return true;
+  }
+
+  const isFactoryMarket = await isFactoryDeployedMarket(input.contractAddress as Address, config);
+  return isFactoryMarket;
 }
 
 async function circleFetch(path: string, input: RequestInit & { userToken?: string } = {}) {
