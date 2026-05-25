@@ -2,11 +2,13 @@ node_modules
 .next
 out
 .env
+.env.local
+.env.example
 .env*.local
+.env*.example
 *.tsbuildinfo
 coverage
 cache
 artifacts
 
 .vercel
-.env*.local

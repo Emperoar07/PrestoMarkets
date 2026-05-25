@@ -1,10 +1,12 @@
 import { createPublicClient, formatUnits, http, type Address } from 'viem';
+import { arcTestnet } from 'viem/chains';
 import { getArcConfig, getArcChainId } from './arcConfig';
 import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { isSafeResolutionUri, parseMarketMetadata } from './marketMetadata';
 import type { AppMarket } from './appState';
 import type { MarketStatus, MarketType, ResolutionMode } from './markets';
-const MARKET_BATCH_SIZE = 20;
+const MARKET_ADDRESS_BATCH_SIZE = 50;
+const MARKET_HYDRATION_BATCH_SIZE = 8;
 const MAX_MARKETS = 500;
 const MARKET_CACHE_TTL_MS = 8_000;
 let marketCache: { at: number; markets: AppMarket[] } | null = null;
@@ -216,14 +218,20 @@ async function readOnchainMarkets() {
   const chainId = getArcChainId();
   const client = createPublicClient({
     chain: {
+      ...arcTestnet,
       id: chainId,
-      name: 'Arc Testnet',
-      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
       rpcUrls: {
+        ...arcTestnet.rpcUrls,
         default: { http: [config.rpcUrl] },
       },
     },
     transport: http(config.rpcUrl),
+    batch: {
+      multicall: {
+        batchSize: 16_384,
+        wait: 10,
+      },
+    },
   });
 
   const factories = [
@@ -242,8 +250,8 @@ async function readOnchainMarkets() {
     const count = Math.min(Number(marketCount), MAX_MARKETS);
     const indices = Array.from({ length: count }, (_, i) => i);
 
-    for (let i = 0; i < indices.length; i += MARKET_BATCH_SIZE) {
-      const batch = indices.slice(i, i + MARKET_BATCH_SIZE);
+    for (let i = 0; i < indices.length; i += MARKET_ADDRESS_BATCH_SIZE) {
+      const batch = indices.slice(i, i + MARKET_ADDRESS_BATCH_SIZE);
       const batchAddresses = await Promise.all(
         batch.map((index) => withRetry(() => client.readContract({
           address: factory.address,
@@ -257,8 +265,8 @@ async function readOnchainMarkets() {
   }
 
   const markets: AppMarket[] = [];
-  for (let i = 0; i < marketAddresses.length; i += MARKET_BATCH_SIZE) {
-    const batch = marketAddresses.slice(i, i + MARKET_BATCH_SIZE);
+  for (let i = 0; i < marketAddresses.length; i += MARKET_HYDRATION_BATCH_SIZE) {
+    const batch = marketAddresses.slice(i, i + MARKET_HYDRATION_BATCH_SIZE);
     const batchMarkets = await Promise.all(
       batch.map((address, batchIndex) => withRetry(() => readMarket(client, address, i + batchIndex))),
     );

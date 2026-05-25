@@ -179,7 +179,7 @@ async function ensureArc(provider: EthereumProvider) {
         chainId: ARC_CHAIN_HEX,
         chainName: 'Arc Testnet',
         nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-        rpcUrls: [process.env.NEXT_PUBLIC_ARC_RPC_URL || 'https://rpc.testnet.arc.network'],
+        rpcUrls: [process.env.NEXT_PUBLIC_ARC_RPC_URL?.trim() || 'https://rpc.testnet.arc.network'],
       }],
     });
   }
