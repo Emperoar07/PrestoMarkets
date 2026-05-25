@@ -9,11 +9,11 @@ const guide = [
   },
   {
     h: 'Trade outcomes',
-    p: 'Buy YES or NO with USDC or EURC. The trade panel shows your expected share count, the per share signal price, the settlement preview, and the network fee before the wallet signs.',
+    p: 'Buy an outcome with USDC or EURC. Binary markets offer YES or NO, while poll markets offer every listed choice. The trade panel shows your expected share count and settlement preview before the wallet signs.',
   },
   {
     h: 'Add liquidity',
-    p: 'Add balanced depth by splitting one amount into matching YES and NO shares. The market gets cleaner starting odds, and the settlement math stays readable for everyone.',
+    p: 'Add balanced depth by splitting one amount evenly across every outcome. Binary and poll markets both begin without favoring one available choice.',
   },
   {
     h: 'Resolve and settle',
@@ -44,7 +44,7 @@ const pipeline = [
 ];
 
 const liquidity = [
-  'Seed each new market with a balanced YES and NO share purchase.',
+  'Seed each new market with balanced purchases across every listed outcome.',
   'Show visible share counts so traders understand how much exposure they receive.',
   'Record activity clearly so market depth, volume, and resolver history are easy to inspect.',
   'Extend liquidity with richer maker flows as the order book contract phase comes online.',

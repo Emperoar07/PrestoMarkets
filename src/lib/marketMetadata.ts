@@ -152,6 +152,9 @@ export function validateMetadataInputs(input: BuildMarketMetadataInput): void {
     if (new Set(cleanOptions.map((option) => option.toLowerCase())).size !== cleanOptions.length) {
       throw new Error('Poll options must be unique.');
     }
+    if (cleanOptions.some((option) => option.toUpperCase() === 'CANCEL')) {
+      throw new Error('CANCEL is reserved for canceling settlement and cannot be an outcome option.');
+    }
   }
 }
 

@@ -86,6 +86,45 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'amount must be between 0 and 25 USDC' }, { status: 400 });
   }
 
+  if (market.outcomes.length > 2) {
+    const minimumAmount = market.outcomes.length * 0.01;
+    if (amountNum < minimumAmount) {
+      return NextResponse.json(
+        { error: `amount must be at least ${minimumAmount.toFixed(2)} USDC to seed every poll outcome` },
+        { status: 400 },
+      );
+    }
+
+    const perOutcome = (amountNum / market.outcomes.length).toFixed(6);
+    const txHashes: string[] = [];
+    const fundedOutcomes: string[] = [];
+
+    for (const [outcomeIndex, outcome] of market.outcomes.entries()) {
+      const result = await agentBuyShares(body.marketAddress, outcomeIndex, perOutcome);
+      if (!result.ok) {
+        return NextResponse.json(
+          {
+            error: `${outcome.label} buy failed after funding ${fundedOutcomes.join(', ') || 'no prior outcomes'}: ${result.error}`,
+            partialSuccess: fundedOutcomes.length > 0,
+            txHashes,
+          },
+          { status: 503 },
+        );
+      }
+      fundedOutcomes.push(outcome.label);
+      if (result.txHash) txHashes.push(result.txHash);
+    }
+
+    return NextResponse.json({
+      ok: true,
+      txHashes,
+      marketAddress: body.marketAddress,
+      amountUsdc: body.amount,
+      note: `Bought ${perOutcome} USDC of each outcome to provide neutral poll liquidity depth.`,
+      poweredBy: 'Presto Agent Wallet - Arc Testnet',
+    });
+  }
+
   // --- Stoa x402 Integration ---
   const stoaUrl = process.env.STOA_API_URL || 'https://stoa.blockrun.ai/api/x402/analyze';
   let stoaVerdict = null;
