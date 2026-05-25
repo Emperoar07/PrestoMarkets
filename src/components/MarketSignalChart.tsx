@@ -1,4 +1,5 @@
 import type { Market } from '@/lib/markets';
+import { getOutcomeColor } from '@/lib/outcomeColors';
 
 type MarketSignalChartMarket = Pick<Market, 'outcomes' | 'volume' | 'liquidity'>;
 
@@ -40,12 +41,6 @@ function buildSmoothPath(points: number[], width: number, height: number, offset
   return path;
 }
 
-/** Color palette for up to 12 outcomes. Index 0 = cyan (primary), 1 = red, then warm/cool alternating. */
-const OUTCOME_COLORS = [
-  '#25c0f4', '#f87171', '#facc15', '#4ade80', '#a78bfa', '#fb923c',
-  '#f472b6', '#38bdf8', '#34d399', '#c084fc', '#fbbf24', '#e879f9',
-];
-
 export function MarketSignalChart({ market, compact = false }: { market: MarketSignalChartMarket; compact?: boolean }) {
   const volume = parseUsd(market.volume);
   const liquidity = parseUsd(market.liquidity);
@@ -54,7 +49,7 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
   const outcomeSeries = market.outcomes.map((outcome, index) => {
     const phase = index * (Math.PI / market.outcomes.length);
     const points = buildSignalPoints(outcome.odds, index === 0 ? volume : liquidity, index === 0 ? liquidity : volume, phase);
-    return { label: outcome.label, odds: outcome.odds, points, color: OUTCOME_COLORS[index % OUTCOME_COLORS.length] };
+    return { label: outcome.label, odds: outcome.odds, points, color: getOutcomeColor(index) };
   });
 
   const W = compact ? 460 : 900;

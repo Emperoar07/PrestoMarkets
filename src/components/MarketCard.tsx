@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import type { Market } from '@/lib/markets';
+import { getOutcomeColor } from '@/lib/outcomeColors';
 import { Countdown } from './Countdown';
 
 type MarketCardMarket = Market & {
@@ -48,12 +49,22 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
 
       {market.pollOptions && market.pollOptions.length > 2 ? (
         <div className="mt-4 grid gap-1.5">
-          {market.pollOptions.slice(0, 4).map((option, index) => (
-            <div key={`${option}-${index}`} className="flex items-center justify-between rounded-[8px] bg-white/[0.03] px-3 py-1.5">
-              <span className="truncate text-[11px] font-bold text-[#cbd5e1]">{option}</span>
-              <span className="text-[11px] font-black text-[#64748b]">{market.outcomes[index]?.odds ?? 0}%</span>
-            </div>
-          ))}
+          {market.pollOptions.slice(0, 4).map((option, index) => {
+            const color = getOutcomeColor(index);
+            return (
+              <div
+                key={`${option}-${index}`}
+                className="flex items-center justify-between rounded-[8px] border px-3 py-1.5"
+                style={{ borderColor: `${color}1F`, backgroundColor: `${color}0A` }}
+              >
+                <span className="flex min-w-0 items-center gap-1.5 text-[11px] font-bold text-[#cbd5e1]">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                  <span className="truncate">{option}</span>
+                </span>
+                <span className="ml-2 shrink-0 text-[11px] font-black" style={{ color }}>{market.outcomes[index]?.odds ?? 0}%</span>
+              </div>
+            );
+          })}
           {market.pollOptions.length > 4 ? (
             <p className="text-[10px] font-bold text-[#64748b]">+{market.pollOptions.length - 4} more options</p>
           ) : null}

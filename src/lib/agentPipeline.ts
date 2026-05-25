@@ -42,27 +42,41 @@ async function fetchSerperTrends(): Promise<TrendItem[]> {
   const apiKey = process.env.SERPER_API_KEY;
   if (!apiKey) return [];
 
-  const res = await fetch('https://google.serper.dev/search', {
-    method: 'POST',
-    headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ q: 'trending crypto blockchain prediction markets 2025', gl: 'us', num: 10 }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
 
-  if (!res.ok) return [];
-  const data = await res.json() as {
-    organic?: Array<{ title: string; snippet: string; link: string }>;
-    topStories?: Array<{ title: string; link: string }>;
-  };
+  try {
+    const res = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: 'trending crypto blockchain prediction markets 2025', gl: 'us', num: 10 }),
+      signal: controller.signal,
+    });
 
-  const items: TrendItem[] = [];
-  for (const story of data.topStories ?? []) {
-    items.push({ topic: story.title, query: story.title, source: 'serper-news', url: story.link });
+    if (!res.ok) return [];
+    const data = await res.json() as {
+      organic?: Array<{ title: string; snippet: string; link: string }>;
+      topStories?: Array<{ title: string; link: string }>;
+    };
+
+    const items: TrendItem[] = [];
+    for (const story of data.topStories ?? []) {
+      items.push({ topic: story.title, query: story.title, source: 'serper-news', url: story.link });
+    }
+    for (const result of data.organic ?? []) {
+      if (items.length >= 6) break;
+      items.push({ topic: result.title, query: result.snippet, source: 'serper-web', url: result.link });
+    }
+    return items.slice(0, 6);
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      console.warn('[agent-pipeline] Serper timeout after 8000ms');
+      return [];
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
   }
-  for (const result of data.organic ?? []) {
-    if (items.length >= 6) break;
-    items.push({ topic: result.title, query: result.snippet, source: 'serper-web', url: result.link });
-  }
-  return items.slice(0, 6);
 }
 
 async function fetchGrokXTrends(): Promise<TrendItem[]> {

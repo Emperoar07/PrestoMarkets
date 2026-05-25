@@ -53,11 +53,13 @@ function isRetryableHttpStatus(status: number): boolean {
   return status === 401 || status === 402 || status === 429 || status === 403 || (status >= 500 && status <= 599);
 }
 
+const LLM_PROVIDER_TIMEOUT_MS = 10_000;
+
 async function callAnthropic(input: LlmCallInput): Promise<ProviderResult | null> {
   const key = envClean('ANTHROPIC_API_KEY');
   if (!key) return null;
   const model = input.task === 'reasoning' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
-  const anthropic = new Anthropic({ apiKey: key });
+  const anthropic = new Anthropic({ apiKey: key, timeout: LLM_PROVIDER_TIMEOUT_MS });
   try {
     const message = await anthropic.messages.create({
       model,
@@ -69,6 +71,10 @@ async function callAnthropic(input: LlmCallInput): Promise<ProviderResult | null
     if (!text) return null;
     return { text, provider: 'anthropic', model };
   } catch (err) {
+    if (err instanceof Error && err.name === 'APIError' && err.message.includes('timeout')) {
+      console.warn(`[llm-fallback] anthropic timeout after ${LLM_PROVIDER_TIMEOUT_MS}ms`);
+      return null;
+    }
     const status = (err as { status?: number })?.status ?? 0;
     if (isRetryableHttpStatus(status)) return null;
     // Network or SDK errors still permit a later configured provider to answer.
@@ -88,19 +94,41 @@ async function callGemini(input: LlmCallInput): Promise<ProviderResult | null> {
 
   for (const model of models) {
     try {
-      const genAI = new GoogleGenerativeAI(key);
-      const result = await genAI.getGenerativeModel({ model }).generateContent({
-        contents: [{ role: 'user', parts: [{ text: input.prompt }] }],
-        generationConfig: {
-          maxOutputTokens: input.maxTokens ?? (input.task === 'reasoning' ? 1024 : 256),
-          temperature: input.temperature ?? 0.2,
-          ...((input.jsonMode ?? true) ? { responseMimeType: 'application/json' } : {}),
-        },
-      });
-      const text = result.response.text();
-      if (text) return { text, provider: 'gemini', model };
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), LLM_PROVIDER_TIMEOUT_MS);
+
+      try {
+        const genAI = new GoogleGenerativeAI(key);
+        const result = await Promise.race([
+          genAI.getGenerativeModel({ model }).generateContent({
+            contents: [{ role: 'user', parts: [{ text: input.prompt }] }],
+            generationConfig: {
+              maxOutputTokens: input.maxTokens ?? (input.task === 'reasoning' ? 1024 : 256),
+              temperature: input.temperature ?? 0.2,
+              ...((input.jsonMode ?? true) ? { responseMimeType: 'application/json' } : {}),
+            },
+          }),
+          new Promise<never>((_, reject) => {
+            const id = setTimeout(() => reject(new Error(`gemini timeout after ${LLM_PROVIDER_TIMEOUT_MS}ms`)), LLM_PROVIDER_TIMEOUT_MS);
+            controller.signal.addEventListener('abort', () => {
+              clearTimeout(id);
+              reject(new Error(`gemini timeout after ${LLM_PROVIDER_TIMEOUT_MS}ms`));
+            });
+          }),
+        ]);
+
+        clearTimeout(timeout);
+        const text = result.response.text();
+        if (text) return { text, provider: 'gemini', model };
+      } finally {
+        clearTimeout(timeout);
+      }
     } catch (err) {
-      console.warn(`[llm-fallback] gemini ${model} threw:`, err instanceof Error ? err.message : err);
+      if (err instanceof Error && err.message.includes('timeout')) {
+        console.warn(`[llm-fallback] gemini ${model} timeout after ${LLM_PROVIDER_TIMEOUT_MS}ms`);
+      } else {
+        console.warn(`[llm-fallback] gemini ${model} threw:`, err instanceof Error ? err.message : err);
+      }
     }
   }
 
@@ -114,6 +142,9 @@ async function callOpenAiCompatible(input: {
   provider: string;
   payload: OpenAiChatPayload;
 }): Promise<ProviderResult | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LLM_PROVIDER_TIMEOUT_MS);
+
   try {
     const res = await fetch(`${input.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -122,9 +153,9 @@ async function callOpenAiCompatible(input: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(input.payload),
+      signal: controller.signal,
     });
     if (!res.ok) {
-      // Trace which provider failed so the caller can surface a useful message.
       const body = await res.text().catch(() => '');
       console.warn(`[llm-fallback] ${input.provider} HTTP ${res.status}: ${body.slice(0, 200)}`);
       return null;
@@ -134,8 +165,14 @@ async function callOpenAiCompatible(input: {
     if (!text) return null;
     return { text, provider: input.provider, model: input.model };
   } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      console.warn(`[llm-fallback] ${input.provider} timeout after ${LLM_PROVIDER_TIMEOUT_MS}ms`);
+      return null;
+    }
     console.warn(`[llm-fallback] ${input.provider} threw:`, err instanceof Error ? err.message : err);
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

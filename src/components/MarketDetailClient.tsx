@@ -10,6 +10,7 @@ import type { StableSymbol } from '@/lib/swap';
 import { formatUsd, useAppState } from '@/lib/appState';
 import { agentResolutionGuardrails, buildAgentResolutionPrompt, buildAgentResolutionReport } from '@/lib/agentResolution';
 import type { MarketStatus } from '@/lib/markets';
+import { getOutcomeColor } from '@/lib/outcomeColors';
 
 const statusStyle: Record<MarketStatus, string> = {
   Open: 'border-mint/25 bg-mint/10 text-mint',
@@ -21,12 +22,6 @@ const statusStyle: Record<MarketStatus, string> = {
 };
 
 const quickAmounts = [10, 25, 100, 500];
-
-const OUTCOME_COLORS = [
-  '#25c0f4', '#f87171', '#facc15', '#4ade80', '#a78bfa', '#fb923c',
-  '#f472b6', '#38bdf8', '#34d399', '#c084fc', '#fbbf24', '#e879f9',
-];
-
 
 export function MarketDetailClient({ marketId }: { marketId: string }) {
   const { accountPreviews, connectedWallet, getMarket, placeTrade, addLiquidity, resolveMarket, cancelMarket, claimMarket, refundMarket } = useAppState();
@@ -91,6 +86,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const noOutcome = market.outcomes.find((o) => o.label === 'NO') ?? market.outcomes[1] ?? yesOutcome;
   const activeOutcomeIndex = Math.max(0, market.outcomes.findIndex((outcome) => outcome.label === selectedOutcome));
   const activeOutcome = market.outcomes[activeOutcomeIndex] ?? yesOutcome;
+  const activeOutcomeColor = getOutcomeColor(activeOutcomeIndex);
   const isBinaryMarket = market.outcomes.length <= 2;
   const amountValue = Number(amount) || 0;
   const estimatedShares = amountValue > 0 ? amountValue : 0;
@@ -242,7 +238,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             <div className="mt-6">
               <div className="flex overflow-hidden rounded-full" style={{ height: 8 }}>
                 {market.outcomes.map((outcome, index) => {
-                  const color = OUTCOME_COLORS[index % OUTCOME_COLORS.length];
+                  const color = getOutcomeColor(index);
                   return (
                     <div
                       key={`bar-${outcome.label}`}
@@ -257,7 +253,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-4">
                 {market.outcomes.map((outcome, index) => {
-                  const color = OUTCOME_COLORS[index % OUTCOME_COLORS.length];
+                  const color = getOutcomeColor(index);
                   return (
                     <div key={`badge-${outcome.label}`} className="flex items-center gap-2">
                       <span
@@ -304,12 +300,24 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   </span>
                 </div>
                 <div className="mt-4 grid gap-2 md:grid-cols-2">
-                  {market.pollOptions.map((option, index) => (
-                    <div key={`${option}-${index}`} className="flex items-center justify-between rounded-[12px] border border-white/[0.06] bg-[#0d1520] px-4 py-3">
-                      <span className="font-bold text-white">{option}</span>
-                      <span className="text-sm font-black text-muted">{market.outcomes[index]?.odds ?? 0}%</span>
-                    </div>
-                  ))}
+                  {market.pollOptions.map((option, index) => {
+                    const color = getOutcomeColor(index);
+                    return (
+                      <div
+                        key={`${option}-${index}`}
+                        className="flex items-center justify-between rounded-[12px] border px-4 py-3"
+                        style={{ borderColor: `${color}24`, backgroundColor: `${color}0D` }}
+                      >
+                        <span className="flex min-w-0 items-center gap-2 font-bold text-white">
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                          <span className="break-words">{option}</span>
+                        </span>
+                        <span className="ml-3 shrink-0 text-sm font-black" style={{ color }}>
+                          {market.outcomes[index]?.odds ?? 0}%
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
                 <p className="mt-3 text-xs leading-5 text-muted">
                   This market uses poll-style outcome metadata. V2 markets trade and resolve these outcomes directly when the multi-outcome factory is configured.
@@ -338,13 +346,13 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             </div>
 
             {/* Resolution rules */}
-            <div className="mt-6 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
+            <div className="mt-6 min-w-0 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
               <h2 className="text-base font-black text-white">Resolution rules</h2>
-              <p className="mt-2 text-sm leading-7 text-muted">{market.rules}</p>
+              <p className="mt-2 break-words text-sm leading-7 text-muted [overflow-wrap:anywhere]">{market.rules}</p>
               <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-2">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-widest text-muted">Source of truth</p>
-                  <p className="mt-1.5 text-sm leading-6 text-white">{market.sourceOfTruth}</p>
+                  <p className="mt-1.5 break-words text-sm leading-6 text-white [overflow-wrap:anywhere]">{market.sourceOfTruth}</p>
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-widest text-muted">Resolver</p>
@@ -544,7 +552,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 >
                   <p className="text-xs font-black text-muted">Buy YES</p>
                   <p className={`mt-1 text-2xl font-black ${selectedOutcome === 'YES' ? 'text-cyan' : 'text-white'}`}>
-                    {yesOutcome.odds}¢
+                    {yesOutcome.odds}{'\u00a2'}
                   </p>
                 </button>
                 <button
@@ -559,7 +567,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 >
                   <p className="text-xs font-black text-muted">Buy NO</p>
                   <p className={`mt-1 text-2xl font-black ${selectedOutcome === 'NO' ? 'text-red-300' : 'text-white'}`}>
-                    {noOutcome.odds}¢
+                    {noOutcome.odds}{'\u00a2'}
                   </p>
                 </button>
               </div>
@@ -568,24 +576,25 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <div className={`grid grid-cols-1 gap-2 ${tradeMode === 'liquidity' ? 'opacity-70' : ''}`}>
                   {market.outcomes.map((outcome, index) => {
                     const active = selectedOutcome === outcome.label;
-                    const cyanSide = index === 0;
+                    const color = getOutcomeColor(index);
                     return (
                       <button
                         key={`${outcome.label}-${index}`}
                         type="button"
                         onClick={() => setSelectedOutcome(outcome.label)}
                         disabled={tradeMode === 'liquidity'}
+                        style={active ? {
+                          borderColor: `${color}70`,
+                          backgroundColor: `${color}18`,
+                          boxShadow: `0 0 16px -4px ${color}4D`,
+                        } : undefined}
                         className={`rounded-[12px] border px-4 py-4 text-left transition-all ${
-                          active
-                            ? cyanSide
-                              ? 'border-cyan/40 bg-cyan/10 shadow-[0_0_16px_-4px_rgba(37,192,244,0.3)]'
-                              : 'border-red-400/40 bg-red-400/10 shadow-[0_0_16px_-4px_rgba(248,113,113,0.2)]'
-                            : 'border-white/[0.06] bg-[#0f172a] hover:border-white/10'
+                          active ? '' : 'border-white/[0.06] bg-[#0f172a] hover:border-white/10'
                         }`}
                       >
                         <p className="truncate text-xs font-black text-muted">Buy {outcome.label}</p>
-                        <p className={`mt-1 text-2xl font-black ${active ? (cyanSide ? 'text-cyan' : 'text-red-300') : 'text-white'}`}>
-                          {outcome.odds}Â¢
+                        <p className={`mt-1 text-2xl font-black ${active ? '' : 'text-white'}`} style={active ? { color } : undefined}>
+                          {outcome.odds}{'\u00a2'}
                         </p>
                       </button>
                     );
@@ -636,7 +645,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                         inputMode="decimal"
                         className="w-14 bg-transparent text-right text-sm font-black text-white outline-none"
                       />
-                      <span className="text-xs font-black text-cyan">¢</span>
+                      <span className="text-xs font-black text-cyan">{'\u00a2'}</span>
                     </div>
                   </div>
                   <p className="mt-3 text-xs leading-5 text-muted">
@@ -686,7 +695,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   <span className="font-black text-white">
                     {tradeMode === 'liquidity'
                       ? isBinaryMarket ? 'Balanced YES + NO' : 'Balanced across all outcomes'
-                      : isLimitOrder ? `${limitPrice || '0'}¢ limit` : `${activeOutcome.odds}¢ per share`}
+                      : isLimitOrder ? `${limitPrice || '0'}\u00a2 limit` : `${activeOutcome.odds}\u00a2 per share`}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
@@ -732,10 +741,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     : placeTrade({ marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, amount: amountValue, payWith })
                 ))}
                 disabled={!canTrade || isSubmitting || amountValue <= 0 || isLimitOrder}
-                className={`mt-5 w-full rounded-[12px] py-4 font-black tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
-                  tradeMode === 'liquidity' || activeOutcomeIndex === 0
-                    ? 'bg-cyan text-ink hover:opacity-90'
-                    : 'bg-red-400 text-white hover:opacity-90'
+                style={tradeMode === 'buy' ? { backgroundColor: activeOutcomeColor } : undefined}
+                className={`mt-5 w-full rounded-[12px] py-4 font-black tracking-wide text-ink transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 ${
+                  tradeMode === 'liquidity' ? 'bg-cyan' : ''
                 }`}
               >
                 {!canTrade ? 'Market not open'
@@ -972,7 +980,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
                     <div className="grid grid-cols-2 gap-2">
                       {market.outcomes.map((outcome, index) => {
-                        const color = OUTCOME_COLORS[index % OUTCOME_COLORS.length];
+                        const color = getOutcomeColor(index);
                         return (
                           <button
                             key={`resolve-${outcome.label}-${index}`}
@@ -1056,10 +1064,10 @@ function MarketNewsTieIn({ trendUrl, trendSource, marketTitle }: { trendUrl: str
   })();
 
   return (
-    <section className="mt-7 rounded-[14px] border border-cyan/15 bg-cyan/[0.04] p-5">
-      <div className="flex items-center justify-between gap-3">
+    <section className="mt-7 min-w-0 overflow-hidden rounded-[14px] border border-cyan/15 bg-cyan/[0.04] p-5">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <p className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-cyan/80">News tie-in</p>
-        <span className="text-[10.5px] font-bold uppercase tracking-widest text-muted/70">{sourceLabel}</span>
+        <span className="max-w-full break-words text-[10.5px] font-bold uppercase tracking-widest text-muted/70 [overflow-wrap:anywhere]">{sourceLabel}</span>
       </div>
       {loading ? (
         <p className="mt-3 text-[13px] text-muted">Fetching summary…</p>
@@ -1067,8 +1075,8 @@ function MarketNewsTieIn({ trendUrl, trendSource, marketTitle }: { trendUrl: str
         <p className="mt-3 text-[13px] text-muted">{error}</p>
       ) : data ? (
         <>
-          {data.title ? <h3 className="mt-2 text-[16px] font-black leading-snug text-white">{data.title}</h3> : null}
-          <p className="mt-2 text-[14px] leading-7 text-[#cbd5e1]">{data.summary}</p>
+          {data.title ? <h3 className="mt-2 break-words text-[16px] font-black leading-snug text-white [overflow-wrap:anywhere]">{data.title}</h3> : null}
+          <p className="mt-2 break-words text-[14px] leading-7 text-[#cbd5e1] [overflow-wrap:anywhere]">{data.summary}</p>
           <a
             href={data.source}
             target="_blank"
