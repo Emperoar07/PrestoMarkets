@@ -11,6 +11,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { logger } from './logger';
 
 export type LlmTask = 'safety' | 'reasoning';
 
@@ -72,7 +73,7 @@ async function callAnthropic(input: LlmCallInput): Promise<ProviderResult | null
     return { text, provider: 'anthropic', model };
   } catch (err) {
     if (err instanceof Error && err.name === 'APIError' && err.message.includes('timeout')) {
-      console.warn(`[llm-fallback] anthropic timeout after ${LLM_PROVIDER_TIMEOUT_MS}ms`);
+      logger.warn('llm-fallback', `anthropic timeout after ${LLM_PROVIDER_TIMEOUT_MS}ms`);
       return null;
     }
     const status = (err as { status?: number })?.status ?? 0;
@@ -125,9 +126,9 @@ async function callGemini(input: LlmCallInput): Promise<ProviderResult | null> {
       }
     } catch (err) {
       if (err instanceof Error && err.message.includes('timeout')) {
-        console.warn(`[llm-fallback] gemini ${model} timeout after ${LLM_PROVIDER_TIMEOUT_MS}ms`);
+        logger.warn('llm-fallback', `gemini ${model} timeout after ${LLM_PROVIDER_TIMEOUT_MS}ms`);
       } else {
-        console.warn(`[llm-fallback] gemini ${model} threw:`, err instanceof Error ? err.message : err);
+        logger.warn('llm-fallback', `gemini ${model} threw`, { error: err instanceof Error ? err.message : String(err) });
       }
     }
   }
@@ -157,7 +158,7 @@ async function callOpenAiCompatible(input: {
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      console.warn(`[llm-fallback] ${input.provider} HTTP ${res.status}: ${body.slice(0, 200)}`);
+      logger.warn('llm-fallback', `${input.provider} HTTP ${res.status}`, { status: res.status, error: body.slice(0, 200) });
       return null;
     }
     const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
@@ -166,10 +167,10 @@ async function callOpenAiCompatible(input: {
     return { text, provider: input.provider, model: input.model };
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
-      console.warn(`[llm-fallback] ${input.provider} timeout after ${LLM_PROVIDER_TIMEOUT_MS}ms`);
+      logger.warn('llm-fallback', `${input.provider} timeout after ${LLM_PROVIDER_TIMEOUT_MS}ms`);
       return null;
     }
-    console.warn(`[llm-fallback] ${input.provider} threw:`, err instanceof Error ? err.message : err);
+    logger.warn('llm-fallback', `${input.provider} threw`, { error: err instanceof Error ? err.message : String(err) });
     return null;
   } finally {
     clearTimeout(timeout);
@@ -305,7 +306,7 @@ export async function callLlmJson(input: LlmCallInput): Promise<ProviderResult> 
       }
       return result;
     } catch {
-      console.warn(`[llm-fallback] ${result.provider} ${result.model} returned malformed JSON; trying the next provider.`);
+      logger.warn('llm-fallback', `${result.provider} ${result.model} returned malformed JSON`, { provider: result.provider, model: result.model });
     }
   }
   throw new Error('No LLM provider returned usable JSON. Check configured provider credentials, quotas, model availability, and deployment logs.');

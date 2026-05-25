@@ -14,6 +14,7 @@ import { AGENT_PLATFORM_CONTEXT } from './agentContext';
 import { fetchOnchainMarkets } from './onchainMarkets';
 import { sanitizeFeedText } from './feedSanitizer';
 import { assertPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
+import { logger } from './logger';
 import type { CreateLiveMarketInput } from './liveActions';
 import type { AgentMarketMetadata } from './marketMetadata';
 import type { AppMarket } from './appState';
@@ -70,7 +71,7 @@ async function fetchSerperTrends(): Promise<TrendItem[]> {
     return items.slice(0, 6);
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
-      console.warn('[agent-pipeline] Serper timeout after 8000ms');
+      logger.warn('agent-pipeline', 'Serper API timeout after 8000ms');
       return [];
     }
     throw err;
