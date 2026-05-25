@@ -40,14 +40,22 @@ function buildSmoothPath(points: number[], width: number, height: number, offset
   return path;
 }
 
+/** Color palette for up to 12 outcomes. Index 0 = cyan (primary), 1 = red, then warm/cool alternating. */
+const OUTCOME_COLORS = [
+  '#25c0f4', '#f87171', '#facc15', '#4ade80', '#a78bfa', '#fb923c',
+  '#f472b6', '#38bdf8', '#34d399', '#c084fc', '#fbbf24', '#e879f9',
+];
+
 export function MarketSignalChart({ market, compact = false }: { market: MarketSignalChartMarket; compact?: boolean }) {
-  const yesOdds = market.outcomes.find((o) => o.label === 'YES')?.odds ?? 50;
-  const noOdds = market.outcomes.find((o) => o.label === 'NO')?.odds ?? 100 - yesOdds;
   const volume = parseUsd(market.volume);
   const liquidity = parseUsd(market.liquidity);
 
-  const yesPoints = buildSignalPoints(yesOdds, volume, liquidity);
-  const noPoints = buildSignalPoints(noOdds, liquidity, volume, Math.PI);
+  // Build signal data for every outcome, not just YES/NO
+  const outcomeSeries = market.outcomes.map((outcome, index) => {
+    const phase = index * (Math.PI / market.outcomes.length);
+    const points = buildSignalPoints(outcome.odds, index === 0 ? volume : liquidity, index === 0 ? liquidity : volume, phase);
+    return { label: outcome.label, odds: outcome.odds, points, color: OUTCOME_COLORS[index % OUTCOME_COLORS.length] };
+  });
 
   const W = compact ? 460 : 900;
   const H = compact ? 80 : 320;
@@ -56,14 +64,10 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
   const chartW = W - padL - padR;
   const endX = padL + chartW;
 
-  const yesPath = buildSmoothPath(yesPoints, chartW, H, padL);
-  const noPath = buildSmoothPath(noPoints, chartW, H, padL);
-  const yesAreaPath = `${yesPath} L ${endX} ${H} L ${padL} ${H} Z`;
+  const paths = outcomeSeries.map((series) => buildSmoothPath(series.points, chartW, H, padL));
+  // Area fill only for the first outcome (primary)
+  const primaryAreaPath = paths.length > 0 ? `${paths[0]} L ${endX} ${H} L ${padL} ${H} Z` : '';
 
-  const yesEnd = yesPoints[yesPoints.length - 1];
-  const noEnd = noPoints[noPoints.length - 1];
-  const yesEndY = H - (yesEnd / 100) * H;
-  const noEndY = H - (noEnd / 100) * H;
   const gridLines = compact ? [50] : [0, 25, 50, 75, 100];
   const uid = compact ? 'compact' : 'detail';
 
@@ -71,15 +75,13 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
     <div className={`rounded-[18px] border border-white/[0.06] bg-[#0d1520] ${compact ? 'p-4' : 'p-5 pb-4'}`}>
       {!compact ? (
         <div className="mb-4 flex items-center justify-end gap-4">
-          <div className="flex items-center gap-4 text-xs font-black">
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-5 rounded-full bg-[#25c0f4] shadow-[0_0_14px_rgba(37,192,244,0.45)]" />
-              <span className="text-[#25c0f4]">YES {yesOdds}%</span>
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-5 rounded-full bg-red-400" />
-              <span className="text-red-300">NO {noOdds}%</span>
-            </span>
+          <div className="flex flex-wrap items-center gap-4 text-xs font-black">
+            {outcomeSeries.map((series) => (
+              <span key={series.label} className="flex items-center gap-1.5">
+                <span className="h-2 w-5 rounded-full" style={{ backgroundColor: series.color, boxShadow: series.color === '#25c0f4' ? '0 0 14px rgba(37,192,244,0.45)' : 'none' }} />
+                <span style={{ color: series.color }}>{series.label} {series.odds}%</span>
+              </span>
+            ))}
           </div>
         </div>
       ) : null}
@@ -93,9 +95,9 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
       >
         <defs>
           <linearGradient id={`yes-fill-${uid}`} x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#25c0f4" stopOpacity="0.26" />
-            <stop offset="72%" stopColor="#25c0f4" stopOpacity="0.055" />
-            <stop offset="100%" stopColor="#25c0f4" stopOpacity="0" />
+            <stop offset="0%" stopColor={outcomeSeries[0]?.color ?? '#25c0f4'} stopOpacity="0.26" />
+            <stop offset="72%" stopColor={outcomeSeries[0]?.color ?? '#25c0f4'} stopOpacity="0.055" />
+            <stop offset="100%" stopColor={outcomeSeries[0]?.color ?? '#25c0f4'} stopOpacity="0" />
           </linearGradient>
           <filter id={`yes-glow-${uid}`} x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="2.4" result="blur" />
@@ -135,30 +137,53 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
           );
         })}
 
-        <path d={yesAreaPath} fill={`url(#yes-fill-${uid})`} />
+        {/* Area fill for primary outcome */}
+        {primaryAreaPath ? <path d={primaryAreaPath} fill={`url(#yes-fill-${uid})`} /> : null}
 
-        <path
-          d={noPath}
-          fill="none"
-          stroke="#f87171"
-          strokeWidth={compact ? 1.35 : 1.65}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          opacity="0.72"
-        />
-        <path
-          d={yesPath}
-          fill="none"
-          stroke="#25c0f4"
-          strokeWidth={compact ? 1.8 : 2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          filter={`url(#yes-glow-${uid})`}
-        />
+        {/* Render non-primary traces first (behind), then primary on top */}
+        {outcomeSeries.slice(1).map((series, idx) => (
+          <path
+            key={`line-${series.label}`}
+            d={paths[idx + 1]}
+            fill="none"
+            stroke={series.color}
+            strokeWidth={compact ? 1.35 : 1.65}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity="0.72"
+          />
+        ))}
+        {paths[0] ? (
+          <path
+            d={paths[0]}
+            fill="none"
+            stroke={outcomeSeries[0].color}
+            strokeWidth={compact ? 1.8 : 2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            filter={`url(#yes-glow-${uid})`}
+          />
+        ) : null}
 
-        <circle cx={endX} cy={noEndY} r={compact ? 3 : 4.5} fill="#0d1520" stroke="#f87171" strokeWidth="1.5" />
-        <circle cx={endX} cy={yesEndY} r={compact ? 3.5 : 5.5} fill="#25c0f4" filter={`url(#yes-glow-${uid})`} />
-        <circle cx={endX} cy={yesEndY} r={compact ? 2 : 2.6} fill="white" />
+        {/* End dots for non-primary outcomes */}
+        {outcomeSeries.slice(1).map((series) => {
+          const endPoint = series.points[series.points.length - 1];
+          const endY = H - (endPoint / 100) * H;
+          return (
+            <circle key={`dot-${series.label}`} cx={endX} cy={endY} r={compact ? 3 : 4.5} fill="#0d1520" stroke={series.color} strokeWidth="1.5" />
+          );
+        })}
+        {/* Primary outcome end dot */}
+        {outcomeSeries[0] ? (() => {
+          const endPoint = outcomeSeries[0].points[outcomeSeries[0].points.length - 1];
+          const endY = H - (endPoint / 100) * H;
+          return (
+            <>
+              <circle cx={endX} cy={endY} r={compact ? 3.5 : 5.5} fill={outcomeSeries[0].color} filter={`url(#yes-glow-${uid})`} />
+              <circle cx={endX} cy={endY} r={compact ? 2 : 2.6} fill="white" />
+            </>
+          );
+        })() : null}
       </svg>
 
       {!compact ? (

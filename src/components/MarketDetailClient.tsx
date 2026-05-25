@@ -22,6 +22,12 @@ const statusStyle: Record<MarketStatus, string> = {
 
 const quickAmounts = [10, 25, 100, 500];
 
+const OUTCOME_COLORS = [
+  '#25c0f4', '#f87171', '#facc15', '#4ade80', '#a78bfa', '#fb923c',
+  '#f472b6', '#38bdf8', '#34d399', '#c084fc', '#fbbf24', '#e879f9',
+];
+
+
 export function MarketDetailClient({ marketId }: { marketId: string }) {
   const { accountPreviews, connectedWallet, getMarket, placeTrade, addLiquidity, resolveMarket, cancelMarket, claimMarket, refundMarket } = useAppState();
   const market = getMarket(marketId);
@@ -31,7 +37,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const [amount, setAmount] = useState('25');
   const [limitPrice, setLimitPrice] = useState('50');
   const [resolutionURI, setResolutionURI] = useState('');
-  const [agentOutcome, setAgentOutcome] = useState<'YES' | 'NO' | 'CANCEL'>('YES');
+  const [agentOutcome, setAgentOutcome] = useState<string>('YES');
   const [agentConfidence, setAgentConfidence] = useState('Medium');
   const [agentSources, setAgentSources] = useState('');
   const [agentNotes, setAgentNotes] = useState('');
@@ -165,7 +171,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
         return;
       }
       const rec = data.recommendation;
-      setAgentOutcome(rec.outcome === 'CANCEL' ? 'CANCEL' : rec.outcome as 'YES' | 'NO' | 'CANCEL');
+      setAgentOutcome(rec.outcome);
       setAgentConfidence(rec.confidence ?? 'Medium');
       setAgentSources((rec.sources ?? []).join('\n'));
       setAgentNotes(
@@ -234,18 +240,38 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             {/* Odds bar */}
             <div className="mt-6">
               <div className="flex overflow-hidden rounded-full" style={{ height: 8 }}>
-                <div className="bg-cyan transition-all duration-500" style={{ width: `${yesOutcome.odds}%` }} />
-                <div className="flex-1 bg-red-500/40" />
+                {market.outcomes.map((outcome, index) => {
+                  const color = OUTCOME_COLORS[index % OUTCOME_COLORS.length];
+                  return (
+                    <div
+                      key={`bar-${outcome.label}`}
+                      style={{
+                        width: `${outcome.odds}%`,
+                        backgroundColor: color,
+                      }}
+                      className="transition-all duration-500"
+                    />
+                  );
+                })}
               </div>
-              <div className="mt-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="rounded-md bg-cyan/10 px-2.5 py-1 text-xs font-black text-cyan">YES</span>
-                  <span className="text-lg font-black text-white">{yesOutcome.odds}%</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg font-black text-white">{noOutcome.odds}%</span>
-                  <span className="rounded-md bg-red-400/10 px-2.5 py-1 text-xs font-black text-red-300">NO</span>
-                </div>
+              <div className="mt-3 flex flex-wrap items-center gap-4">
+                {market.outcomes.map((outcome, index) => {
+                  const color = OUTCOME_COLORS[index % OUTCOME_COLORS.length];
+                  return (
+                    <div key={`badge-${outcome.label}`} className="flex items-center gap-2">
+                      <span
+                        style={{
+                          backgroundColor: `${color}1A`, // 10% opacity
+                          color: color,
+                        }}
+                        className="rounded-md px-2.5 py-1 text-xs font-black"
+                      >
+                        {outcome.label}
+                      </span>
+                      <span className="text-lg font-black text-white">{outcome.odds}%</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -818,13 +844,16 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                       <div className="mt-4 grid gap-2 md:grid-cols-3">
                         <label className="text-[10px] font-black uppercase tracking-widest text-muted">
                           Proposed outcome
-                          <select
+                           <select
                             value={agentOutcome}
-                            onChange={(event) => setAgentOutcome(event.target.value as 'YES' | 'NO' | 'CANCEL')}
+                            onChange={(event) => setAgentOutcome(event.target.value)}
                             className="mt-1 w-full rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan/40"
                           >
-                            <option value="YES">YES</option>
-                            <option value="NO">NO</option>
+                            {market.outcomes.map((outcome) => (
+                              <option key={outcome.label} value={outcome.label}>
+                                {outcome.label}
+                              </option>
+                            ))}
                             <option value="CANCEL">Cancel</option>
                           </select>
                         </label>
@@ -931,21 +960,24 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
-                      {market.outcomes.map((outcome, index) => (
-                        <button
-                          key={`resolve-${outcome.label}-${index}`}
-                          type="button"
-                          onClick={() => void runAction(() => resolveMarket({ marketId, outcome: outcome.label, outcomeIndex: index, resolutionURI }))}
-                          disabled={isSubmitting || !canSubmitResolution}
-                          className={`rounded-[10px] py-2.5 text-xs font-black ring-1 transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
-                            index === 0
-                              ? 'bg-cyan/10 text-cyan ring-cyan/25 hover:bg-cyan/15'
-                              : 'bg-red-400/10 text-red-300 ring-red-400/20 hover:bg-red-400/15'
-                          }`}
-                        >
-                          Resolve {outcome.label}
-                        </button>
-                      ))}
+                      {market.outcomes.map((outcome, index) => {
+                        const color = OUTCOME_COLORS[index % OUTCOME_COLORS.length];
+                        return (
+                          <button
+                            key={`resolve-${outcome.label}-${index}`}
+                            type="button"
+                            onClick={() => void runAction(() => resolveMarket({ marketId, outcome: outcome.label, outcomeIndex: index, resolutionURI }))}
+                            disabled={isSubmitting || !canSubmitResolution}
+                            style={{
+                              backgroundColor: `${color}1A`, // 10% opacity
+                              color: color,
+                            }}
+                            className="rounded-[10px] py-2.5 text-xs font-black ring-1 ring-white/10 transition-all hover:bg-opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Resolve {outcome.label}
+                          </button>
+                        );
+                      })}
                     </div>
                     <button
                       type="button"

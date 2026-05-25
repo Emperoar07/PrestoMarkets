@@ -391,18 +391,20 @@ export async function addLiveLiquidity(input: { marketAddress: string; amount: n
   const half = input.amount / 2;
   const yesResult = await buyLiveShares({
     marketAddress: input.marketAddress,
-    outcome: 'YES',
+    outcome: 'First Outcome',
+    outcomeIndex: 0,
     amount: half,
     payWith: input.payWith,
   });
 
   if (!yesResult.ok) {
-    return { ok: false, message: `YES side liquidity failed: ${yesResult.message}` };
+    return { ok: false, message: `First outcome side liquidity failed: ${yesResult.message}` };
   }
 
   const noResult = await buyLiveShares({
     marketAddress: input.marketAddress,
-    outcome: 'NO',
+    outcome: 'Second Outcome',
+    outcomeIndex: 1,
     amount: half,
     payWith: input.payWith,
   });
@@ -410,14 +412,14 @@ export async function addLiveLiquidity(input: { marketAddress: string; amount: n
   if (!noResult.ok) {
     return {
       ok: false,
-      message: `NO side liquidity failed after YES succeeded. You now hold directional YES exposure: ${noResult.message}`,
+      message: `Second outcome side liquidity failed after first succeeded. You now hold directional exposure: ${noResult.message}`,
       txHash: yesResult.txHash,
     };
   }
 
   return {
     ok: true,
-    message: `Added balanced liquidity: $${half.toFixed(2)} YES and $${half.toFixed(2)} NO.`,
+    message: `Added balanced liquidity: $${half.toFixed(2)} to the first and second outcomes.`,
     txHash: noResult.txHash ?? yesResult.txHash,
   };
 }

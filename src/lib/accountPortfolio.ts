@@ -141,7 +141,7 @@ async function fetchMarketCostBasis(
   client: ReturnType<typeof createPublicClient>,
   marketAddress: Address,
   account: Address,
-): Promise<{ yes: number; no: number }> {
+): Promise<{ yes: number; no: number; byIndex: Record<number, number> }> {
   return fetchMarketCostBasisIndexed(client, marketAddress, account);
 }
 
@@ -177,7 +177,7 @@ export async function fetchAccountPortfolio(
       client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewClaim', args: [account] }).catch(() => [BigInt(0), BigInt(0)] as const),
       client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewRefund', args: [account] }).catch(() => BigInt(0)),
       client.readContract({ address, abi: prestoMarketAbi, functionName: 'claimed', args: [account] }).catch(() => false),
-      fetchMarketCostBasis(client, address, account).catch(() => ({ yes: 0, no: 0 })),
+      fetchMarketCostBasis(client, address, account).catch(() => ({ yes: 0, no: 0, byIndex: {} as Record<number, number> })),
     ]);
     const claimable = claimPreview[0];
     const yesIndex = outcomeLabels.findIndex((label) => label.toUpperCase() === 'YES');
@@ -202,16 +202,17 @@ export async function fetchAccountPortfolio(
       const shares = outcomeShareValues[outcomeIndex] ?? BigInt(0);
       if (shares === BigInt(0)) return;
       const fallbackCostBasis = toUsdcNumber(shares);
-      const legacyCostBasis = outcome.toUpperCase() === 'YES'
-        ? costBasis.yes
-        : outcome.toUpperCase() === 'NO'
-          ? costBasis.no
-          : fallbackCostBasis;
+      const outcomeCostBasis = costBasis.byIndex?.[outcomeIndex]
+        ?? (outcome.toUpperCase() === 'YES'
+          ? costBasis.yes
+          : outcome.toUpperCase() === 'NO'
+            ? costBasis.no
+            : fallbackCostBasis);
       const valuation = getPositionValuation({
         market,
         outcome,
         shares,
-        costBasis: legacyCostBasis,
+        costBasis: outcomeCostBasis,
         claimable: market.winningOutcomeLabel === outcome ? claimable : BigInt(0),
         refundable: market.status === 'Canceled' ? shares : BigInt(0),
         hasClaimed,
@@ -276,7 +277,7 @@ async function fetchRecentAccountActivity(
 
     return [
       ...buys.map((log) => ({
-        label: `Bought ${log.args.outcome === 0 ? 'YES' : 'NO'}`,
+        label: `Bought ${market.outcomes[Number(log.args.outcome)]?.label ?? `Outcome ${log.args.outcome}`}`,
         market: market.title,
         detail: formatUsdc(log.args.amount ?? BigInt(0)),
         status: 'Confirmed' as const,

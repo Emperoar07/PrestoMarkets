@@ -1,6 +1,6 @@
 import type { AppMarket } from './appState';
 
-export type AgentResolutionOutcome = 'YES' | 'NO' | 'CANCEL';
+export type AgentResolutionOutcome = string;
 
 export type AgentResolutionDraft = {
   market: AppMarket;

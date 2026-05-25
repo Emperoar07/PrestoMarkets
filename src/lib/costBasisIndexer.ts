@@ -7,10 +7,11 @@ type ClientLike = ReturnType<typeof createPublicClient>;
 type Checkpoint = {
   yes: number;
   no: number;
+  byIndex?: Record<number, number>;
   lastIndexedBlock: string;
 };
 
-const SCHEMA_VERSION = 'v1';
+const SCHEMA_VERSION = 'v2'; // Bumped version to prevent local storage type mismatch
 // Arc's public RPC rejects wide eth_getLogs queries with 413 Payload Too Large. Sub-second
 // finality means even small block windows cover a useful slice of recent activity, so we
 // keep page size conservative and rely on the checkpoint to amortize history over many loads.
@@ -52,20 +53,23 @@ export async function fetchMarketCostBasisIndexed(
   client: ClientLike,
   market: Address,
   account: Address,
-): Promise<{ yes: number; no: number }> {
+): Promise<{ yes: number; no: number; byIndex: Record<number, number> }> {
   const checkpoint = readCheckpoint(account, market);
   const latestBlock = await client.getBlockNumber().catch(() => BigInt(0));
   if (latestBlock === BigInt(0)) {
-    return checkpoint ? { yes: checkpoint.yes, no: checkpoint.no } : { yes: 0, no: 0 };
+    return checkpoint
+      ? { yes: checkpoint.yes, no: checkpoint.no, byIndex: checkpoint.byIndex ?? { 0: checkpoint.yes, 1: checkpoint.no } }
+      : { yes: 0, no: 0, byIndex: {} };
   }
 
   const fromBlock = checkpoint ? BigInt(checkpoint.lastIndexedBlock) + BigInt(1) : BigInt(0);
   if (fromBlock > latestBlock) {
-    return { yes: checkpoint!.yes, no: checkpoint!.no };
+    return { yes: checkpoint!.yes, no: checkpoint!.no, byIndex: checkpoint!.byIndex ?? { 0: checkpoint!.yes, 1: checkpoint!.no } };
   }
 
   let yes = checkpoint?.yes ?? 0;
   let no = checkpoint?.no ?? 0;
+  const byIndex = checkpoint?.byIndex ?? { 0: yes, 1: no };
 
   // Page through block ranges so wide initial scans don't hit RPC limits.
   let cursor = fromBlock;
@@ -83,12 +87,15 @@ export async function fetchMarketCostBasisIndexed(
 
     for (const log of logs) {
       const amount = Number(formatUnits(log.args.amount ?? BigInt(0), 6));
-      if (log.args.outcome === 0) yes += amount;
-      else no += amount;
+      const outcomeIndex = Number(log.args.outcome ?? 0);
+      byIndex[outcomeIndex] = (byIndex[outcomeIndex] ?? 0) + amount;
+      if (outcomeIndex === 0) yes += amount;
+      else if (outcomeIndex === 1) no += amount;
     }
     cursor = pageEnd + BigInt(1);
   }
 
-  writeCheckpoint(account, market, { yes, no, lastIndexedBlock: latestBlock.toString() });
-  return { yes, no };
+  writeCheckpoint(account, market, { yes, no, byIndex, lastIndexedBlock: latestBlock.toString() });
+  return { yes, no, byIndex };
 }
+

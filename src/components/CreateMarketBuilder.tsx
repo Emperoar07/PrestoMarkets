@@ -568,7 +568,7 @@ export function CreateMarketBuilder() {
                 className={`mt-1 ${inputClass()}`}
               />
               <p className="mt-2 text-[11px] leading-5 text-muted/80">
-                If set, Presto creates the market then splits this amount evenly into YES and NO shares.
+                If set, Presto creates the market then splits this amount evenly across outcomes (first two for poll markets).
               </p>
             </div>
           </div>
@@ -652,7 +652,7 @@ export function CreateMarketBuilder() {
                     </div>
                   ))}
                 </div>
-                <p className="mt-3 text-xs leading-5 text-muted">Saved as market metadata. V1 onchain settlement remains binary.</p>
+                <p className="mt-3 text-xs leading-5 text-muted">Routes through the V2 factory supporting up to 12 dynamically resolvable outcomes.</p>
               </div>
             ) : null}
 

@@ -51,7 +51,7 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
           {market.pollOptions.slice(0, 4).map((option, index) => (
             <div key={`${option}-${index}`} className="flex items-center justify-between rounded-[8px] bg-white/[0.03] px-3 py-1.5">
               <span className="truncate text-[11px] font-bold text-[#cbd5e1]">{option}</span>
-              <span className="text-[11px] font-black text-[#64748b]">{index < 2 ? market.outcomes[index]?.odds ?? 0 : 0}%</span>
+              <span className="text-[11px] font-black text-[#64748b]">{market.outcomes[index]?.odds ?? 0}%</span>
             </div>
           ))}
           {market.pollOptions.length > 4 ? (
@@ -60,44 +60,69 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
         </div>
       ) : null}
 
-      {/* Odds row: probability + Yes/No buy buttons */}
+      {/* Odds row: probability + buy actions */}
       <div className="mt-4 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-[22px] font-black leading-none text-white">{yesOdds}%</span>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#4ade80]">chance</span>
-            {isLive ? (
-              <span className={`flex items-center gap-1 text-[10px] font-bold ${isClosingSoon ? 'text-amber-300' : 'text-[#8fa0b4]'}`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${isClosingSoon ? 'bg-amber-300 animate-pulse' : 'bg-red-400'}`} />
-                {market.closeDate ? <Countdown closeDate={market.closeDate} /> : 'LIVE'}
-              </span>
-            ) : (
-              <span className="text-[10px] font-bold text-[#8fa0b4]">{isResolved ? 'Resolved' : market.closeLabel}</span>
-            )}
-          </div>
+          {market.pollOptions && market.pollOptions.length > 2 ? (
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan">poll market</span>
+              {isLive ? (
+                <span className={`flex items-center gap-1 text-[10px] font-bold ${isClosingSoon ? 'text-amber-300' : 'text-[#8fa0b4]'}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${isClosingSoon ? 'bg-amber-300 animate-pulse' : 'bg-red-400'}`} />
+                  {market.closeDate ? <Countdown closeDate={market.closeDate} /> : 'LIVE'}
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold text-[#8fa0b4]">{isResolved ? 'Resolved' : market.closeLabel}</span>
+              )}
+            </div>
+          ) : (
+            <>
+              <span className="text-[22px] font-black leading-none text-white">{yesOdds}%</span>
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#4ade80]">chance</span>
+                {isLive ? (
+                  <span className={`flex items-center gap-1 text-[10px] font-bold ${isClosingSoon ? 'text-amber-300' : 'text-[#8fa0b4]'}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${isClosingSoon ? 'bg-amber-300 animate-pulse' : 'bg-red-400'}`} />
+                    {market.closeDate ? <Countdown closeDate={market.closeDate} /> : 'LIVE'}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-[#8fa0b4]">{isResolved ? 'Resolved' : market.closeLabel}</span>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
-        {/* Yes / No action buttons */}
-        <div className="flex shrink-0 items-center gap-1.5">
+        {/* YES / NO or View Poll action buttons */}
+        {market.pollOptions && market.pollOptions.length > 2 ? (
           <button
             type="button"
-            className={`rounded-[8px] px-3 py-2 text-xs font-bold transition-colors ${
-              isLive
-                ? 'bg-[#0a3320] text-[#4ade80] hover:bg-[#0d4429] active:scale-95'
-                : 'bg-white/[0.04] text-[#64748b]'
-            }`}
+            className="rounded-[8px] bg-cyan/10 px-4 py-2 text-xs font-bold text-cyan transition-all hover:bg-cyan/15 group-hover:bg-cyan group-hover:text-ink active:scale-95"
           >
-            {isLive ? 'Buy Yes' : isResolved ? 'Resolved' : 'Closed'}
+            {isLive ? 'Bet Now' : isResolved ? 'Resolved' : 'Closed'}
           </button>
-          {isLive ? (
+        ) : (
+          <div className="flex shrink-0 items-center gap-1.5">
             <button
               type="button"
-              className="rounded-[8px] bg-[#2d1010] px-3 py-2 text-xs font-bold text-[#f87171] transition-colors hover:bg-[#3d1515] active:scale-95"
+              className={`rounded-[8px] px-3 py-2 text-xs font-bold transition-colors ${
+                isLive
+                  ? 'bg-[#0a3320] text-[#4ade80] hover:bg-[#0d4429] active:scale-95'
+                  : 'bg-white/[0.04] text-[#64748b]'
+              }`}
             >
-              Buy No
+              {isLive ? 'Buy Yes' : isResolved ? 'Resolved' : 'Closed'}
             </button>
-          ) : null}
-        </div>
+            {isLive ? (
+              <button
+                type="button"
+                className="rounded-[8px] bg-[#2d1010] px-3 py-2 text-xs font-bold text-[#f87171] transition-colors hover:bg-[#3d1515] active:scale-95"
+              >
+                Buy No
+              </button>
+            ) : null}
+          </div>
+        )}
       </div>
 
       {/* Footer: volume + collateral + liquidity */}
