@@ -24,7 +24,7 @@ Rules you must follow:
 - Only use publicly verifiable primary sources (news, official stats, on-chain data).
 - Do not invent sources. If uncertain, say so and recommend CANCEL.
 - Return a structured JSON report with fields: outcome, confidence, sources, evidenceSummary, uncertainty.
-- outcome must be exactly "YES", "NO", or "CANCEL".
+- outcome must exactly match one allowed market outcome provided by the request, or be "CANCEL".
 - confidence must be "High", "Medium", or "Low".`;
 
 export async function POST(req: NextRequest) {
@@ -56,6 +56,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'market.id and market.title are required' }, { status: 400 });
   }
 
+  const allowedOutcomes = market.outcomes?.map((outcome) => outcome.label).filter(Boolean) ?? ['YES', 'NO'];
+  const outcomeSchema = JSON.stringify([...allowedOutcomes, 'CANCEL']);
   const anthropic = new Anthropic({ apiKey });
 
   const userPrompt = `Research and produce an evidence report for this prediction market:
@@ -67,10 +69,11 @@ Rules: ${market.rules ?? 'Standard YES/NO binary resolution.'}
 Source of truth: ${market.sourceOfTruth ?? 'Public information.'}
 Close date: ${market.closeLabel}
 Status: ${market.status}
+Allowed outcomes: ${outcomeSchema}
 
 Return ONLY valid JSON matching this schema:
 {
-  "outcome": "YES" | "NO" | "CANCEL",
+  "outcome": ${outcomeSchema},
   "confidence": "High" | "Medium" | "Low",
   "sources": ["url1", "url2"],
   "evidenceSummary": "Two to four sentences of timestamped evidence.",
@@ -109,6 +112,7 @@ Return ONLY valid JSON matching this schema:
   
 Title: ${market.title}
 Rules: ${market.rules ?? 'Standard YES/NO binary resolution.'}
+Allowed outcomes: ${outcomeSchema}
 
 Here are their reports:
 === Researcher 1 ===
@@ -121,7 +125,7 @@ ${text3}
 Your job is to resolve any contradictions, weigh their confidence scores, and output the final, calibrated verdict.
 Return ONLY valid JSON matching this schema:
 {
-  "outcome": "YES" | "NO" | "CANCEL",
+  "outcome": ${outcomeSchema},
   "confidence": "High" | "Medium" | "Low",
   "sources": ["url1", "url2"],
   "evidenceSummary": "Two to four sentences of timestamped evidence, noting if researchers disagreed.",
@@ -139,7 +143,7 @@ Return ONLY valid JSON matching this schema:
   const text = judgeMessage.content.find((b) => b.type === 'text')?.text ?? '';
 
   let parsed: {
-    outcome: 'YES' | 'NO' | 'CANCEL';
+    outcome: string;
     confidence: string;
     sources: string[];
     evidenceSummary: string;
@@ -151,6 +155,10 @@ Return ONLY valid JSON matching this schema:
     parsed = JSON.parse(jsonMatch?.[0] ?? text);
   } catch {
     return NextResponse.json({ error: 'Oracle returned unparseable response', raw: text }, { status: 502 });
+  }
+
+  if (parsed.outcome !== 'CANCEL' && !allowedOutcomes.includes(parsed.outcome)) {
+    return NextResponse.json({ error: 'Oracle returned an outcome outside this market options.' }, { status: 502 });
   }
 
   // Build the full structured report using the existing agentResolution format

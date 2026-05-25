@@ -222,7 +222,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [markets, connectedWallet?.address, refreshAll, schedulePostTransactionRefresh]);
 
   const addLiquidity = useCallback(async (input: { marketId: string; amount: number; payWith?: StableSymbol }) => {
-    const market = markets.find((item) => item.id === input.marketId);
+    const market = markets.find((item) => item.id.toLowerCase() === input.marketId.toLowerCase());
     if (!market || (market.status !== 'Open' && market.status !== 'Closing soon')) {
       return { ok: false, message: 'This market is closed for liquidity.' };
     }
@@ -230,6 +230,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const result = await addLiveLiquidity({
       marketAddress: input.marketId,
       amount: input.amount,
+      outcomes: market.outcomes.map((outcome) => outcome.label),
       payWith: input.payWith,
     });
     if (result.ok && input.payWith) {

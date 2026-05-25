@@ -94,7 +94,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const amountValue = Number(amount) || 0;
   const estimatedShares = amountValue > 0 ? amountValue : 0;
   const potentialReturn = estimatedShares;
-  const liquiditySideAmount = amountValue > 0 ? amountValue / 2 : 0;
+  const liquiditySideAmount = amountValue > 0 ? amountValue / market.outcomes.length : 0;
   const canTrade = market.status === 'Open' || market.status === 'Closing soon';
   const accountPreview = accountPreviews[market.id];
   const displayedPositionShares = accountPreview?.outcomeShares?.length
@@ -674,7 +674,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   <span className="text-muted">{tradeMode === 'liquidity' ? 'Liquidity method' : 'Signal price'}</span>
                   <span className="font-black text-white">
                     {tradeMode === 'liquidity'
-                      ? isBinaryMarket ? 'Balanced YES + NO' : 'Balanced first two outcomes'
+                      ? isBinaryMarket ? 'Balanced YES + NO' : 'Balanced across all outcomes'
                       : isLimitOrder ? `${limitPrice || '0'}¢ limit` : `${activeOutcome.odds}¢ per share`}
                   </span>
                 </div>
@@ -682,7 +682,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   <span className="text-muted">Total shares</span>
                   <span className="font-black text-white">
                     {tradeMode === 'liquidity'
-                      ? liquiditySideAmount > 0 ? `${liquiditySideAmount.toFixed(2)} ${market.outcomes[0]?.label ?? 'YES'} + ${liquiditySideAmount.toFixed(2)} ${market.outcomes[1]?.label ?? 'NO'}` : '—'
+                      ? liquiditySideAmount > 0 ? `${liquiditySideAmount.toFixed(2)} each x ${market.outcomes.length} outcomes` : '—'
                       : estimatedShares > 0 ? estimatedShares.toFixed(2) : '—'}
                   </span>
                 </div>
@@ -696,7 +696,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
                 {tradeMode === 'liquidity' ? (
                   <p className="rounded-[10px] border border-cyan/15 bg-cyan/[0.05] px-3 py-2 text-xs leading-5 text-muted">
-                    The app splits your amount evenly into the first two outcomes so the market has balanced starting depth.
+                    The app splits your amount evenly across every outcome to start with balanced depth.
                   </p>
                 ) : null}
               </div>

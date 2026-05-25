@@ -16,7 +16,7 @@ export const agentResolutionGuardrails = [
   'Treat agent output as evidence preparation, not final authority.',
   'Prefer primary sources, durable URLs, timestamps, and reproducible observations.',
   'Do not resolve from sentiment, private claims, screenshots without source URLs, or incomplete data.',
-  'Cancel instead of forcing YES or NO when the source of truth cannot support either outcome.',
+  'Cancel instead of forcing an outcome when the source of truth cannot support it.',
 ];
 
 export function buildAgentResolutionPrompt(market: AppMarket) {
@@ -31,7 +31,7 @@ export function buildAgentResolutionPrompt(market: AppMarket) {
     `Resolver: ${market.resolverAddress || market.resolver}`,
     '',
     'Return:',
-    '1. Proposed outcome: YES, NO, or CANCEL.',
+    `1. Proposed outcome: one of ${market.outcomes.map((outcome) => outcome.label).join(', ')}, or CANCEL.`,
     '2. Primary source links used.',
     '3. Timestamped evidence summary.',
     '4. Why the evidence satisfies the written rules.',

@@ -14,7 +14,7 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { arcTestnet } from 'viem/chains';
 import { getArcConfig } from './arcConfig';
-import { erc20Abi, prestoMarketFactoryAbi, prestoMarketAbi } from './contracts';
+import { erc20Abi, prestoMarketFactoryAbi, prestoMarketAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { buildMarketMetadataURI } from './marketMetadata';
 import type { CreateLiveMarketInput } from './liveActions';
 
@@ -30,6 +30,11 @@ function getCloseTimestamp(closeDate: string) {
     throw new Error('Close date must be in the future.');
   }
   return BigInt(t);
+}
+
+function getOutcomeOptions(input: CreateLiveMarketInput) {
+  const options = (input.outcomeOptions ?? []).map((option) => option.trim()).filter(Boolean);
+  return options.length >= 2 ? options : ['YES', 'NO'];
 }
 
 async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
@@ -60,24 +65,40 @@ function getClients() {
     publicClient,
     walletClient,
     factoryAddress: config.factoryAddress as Address,
+    multiOutcomeFactoryAddress: isAddress(config.multiOutcomeFactoryAddress)
+      ? config.multiOutcomeFactoryAddress as Address
+      : undefined,
   };
 }
 
 // Create a market onchain from the agent wallet
 export async function agentCreateMarket(input: CreateLiveMarketInput & { agentResolverAddress?: string }) {
   try {
-    const { account, publicClient, walletClient, factoryAddress } = getClients();
+    const { account, publicClient, walletClient, factoryAddress, multiOutcomeFactoryAddress } = getClients();
     const resolver = (input.agentResolverAddress ?? account.address) as Address;
+    const outcomeOptions = getOutcomeOptions(input);
+    const useMultiOutcome = outcomeOptions.length > 2;
+    const selectedFactory = useMultiOutcome ? multiOutcomeFactoryAddress : factoryAddress;
+
+    if (!selectedFactory) {
+      throw new Error('NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS not set for poll market creation.');
+    }
 
     const hash = await walletClient.writeContract({
       account,
-      address: factoryAddress,
-      abi: prestoMarketFactoryAbi,
+      address: selectedFactory,
+      abi: useMultiOutcome ? prestoMultiOutcomeMarketFactoryAbi : prestoMarketFactoryAbi,
       functionName: 'createMarket',
-      args: [
+      args: useMultiOutcome ? [
         resolver,
         getCloseTimestamp(input.closeDate),
-        buildMarketMetadataURI({ ...input, agent: { createdByType: 'agent', ...input.agent } }),
+        buildMarketMetadataURI({ ...input, outcomeOptions, agent: { createdByType: 'agent', ...input.agent } }),
+        getMarketKind(input.type),
+        outcomeOptions.length,
+      ] : [
+        resolver,
+        getCloseTimestamp(input.closeDate),
+        buildMarketMetadataURI({ ...input, outcomeOptions, agent: { createdByType: 'agent', ...input.agent } }),
         getMarketKind(input.type),
       ],
     });
@@ -133,11 +154,14 @@ export async function agentCancelMarket(marketAddress: string) {
 // Used by the liquidity bot to properly mint shares, not just transfer USDC
 export async function agentBuyShares(
   marketAddress: string,
-  outcomeIndex: 0 | 1,
+  outcomeIndex: number,
   amountUsdc: string,
 ) {
   try {
     if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
+    if (!Number.isInteger(outcomeIndex) || outcomeIndex < 0 || outcomeIndex > 11) {
+      throw new Error('Outcome index must be between 0 and 11.');
+    }
     const { account, publicClient, walletClient } = getClients();
     const config = getArcConfig();
     if (!config.usdcAddress || !isAddress(config.usdcAddress)) throw new Error('USDC address not configured.');

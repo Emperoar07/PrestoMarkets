@@ -12,7 +12,7 @@ import { primaryViewCategories, topicNavCategories } from '@/lib/categories';
 const dexUrl = process.env.NEXT_PUBLIC_PRESTO_DEX_URL ?? 'https://prestodex-arc.vercel.app';
 
 function navLinkClass(isActive = false) {
-  return `rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-all ${
+  return `rounded-lg border px-2 py-1 text-[13px] font-medium transition-all ${
     isActive
       ? 'border-cyan/35 bg-cyan/10 text-cyan'
       : 'border-transparent text-[#94a3b8] hover:border-white/[0.06] hover:bg-white/[0.04] hover:text-[#f1f5f9]'
@@ -153,7 +153,7 @@ export function SiteHeader() {
             />
           ) : null}
         </div>
-        <nav className="scrollbar-hide order-2 -mx-1 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto px-1 md:order-3 md:ml-auto md:flex-none md:shrink-0 md:gap-3 md:overflow-visible md:px-0">
+        <nav className="scrollbar-hide order-2 -mx-1 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto px-1 md:order-3 md:ml-auto md:flex-none md:shrink-0 md:gap-2 md:overflow-visible md:px-0">
           <Link href="/markets" className={navLinkClass(isExplorePage && !isCreatePage)}>
             Explore Markets
           </Link>
@@ -180,7 +180,7 @@ export function SiteHeader() {
               href="https://faucet.circle.com"
               target="_blank"
               rel="noreferrer"
-              className="rounded-lg border border-cyan/30 bg-cyan/10 px-3 py-1.5 text-[13px] font-bold text-cyan transition-colors hover:border-cyan/50 hover:bg-cyan/15"
+              className="rounded-lg border border-cyan/30 bg-cyan/10 px-2 py-1 text-[13px] font-bold text-cyan transition-colors hover:border-cyan/50 hover:bg-cyan/15"
             >
               Faucet
             </a>
@@ -190,7 +190,7 @@ export function SiteHeader() {
               <button
                 type="button"
                 onClick={() => setBalanceMenuOpen((open) => !open)}
-                className="flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-[12px] font-black text-[#dbeafe] transition-colors hover:border-cyan/30"
+                className="flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-[#0d1520] px-2 py-1.5 text-[12px] font-black text-[#dbeafe] transition-colors hover:border-cyan/30"
               >
                 <span className="text-[#4a5568]">{activeStable}</span>
                 <span className={activeStable === 'EURC' ? 'text-blue-300' : 'text-cyan'}>{balances[activeStable] ?? '--'}</span>

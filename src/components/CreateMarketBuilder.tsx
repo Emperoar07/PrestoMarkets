@@ -190,15 +190,16 @@ export function CreateMarketBuilder() {
       return;
     }
 
-    const seedAmount = Number(initialLiquidity) || 0;
-    if (initialLiquidity.trim() && seedAmount < 0.02) {
-      setStatusMessage('Initial depth needs at least 0.02 USDC so both sides receive a seed.');
+    const cleanOutcomeOptions = outcomeOptions.map((option) => option.trim()).filter(Boolean);
+    if (outcomeStyle === 'poll' && cleanOutcomeOptions.length < 3) {
+      setStatusMessage('Add at least three poll options to launch through the V2 factory.');
       return;
     }
-
-    const cleanOutcomeOptions = outcomeOptions.map((option) => option.trim()).filter(Boolean);
-    if (outcomeStyle === 'poll' && cleanOutcomeOptions.length < 2) {
-      setStatusMessage('Add at least two poll options.');
+    const seedAmount = Number(initialLiquidity) || 0;
+    const seededOutcomeCount = outcomeStyle === 'poll' ? cleanOutcomeOptions.length : 2;
+    const minimumSeedAmount = seededOutcomeCount * 0.01;
+    if (initialLiquidity.trim() && seedAmount < minimumSeedAmount) {
+      setStatusMessage(`Initial depth needs at least ${minimumSeedAmount.toFixed(2)} USDC so every outcome receives a seed.`);
       return;
     }
 
@@ -230,7 +231,7 @@ export function CreateMarketBuilder() {
           message: `${result.message} Open the new market to add the initial depth.`,
         };
       } else {
-        setStatusMessage('Market created. Seeding balanced YES and NO depth...');
+        setStatusMessage('Market created. Seeding balanced outcome depth...');
         const seedResult = await addLiquidity({
           marketId: result.marketAddress,
           amount: seedAmount,
@@ -568,7 +569,7 @@ export function CreateMarketBuilder() {
                 className={`mt-1 ${inputClass()}`}
               />
               <p className="mt-2 text-[11px] leading-5 text-muted/80">
-                If set, Presto creates the market then splits this amount evenly across outcomes (first two for poll markets).
+                If set, Presto creates the market then splits this amount evenly across every outcome.
               </p>
             </div>
           </div>

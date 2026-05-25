@@ -7,7 +7,7 @@ import {
   type Address,
 } from 'viem';
 import { getArcChainId, getArcConfig } from '@/lib/arcConfig';
-import { prestoMarketAbi, prestoMarketFactoryAbi } from '@/lib/contracts';
+import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from '@/lib/contracts';
 import { parseMarketMetadata } from '@/lib/marketMetadata';
 import type { PortfolioActivity } from '@/lib/portfolio';
 
@@ -24,6 +24,7 @@ const sharesBoughtEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.na
 const claimedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'Claimed')!;
 const refundedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'Refunded')!;
 const marketCreatedEvent = prestoMarketFactoryAbi.find((e) => e.type === 'event' && e.name === 'MarketCreated')!;
+const multiOutcomeMarketCreatedEvent = prestoMultiOutcomeMarketFactoryAbi.find((e) => e.type === 'event' && e.name === 'MarketCreated')!;
 
 type Cursor = {
   blockNumber: bigint;
@@ -34,6 +35,7 @@ type ActivityRow = PortfolioActivity & {
   blockNumber: bigint;
   logIndex: number;
   marketAddress?: Address;
+  outcomeIndex?: number;
 };
 
 function formatUsdc(value: bigint) {
@@ -94,10 +96,11 @@ function createArcClient() {
   });
 }
 
-async function fetchFactoryMarkets(client: ReturnType<typeof createPublicClient>, factoryAddress: Address) {
+async function fetchFactoryMarkets(client: ReturnType<typeof createPublicClient>, factoryAddress: Address, multiOutcome = false) {
+  const abi = multiOutcome ? prestoMultiOutcomeMarketFactoryAbi : prestoMarketFactoryAbi;
   const count = await client.readContract({
     address: factoryAddress,
-    abi: prestoMarketFactoryAbi,
+    abi,
     functionName: 'marketCount',
   }).catch(() => BigInt(0));
 
@@ -107,7 +110,7 @@ async function fetchFactoryMarkets(client: ReturnType<typeof createPublicClient>
   const markets = await Promise.all(Array.from({ length: capped }, (_, index) => (
     client.readContract({
       address: factoryAddress,
-      abi: prestoMarketFactoryAbi,
+      abi,
       functionName: 'markets',
       args: [BigInt(index)],
     }).catch(() => null)
@@ -116,7 +119,7 @@ async function fetchFactoryMarkets(client: ReturnType<typeof createPublicClient>
   return markets.filter((market): market is Address => Boolean(market && isAddress(market)));
 }
 
-async function readMarketTitle(client: ReturnType<typeof createPublicClient>, marketAddress: Address) {
+async function readMarketSummary(client: ReturnType<typeof createPublicClient>, marketAddress: Address) {
   const fallback = `Market ${truncateAddress(marketAddress)}`;
   const uri = await client.readContract({
     address: marketAddress,
@@ -124,38 +127,47 @@ async function readMarketTitle(client: ReturnType<typeof createPublicClient>, ma
     functionName: 'metadataURI',
   }).catch(() => '');
 
-  if (!uri) return fallback;
+  if (!uri) return { title: fallback, outcomes: ['YES', 'NO'] };
   const metadata = parseMarketMetadata(uri);
-  return metadata?.name?.trim() || fallback;
+  return {
+    title: metadata?.name?.trim() || fallback,
+    outcomes: metadata?.outcomeOptions && metadata.outcomeOptions.length >= 2 ? metadata.outcomeOptions : ['YES', 'NO'],
+  };
 }
 
 async function hydrateTitles(client: ReturnType<typeof createPublicClient>, rows: ActivityRow[]) {
   const addresses = Array.from(new Set(rows.map((row) => row.marketAddress).filter(Boolean))) as Address[];
   if (addresses.length === 0) return rows;
 
-  const titleEntries = await Promise.all(addresses.map(async (address) => [
+  const marketEntries = await Promise.all(addresses.map(async (address) => [
     address.toLowerCase(),
-    await readMarketTitle(client, address),
+    await readMarketSummary(client, address),
   ] as const));
-  const titles = new Map(titleEntries);
+  const summaries = new Map(marketEntries);
 
-  return rows.map((row) => ({
-    ...row,
-    market: row.marketAddress ? titles.get(row.marketAddress.toLowerCase()) ?? row.market : row.market,
-  }));
+  return rows.map((row) => {
+    const summary = row.marketAddress ? summaries.get(row.marketAddress.toLowerCase()) : undefined;
+    return {
+      ...row,
+      label: row.outcomeIndex === undefined
+        ? row.label
+        : `Bought ${summary?.outcomes[row.outcomeIndex] ?? `Outcome ${row.outcomeIndex + 1}`}`,
+      market: summary?.title ?? row.market,
+    };
+  });
 }
 
 async function fetchRowsInRange(input: {
   client: ReturnType<typeof createPublicClient>;
   account: Address;
-  factoryAddress: Address;
+  factoryAddresses: Array<{ address: Address; multiOutcome: boolean }>;
   marketAddresses: Address[];
   fromBlock: bigint;
   toBlock: bigint;
 }) {
-  const { client, account, factoryAddress, marketAddresses, fromBlock, toBlock } = input;
+  const { client, account, factoryAddresses, marketAddresses, fromBlock, toBlock } = input;
 
-  const [buys, claims, refunds, created] = await Promise.all([
+  const [buys, claims, refunds, createdGroups] = await Promise.all([
     marketAddresses.length
       ? client.getLogs({ address: marketAddresses, event: sharesBoughtEvent, args: { recipient: account }, fromBlock, toBlock }).catch(() => [])
       : Promise.resolve([]),
@@ -165,12 +177,17 @@ async function fetchRowsInRange(input: {
     marketAddresses.length
       ? client.getLogs({ address: marketAddresses, event: refundedEvent, args: { user: account }, fromBlock, toBlock }).catch(() => [])
       : Promise.resolve([]),
-    client.getLogs({ address: factoryAddress, event: marketCreatedEvent, args: { creator: account }, fromBlock, toBlock }).catch(() => []),
+    Promise.all(factoryAddresses.map((factory) => (
+      factory.multiOutcome
+        ? client.getLogs({ address: factory.address, event: multiOutcomeMarketCreatedEvent, args: { creator: account }, fromBlock, toBlock }).catch(() => [])
+        : client.getLogs({ address: factory.address, event: marketCreatedEvent, args: { creator: account }, fromBlock, toBlock }).catch(() => [])
+    ))),
   ]);
+  const created = createdGroups.flat();
 
   return [
     ...buys.map((log) => ({
-      label: `Bought ${log.args.outcome === 0 ? 'YES' : 'NO'}`,
+      label: 'Bought outcome',
       market: `Market ${truncateAddress(log.address)}`,
       detail: formatUsdc(log.args.amount ?? BigInt(0)),
       status: 'Confirmed' as const,
@@ -180,6 +197,7 @@ async function fetchRowsInRange(input: {
       blockNumber: log.blockNumber ?? BigInt(0),
       logIndex: log.logIndex ?? 0,
       marketAddress: log.address as Address,
+      outcomeIndex: Number(log.args.outcome ?? 0),
     })),
     ...claims.map((log) => ({
       label: 'Won payout',
@@ -245,7 +263,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Missing or invalid account address.' }, { status: 400 });
   }
 
-  if (!config.factoryAddress || !isAddress(config.factoryAddress)) {
+  if ((!config.factoryAddress || !isAddress(config.factoryAddress))
+    && (!config.multiOutcomeFactoryAddress || !isAddress(config.multiOutcomeFactoryAddress))) {
     return NextResponse.json({ ok: false, error: 'Market factory is not configured.' }, { status: 500 });
   }
 
@@ -255,9 +274,14 @@ export async function GET(request: NextRequest) {
   }
 
   const account = accountParam as Address;
-  const factoryAddress = config.factoryAddress as Address;
+  const factoryAddresses = [
+    isAddress(config.factoryAddress) ? { address: config.factoryAddress as Address, multiOutcome: false } : null,
+    isAddress(config.multiOutcomeFactoryAddress) ? { address: config.multiOutcomeFactoryAddress as Address, multiOutcome: true } : null,
+  ].filter((factory): factory is { address: Address; multiOutcome: boolean } => factory !== null);
   const latestBlock = await client.getBlockNumber().catch(() => BigInt(0));
-  const marketAddresses = await fetchFactoryMarkets(client, factoryAddress);
+  const marketAddresses = (await Promise.all(factoryAddresses.map((factory) => (
+    fetchFactoryMarkets(client, factory.address, factory.multiOutcome)
+  )))).flat();
   const collected: ActivityRow[] = [];
 
   let toBlock = cursor ? cursor.blockNumber : latestBlock;
@@ -270,7 +294,7 @@ export async function GET(request: NextRequest) {
     const rows = await fetchRowsInRange({
       client,
       account,
-      factoryAddress,
+      factoryAddresses,
       marketAddresses,
       fromBlock,
       toBlock,

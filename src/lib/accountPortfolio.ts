@@ -6,7 +6,7 @@ import {
   type Address,
 } from 'viem';
 import { getArcConfig, getArcChainId } from './arcConfig';
-import { prestoMarketAbi, prestoMarketFactoryAbi } from './contracts';
+import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { fetchMarketCostBasisIndexed } from './costBasisIndexer';
 import type { AppMarket } from './appState';
 import type { PortfolioActivity, Position } from './portfolio';
@@ -38,6 +38,7 @@ const sharesBoughtEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.na
 const claimedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'Claimed')!;
 const refundedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'Refunded')!;
 const marketCreatedEvent = prestoMarketFactoryAbi.find((e) => e.type === 'event' && e.name === 'MarketCreated')!;
+const multiOutcomeMarketCreatedEvent = prestoMultiOutcomeMarketFactoryAbi.find((e) => e.type === 'event' && e.name === 'MarketCreated')!;
 
 function formatUsdc(value: bigint) {
   return `$${Number(formatUnits(value, 6)).toFixed(2)}`;
@@ -315,17 +316,30 @@ async function fetchRecentCreatedMarkets(
   account: Address,
 ): Promise<PortfolioActivity[]> {
   const config = getArcConfig();
-  if (!config.factoryAddress || !isAddress(config.factoryAddress)) return [];
+  const factories = [
+    isAddress(config.factoryAddress) ? { address: config.factoryAddress as Address, multiOutcome: false } : null,
+    isAddress(config.multiOutcomeFactoryAddress) ? { address: config.multiOutcomeFactoryAddress as Address, multiOutcome: true } : null,
+  ].filter((factory): factory is { address: Address; multiOutcome: boolean } => factory !== null);
+  if (factories.length === 0) return [];
 
   const latestBlock = await client.getBlockNumber().catch(() => BigInt(0));
   const fromBlock = latestBlock > activityBlockWindow ? latestBlock - activityBlockWindow : BigInt(0);
 
-  const logs = await client.getLogs({
-    address: config.factoryAddress as Address,
-    event: marketCreatedEvent,
-    args: { creator: account },
-    fromBlock,
-  }).catch(() => []);
+  const logs = (await Promise.all(factories.map((factory) => (
+    factory.multiOutcome
+      ? client.getLogs({
+        address: factory.address,
+        event: multiOutcomeMarketCreatedEvent,
+        args: { creator: account },
+        fromBlock,
+      }).catch(() => [])
+      : client.getLogs({
+        address: factory.address,
+        event: marketCreatedEvent,
+        args: { creator: account },
+        fromBlock,
+      }).catch(() => [])
+  )))).flat();
 
   const titleByAddress = new Map(markets.map((m) => [m.id.toLowerCase(), m.title]));
 

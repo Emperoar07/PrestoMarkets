@@ -383,44 +383,46 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
   }
 }
 
-export async function addLiveLiquidity(input: { marketAddress: string; amount: number; payWith?: StableSymbol }): Promise<LiveActionResult> {
-  if (!Number.isFinite(input.amount) || input.amount < MIN_TRADE_USDC * 2) {
-    return { ok: false, message: `Balanced liquidity needs at least $${(MIN_TRADE_USDC * 2).toFixed(2)} USDC.` };
+export async function addLiveLiquidity(input: { marketAddress: string; amount: number; outcomes?: string[]; payWith?: StableSymbol }): Promise<LiveActionResult> {
+  const outcomes = (input.outcomes ?? ['YES', 'NO']).map((outcome) => outcome.trim()).filter(Boolean);
+  const outcomeLabels = outcomes.length >= 2 ? outcomes : ['YES', 'NO'];
+  const minimumAmount = MIN_TRADE_USDC * outcomeLabels.length;
+
+  if (!Number.isFinite(input.amount) || input.amount < minimumAmount) {
+    return { ok: false, message: `Balanced liquidity needs at least $${minimumAmount.toFixed(2)} USDC for ${outcomeLabels.length} outcomes.` };
   }
 
-  const half = input.amount / 2;
-  const yesResult = await buyLiveShares({
-    marketAddress: input.marketAddress,
-    outcome: 'First Outcome',
-    outcomeIndex: 0,
-    amount: half,
-    payWith: input.payWith,
-  });
+  const amountPerOutcome = input.amount / outcomeLabels.length;
+  let latestTxHash: Hex | undefined;
+  const completed: string[] = [];
 
-  if (!yesResult.ok) {
-    return { ok: false, message: `First outcome side liquidity failed: ${yesResult.message}` };
-  }
+  for (const [outcomeIndex, outcome] of outcomeLabels.entries()) {
+    const result = await buyLiveShares({
+      marketAddress: input.marketAddress,
+      outcome,
+      outcomeIndex,
+      amount: amountPerOutcome,
+      payWith: input.payWith,
+    });
 
-  const noResult = await buyLiveShares({
-    marketAddress: input.marketAddress,
-    outcome: 'Second Outcome',
-    outcomeIndex: 1,
-    amount: half,
-    payWith: input.payWith,
-  });
-
-  if (!noResult.ok) {
-    return {
-      ok: false,
-      message: `Second outcome side liquidity failed after first succeeded. You now hold directional exposure: ${noResult.message}`,
-      txHash: yesResult.txHash,
-    };
+    if (!result.ok) {
+      const prior = completed.length > 0
+        ? ` ${completed.join(', ')} already received liquidity, leaving directional exposure.`
+        : '';
+      return {
+        ok: false,
+        message: `${outcome} liquidity failed.${prior} ${result.message}`.trim(),
+        txHash: latestTxHash,
+      };
+    }
+    completed.push(outcome);
+    latestTxHash = result.txHash ?? latestTxHash;
   }
 
   return {
     ok: true,
-    message: `Added balanced liquidity: $${half.toFixed(2)} to the first and second outcomes.`,
-    txHash: noResult.txHash ?? yesResult.txHash,
+    message: `Added balanced liquidity: $${amountPerOutcome.toFixed(2)} to each of ${outcomeLabels.length} outcomes.`,
+    txHash: latestTxHash,
   };
 }
 

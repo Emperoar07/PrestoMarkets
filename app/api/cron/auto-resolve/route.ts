@@ -117,6 +117,12 @@ async function resolveMarket(market: AppMarket): Promise<ResolutionResult> {
     return cancelWithReason('Auto-canceled: no live evidence found on declared source-of-truth domains.');
   }
 
+  const allowedOutcomes = market.outcomes.map((outcome) => outcome.label).filter(Boolean);
+  if (allowedOutcomes.length < 2) {
+    return cancelWithReason('Auto-canceled: market outcomes are unavailable for resolution.');
+  }
+  const outcomeInstructions = JSON.stringify([...allowedOutcomes, 'CANCEL']);
+
   const researchPrompt = `You are an autonomous resolution oracle for a prediction market platform.
 
 Market: "${market.title}"
@@ -137,12 +143,14 @@ Instructions:
 - Treat the declared source URLs and domains as the only allowed source of truth.
 - Return CANCEL if the evidence is insufficient, ambiguous, or contradicts itself.
 - Confidence must reflect actual evidence quality; do not inflate it.
+- Return one outcome label exactly as written in the allowed outcome list below.
 - This resolution will be submitted onchain and is irreversible.
+
+Allowed outcomes: ${outcomeInstructions}
 
 Return JSON only:
 {
-  "outcome": "YES" | "NO" | "CANCEL",
-  "outcomeIndex": 0 | 1 | 2,
+  "outcome": ${outcomeInstructions},
   "confidence": 0.0-1.0,
   "evidenceSummary": "one paragraph citing specific sources",
   "sources": ["url1", "url2"]
@@ -151,7 +159,6 @@ Return JSON only:
   const llmResult = await callLlmJson({ task: 'reasoning', prompt: researchPrompt, maxTokens: 512 });
   const parsed = extractJsonObject(llmResult.text) as {
     outcome: string;
-    outcomeIndex: number;
     confidence: number;
     evidenceSummary: string;
     sources: string[];
@@ -175,19 +182,14 @@ Return JSON only:
     return cancelWithReason(`Auto-canceled by oracle (confidence=${parsed.confidence.toFixed(2)}, outcome=${parsed.outcome}): ${parsed.evidenceSummary}`);
   }
 
-  // Derive outcomeIndex from the canonical outcome string instead of trusting the LLM's
-  // numeric field. A sloppy JSON like { outcome: "YES", outcomeIndex: 1 } would otherwise
-  // resolve the market to NO irreversibly.
-  let derivedIndex: 0 | 1;
-  if (parsed.outcome === 'YES') derivedIndex = 0;
-  else if (parsed.outcome === 'NO') derivedIndex = 1;
-  else {
+  const derivedIndex = allowedOutcomes.findIndex((outcome) => outcome === parsed.outcome);
+  if (derivedIndex < 0) {
     return {
       ok: false,
       action: 'skipped',
       marketId: market.id,
       title: market.title,
-      reason: `Oracle returned an unrecognised outcome string "${parsed.outcome}".`,
+      reason: `Oracle returned an unrecognised outcome string "${parsed.outcome}". Allowed outcomes: ${allowedOutcomes.join(', ')}.`,
     };
   }
 
