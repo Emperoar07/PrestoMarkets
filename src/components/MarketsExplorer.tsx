@@ -226,6 +226,31 @@ function HotTopicsPanel({ markets, topics: derivedTopics }: { markets: AppMarket
 // ─── Main explorer ────────────────────────────────────────────────────────────
 export function MarketsExplorer() {
   const { markets, isLoadingMarkets } = useAppState();
+  const [showLoading, setShowLoading] = useState(isLoadingMarkets);
+  const loadingStartTimeRef = useRef<number | null>(isLoadingMarkets ? Date.now() : null);
+
+  useEffect(() => {
+    if (isLoadingMarkets) {
+      loadingStartTimeRef.current = Date.now();
+      setShowLoading(true);
+    } else {
+      const startTime = loadingStartTimeRef.current;
+      if (startTime) {
+        const elapsed = Date.now() - startTime;
+        const remaining = 600 - elapsed;
+        if (remaining > 0) {
+          const timer = setTimeout(() => {
+            setShowLoading(false);
+            loadingStartTimeRef.current = null;
+          }, remaining);
+          return () => clearTimeout(timer);
+        }
+      }
+      setShowLoading(false);
+      loadingStartTimeRef.current = null;
+    }
+  }, [isLoadingMarkets]);
+
   const [activeCategory, setActiveCategory] = useState(getCatFromUrl);
   const [activeHotTopic, setActiveHotTopic] = useState('All');
 
@@ -296,10 +321,10 @@ export function MarketsExplorer() {
   const visibleMarkets = sortMarkets(filtered, sortKey);
   const totalVolume = markets.reduce((sum, m) => sum + parseVolume(m.volume), 0);
 
-  const showSidePanels = !isLoadingMarkets && markets.length > 0 && !searchValue && activeHotTopic === 'All';
+  const showSidePanels = !showLoading && markets.length > 0 && !searchValue && activeHotTopic === 'All';
 
   return (
-    <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-36 md:px-7">
+    <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-[185px] md:pt-40 md:px-7">
 
       {/* Side panels: breaking + hot topics. The big featured-market hero was removed in
           favor of letting the market grid speak for itself. */}
@@ -314,7 +339,7 @@ export function MarketsExplorer() {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-black text-white">All markets</h2>
         <span className="text-xs text-[#4a5568]">
-          <span className="font-black text-white">{isLoadingMarkets ? '—' : fmtVol(totalVolume)}</span> total vol · Arc Testnet
+          <span className="font-black text-white">{showLoading ? '—' : fmtVol(totalVolume)}</span> total vol · Arc Testnet
         </span>
       </div>
 
@@ -341,7 +366,7 @@ export function MarketsExplorer() {
       {/* Sort toolbar */}
       <div className="mt-4 flex items-center justify-between gap-4">
         <p className="text-sm text-[#4a5568]">
-          <span className="font-black text-white">{isLoadingMarkets ? '—' : visibleMarkets.length}</span>{' '}
+          <span className="font-black text-white">{showLoading ? '—' : visibleMarkets.length}</span>{' '}
           market{visibleMarkets.length === 1 ? '' : 's'}
           {searchValue ? ` matching "${searchValue}"` : ''}
         </p>
@@ -362,7 +387,7 @@ export function MarketsExplorer() {
       </div>
 
       {/* Market grid */}
-      {isLoadingMarkets ? (
+      {showLoading ? (
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="animate-pulse rounded-[14px] border border-white/[0.05] bg-[#131a27] p-4">
