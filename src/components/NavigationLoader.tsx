@@ -2,14 +2,14 @@
 
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { BrandLoader } from './BrandLoader';
+import { BrandLoadingOverlay } from './BrandLoader';
 
 export function NavigationLoader() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isNavigating, setIsNavigating] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(true);
 
-  // Clear loading state when the route changes
+  // Clear the initial document load and each completed client navigation.
   useEffect(() => {
     setIsNavigating(false);
   }, [pathname, searchParams]);
@@ -55,9 +55,5 @@ export function NavigationLoader() {
 
   if (!isNavigating) return null;
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#020617]/50 backdrop-blur-md">
-      <BrandLoader />
-    </div>
-  );
+  return <BrandLoadingOverlay />;
 }

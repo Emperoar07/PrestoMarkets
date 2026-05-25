@@ -9,3 +9,15 @@ export function BrandLoader() {
     </div>
   );
 }
+
+export function BrandLoadingOverlay() {
+  return (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#020617]/50 backdrop-blur-md"
+      role="status"
+      aria-label="Loading Presto Markets"
+    >
+      <BrandLoader />
+    </div>
+  );
+}
