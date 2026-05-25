@@ -1,10 +1,9 @@
 /**
  * Provider-agnostic JSON LLM call with automatic fallback across free / cheap providers.
  *
- * Tries Anthropic first when ANTHROPIC_API_KEY is set, then falls through to Groq,
- * OpenRouter, Cerebras, and Together as each becomes available. On 401/402/429 or
- * insufficient_quota errors the next provider is tried. If every provider fails the
- * underlying error is rethrown so the caller can see the last reason.
+ * Tries Anthropic first when ANTHROPIC_API_KEY is set, then falls through to Gemini,
+ * Groq, OpenRouter, Cerebras, and Together as each becomes available. Providers that
+ * error or return malformed JSON are skipped so another configured provider can answer.
  *
  * All providers other than Anthropic use the OpenAI-compatible chat completions shape,
  * so this file only needs a tiny adapter per provider.
@@ -72,7 +71,7 @@ async function callAnthropic(input: LlmCallInput): Promise<ProviderResult | null
   } catch (err) {
     const status = (err as { status?: number })?.status ?? 0;
     if (isRetryableHttpStatus(status)) return null;
-    // Non-retryable Anthropic failure (network etc.) — bubble up so we try the next provider.
+    // Network or SDK errors still permit a later configured provider to answer.
     return null;
   }
 }
@@ -253,16 +252,26 @@ async function callTogether(input: LlmCallInput): Promise<ProviderResult | null>
 }
 
 /**
- * Try providers in order until one succeeds. Returns the raw text from whichever model
- * answered first. Caller is expected to JSON.parse it (or extract a JSON object from it).
+ * Try providers in order until one returns a JSON object. Callers still parse and
+ * validate the task-specific fields they require.
  */
 export async function callLlmJson(input: LlmCallInput): Promise<ProviderResult> {
   const chain = [callAnthropic, callGemini, callGroq, callOpenRouter, callCerebras, callTogether];
   for (const fn of chain) {
     const result = await fn(input);
-    if (result) return result;
+    if (!result) continue;
+
+    try {
+      const parsed = extractJsonObject(result.text);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Expected a JSON object.');
+      }
+      return result;
+    } catch {
+      console.warn(`[llm-fallback] ${result.provider} ${result.model} returned malformed JSON; trying the next provider.`);
+    }
   }
-  throw new Error('All LLM providers failed or unavailable. Set ANTHROPIC_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, CEREBRAS_API_KEY, or TOGETHER_API_KEY.');
+  throw new Error('No LLM provider returned usable JSON. Check configured provider credentials, quotas, model availability, and deployment logs.');
 }
 
 /**
