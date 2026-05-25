@@ -238,10 +238,7 @@ export function MarketsExplorer() {
     }
   }, [dynamicTopics, activeHotTopic]);
   const [searchValue, setSearchValue] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>(() => {
-    const cat = getCatFromUrl();
-    return cat === 'Breaking' ? 'ending' : cat === 'New' ? 'newest' : 'volume';
-  });
+  const [sortKey, setSortKey] = useState<SortKey>('newest');
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -251,7 +248,7 @@ export function MarketsExplorer() {
       const cat = params.get('cat') ?? 'Trending';
       setActiveCategory(cat);
       setSearchValue('');
-      setSortKey(cat === 'Breaking' ? 'ending' : cat === 'New' ? 'newest' : 'volume');
+      setSortKey('newest');
     }
 
     function onCategoryChange(event: Event) {
@@ -259,7 +256,7 @@ export function MarketsExplorer() {
       setActiveCategory(cat);
       setActiveHotTopic('All');
       setSearchValue('');
-      setSortKey(cat === 'Breaking' ? 'ending' : cat === 'New' ? 'newest' : 'volume');
+      setSortKey('newest');
     }
 
     function onSearchChange(event: Event) {
@@ -349,7 +346,7 @@ export function MarketsExplorer() {
           {searchValue ? ` matching "${searchValue}"` : ''}
         </p>
         <div className="flex items-center gap-0.5 rounded-[10px] border border-white/[0.06] bg-[#0d1520] p-1">
-          {([['volume', 'Volume'], ['ending', 'Ending'], ['newest', 'Newest']] as [SortKey, string][]).map(([key, label]) => (
+          {([['newest', 'Newest'], ['volume', 'Volume'], ['ending', 'Ending']] as [SortKey, string][]).map(([key, label]) => (
             <button
               key={key}
               type="button"
