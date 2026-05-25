@@ -91,10 +91,17 @@ export async function POST(req: NextRequest) {
       throw new Error('AGENT_PRIVATE_KEY must be configured to verify agent identity.');
     }
 
-    const identityStatus = await getAgentIdentityStatus();
-    if (!identityStatus.registered) {
+    try {
+      const identityStatus = await getAgentIdentityStatus();
+      if (!identityStatus.registered) {
+        return NextResponse.json(
+          { error: 'Agent is not registered on Arc ERC-8004 IdentityRegistry. Register the agent before creating markets.' },
+          { status: 500 }
+        );
+      }
+    } catch (error) {
       return NextResponse.json(
-        { error: 'Agent is not registered on Arc ERC-8004 IdentityRegistry. Register the agent before creating markets.' },
+        { error: `Failed to verify agent identity: ${error instanceof Error ? error.message : 'Unknown error'}` },
         { status: 500 }
       );
     }
