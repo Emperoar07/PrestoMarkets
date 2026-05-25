@@ -19,7 +19,15 @@ function navLinkClass(isActive = false) {
   }`;
 }
 
-const allNavCategories = [...primaryViewCategories, ...topicNavCategories] as const;
+function mobileNavLinkClass(isActive = false) {
+  return `flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[13px] font-semibold transition-all ${
+    isActive
+      ? 'bg-cyan/10 text-cyan'
+      : 'text-[#94a3b8] active:bg-white/[0.04]'
+  }`;
+}
+
+
 
 export function SiteHeader() {
   const pathname = usePathname();
@@ -40,6 +48,7 @@ export function SiteHeader() {
   const [balances, setBalances] = useState<Record<StableSymbol, string | null>>({ USDC: null, EURC: null });
   const [activeStable, setActiveStable] = useState<StableSymbol>('USDC');
   const [balanceMenuOpen, setBalanceMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const balanceMenuRef = useRef<HTMLDivElement>(null);
   const categoryScrollRef = useRef<HTMLDivElement>(null);
   const loadBalances = useCallback(async () => {
@@ -57,6 +66,7 @@ export function SiteHeader() {
 
   useEffect(() => {
     setSearchValue('');
+    setMobileMenuOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -109,6 +119,16 @@ export function SiteHeader() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [balanceMenuOpen]);
 
+  // Lock body scroll when mobile menu is open
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [mobileMenuOpen]);
+
   function updateExploreSearch(value: string) {
     setSearchValue(value);
     // Keep search in memory only so refresh returns to a clean explorer.
@@ -138,22 +158,142 @@ export function SiteHeader() {
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 border-b border-white/[0.06] bg-[#090e1a]/90 backdrop-blur-xl">
-      {/* Row 1: brand (left) · search (middle, fills gap) · nav (right) */}
-      <div className="mx-auto flex min-h-[66px] max-w-[1400px] flex-wrap items-center gap-3 px-4 py-3 md:h-[66px] md:flex-nowrap md:gap-6 md:px-7 md:py-0">
-        <div className="order-1 shrink-0">
+      {/* ── Mobile top bar (< md) ── */}
+      <div className="flex h-14 items-center gap-2 px-3 md:hidden">
+        <div className="shrink-0">
           <BrandMark />
         </div>
-        <div className="order-3 w-full justify-start md:order-2 md:flex md:flex-1">
+        <div className="ml-auto flex items-center gap-2">
+          {showWallet ? <WalletConnectButton /> : null}
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen((v) => !v)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-[#94a3b8] transition-colors hover:border-white/15 hover:text-white"
+            aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+          >
+            {mobileMenuOpen ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <path d="M4 7h16M4 12h16M4 17h16" />
+              </svg>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Mobile slide-down drawer ── */}
+      <div
+        className={`overflow-hidden border-t border-white/[0.04] transition-[max-height,opacity] duration-300 ease-in-out md:hidden ${
+          mobileMenuOpen ? 'max-h-[80vh] opacity-100' : 'max-h-0 opacity-0'
+        }`}
+      >
+        <div className="space-y-1 bg-[#0b1322]/95 px-3 pb-4 pt-3 backdrop-blur-lg">
+          {/* Search */}
+          {showSearchBar ? (
+            <div className="mb-3">
+              <input
+                value={searchValue}
+                onChange={(event) => updateExploreSearch(event.target.value)}
+                placeholder="Search markets…"
+                className="w-full rounded-xl border border-white/[0.06] bg-[#0d1520] px-3.5 py-2.5 text-[13px] font-medium text-white outline-none transition-colors placeholder:text-[#334155] focus:border-cyan/40"
+              />
+            </div>
+          ) : null}
+
+          {/* Nav links */}
+          <Link href="/markets" className={mobileNavLinkClass(isExplorePage && !isCreatePage)} onClick={() => setMobileMenuOpen(false)}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
+              <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+            </svg>
+            Explore Markets
+          </Link>
+          {!isLandingPage ? (
+            <Link href="/markets/create" className={mobileNavLinkClass(isCreatePage)} onClick={() => setMobileMenuOpen(false)}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0 opacity-50">
+                <circle cx="12" cy="12" r="10" /><path d="M12 8v8M8 12h8" />
+              </svg>
+              Create Market
+            </Link>
+          ) : null}
+          {!isLandingPage ? (
+            <Link href="/activity" className={mobileNavLinkClass(pathname === '/activity')} onClick={() => setMobileMenuOpen(false)}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              </svg>
+              Activity
+            </Link>
+          ) : null}
+          {!isLandingPage ? (
+            <Link href="/portfolio" className={mobileNavLinkClass(pathname === '/portfolio')} onClick={() => setMobileMenuOpen(false)}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
+                <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
+              </svg>
+              Portfolio
+            </Link>
+          ) : null}
+          <a href={dexUrl} className={mobileNavLinkClass()} onClick={() => setMobileMenuOpen(false)}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
+              <polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
+            </svg>
+            DEX
+          </a>
+          {showWallet ? (
+            <a
+              href="https://faucet.circle.com"
+              target="_blank"
+              rel="noreferrer"
+              className={mobileNavLinkClass()}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-cyan opacity-60">
+                <path d="M12 2v6M12 22v-6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M22 12h-6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24" />
+              </svg>
+              <span className="text-cyan">Faucet</span>
+            </a>
+          ) : null}
+
+          {/* Balance row for mobile */}
+          {showWallet && connectedWallet ? (
+            <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/[0.06] bg-[#0d1520] px-3.5 py-2.5">
+              {(['USDC', 'EURC'] as const).map((sym) => (
+                <button
+                  key={sym}
+                  type="button"
+                  onClick={() => setActiveStable(sym)}
+                  className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] font-black transition-colors ${
+                    activeStable === sym
+                      ? sym === 'EURC' ? 'bg-blue-400/10 text-blue-300' : 'bg-cyan/10 text-cyan'
+                      : 'text-[#4a5568]'
+                  }`}
+                >
+                  {sym}
+                  <span className={activeStable === sym ? '' : 'text-[#94a3b8]'}>{balances[sym] ?? '--'}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {/* ── Desktop top bar (>= md) ── */}
+      <div className="mx-auto hidden h-[66px] max-w-[1400px] items-center gap-6 px-7 md:flex">
+        <div className="shrink-0">
+          <BrandMark />
+        </div>
+        <div className="flex flex-1">
           {showSearchBar ? (
             <input
               value={searchValue}
               onChange={(event) => updateExploreSearch(event.target.value)}
               placeholder="Search markets…"
-              className="w-full rounded-lg border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-[13px] font-medium text-white outline-none transition-colors placeholder:text-[#334155] focus:border-cyan/40 md:max-w-[520px]"
+              className="w-full max-w-[520px] rounded-lg border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-[13px] font-medium text-white outline-none transition-colors placeholder:text-[#334155] focus:border-cyan/40"
             />
           ) : null}
         </div>
-        <nav className="scrollbar-hide order-2 -mx-1 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto px-1 md:order-3 md:ml-auto md:flex-none md:shrink-0 md:gap-2 md:overflow-visible md:px-0">
+        <nav className="ml-auto flex shrink-0 items-center gap-2">
           <Link href="/markets" className={navLinkClass(isExplorePage && !isCreatePage)}>
             Explore Markets
           </Link>
@@ -186,7 +326,7 @@ export function SiteHeader() {
             </a>
           ) : null}
           {showWallet && connectedWallet ? (
-            <div ref={balanceMenuRef} className="relative hidden md:block">
+            <div ref={balanceMenuRef} className="relative">
               <button
                 type="button"
                 onClick={() => setBalanceMenuOpen((open) => !open)}
@@ -272,3 +412,4 @@ export function SiteHeader() {
     </header>
   );
 }
+
