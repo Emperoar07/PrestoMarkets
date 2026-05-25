@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { isAddress, type Address } from 'viem';
+import { createPublicClient, http, isAddress, type Address } from 'viem';
+import { arcTestnet } from 'viem/chains';
 import { getArcConfig } from '@/lib/arcConfig';
-import { fetchOnchainMarkets, getPublicClient } from '@/lib/onchainMarkets';
+import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 import { prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from '@/lib/contracts';
 import crypto from 'node:crypto';
 
@@ -128,7 +129,10 @@ function requireCircleConfig() {
 
 async function isFactoryDeployedMarket(marketAddress: Address, config: ReturnType<typeof getArcConfig>): Promise<boolean> {
   try {
-    const publicClient = getPublicClient();
+    const publicClient = createPublicClient({
+      chain: arcTestnet,
+      transport: http(config.rpcUrl),
+    });
     const factories = [];
 
     if (config.factoryAddress) {
