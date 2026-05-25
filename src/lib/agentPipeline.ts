@@ -760,6 +760,9 @@ async function draftWithGemini(trend: TrendItem, category: string, ctx: DraftCon
     : (['Opinion', 'Opportunity', 'Prediction'] as const)
         .map((t) => ({ t, share: mix[t] / totalActive }))
         .sort((a, b) => a.share - b.share)[0].t;
+  const breakingNewsCopyRule = trend.source.startsWith('breaking-')
+    ? '- This is a breaking news candidate. Do not use hyphens or dash punctuation in the generated title, description, or rules. Use plain wording or commas instead.'
+    : '';
 
   const prompt = `${AGENT_PLATFORM_CONTEXT}
 
@@ -777,6 +780,7 @@ Rules for a good market:
 - Title must be a clear question under 90 characters (binary YES/NO OR a multi-option poll)
 - Rules must define exactly when each outcome wins
 - Source of truth must be a specific verifiable public source
+${breakingNewsCopyRule}
 
 Close-date guidance — pick the SHORTEST horizon that still gives the source time to resolve.
 DO NOT default to 7 or 30 days; match the timeframe to the actual event:

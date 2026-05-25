@@ -65,6 +65,9 @@ SIGNAL DISCIPLINE
 - Feed hygiene: third-party RSS titles may contain encoded text such as &#39; or &#8217;.
   Treat decoded punctuation as normal text and never copy raw entity codes into a market
   title, rules, source, or agent reason.
+- Breaking-news copy: do not use hyphens or dash punctuation in generated market titles,
+  descriptions, or rules. Prefer plain wording or commas. Preserve source URLs and official
+  names exactly when they are needed for verification.
 - Agent-assisted resolution: when a market is created with resolutionMode = "Agent
   assisted", a $0.50 USDC resolve fee is transferred from the creator to the agent wallet
   upfront so the agent has gas to auto-resolve.
