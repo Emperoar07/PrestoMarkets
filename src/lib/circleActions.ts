@@ -8,6 +8,7 @@ import { getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
 import { erc20Abi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import type { CreateLiveMarketInput, LiveActionResult } from './liveActions';
 import type { MarketType } from './markets';
+import { isRecord } from './typeGuards';
 
 const ARC_EXPLORER_ADDRESS = 'https://testnet.arcscan.app/address/';
 
@@ -60,17 +61,27 @@ async function waitForArcReceipt(txHash: string): Promise<boolean> {
   return false;
 }
 
+function isErrorResponse(value: unknown): value is { error?: string } {
+  return isRecord(value) && (typeof (value as Record<string, unknown>).error === 'string' || !('error' in value));
+}
+
 async function callProvider<T>(body: Record<string, unknown>): Promise<T> {
   const response = await fetch('/api/circle/wallet/provider', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const data = await response.json().catch(() => null) as { error?: string } | T | null;
+  const data = await response.json().catch(() => null);
+
   if (!response.ok) {
-    const err = (data as { error?: string } | null)?.error || 'Circle wallet request failed.';
-    throw new Error(err);
+    const err = isErrorResponse(data) ? data.error : undefined;
+    throw new Error(err || 'Circle wallet request failed.');
   }
+
+  if (data === null) {
+    throw new Error('Circle returned empty response');
+  }
+
   return data as T;
 }
 

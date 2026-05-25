@@ -3,6 +3,7 @@ import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 import { agentCancelMarket, agentResolveMarket, getAgentAddress } from '@/lib/agentWallet';
 import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
 import { getAgentIdentityStatus, recordResolutionReputation } from '@/lib/agentIdentity';
+import { assertNonEmptyString } from '@/lib/typeGuards';
 import type { AppMarket } from '@/lib/appState';
 
 export const runtime = 'nodejs';
@@ -96,12 +97,13 @@ async function resolveMarket(market: AppMarket): Promise<ResolutionResult> {
       };
     }
 
+    assertNonEmptyString(result.txHash, 'txHash');
     return {
       ok: true,
       action: 'canceled',
       marketId: market.id,
       title: market.title,
-      txHash: result.txHash as string,
+      txHash: result.txHash,
       reason,
     };
   }
@@ -213,13 +215,14 @@ Return JSON only:
     return { ok: false, action: 'skipped', marketId: market.id, title: market.title, reason: result.error ?? 'Onchain resolve failed' };
   }
 
+  assertNonEmptyString(result.txHash, 'txHash');
   return {
     ok: true,
     action: 'resolved',
     marketId: market.id,
     title: market.title,
     outcome: parsed.outcome,
-    txHash: result.txHash as string,
+    txHash: result.txHash,
     confidence: parsed.confidence,
   };
 }
