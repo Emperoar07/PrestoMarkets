@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { Hex } from 'viem';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 import { agentCancelMarket, agentResolveMarket, getAgentAddress } from '@/lib/agentWallet';
 import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
@@ -10,8 +11,8 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 type ResolutionResult =
-  | { ok: true; action: 'resolved'; marketId: string; title: string; outcome: string; txHash: string; confidence: number }
-  | { ok: true; action: 'canceled'; marketId: string; title: string; txHash: string; reason: string }
+  | { ok: true; action: 'resolved'; marketId: string; title: string; outcome: string; txHash: string | Hex; confidence: number }
+  | { ok: true; action: 'canceled'; marketId: string; title: string; txHash: string | Hex; reason: string }
   | { ok: false; action: 'skipped'; marketId: string; title: string; reason: string };
 
 const MIN_AUTO_RESOLVE_CONFIDENCE = 0.85;
@@ -97,13 +98,13 @@ async function resolveMarket(market: AppMarket): Promise<ResolutionResult> {
       };
     }
 
-    assertNonEmptyString(result.txHash, 'txHash');
+    const txHash = assertNonEmptyString(result.txHash, 'txHash');
     return {
       ok: true,
       action: 'canceled',
       marketId: market.id,
       title: market.title,
-      txHash: result.txHash,
+      txHash,
       reason,
     };
   }
@@ -215,14 +216,14 @@ Return JSON only:
     return { ok: false, action: 'skipped', marketId: market.id, title: market.title, reason: result.error ?? 'Onchain resolve failed' };
   }
 
-  assertNonEmptyString(result.txHash, 'txHash');
+  const txHash = assertNonEmptyString(result.txHash, 'txHash');
   return {
     ok: true,
     action: 'resolved',
     marketId: market.id,
     title: market.title,
     outcome: parsed.outcome,
-    txHash: result.txHash,
+    txHash,
     confidence: parsed.confidence,
   };
 }

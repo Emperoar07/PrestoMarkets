@@ -377,7 +377,7 @@ export function MarketsExplorer() {
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#64748b]">
             {markets.length === 0
-              ? 'The Arc factory has no deployed markets. Check your RPC and factory address env vars.'
+              ? 'Check back soon for new markets.'
               : 'Try a different category or search term.'}
           </p>
         </div>
