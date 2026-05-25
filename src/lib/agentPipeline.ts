@@ -847,6 +847,29 @@ Return JSON only:
   };
 }
 
+// ── Fallback: Simple template when all LLM providers fail ──────────────────
+
+function fallbackTemplateFromTrend(trend: TrendItem, suggestedType?: string): GeminiDraft {
+  const now = new Date();
+  const tomorrow = new Date(now.getTime() + 86_400_000).toISOString().split('T')[0];
+
+  // Sanitize topic to safe title
+  const title = trend.topic
+    .replace(/[^a-zA-Z0-9\s?]/g, '')
+    .slice(0, 85)
+    .trim() + '?';
+
+  return {
+    title,
+    description: `Will ${trend.topic.toLowerCase()}?`,
+    rules: 'YES wins if the event occurs by the close date. NO wins if it does not occur or remains unresolved.',
+    sourceOfTruth: trend.source || 'Public sources',
+    closeDate: tomorrow,
+    type: (suggestedType as 'Prediction' | 'Opinion' | 'Opportunity') || 'Prediction',
+    outcomeOptions: undefined,
+  };
+}
+
 // ── Stage 4: Claude Haiku safety gate ─────────────────────────────────────
 
 type SafetyResult = {
@@ -1057,8 +1080,15 @@ export async function runAgentPipeline(): Promise<PipelineResult[]> {
           mix: typeMix,
         });
       } catch (e) {
-        results.push({ ok: false, topic: trend.topic, stage: 'draft', reason: String(e) });
-        continue;
+        // Fallback to simple template when all LLM providers fail
+        const err = String(e);
+        if (err.includes('No LLM provider returned usable JSON')) {
+          draft = fallbackTemplateFromTrend(trend, classification.suggestedMarketType);
+          console.warn(`[fallback] Using template for "${trend.topic}" due to LLM provider exhaustion`);
+        } else {
+          results.push({ ok: false, topic: trend.topic, stage: 'draft', reason: err });
+          continue;
+        }
       }
 
       if (isDuplicateMarket(draft, trend, existingMarkets)) {
