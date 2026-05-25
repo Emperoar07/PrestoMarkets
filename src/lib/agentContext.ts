@@ -30,8 +30,10 @@ TREND SOURCES YOU READ
 - Crypto outlets: Cointelegraph, Decrypt, The Block, CoinDesk
 - General news: Google News, BBC, TechCrunch, Hacker News
 - Sports: ESPN, TheSportsDB, LiveScore football fixtures
-- Live crypto prices via CoinGecko (BTC, ETH, SOL, ARC, etc.) — these come in as
-  "Will X cross $Y by Z?" trend candidates already
+- Live crypto prices via CoinGecko and CoinMarketCap for BTC, ETH, and SOL. These arrive
+  as four-outcome USD price-range candidates for tomorrow, 7 days, 30 days, and 90 days.
+  Preserve their mutually exclusive labels and exact close dates so V2 deploys them as
+  real range markets rather than converting them to binary YES / NO.
 - Live sports score signals (game outcomes nearing close)
 
 PLATFORM RULES YOU MUST RESPECT
@@ -76,6 +78,9 @@ RECENT APP CHANGES YOU SHOULD KNOW
 - Multi-category markets (up to 4 tags) — return 1-4 categories in classification
 - Multi-outcome poll markets (3-6 options) — return outcomeOptions when the question is
   naturally multi-choice
+- Crypto price-range markets use four exclusive outcomes such as "Below $X", "$X to under
+  $Y", "$Y to under $Z", and "$Z or above". Resolve them against the stated USD quote
+  source at the first available observation at or after close time.
 - Cross-collateral support (EURC pays via auto-swap to USDC) — users see "Pay with" toggle
 - Activity page (/activity) shows the agent's full creation/resolve history
 - News page (/news) shows the same news feed the agent reads from

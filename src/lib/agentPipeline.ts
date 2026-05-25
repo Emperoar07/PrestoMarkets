@@ -27,6 +27,9 @@ export type TrendItem = {
   source: string;
   url?: string;
   imageUrl?: string;
+  closeDate?: string;
+  outcomeOptions?: string[];
+  marketStructure?: 'price-range';
 };
 
 export type MarketDraft = CreateLiveMarketInput & {
@@ -178,10 +181,32 @@ const cryptoPriceAssets = [
   { id: 'bitcoin', cmcSymbol: 'BTC', symbol: 'BTC', category: 'BTC', threshold: 0.035 },
   { id: 'ethereum', cmcSymbol: 'ETH', symbol: 'ETH', category: 'ETH', threshold: 0.045 },
   { id: 'solana', cmcSymbol: 'SOL', symbol: 'SOL', category: 'SOL', threshold: 0.06 },
-  { id: 'polygon-ecosystem-token', cmcSymbol: 'POL', symbol: 'POL', category: 'POL', threshold: 0.065 },
 ] as const;
 
-function buildCryptoPriceSignal(input: {
+const cryptoPriceHorizons = [
+  { days: 1, spreadMultiplier: 1 },
+  { days: 7, spreadMultiplier: 1.8 },
+  { days: 30, spreadMultiplier: 3 },
+  { days: 90, spreadMultiplier: 4.5 },
+] as const;
+
+function readablePriceIncrement(price: number) {
+  if (price >= 10_000) return 1_000;
+  if (price >= 1_000) return 100;
+  if (price >= 100) return 10;
+  if (price >= 10) return 1;
+  return 0.1;
+}
+
+function roundPrice(value: number, increment: number) {
+  return Math.round(value / increment) * increment;
+}
+
+function formatPrice(value: number) {
+  return `$${value.toLocaleString(undefined, { maximumFractionDigits: value < 10 ? 2 : 0 })}`;
+}
+
+function buildCryptoPriceSignals(input: {
   symbol: string;
   id: string;
   provider: string;
@@ -190,26 +215,40 @@ function buildCryptoPriceSignal(input: {
   change?: number;
   threshold: number;
   url: string;
-}): TrendItem {
-  const settleDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const settleLabel = settleDate.toISOString().slice(0, 10);
-  const direction = (input.change ?? 0) >= 0 ? 'above' : 'below';
-  const target = direction === 'above'
-    ? Math.ceil(input.price * (1 + input.threshold))
-    : Math.floor(input.price * (1 - input.threshold));
-  const formattedPrice = `$${input.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-  const formattedTarget = `$${target.toLocaleString()}`;
+}): TrendItem[] {
+  const increment = readablePriceIncrement(input.price);
+  const center = roundPrice(input.price, increment);
+  const formattedPrice = formatPrice(input.price);
 
-  return {
-    topic: `Will ${input.symbol} trade ${direction} ${formattedTarget} by ${settleLabel}?`,
-    query: [
-      `${input.symbol} current ${input.provider} price is ${formattedPrice}.`,
-      Number.isFinite(input.change) ? `24h change is ${(input.change as number).toFixed(2)}%.` : '',
-      `Create an objective price prediction market using ${input.provider} ${input.id} USD price as source of truth.`,
-    ].filter(Boolean).join(' '),
-    source: input.source,
-    url: input.url,
-  };
+  return cryptoPriceHorizons.map((horizon) => {
+    const settleDate = new Date(Date.now() + horizon.days * 86_400_000);
+    const settleLabel = settleDate.toISOString().slice(0, 10);
+    const band = Math.max(increment, roundPrice(input.price * input.threshold * horizon.spreadMultiplier, increment));
+    const low = Math.max(0, center - band);
+    const high = center + band;
+    const outcomeOptions = [
+      `Below ${formatPrice(low)}`,
+      `${formatPrice(low)} to under ${formatPrice(center)}`,
+      `${formatPrice(center)} to under ${formatPrice(high)}`,
+      `${formatPrice(high)} or above`,
+    ];
+
+    return {
+      topic: `Which range will ${input.symbol} USD price be in on ${settleLabel}?`,
+      query: [
+        `${input.symbol} current ${input.provider} USD price is ${formattedPrice}.`,
+        Number.isFinite(input.change) ? `24 hour change is ${(input.change as number).toFixed(2)} percent.` : '',
+        `Create a four outcome price range prediction market that closes on ${settleLabel}.`,
+        `Use these mutually exclusive outcomes exactly: ${outcomeOptions.join('; ')}.`,
+        `Resolve using the ${input.provider} USD quote at the first available observation at or after close time.`,
+      ].filter(Boolean).join(' '),
+      source: input.source,
+      url: input.url,
+      closeDate: settleLabel,
+      outcomeOptions,
+      marketStructure: 'price-range',
+    };
+  });
 }
 
 async function fetchCoinGeckoPriceSignals(): Promise<TrendItem[]> {
@@ -230,7 +269,7 @@ async function fetchCoinGeckoPriceSignals(): Promise<TrendItem[]> {
   return cryptoPriceAssets.flatMap((asset) => {
     const price = data[asset.id]?.usd;
     if (!Number.isFinite(price)) return [];
-    return [buildCryptoPriceSignal({
+    return buildCryptoPriceSignals({
       symbol: asset.symbol,
       id: asset.id,
       provider: 'CoinGecko',
@@ -238,8 +277,8 @@ async function fetchCoinGeckoPriceSignals(): Promise<TrendItem[]> {
       price: price as number,
       change: data[asset.id]?.usd_24h_change,
       threshold: asset.threshold,
-      url: `https://www.coingecko.com/en/coins/${asset.id}`,
-    })];
+      url: `https://api.coingecko.com/api/v3/simple/price?ids=${asset.id}&vs_currencies=usd&include_last_updated_at=true`,
+    });
   });
 }
 
@@ -273,7 +312,7 @@ async function fetchCoinMarketCapPriceSignals(): Promise<TrendItem[]> {
     const quote = item?.quote?.USD;
     if (!Number.isFinite(quote?.price)) return [];
 
-    return [buildCryptoPriceSignal({
+    return buildCryptoPriceSignals({
       symbol: asset.symbol,
       id: item?.slug || asset.id,
       provider: 'CoinMarketCap',
@@ -282,7 +321,7 @@ async function fetchCoinMarketCapPriceSignals(): Promise<TrendItem[]> {
       change: quote?.percent_change_24h,
       threshold: asset.threshold,
       url: `https://coinmarketcap.com/currencies/${item?.slug || asset.id}/`,
-    })];
+    });
   });
 }
 
@@ -292,12 +331,11 @@ async function fetchCryptoPriceSignals(): Promise<TrendItem[]> {
     fetchCoinMarketCapPriceSignals().catch(() => [] as TrendItem[]),
   ]);
 
-  // Prefer no-key CoinGecko when available, then fill gaps from CoinMarketCap.
+  // Prefer CoinGecko when available, then fill matching range horizons from CoinMarketCap.
   const seen = new Set<string>();
   return [...coinGecko, ...coinMarketCap].filter((item) => {
-    const symbol = cryptoPriceAssets.find((asset) => item.topic.includes(asset.symbol))?.symbol ?? item.topic;
-    if (seen.has(symbol)) return false;
-    seen.add(symbol);
+    if (seen.has(item.topic)) return false;
+    seen.add(item.topic);
     return true;
   });
 }
@@ -597,7 +635,7 @@ Source: "${trend.source}"
 
 A good market topic:
 - Has a clear binary outcome (YES/NO) OR a small set of discrete outcomes (poll-style)
-- Is resolvable within 7-90 days from a verifiable public source
+- Is resolvable within hours to 90 days from a verifiable public source
 - Has measurable stakes (price level, regulatory decision, launch, election, sports result)
 - Is NOT defamatory, hate speech, or about personal harm
 
@@ -778,6 +816,9 @@ async function draftWithGemini(trend: TrendItem, category: string, ctx: DraftCon
   const breakingNewsCopyRule = trend.source.startsWith('breaking-')
     ? '- This is a breaking news candidate. Do not use hyphens or dash punctuation in the generated title, description, or rules. Use plain wording or commas instead.'
     : '';
+  const priceRangeRule = trend.marketStructure === 'price-range' && trend.outcomeOptions?.length
+    ? `- This is a structured crypto price range market. You MUST use type "Prediction", closeDate "${trend.closeDate}", sourceOfTruth "${trend.url}", and return these outcomeOptions exactly: ${JSON.stringify(trend.outcomeOptions)}. The options are mutually exclusive. Resolve using the source USD quote at the first available observation at or after close time.`
+    : '';
 
   const prompt = `${AGENT_PLATFORM_CONTEXT}
 
@@ -796,6 +837,7 @@ Rules for a good market:
 - Rules must define exactly when each outcome wins
 - Source of truth must be a specific verifiable public source
 ${breakingNewsCopyRule}
+${priceRangeRule}
 
 Close-date guidance — pick the SHORTEST horizon that still gives the source time to resolve.
 DO NOT default to 7 or 30 days; match the timeframe to the actual event:
@@ -842,8 +884,8 @@ Return JSON only:
   }
 
   // Only carry poll options through when there are at least 3 — anything less is binary.
-  let outcomeOptions: string[] | undefined;
-  if (Array.isArray(parsed.outcomeOptions)) {
+  let outcomeOptions: string[] | undefined = trend.outcomeOptions;
+  if (!outcomeOptions && Array.isArray(parsed.outcomeOptions)) {
     const cleaned = parsed.outcomeOptions
       .filter((o): o is string => typeof o === 'string')
       .map((o) => o.trim().slice(0, 40))
@@ -855,10 +897,10 @@ Return JSON only:
     title: parsed.title,
     description: parsed.description ?? parsed.title,
     rules: parsed.rules,
-    sourceOfTruth: parsed.sourceOfTruth,
-    closeDate: parsed.closeDate,
+    sourceOfTruth: trend.marketStructure === 'price-range' && trend.url ? trend.url : parsed.sourceOfTruth,
+    closeDate: trend.closeDate ?? parsed.closeDate,
     outcomeOptions,
-    type: (parsed.type as GeminiDraft['type']) ?? 'Prediction',
+    type: trend.marketStructure === 'price-range' ? 'Prediction' : (parsed.type as GeminiDraft['type']) ?? 'Prediction',
   };
 }
 
@@ -867,21 +909,25 @@ Return JSON only:
 function fallbackTemplateFromTrend(trend: TrendItem, suggestedType?: string): GeminiDraft {
   const now = new Date();
   const tomorrow = new Date(now.getTime() + 86_400_000).toISOString().split('T')[0];
+  const isPriceRange = trend.marketStructure === 'price-range' && Boolean(trend.outcomeOptions?.length);
 
   // Sanitize topic to safe title
-  const title = trend.topic
+  const sanitizedTitle = trend.topic
     .replace(/[^a-zA-Z0-9\s?]/g, '')
     .slice(0, 85)
-    .trim() + '?';
+    .trim();
+  const title = sanitizedTitle.endsWith('?') ? sanitizedTitle : `${sanitizedTitle}?`;
 
   return {
     title,
-    description: `Will ${trend.topic.toLowerCase()}?`,
-    rules: 'YES wins if the event occurs by the close date. NO wins if it does not occur or remains unresolved.',
-    sourceOfTruth: trend.source || 'Public sources',
-    closeDate: tomorrow,
-    type: (suggestedType as 'Prediction' | 'Opinion' | 'Opportunity') || 'Prediction',
-    outcomeOptions: undefined,
+    description: isPriceRange ? trend.topic : `Will ${trend.topic.toLowerCase()}?`,
+    rules: isPriceRange
+      ? `Resolve to the single range containing the USD price at the first available source observation at or after close time. Outcomes: ${trend.outcomeOptions?.join('; ')}.`
+      : 'YES wins if the event occurs by the close date. NO wins if it does not occur or remains unresolved.',
+    sourceOfTruth: trend.marketStructure === 'price-range' && trend.url ? trend.url : trend.source || 'Public sources',
+    closeDate: trend.closeDate ?? tomorrow,
+    type: isPriceRange ? 'Prediction' : (suggestedType as 'Prediction' | 'Opinion' | 'Opportunity') || 'Prediction',
+    outcomeOptions: trend.outcomeOptions,
   };
 }
 
@@ -900,11 +946,12 @@ Title: "${draft.title}"
 Rules: "${draft.rules}"
 Source of truth: "${draft.sourceOfTruth}"
 Close date: "${draft.closeDate}"
+Outcomes: "${draft.outcomeOptions?.join(' | ') ?? 'YES | NO'}"
 
 Reject if ANY of:
 - Outcome is unverifiable or depends on private information
 - Title is ambiguous (multiple valid interpretations)
-- Rules do not clearly define when YES vs NO wins
+- Rules do not clearly define when each listed outcome wins
 - Source of truth is vague ("social media", "general news")
 - Close date is in the past or more than 180 days away
 - Content is defamatory, harmful, or targets a private individual

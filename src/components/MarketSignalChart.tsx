@@ -25,10 +25,14 @@ function buildSignalPoints(baseOdds: number, volume: number, liquidity: number, 
   });
 }
 
-function buildSmoothPath(points: number[], width: number, height: number, offsetX: number) {
+function chartY(point: number, height: number, paddingY: number) {
+  return paddingY + (1 - point / 100) * (height - paddingY * 2);
+}
+
+function buildSmoothPath(points: number[], width: number, height: number, offsetX: number, paddingY: number) {
   const coords = points.map((p, i) => ({
     x: offsetX + (i / (points.length - 1)) * width,
-    y: height - (p / 100) * height,
+    y: chartY(p, height, paddingY),
   }));
 
   let path = `M ${coords[0].x.toFixed(1)} ${coords[0].y.toFixed(1)}`;
@@ -53,27 +57,28 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
   });
 
   const W = compact ? 460 : 900;
-  const H = compact ? 80 : 320;
+  const H = compact ? 86 : 380;
   const padL = compact ? 0 : 18;
   const padR = compact ? 0 : 52;
+  const padY = compact ? 7 : 36;
   const chartW = W - padL - padR;
   const endX = padL + chartW;
 
-  const paths = outcomeSeries.map((series) => buildSmoothPath(series.points, chartW, H, padL));
+  const paths = outcomeSeries.map((series) => buildSmoothPath(series.points, chartW, H, padL, padY));
   // Area fill only for the first outcome (primary)
-  const primaryAreaPath = paths.length > 0 ? `${paths[0]} L ${endX} ${H} L ${padL} ${H} Z` : '';
+  const primaryAreaPath = paths.length > 0 ? `${paths[0]} L ${endX} ${H - padY} L ${padL} ${H - padY} Z` : '';
 
   const gridLines = compact ? [50] : [0, 25, 50, 75, 100];
   const uid = compact ? 'compact' : 'detail';
 
   return (
-    <div className={`rounded-[18px] border border-white/[0.06] bg-[#0d1520] ${compact ? 'p-4' : 'p-5 pb-4'}`}>
+    <div className={`rounded-[18px] border border-white/[0.06] bg-[#0d1520] ${compact ? 'p-4' : 'px-4 pb-5 pt-5 sm:px-6 sm:pt-6'}`}>
       {!compact ? (
-        <div className="mb-4 flex items-center justify-end gap-4">
-          <div className="flex flex-wrap items-center gap-4 text-xs font-black">
+        <div className="mb-5 flex items-center justify-start">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3 text-xs font-black">
             {outcomeSeries.map((series) => (
               <span key={series.label} className="flex items-center gap-1.5">
-                <span className="h-2 w-5 rounded-full" style={{ backgroundColor: series.color, boxShadow: series.color === '#25c0f4' ? '0 0 14px rgba(37,192,244,0.45)' : 'none' }} />
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: series.color, boxShadow: `0 0 10px ${series.color}55` }} />
                 <span style={{ color: series.color }}>{series.label} {series.odds}%</span>
               </span>
             ))}
@@ -84,7 +89,7 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
       <svg
         className="w-full overflow-visible"
         viewBox={`0 0 ${W} ${H}`}
-        style={{ height: compact ? 80 : 330 }}
+        style={{ height: compact ? 86 : 390 }}
         role="img"
         aria-label="Market probability signal chart"
       >
@@ -110,7 +115,7 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
         ) : null}
 
         {gridLines.map((pct) => {
-          const y = H - (pct / 100) * H;
+          const y = chartY(pct, H, padY);
           const labelY = pct === 100 ? y + 11 : pct === 0 ? y - 3 : y + 4;
           return (
             <g key={pct}>
@@ -163,7 +168,7 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
         {/* End dots for non-primary outcomes */}
         {outcomeSeries.slice(1).map((series) => {
           const endPoint = series.points[series.points.length - 1];
-          const endY = H - (endPoint / 100) * H;
+          const endY = chartY(endPoint, H, padY);
           return (
             <circle key={`dot-${series.label}`} cx={endX} cy={endY} r={compact ? 3 : 4.5} fill="#0d1520" stroke={series.color} strokeWidth="1.5" />
           );
@@ -171,7 +176,7 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
         {/* Primary outcome end dot */}
         {outcomeSeries[0] ? (() => {
           const endPoint = outcomeSeries[0].points[outcomeSeries[0].points.length - 1];
-          const endY = H - (endPoint / 100) * H;
+          const endY = chartY(endPoint, H, padY);
           return (
             <>
               <circle cx={endX} cy={endY} r={compact ? 3.5 : 5.5} fill={outcomeSeries[0].color} filter={`url(#yes-glow-${uid})`} />
@@ -182,7 +187,7 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
       </svg>
 
       {!compact ? (
-        <div className="mt-3 flex justify-between px-4 pr-12">
+        <div className="mt-5 flex justify-between px-4 pr-12">
           {['30d ago', '20d ago', '10d ago', 'Now'].map((label) => (
             <span key={label} className="text-[10px] font-bold text-[#334155]">{label}</span>
           ))}
