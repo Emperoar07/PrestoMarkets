@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { Market } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
 
@@ -45,7 +46,7 @@ function buildSmoothPath(points: number[], width: number, height: number, offset
   return path;
 }
 
-export function MarketSignalChart({ market, compact = false }: { market: MarketSignalChartMarket; compact?: boolean }) {
+function MarketSignalChartComponent({ market, compact = false }: { market: MarketSignalChartMarket; compact?: boolean }) {
   const volume = parseUsd(market.volume);
   const liquidity = parseUsd(market.liquidity);
 
@@ -197,3 +198,5 @@ export function MarketSignalChart({ market, compact = false }: { market: MarketS
     </div>
   );
 }
+
+export const MarketSignalChart = memo(MarketSignalChartComponent);

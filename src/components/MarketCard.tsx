@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import Link from 'next/link';
 import type { Market } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
@@ -10,7 +11,7 @@ type MarketCardMarket = Market & {
   closeDate?: string;
 };
 
-export function MarketCard({ market }: { market: MarketCardMarket }) {
+function MarketCardComponent({ market }: { market: MarketCardMarket }) {
   const yes = market.outcomes.find((o) => o.label === 'YES') ?? market.outcomes[0];
   const no = market.outcomes.find((o) => o.label === 'NO') ?? market.outcomes[1] ?? yes;
   const yesOdds = yes.odds;
@@ -151,3 +152,5 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
     </Link>
   );
 }
+
+export const MarketCard = memo(MarketCardComponent);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 
 type Props = {
   closeDate?: string;
@@ -22,7 +22,7 @@ function formatRemaining(diffMs: number): string {
   return `${seconds}s`;
 }
 
-export function Countdown({ closeDate, className, prefix }: Props) {
+function CountdownComponent({ closeDate, className, prefix }: Props) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -39,3 +39,8 @@ export function Countdown({ closeDate, className, prefix }: Props) {
 
   return <span className={className}>{prefix ?? ''}{formatRemaining(closeMs - now)}</span>;
 }
+
+export const Countdown = memo(CountdownComponent, (prev, next) => {
+  // Only re-render if closeDate or className/prefix changed (not on parent re-render)
+  return prev.closeDate === next.closeDate && prev.className === next.className && prev.prefix === next.prefix;
+});
