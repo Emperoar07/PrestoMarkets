@@ -112,7 +112,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [isLoadingAccount, setIsLoadingAccount] = useState(false);
 
   const refreshMarkets = useCallback(async (options: { force?: boolean } = {}) => {
-    setIsLoadingMarkets(true);
+    // Stale-while-revalidate: only show loading if we have no markets yet
+    if (markets.length === 0) {
+      setIsLoadingMarkets(true);
+    }
 
     try {
       const nextMarkets = await fetchOnchainMarkets(options);
@@ -120,12 +123,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return nextMarkets;
     } catch (error) {
       console.warn('Unable to load onchain markets', error);
-      setMarkets([]);
-      return [];
+      if (markets.length === 0) setMarkets([]);
+      return markets.length > 0 ? markets : [];
     } finally {
       setIsLoadingMarkets(false);
     }
-  }, []);
+  }, [markets]);
 
   useEffect(() => {
     void refreshMarkets();

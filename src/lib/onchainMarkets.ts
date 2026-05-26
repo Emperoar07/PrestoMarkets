@@ -6,9 +6,9 @@ import { isSafeResolutionUri, parseMarketMetadata } from './marketMetadata';
 import type { AppMarket } from './appState';
 import type { MarketStatus, MarketType, ResolutionMode } from './markets';
 const MARKET_ADDRESS_BATCH_SIZE = 50;
-const MARKET_HYDRATION_BATCH_SIZE = 8;
+const MARKET_HYDRATION_BATCH_SIZE = 32; // Increased from 8 for faster parallel hydration
 const MAX_MARKETS = 500;
-const MARKET_CACHE_TTL_MS = 8_000;
+const MARKET_CACHE_TTL_MS = 60_000; // Increased from 8s to 60s to reduce unnecessary refetches
 let marketCache: { at: number; markets: AppMarket[] } | null = null;
 let marketFetchInFlight: Promise<AppMarket[]> | null = null;
 
