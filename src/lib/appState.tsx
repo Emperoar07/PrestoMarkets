@@ -34,6 +34,12 @@ import { readPayWith, writePayWith } from './payWithStore';
 
 type OutcomeLabel = string;
 
+// Refresh timing configuration
+// Arc finalizes transactions in sub-second blocks, but public RPCs need time to surface state changes.
+// These delays balance responsiveness with RPC propagation latency.
+const REFRESH_DELAY_AFTER_TX_MS = 1_200; // Initial delay after transaction (Arc blocks finalize fast, RPC catches up in ~1.2s)
+const POST_TX_REFRESH_DELAYS_MS = [4_000, 10_000, 20_000]; // Progressive refreshes to catch delayed RPC propagation
+
 export type AppMarket = Market & {
   source: 'onchain';
   closeDate?: string;
@@ -176,7 +182,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
 
   const schedulePostTransactionRefresh = useCallback(() => {
-    for (const delay of [4_000, 10_000, 20_000]) {
+    for (const delay of POST_TX_REFRESH_DELAYS_MS) {
       window.setTimeout(() => {
         void refreshAll({ force: true });
       }, delay);
@@ -214,7 +220,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // sharesOf state. Refresh once immediately, then once more after a short delay so the
       // YOUR POSITION block updates without a manual reload.
       void refreshAll({ force: true });
-      await new Promise((r) => setTimeout(r, 1_800));
+      await new Promise((r) => setTimeout(r, REFRESH_DELAY_AFTER_TX_MS));
       await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }
@@ -238,7 +244,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
     if (result.ok) {
       void refreshAll({ force: true });
-      await new Promise((r) => setTimeout(r, 1_800));
+      await new Promise((r) => setTimeout(r, REFRESH_DELAY_AFTER_TX_MS));
       await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }
