@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/market-factory",
-      "schedule": "0 8 * * *"
+      "schedule": "0 6 * * *"
     },
     {
       "path": "/api/cron/auto-resolve",
