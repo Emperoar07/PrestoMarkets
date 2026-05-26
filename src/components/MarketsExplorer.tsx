@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { MarketCard } from './MarketCard';
 import { MarketSignalChart } from './MarketSignalChart';
+import { SkeletonCard } from './SkeletonCard';
 import { useAppState } from '@/lib/appState';
 import type { AppMarket } from '@/lib/appState';
 
@@ -232,7 +233,7 @@ function HotTopicsPanel({ markets, topics: derivedTopics }: { markets: AppMarket
 
 // ─── Main explorer ────────────────────────────────────────────────────────────
 export function MarketsExplorer() {
-  const { markets } = useAppState();
+  const { markets, isLoadingMarkets } = useAppState();
 
   const [activeCategory, setActiveCategory] = useState(getCatFromUrl);
   const [activeHotTopic, setActiveHotTopic] = useState('All');
@@ -250,6 +251,7 @@ export function MarketsExplorer() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'resolved'>('all');
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -383,116 +385,146 @@ export function MarketsExplorer() {
       </div>
 
       {/* Filter toolbar - Polymarket style */}
-      <div className="mt-4 flex items-center gap-2 flex-wrap">
-        {/* 24hr Volume dropdown */}
-        <div className="relative">
+      <div className="mt-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* 24hr Volume dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setOpenDropdown(openDropdown === 'volume' ? null : 'volume')}
+              className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
+            >
+              24hr Volume
+              <span className="text-[10px]">▼</span>
+            </button>
+            {openDropdown === 'volume' && (
+              <div className="absolute top-full mt-1 left-0 rounded-[8px] border border-white/[0.06] bg-[#0d1520] py-1 z-50 min-w-[180px]">
+                {['24hr Volume', 'Total Volume', 'Liquidity', 'Newest', 'Ending Soon'].map((item) => (
+                  <button key={item} type="button" className="block w-full px-4 py-1.5 text-left text-sm text-[#cbd5e1] hover:bg-white/[0.08] hover:text-white transition-colors" onClick={() => setOpenDropdown(null)}>
+                    {item}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* All / Daily / Weekly / Monthly */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setOpenDropdown(openDropdown === 'period' ? null : 'period')}
+              className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
+            >
+              All
+              <span className="text-[10px]">▼</span>
+            </button>
+            {openDropdown === 'period' && (
+              <div className="absolute top-full mt-1 left-0 rounded-[8px] border border-white/[0.06] bg-[#0d1520] py-1 z-50 min-w-[120px]">
+                {['Daily', 'Weekly', 'Monthly', 'All'].map((item) => (
+                  <button key={item} type="button" className="block w-full px-4 py-1.5 text-left text-sm text-[#cbd5e1] hover:bg-white/[0.08] hover:text-white transition-colors" onClick={() => setOpenDropdown(null)}>
+                    {item}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Status dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setOpenDropdown(openDropdown === 'status' ? null : 'status')}
+              className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
+            >
+              {statusFilter === 'active' ? 'Active' : statusFilter === 'resolved' ? 'Resolved' : 'All'}
+              <span className="text-[10px]">▼</span>
+            </button>
+            {openDropdown === 'status' && (
+              <div className="absolute top-full mt-1 left-0 rounded-[8px] border border-white/[0.06] bg-[#0d1520] py-1 z-50 min-w-[120px]">
+                {(['all', 'active', 'resolved'] as const).map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter(status);
+                      setOpenDropdown(null);
+                    }}
+                    className="block w-full px-4 py-1.5 text-left text-sm text-[#cbd5e1] hover:bg-white/[0.08] hover:text-white transition-colors"
+                  >
+                    {status === 'all' ? 'All' : status === 'active' ? 'Active' : 'Resolved'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Filter options toggle button */}
           <button
             type="button"
-            onClick={() => setOpenDropdown(openDropdown === 'volume' ? null : 'volume')}
-            className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            className={`flex items-center gap-2 rounded-[8px] px-3 py-2 text-sm font-bold transition-colors ${
+              showAdvancedFilters
+                ? 'bg-cyan/15 text-cyan'
+                : 'bg-white/[0.04] text-[#cbd5e1] hover:bg-white/[0.08] hover:text-white'
+            }`}
+            title="Toggle filter options"
           >
-            <span>📊</span> 24hr Volume
-            <span className="text-[10px]">▼</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="4" y1="6" x2="20" y2="6" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="18" x2="20" y2="18" />
+            </svg>
           </button>
-          {openDropdown === 'volume' && (
-            <div className="absolute top-full mt-1 left-0 rounded-[8px] border border-white/[0.06] bg-[#0d1520] py-1 z-50 min-w-[180px]">
-              {['24hr Volume', 'Total Volume', 'Liquidity', 'Newest', 'Ending Soon'].map((item) => (
-                <button key={item} type="button" className="block w-full px-4 py-1.5 text-left text-sm text-[#cbd5e1] hover:bg-white/[0.08] hover:text-white transition-colors" onClick={() => setOpenDropdown(null)}>
-                  {item}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
 
-        {/* All / Daily / Weekly / Monthly */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setOpenDropdown(openDropdown === 'period' ? null : 'period')}
-            className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
-          >
-            All
-            <span className="text-[10px]">▼</span>
-          </button>
-          {openDropdown === 'period' && (
-            <div className="absolute top-full mt-1 left-0 rounded-[8px] border border-white/[0.06] bg-[#0d1520] py-1 z-50 min-w-[120px]">
-              {['Daily', 'Weekly', 'Monthly', 'All'].map((item) => (
-                <button key={item} type="button" className="block w-full px-4 py-1.5 text-left text-sm text-[#cbd5e1] hover:bg-white/[0.08] hover:text-white transition-colors" onClick={() => setOpenDropdown(null)}>
-                  {item}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Status dropdown */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setOpenDropdown(openDropdown === 'status' ? null : 'status')}
-            className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
-          >
-            {statusFilter === 'active' ? 'Active' : statusFilter === 'resolved' ? 'Resolved' : 'All'}
-            <span className="text-[10px]">▼</span>
-          </button>
-          {openDropdown === 'status' && (
-            <div className="absolute top-full mt-1 left-0 rounded-[8px] border border-white/[0.06] bg-[#0d1520] py-1 z-50 min-w-[120px]">
-              {(['all', 'active', 'resolved'] as const).map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => {
-                    setStatusFilter(status);
-                    setOpenDropdown(null);
-                  }}
-                  className="block w-full px-4 py-1.5 text-left text-sm text-[#cbd5e1] hover:bg-white/[0.08] hover:text-white transition-colors"
-                >
-                  {status === 'all' ? 'All' : status === 'active' ? 'Active' : 'Resolved'}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Hide category checkboxes */}
-        {(['Sports', 'Crypto', 'Earnings'] as const).map((cat) => (
-          <label key={cat} className="flex items-center gap-2 px-3 py-2 cursor-pointer rounded-[8px] transition-colors hover:bg-white/[0.04]">
-            <input
-              type="checkbox"
-              checked={hiddenCategories.has(cat)}
-              onChange={() => {
-                const updated = new Set(hiddenCategories);
-                if (updated.has(cat)) {
-                  updated.delete(cat);
-                } else {
-                  updated.add(cat);
-                }
-                setHiddenCategories(updated);
+          {/* Clear filters */}
+          {(statusFilter !== 'all' || hiddenCategories.size > 0) && (
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter('all');
+                setHiddenCategories(new Set());
               }}
-              className="w-4 h-4 rounded accent-cyan cursor-pointer"
-            />
-            <span className="text-sm text-[#cbd5e1]">Hide {cat}</span>
-          </label>
-        ))}
+              className="ml-2 text-sm font-bold text-cyan/80 transition-colors hover:text-cyan"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
 
-        {/* Clear filters */}
-        {(statusFilter !== 'all' || hiddenCategories.size > 0) && (
-          <button
-            type="button"
-            onClick={() => {
-              setStatusFilter('all');
-              setHiddenCategories(new Set());
-            }}
-            className="ml-2 text-sm font-bold text-cyan/80 transition-colors hover:text-cyan"
-          >
-            Clear filters
-          </button>
+        {/* Advanced filter options - hide/show category checkboxes */}
+        {showAdvancedFilters && (
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
+            {(['Sports', 'Crypto', 'Earnings'] as const).map((cat) => (
+              <label key={cat} className="flex items-center gap-2 px-3 py-2 cursor-pointer rounded-[8px] transition-colors hover:bg-white/[0.04]">
+                <input
+                  type="checkbox"
+                  checked={hiddenCategories.has(cat)}
+                  onChange={() => {
+                    const updated = new Set(hiddenCategories);
+                    if (updated.has(cat)) {
+                      updated.delete(cat);
+                    } else {
+                      updated.add(cat);
+                    }
+                    setHiddenCategories(updated);
+                  }}
+                  className="w-4 h-4 rounded accent-cyan cursor-pointer"
+                />
+                <span className="text-sm text-[#cbd5e1]">Hide {cat}</span>
+              </label>
+            ))}
+          </div>
         )}
       </div>
 
       {/* Market grid */}
-      {visibleMarkets.length > 0 ? (
+      {isLoadingMarkets ? (
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      ) : visibleMarkets.length > 0 ? (
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {visibleMarkets.map((market) => (
             <MarketCard key={market.id} market={market} />
