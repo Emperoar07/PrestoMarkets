@@ -3,6 +3,7 @@ import { isAddress } from 'viem';
 import { agentCreateMarket, getAgentAddress } from '@/lib/agentWallet';
 import { getAgentIdentityStatus } from '@/lib/agentIdentity';
 import { sanitizeFeedText } from '@/lib/feedSanitizer';
+import { validateMarketSafety } from '@/lib/marketSafetyValidator';
 import type { AgentMarketMetadata } from '@/lib/marketMetadata';
 import type { MarketType, ResolutionMode } from '@/lib/markets';
 
@@ -73,6 +74,15 @@ export async function POST(req: NextRequest) {
     assertNonEmpty(body.rules, 'rules');
     assertNonEmpty(body.sourceOfTruth, 'sourceOfTruth');
     assertAgentScores(body.agent);
+
+    // Validate market topic is not harmful
+    const safetyCheck = validateMarketSafety(body.title, body.description, body.rules);
+    if (!safetyCheck.ok) {
+      return NextResponse.json(
+        { error: safetyCheck.reason },
+        { status: 400 }
+      );
+    }
 
     // Resolver address must be explicitly configured. Never allow undefined as fallback.
     // A compromised API key must not be able to redirect resolution to an arbitrary address.
