@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { useAppState } from '@/lib/appState';
 import { ChanceMeter } from './ChanceMeter';
 import { MarketSignalChart } from './MarketSignalChart';
@@ -14,22 +16,7 @@ export function NewsMarketDetail({ marketId }: NewsMarketDetailProps) {
   const market = getMarket(marketId);
 
   if (!market) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-[#0a0e27] to-[#131a27] px-6 py-8">
-        <div className="max-w-4xl">
-          <a
-            href="/breaking-news"
-            className="mb-6 inline-flex items-center text-cyan-400 hover:text-cyan-300"
-          >
-            ← Back to Breaking News
-          </a>
-          <div className="rounded-lg border border-white/10 bg-white/5 p-8 text-center">
-            <h1 className="text-2xl font-bold text-white">Market not found</h1>
-            <p className="mt-2 text-gray-400">This market does not exist or has been removed.</p>
-          </div>
-        </div>
-      </div>
-    );
+    notFound();
   }
 
   const yesOutcome = market.outcomes.find((o) => o.label.toUpperCase() === 'YES');
@@ -39,12 +26,12 @@ export function NewsMarketDetail({ marketId }: NewsMarketDetailProps) {
     <div className="min-h-screen bg-gradient-to-b from-[#0a0e27] to-[#131a27] px-6 py-8">
       <div className="max-w-4xl">
         {/* Back Link */}
-        <a
+        <Link
           href="/breaking-news"
           className="mb-6 inline-flex items-center text-cyan-400 hover:text-cyan-300"
         >
           ← Back to Breaking News
-        </a>
+        </Link>
 
         {/* Header */}
         <div className="mb-8 rounded-lg border border-white/10 bg-white/5 p-8">
@@ -59,16 +46,16 @@ export function NewsMarketDetail({ marketId }: NewsMarketDetailProps) {
           {/* Trading Grid */}
           <div className="grid gap-4 sm:grid-cols-2">
             {market.outcomes.map((outcome) => (
-              <button
+              <div
                 key={outcome.label}
-                className={`rounded-lg border-2 py-4 font-bold transition ${
+                className={`rounded-lg border-2 py-4 font-bold ${
                   outcome.label.toUpperCase() === 'YES'
-                    ? 'border-cyan-400 bg-cyan-400/10 text-cyan-300 hover:bg-cyan-400/20'
-                    : 'border-red-400 bg-red-400/10 text-red-300 hover:bg-red-400/20'
+                    ? 'border-cyan-400 bg-cyan-400/10 text-cyan-300'
+                    : 'border-red-400 bg-red-400/10 text-red-300'
                 }`}
               >
                 {outcome.label} {outcome.odds}%
-              </button>
+              </div>
             ))}
           </div>
         </div>
