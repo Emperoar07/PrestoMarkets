@@ -247,6 +247,7 @@ export function MarketsExplorer() {
   }, [dynamicTopics, activeHotTopic]);
   const [searchValue, setSearchValue] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('newest');
+  const [hideClosed, setHideClosed] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -283,6 +284,11 @@ export function MarketsExplorer() {
   }, []);
 
   const filtered = markets.filter((market) => {
+    // Filter out closed markets if hideClosed is enabled
+    if (hideClosed && (market.status === 'Closed' || market.status === 'Resolved' || market.status === 'Canceled')) {
+      return false;
+    }
+
     const search = searchValue.trim().toLowerCase();
     // Always check categories[] in addition to the legacy single category field. Markets
     // created before multi-category will only have `category`; new ones have `categories[]`
@@ -302,8 +308,6 @@ export function MarketsExplorer() {
   });
 
   const visibleMarkets = sortMarkets(filtered, sortKey);
-  const openMarkets = visibleMarkets.filter((m) => m.status === 'Open' || m.status === 'Closing soon');
-  const closedMarkets = visibleMarkets.filter((m) => m.status !== 'Open' && m.status !== 'Closing soon');
   const totalVolume = markets.reduce((sum, m) => sum + parseVolume(m.volume), 0);
 
   const showSidePanels = markets.length > 0 && !searchValue && activeHotTopic === 'All';
@@ -371,35 +375,36 @@ export function MarketsExplorer() {
         </div>
       </div>
 
+      {/* Filter toolbar */}
+      <div className="mt-3 flex items-center gap-2 flex-wrap">
+        <button
+          type="button"
+          onClick={() => setHideClosed(!hideClosed)}
+          className={`rounded-[6px] px-3 py-1.5 text-xs font-bold transition-colors ${
+            hideClosed
+              ? 'bg-cyan/15 text-cyan ring-1 ring-cyan/30'
+              : 'bg-white/[0.04] text-[#4a5568] hover:bg-white/[0.06] hover:text-[#94a3b8]'
+          }`}
+        >
+          {hideClosed ? '✓ Hide closed' : 'Hide closed'}
+        </button>
+        {hideClosed && (
+          <button
+            type="button"
+            onClick={() => setHideClosed(false)}
+            className="text-xs font-bold text-cyan/80 transition-colors hover:text-cyan"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
       {/* Market grid */}
       {visibleMarkets.length > 0 ? (
-        <div className="mt-5 space-y-6">
-          {/* Open markets */}
-          {openMarkets.length > 0 && (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-              {openMarkets.map((market) => (
-                <MarketCard key={market.id} market={market} />
-              ))}
-            </div>
-          )}
-
-          {/* Divider between open and closed */}
-          {openMarkets.length > 0 && closedMarkets.length > 0 && (
-            <div className="flex items-center gap-4 py-4">
-              <div className="flex-1 border-t border-white/[0.06]" />
-              <span className="text-xs font-bold uppercase tracking-widest text-[#4a5568]">Closed · {closedMarkets.length}</span>
-              <div className="flex-1 border-t border-white/[0.06]" />
-            </div>
-          )}
-
-          {/* Closed markets */}
-          {closedMarkets.length > 0 && (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-              {closedMarkets.map((market) => (
-                <MarketCard key={market.id} market={market} />
-              ))}
-            </div>
-          )}
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+          {visibleMarkets.map((market) => (
+            <MarketCard key={market.id} market={market} />
+          ))}
         </div>
       ) : (
         <div className="mt-10 rounded-[16px] border border-dashed border-white/[0.07] bg-[#0d1520] px-8 py-14 text-center">
