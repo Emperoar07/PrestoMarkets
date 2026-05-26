@@ -150,6 +150,26 @@ export async function agentCancelMarket(marketAddress: string) {
   }
 }
 
+// Submit a payout or refund for positions owned by the autonomous agent wallet.
+export async function agentSettlePosition(marketAddress: string, action: 'claim' | 'refund') {
+  try {
+    if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
+    const { account, publicClient, walletClient } = getClients();
+
+    const hash = await walletClient.writeContract({
+      account,
+      address: marketAddress as Address,
+      abi: prestoMarketAbi,
+      functionName: action,
+    });
+
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    return { ok: true, txHash: hash };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : `Agent ${action} failed.` };
+  }
+}
+
 // Buy outcome shares onchain from the agent wallet (approve USDC → call buy)
 // Used by the liquidity bot to properly mint shares, not just transfer USDC
 export async function agentBuyShares(

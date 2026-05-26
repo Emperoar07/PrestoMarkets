@@ -77,6 +77,8 @@ function formatOnchainUsd(value: bigint) {
 
   if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
   if (amount >= 1_000) return `$${(amount / 1_000).toFixed(1)}K`;
+  if (amount > 0 && amount < 0.01) return '<$0.01';
+  if (amount > 0 && amount < 1) return `$${amount.toFixed(2)}`;
 
   return `$${amount.toFixed(0)}`;
 }

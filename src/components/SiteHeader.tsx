@@ -9,7 +9,7 @@ import { fetchArcStableBalances, type StableSymbol } from '@/lib/walletBalance';
 import { getStoredConnectedWallet, subscribeConnectedWallet, type ConnectedWallet } from '@/lib/walletProvider';
 import { primaryViewCategories, topicNavCategories } from '@/lib/categories';
 
-const dexUrl = process.env.NEXT_PUBLIC_PRESTO_DEX_URL ?? 'https://prestodex-arc.vercel.app';
+const dexUrl = process.env.NEXT_PUBLIC_PRESTO_DEX_URL?.trim() || 'https://prestodex-arc.vercel.app';
 
 function navLinkClass(isActive = false) {
   return `rounded-lg border px-2 py-1 text-[13px] font-medium transition-all ${
