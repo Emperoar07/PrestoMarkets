@@ -279,10 +279,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             ) : null}
 
             {/* News tie-in: when the market is bound to a trend URL (agent markets carry
-                trendUrl + trendSource), show the article title, an LLM summary, and a
+                trendUrl), show the article title, an LLM summary, and a
                 "Read more" link to the original. */}
             {market.trendUrl ? (
-              <MarketNewsTieIn trendUrl={market.trendUrl} trendSource={market.trendSource} marketTitle={market.title} />
+              <MarketNewsTieIn trendUrl={market.trendUrl} marketTitle={market.title} />
             ) : null}
 
             {/* Market image */}
@@ -352,8 +352,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               <p className="mt-2 break-words text-sm leading-7 text-muted [overflow-wrap:anywhere]">{market.rules}</p>
               <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-2">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-muted">Source of truth</p>
-                  <p className="mt-1.5 break-words text-sm leading-6 text-white [overflow-wrap:anywhere]">{market.sourceOfTruth}</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted">Source verified</p>
+                  <p className="mt-1.5 text-sm leading-6 text-white">Source information is private.</p>
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-widest text-muted">Resolver</p>
@@ -401,8 +401,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
                 <div className="mt-4 grid gap-3 border-t border-white/[0.06] pt-4 md:grid-cols-3">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Trend source</p>
-                    <p className="mt-1.5 break-all text-sm text-white">{market.trendSource || market.agentSource || 'Public trend feed'}</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Source verified</p>
+                    <p className="mt-1.5 text-sm text-white">Source is private</p>
                   </div>
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-muted">Momentum</p>
@@ -423,12 +423,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     <p className="mt-1.5 break-all text-sm text-white">{market.resolverAddress || market.resolver}</p>
                   </div>
                 </div>
-                {market.trendUrl ? (
-                  <a href={market.trendUrl} target="_blank" rel="noreferrer" className="mt-4 inline-block break-all text-sm font-bold text-cyan hover:opacity-80">
-                    View trend source
-                  </a>
-                ) : null}
-                <a href="/agent" className="ml-0 mt-4 inline-block text-sm font-bold text-cyan hover:opacity-80 md:ml-4">
+                <a href="/agent" className="ml-0 mt-4 inline-block text-sm font-bold text-cyan hover:opacity-80">
                   View agent profile
                 </a>
               </div>
@@ -1032,7 +1027,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
 type NewsSummary = { title: string; summary: string; source: string; provider?: string };
 
-function MarketNewsTieIn({ trendUrl, trendSource, marketTitle }: { trendUrl: string; trendSource?: string; marketTitle: string }) {
+function MarketNewsTieIn({ trendUrl, marketTitle }: { trendUrl: string; marketTitle: string }) {
   const [data, setData] = useState<NewsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
@@ -1060,15 +1055,10 @@ function MarketNewsTieIn({ trendUrl, trendSource, marketTitle }: { trendUrl: str
     return () => { cancelled = true; };
   }, [trendUrl, marketTitle]);
 
-  const sourceLabel = trendSource || (() => {
-    try { return new URL(trendUrl).hostname.replace(/^www\./, ""); } catch { return "source"; }
-  })();
-
   return (
     <section className="mt-7 min-w-0 overflow-hidden rounded-[14px] border border-cyan/15 bg-cyan/[0.04] p-5">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <p className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-cyan/80">News tie-in</p>
-        <span className="max-w-full break-words text-[10.5px] font-bold uppercase tracking-widest text-muted/70 [overflow-wrap:anywhere]">{sourceLabel}</span>
       </div>
       {loading ? (
         <p className="mt-3 text-[13px] text-muted">Fetching summary…</p>

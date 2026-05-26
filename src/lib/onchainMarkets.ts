@@ -3,6 +3,7 @@ import { arcTestnet } from 'viem/chains';
 import { getArcConfig, getArcChainId } from './arcConfig';
 import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { isSafeResolutionUri, parseMarketMetadata } from './marketMetadata';
+import { stripSourceFromDescription } from './sourcePrivacy';
 import type { AppMarket } from './appState';
 import type { MarketStatus, MarketType, ResolutionMode } from './markets';
 const MARKET_ADDRESS_BATCH_SIZE = 50;
@@ -143,11 +144,13 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
   const titleSource = metadataURI.trim().length > 0 ? metadataURI : `Market ${index + 1}`;
   const winningLabel = labels[Number(winningOutcome)] ?? `Outcome ${Number(winningOutcome) + 1}`;
 
+  const rawDescription = metadata?.description || `Onchain ${marketType.toLowerCase()} market created from metadata ${titleSource}.`;
+
   return {
     id: address.toLowerCase(),
     type: marketType,
     title: metadata?.name || `Arc market ${index + 1}`,
-    description: metadata?.description || `Onchain ${marketType.toLowerCase()} market created from metadata ${titleSource}.`,
+    description: stripSourceFromDescription(rawDescription),
     imageURI: metadata?.imageURI || metadata?.image,
     pollOptions: labels.length > 2 ? labels : metadata?.outcomeOptions,
     category: metadata?.categories?.[0] || metadata?.category || 'Onchain',
