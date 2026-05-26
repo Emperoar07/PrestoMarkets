@@ -1,3 +1,5 @@
+import { isStringArray, assertAddress } from './typeGuards';
+
 export type WalletProviderMode = 'circle-user-controlled' | 'external-eoa';
 
 export type ConnectedWallet = {
@@ -190,10 +192,13 @@ export async function getExistingExternalWallet(): Promise<ConnectedWallet | nul
     return getStoredConnectedWallet();
   }
 
-  const accounts = await window.ethereum.request({ method: 'eth_accounts' }) as string[];
-  const [address] = accounts;
+  const accountsRaw = await window.ethereum.request({ method: 'eth_accounts' });
+  if (!isStringArray(accountsRaw) || accountsRaw.length === 0) {
+    return getStoredConnectedWallet();
+  }
+  const address = assertAddress(accountsRaw[0]);
 
-  return address ? { address, mode: 'external-eoa' } : getStoredConnectedWallet();
+  return { address, mode: 'external-eoa' };
 }
 
 export async function disconnectExternalWallet() {
@@ -597,12 +602,11 @@ async function connectExternalWalletProvider(): Promise<ConnectedWallet> {
     throw new Error('Circle User-Controlled Wallets are not configured and no browser wallet was found.');
   }
 
-  const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' }) as string[];
-  const [address] = accounts;
-
-  if (!address) {
+  const accountsRaw = await window.ethereum.request({ method: 'eth_requestAccounts' });
+  if (!isStringArray(accountsRaw) || accountsRaw.length === 0) {
     throw new Error('No wallet account was returned.');
   }
+  const address = assertAddress(accountsRaw[0]);
 
   await ensureArc(window.ethereum);
 
