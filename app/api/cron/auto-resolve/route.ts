@@ -5,6 +5,7 @@ import { agentCancelMarket, agentResolveMarket, getAgentAddress } from '@/lib/ag
 import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
 import { getAgentIdentityStatus, recordResolutionReputation } from '@/lib/agentIdentity';
 import { assertNonEmptyString } from '@/lib/typeGuards';
+import { createAbortSignalWithTimeout } from '@/lib/timeoutUtils';
 import type { AppMarket } from '@/lib/appState';
 
 export const runtime = 'nodejs';
@@ -58,6 +59,7 @@ async function fetchLiveEvidence(market: AppMarket): Promise<{ snippets: string;
       method: 'POST',
       headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({ q: query, gl: 'us', num: 6 }),
+      signal: createAbortSignalWithTimeout(8000), // 8 second timeout for Serper
     });
     if (!res.ok) return { snippets: '', sources: [] };
 
@@ -80,7 +82,10 @@ async function fetchLiveEvidence(market: AppMarket): Promise<{ snippets: string;
     }
 
     return { snippets: lines.join('\n'), sources };
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.warn('[auto-resolve] Serper search timed out after 8s');
+    }
     return { snippets: '', sources: [] };
   }
 }
