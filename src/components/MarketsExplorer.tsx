@@ -26,15 +26,22 @@ function fmtVol(v: number) {
 
 function sortMarkets(list: AppMarket[], sort: SortKey): AppMarket[] {
   const copy = [...list];
-  if (sort === 'volume') return copy.sort((a, b) => parseVolume(b.volume) - parseVolume(a.volume));
-  if (sort === 'ending') {
-    return copy.sort((a, b) => {
-      const at = a.closeDate ? new Date(a.closeDate).getTime() : Infinity;
-      const bt = b.closeDate ? new Date(b.closeDate).getTime() : Infinity;
-      return at - bt;
-    });
-  }
-  return copy.reverse();
+  const open = copy.filter((m) => m.status === 'Open' || m.status === 'Closing soon');
+  const closed = copy.filter((m) => m.status !== 'Open' && m.status !== 'Closing soon');
+
+  const sortGroup = (group: AppMarket[]): AppMarket[] => {
+    if (sort === 'volume') return group.sort((a, b) => parseVolume(b.volume) - parseVolume(a.volume));
+    if (sort === 'ending') {
+      return group.sort((a, b) => {
+        const at = a.closeDate ? new Date(a.closeDate).getTime() : Infinity;
+        const bt = b.closeDate ? new Date(b.closeDate).getTime() : Infinity;
+        return at - bt;
+      });
+    }
+    return group.reverse();
+  };
+
+  return [...sortGroup(open), ...sortGroup(closed)];
 }
 
 // Derive topic pills dynamically from actual market data — no static list
@@ -295,6 +302,8 @@ export function MarketsExplorer() {
   });
 
   const visibleMarkets = sortMarkets(filtered, sortKey);
+  const openMarkets = visibleMarkets.filter((m) => m.status === 'Open' || m.status === 'Closing soon');
+  const closedMarkets = visibleMarkets.filter((m) => m.status !== 'Open' && m.status !== 'Closing soon');
   const totalVolume = markets.reduce((sum, m) => sum + parseVolume(m.volume), 0);
 
   const showSidePanels = markets.length > 0 && !searchValue && activeHotTopic === 'All';
@@ -364,10 +373,33 @@ export function MarketsExplorer() {
 
       {/* Market grid */}
       {visibleMarkets.length > 0 ? (
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-          {visibleMarkets.map((market) => (
-            <MarketCard key={market.id} market={market} />
-          ))}
+        <div className="mt-5 space-y-6">
+          {/* Open markets */}
+          {openMarkets.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {openMarkets.map((market) => (
+                <MarketCard key={market.id} market={market} />
+              ))}
+            </div>
+          )}
+
+          {/* Divider between open and closed */}
+          {openMarkets.length > 0 && closedMarkets.length > 0 && (
+            <div className="flex items-center gap-4 py-4">
+              <div className="flex-1 border-t border-white/[0.06]" />
+              <span className="text-xs font-bold uppercase tracking-widest text-[#4a5568]">Closed · {closedMarkets.length}</span>
+              <div className="flex-1 border-t border-white/[0.06]" />
+            </div>
+          )}
+
+          {/* Closed markets */}
+          {closedMarkets.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {closedMarkets.map((market) => (
+                <MarketCard key={market.id} market={market} />
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <div className="mt-10 rounded-[16px] border border-dashed border-white/[0.07] bg-[#0d1520] px-8 py-14 text-center">
