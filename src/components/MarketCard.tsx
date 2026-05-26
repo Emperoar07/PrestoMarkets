@@ -2,6 +2,7 @@
 
 import { memo } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import type { Market } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
 import { Countdown } from './Countdown';
@@ -29,7 +30,7 @@ function MarketCardComponent({ market }: { market: MarketCardMarket }) {
       <div className="flex items-start gap-4">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#0d1a24]">
           {market.imageURI ? (
-            <img src={market.imageURI} alt="" className="h-full w-full object-cover" />
+            <Image src={market.imageURI} alt={market.title} width={40} height={40} className="h-full w-full object-cover" priority={false} loading="lazy" onError={(e) => { e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22%3E%3Crect fill=%22%230d1a24%22 width=%2240%22 height=%2240%22/%3E%3C/svg%3E'; }} />
           ) : (
             <span className="text-xs font-black text-[#64748b]">{market.category.slice(0, 2).toUpperCase()}</span>
           )}
