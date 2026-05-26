@@ -29,17 +29,17 @@ describe('NewsCard', () => {
 
   it('renders market type badge with correct emoji', () => {
     const { getByText: getByTextPrediction } = render(
-      <NewsCard {...defaultProps} type="Prediction" />
+      <NewsCard {...defaultProps} imageURI="https://example.com/test-image.png" type="Prediction" />
     );
     expect(getByTextPrediction(/📊.*Prediction/)).toBeInTheDocument();
 
     const { getByText: getByTextOpinion } = render(
-      <NewsCard {...defaultProps} type="Opinion" />
+      <NewsCard {...defaultProps} imageURI="https://example.com/test-image.png" type="Opinion" />
     );
     expect(getByTextOpinion(/💬.*Opinion/)).toBeInTheDocument();
 
     const { getByText: getByTextOpportunity } = render(
-      <NewsCard {...defaultProps} type="Opportunity" />
+      <NewsCard {...defaultProps} imageURI="https://example.com/test-image.png" type="Opportunity" />
     );
     expect(getByTextOpportunity(/🚀.*Opportunity/)).toBeInTheDocument();
   });
