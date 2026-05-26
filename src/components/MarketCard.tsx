@@ -22,11 +22,11 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
   return (
     <Link
       href={`/markets/${market.id}`}
-      className="group flex flex-col rounded-[14px] border border-white/[0.06] bg-[#131a27] p-4 transition-all hover:border-white/[0.1] hover:bg-[#161e2e]"
+      className="group flex flex-col rounded-[16px] border border-white/[0.06] bg-[#131a27] p-5 sm:p-6 transition-all hover:border-white/[0.1] hover:bg-[#161e2e]"
     >
       {/* Header: icon + title */}
-      <div className="flex items-start gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#0d1a24]">
+      <div className="flex items-start gap-4">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#0d1a24]">
           {market.imageURI ? (
             <img src={market.imageURI} alt="" className="h-full w-full object-cover" />
           ) : (
@@ -40,7 +40,7 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
                 Resolved
               </span>
             ) : null}
-            <h3 className="line-clamp-2 text-[13.5px] font-bold leading-snug tracking-tight text-white">
+            <h3 className="line-clamp-2 text-[14px] font-bold leading-snug tracking-tight text-white mt-0.5">
               {market.title}
             </h3>
           </div>
@@ -48,20 +48,20 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
       </div>
 
       {market.pollOptions && market.pollOptions.length > 2 ? (
-        <div className="mt-4 grid gap-1.5">
+        <div className="mt-5 grid gap-2.5">
           {market.pollOptions.slice(0, 4).map((option, index) => {
             const color = getOutcomeColor(index);
             return (
               <div
                 key={`${option}-${index}`}
-                className="flex items-center justify-between rounded-[8px] border px-3 py-1.5"
+                className="flex items-center justify-between rounded-[10px] border px-3.5 py-2"
                 style={{ borderColor: `${color}1F`, backgroundColor: `${color}0A` }}
               >
-                <span className="flex min-w-0 items-center gap-1.5 text-[11px] font-bold text-[#cbd5e1]">
+                <span className="flex min-w-0 items-center gap-2 text-[12px] font-bold text-[#cbd5e1]">
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                   <span className="truncate">{option}</span>
                 </span>
-                <span className="ml-2 shrink-0 text-[11px] font-black" style={{ color }}>{market.outcomes[index]?.odds ?? 0}%</span>
+                <span className="ml-3 shrink-0 text-[12px] font-black" style={{ color }}>{market.outcomes[index]?.odds ?? 0}%</span>
               </div>
             );
           })}
@@ -72,7 +72,7 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
       ) : null}
 
       {/* Odds row: probability + buy actions */}
-      <div className="mt-4 flex items-center justify-between gap-2">
+      <div className="mt-6 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {market.pollOptions && market.pollOptions.length > 2 ? (
             <div className="flex flex-col">
@@ -88,7 +88,7 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
             </div>
           ) : (
             <>
-              <span className="text-[22px] font-black leading-none text-white">{yesOdds}%</span>
+              <span className="text-[24px] font-black leading-none text-white">{yesOdds}%</span>
               <div className="flex flex-col">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-[#4ade80]">chance</span>
                 {isLive ? (
@@ -108,15 +108,15 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
         {market.pollOptions && market.pollOptions.length > 2 ? (
           <button
             type="button"
-            className="rounded-[8px] bg-cyan/10 px-4 py-2 text-xs font-bold text-cyan transition-all hover:bg-cyan/15 group-hover:bg-cyan group-hover:text-ink active:scale-95"
+            className="rounded-[8px] bg-cyan/10 px-4 py-2.5 text-sm font-bold text-cyan transition-all duration-200 hover:bg-cyan/15 group-hover:bg-cyan group-hover:text-ink active:scale-95"
           >
             {isLive ? 'Bet Now' : isResolved ? 'Resolved' : 'Closed'}
           </button>
         ) : (
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
-              className={`rounded-[8px] px-3 py-2 text-xs font-bold transition-colors ${
+              className={`rounded-[8px] px-4 py-2.5 text-sm font-bold transition-all duration-200 ${
                 isLive
                   ? 'bg-[#0a3320] text-[#4ade80] hover:bg-[#0d4429] active:scale-95'
                   : 'bg-white/[0.04] text-[#64748b]'
@@ -127,7 +127,7 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
             {isLive ? (
               <button
                 type="button"
-                className="rounded-[8px] bg-[#2d1010] px-3 py-2 text-xs font-bold text-[#f87171] transition-colors hover:bg-[#3d1515] active:scale-95"
+                className="rounded-[8px] bg-[#2d1010] px-4 py-2.5 text-sm font-bold text-[#f87171] transition-all duration-200 hover:bg-[#3d1515] active:scale-95"
               >
                 Buy No
               </button>
@@ -137,7 +137,7 @@ export function MarketCard({ market }: { market: MarketCardMarket }) {
       </div>
 
       {/* Footer: volume + collateral + liquidity */}
-      <div className="mt-3 flex items-center justify-between border-t border-white/[0.04] pt-3">
+      <div className="mt-5 flex items-center justify-between border-t border-white/[0.04] pt-5">
         <span className="text-xs text-[#4a5568]">{market.volume} Vol.</span>
         <div className="flex items-center gap-2">
           {isEurc ? (
