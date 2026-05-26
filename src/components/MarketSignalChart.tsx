@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import type { Market } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
 
@@ -50,13 +50,6 @@ function MarketSignalChartComponent({ market, compact = false }: { market: Marke
   const volume = parseUsd(market.volume);
   const liquidity = parseUsd(market.liquidity);
 
-  // Build signal data for every outcome, not just YES/NO
-  const outcomeSeries = market.outcomes.map((outcome, index) => {
-    const phase = index * (Math.PI / market.outcomes.length);
-    const points = buildSignalPoints(outcome.odds, index === 0 ? volume : liquidity, index === 0 ? liquidity : volume, phase);
-    return { label: outcome.label, odds: outcome.odds, points, color: getOutcomeColor(index) };
-  });
-
   const W = compact ? 460 : 1000;
   const H = compact ? 120 : 420;
   const padL = compact ? 0 : 32;
@@ -65,9 +58,27 @@ function MarketSignalChartComponent({ market, compact = false }: { market: Marke
   const chartW = W - padL - padR;
   const endX = padL + chartW;
 
-  const paths = outcomeSeries.map((series) => buildSmoothPath(series.points, chartW, H, padL, padY));
-  // Area fill only for the first outcome (primary)
-  const primaryAreaPath = paths.length > 0 ? `${paths[0]} L ${endX} ${H - padY} L ${padL} ${H - padY} Z` : '';
+  // Memoize outcome series calculation
+  const outcomeSeries = useMemo(() =>
+    market.outcomes.map((outcome, index) => {
+      const phase = index * (Math.PI / market.outcomes.length);
+      const points = buildSignalPoints(outcome.odds, index === 0 ? volume : liquidity, index === 0 ? liquidity : volume, phase);
+      return { label: outcome.label, odds: outcome.odds, points, color: getOutcomeColor(index) };
+    }),
+    [market.outcomes, volume, liquidity]
+  );
+
+  // Memoize paths calculation
+  const paths = useMemo(
+    () => outcomeSeries.map((series) => buildSmoothPath(series.points, chartW, H, padL, padY)),
+    [outcomeSeries, chartW, H, padL, padY]
+  );
+
+  // Memoize primary area path
+  const primaryAreaPath = useMemo(
+    () => paths.length > 0 ? `${paths[0]} L ${endX} ${H - padY} L ${padL} ${H - padY} Z` : '',
+    [paths, endX, H, padY, padL]
+  );
 
   const gridLines = compact ? [50] : [0, 25, 50, 75, 100];
   const uid = compact ? 'compact' : 'detail';
