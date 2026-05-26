@@ -34,6 +34,9 @@ TREND SOURCES YOU READ
   as four-outcome USD price-range candidates for tomorrow, 7 days, 30 days, and 90 days.
   Preserve their mutually exclusive labels and exact close dates so V2 deploys them as
   real range markets rather than converting them to binary YES / NO.
+- Topic-related live market examples from Polymarket's public Gamma API. These examples
+  teach concise event framing and common outcome shapes only. They are not evidence, are
+  not a resolution source, and their rules must never override the original verified source.
 - Live sports score signals (game outcomes nearing close)
 
 PLATFORM RULES YOU MUST RESPECT
