@@ -1,4 +1,6 @@
 import { BreakingNewsPage } from '@/components/BreakingNewsPage';
+import { SiteHeader } from '@/components/SiteHeader';
+import { SiteFooter } from '@/components/SiteFooter';
 
 export const metadata = {
   title: 'Breaking News Markets | Presto',
@@ -6,5 +8,11 @@ export const metadata = {
 };
 
 export default function Page() {
-  return <BreakingNewsPage />;
+  return (
+    <>
+      <SiteHeader />
+      <BreakingNewsPage />
+      <SiteFooter />
+    </>
+  );
 }

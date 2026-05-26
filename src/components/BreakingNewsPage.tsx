@@ -35,14 +35,27 @@ export function BreakingNewsPage() {
     });
   }, [agentMarkets, selectedCategory]);
 
+  // Helper: Calculate days until market close
+  const getDaysUntilClose = (closeDate: string | undefined, now: Date): number => {
+    if (!closeDate) return 999;
+    const close = new Date(closeDate);
+    return (close.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+  };
+
+  // Helper: Parse liquidity with K/M magnitude conversion
+  const parseLiquidity = (liquidity: string): number => {
+    const cleaned = liquidity?.replace(/\$/g, '') || '0';
+    const value = parseFloat(cleaned.replace(/[KM]$/, ''));
+    if (cleaned.endsWith('M')) return value * 1_000_000;
+    if (cleaned.endsWith('K')) return value * 1_000;
+    return value;
+  };
+
   // Sort by tab
   const sortedMarkets = useMemo(() => {
     const now = new Date();
     const withScore = filteredMarkets.map((m) => {
-      const closeDate = m.closeDate ? new Date(m.closeDate) : null;
-      const daysUntilClose = closeDate
-        ? (closeDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-        : 999;
+      const daysUntilClose = getDaysUntilClose(m.closeDate, now);
 
       return {
         market: m,
@@ -70,8 +83,8 @@ export function BreakingNewsPage() {
 
     // Trending: highest liquidity
     return filteredMarkets.sort((a, b) => {
-      const aLiq = parseFloat(a.liquidity?.replace(/\$|K|M/g, '') || '0');
-      const bLiq = parseFloat(b.liquidity?.replace(/\$|K|M/g, '') || '0');
+      const aLiq = parseLiquidity(a.liquidity);
+      const bLiq = parseLiquidity(b.liquidity);
       return bLiq - aLiq;
     });
   }, [filteredMarkets, activeTab]);
