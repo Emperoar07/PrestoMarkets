@@ -247,8 +247,9 @@ export function MarketsExplorer() {
   }, [dynamicTopics, activeHotTopic]);
   const [searchValue, setSearchValue] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('newest');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'closed'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'resolved'>('all');
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -289,7 +290,7 @@ export function MarketsExplorer() {
     if (statusFilter === 'active' && (market.status === 'Closed' || market.status === 'Resolved' || market.status === 'Canceled')) {
       return false;
     }
-    if (statusFilter === 'closed' && (market.status !== 'Closed' && market.status !== 'Resolved' && market.status !== 'Canceled')) {
+    if (statusFilter === 'resolved' && market.status !== 'Resolved') {
       return false;
     }
 
@@ -381,48 +382,98 @@ export function MarketsExplorer() {
         </div>
       </div>
 
-      {/* Filter toolbar */}
-      <div className="mt-3 flex items-center gap-2 flex-wrap">
-        {/* Status filter */}
-        <div className="flex items-center gap-0.5 rounded-[8px] border border-white/[0.06] bg-white/[0.02] p-1">
-          {(['all', 'active', 'closed'] as const).map((status) => (
-            <button
-              key={status}
-              type="button"
-              onClick={() => setStatusFilter(status)}
-              className={`rounded-[6px] px-2.5 py-1 text-xs font-bold transition-colors ${
-                statusFilter === status
-                  ? 'bg-white/[0.08] text-white'
-                  : 'text-[#4a5568] hover:text-[#94a3b8]'
-              }`}
-            >
-              {status === 'all' ? 'All' : status === 'active' ? 'Active' : 'Closed'}
-            </button>
-          ))}
+      {/* Filter toolbar - Polymarket style */}
+      <div className="mt-4 flex items-center gap-2 flex-wrap">
+        {/* 24hr Volume dropdown */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setOpenDropdown(openDropdown === 'volume' ? null : 'volume')}
+            className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
+          >
+            <span>📊</span> 24hr Volume
+            <span className="text-[10px]">▼</span>
+          </button>
+          {openDropdown === 'volume' && (
+            <div className="absolute top-full mt-1 left-0 rounded-[8px] border border-white/[0.06] bg-[#0d1520] py-1 z-50 min-w-[180px]">
+              {['24hr Volume', 'Total Volume', 'Liquidity', 'Newest', 'Ending Soon'].map((item) => (
+                <button key={item} type="button" className="block w-full px-4 py-1.5 text-left text-sm text-[#cbd5e1] hover:bg-white/[0.08] hover:text-white transition-colors" onClick={() => setOpenDropdown(null)}>
+                  {item}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Hide category filters - show most common ones */}
-        {(['Sports', 'Crypto', 'Earnings'] as const).map((cat) => (
+        {/* All / Daily / Weekly / Monthly */}
+        <div className="relative">
           <button
-            key={cat}
             type="button"
-            onClick={() => {
-              const updated = new Set(hiddenCategories);
-              if (updated.has(cat)) {
-                updated.delete(cat);
-              } else {
-                updated.add(cat);
-              }
-              setHiddenCategories(updated);
-            }}
-            className={`rounded-[6px] px-3 py-1.5 text-xs font-bold transition-colors ${
-              hiddenCategories.has(cat)
-                ? 'bg-white/[0.08] text-white'
-                : 'text-[#4a5568] hover:bg-white/[0.04] hover:text-[#94a3b8]'
-            }`}
+            onClick={() => setOpenDropdown(openDropdown === 'period' ? null : 'period')}
+            className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
           >
-            {hiddenCategories.has(cat) ? `✓ Hide ${cat}` : `Hide ${cat}`}
+            All
+            <span className="text-[10px]">▼</span>
           </button>
+          {openDropdown === 'period' && (
+            <div className="absolute top-full mt-1 left-0 rounded-[8px] border border-white/[0.06] bg-[#0d1520] py-1 z-50 min-w-[120px]">
+              {['Daily', 'Weekly', 'Monthly', 'All'].map((item) => (
+                <button key={item} type="button" className="block w-full px-4 py-1.5 text-left text-sm text-[#cbd5e1] hover:bg-white/[0.08] hover:text-white transition-colors" onClick={() => setOpenDropdown(null)}>
+                  {item}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Status dropdown */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setOpenDropdown(openDropdown === 'status' ? null : 'status')}
+            className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
+          >
+            {statusFilter === 'active' ? 'Active' : statusFilter === 'resolved' ? 'Resolved' : 'All'}
+            <span className="text-[10px]">▼</span>
+          </button>
+          {openDropdown === 'status' && (
+            <div className="absolute top-full mt-1 left-0 rounded-[8px] border border-white/[0.06] bg-[#0d1520] py-1 z-50 min-w-[120px]">
+              {(['all', 'active', 'resolved'] as const).map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => {
+                    setStatusFilter(status);
+                    setOpenDropdown(null);
+                  }}
+                  className="block w-full px-4 py-1.5 text-left text-sm text-[#cbd5e1] hover:bg-white/[0.08] hover:text-white transition-colors"
+                >
+                  {status === 'all' ? 'All' : status === 'active' ? 'Active' : 'Resolved'}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Hide category checkboxes */}
+        {(['Sports', 'Crypto', 'Earnings'] as const).map((cat) => (
+          <label key={cat} className="flex items-center gap-2 px-3 py-2 cursor-pointer rounded-[8px] transition-colors hover:bg-white/[0.04]">
+            <input
+              type="checkbox"
+              checked={hiddenCategories.has(cat)}
+              onChange={() => {
+                const updated = new Set(hiddenCategories);
+                if (updated.has(cat)) {
+                  updated.delete(cat);
+                } else {
+                  updated.add(cat);
+                }
+                setHiddenCategories(updated);
+              }}
+              className="w-4 h-4 rounded accent-cyan cursor-pointer"
+            />
+            <span className="text-sm text-[#cbd5e1]">Hide {cat}</span>
+          </label>
         ))}
 
         {/* Clear filters */}
@@ -433,7 +484,7 @@ export function MarketsExplorer() {
               setStatusFilter('all');
               setHiddenCategories(new Set());
             }}
-            className="text-xs font-bold text-cyan/80 transition-colors hover:text-cyan"
+            className="ml-2 text-sm font-bold text-cyan/80 transition-colors hover:text-cyan"
           >
             Clear filters
           </button>
