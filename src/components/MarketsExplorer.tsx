@@ -247,7 +247,8 @@ export function MarketsExplorer() {
   }, [dynamicTopics, activeHotTopic]);
   const [searchValue, setSearchValue] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('newest');
-  const [hideClosed, setHideClosed] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'closed'>('all');
+  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -284,16 +285,21 @@ export function MarketsExplorer() {
   }, []);
 
   const filtered = markets.filter((market) => {
-    // Filter out closed markets if hideClosed is enabled
-    if (hideClosed && (market.status === 'Closed' || market.status === 'Resolved' || market.status === 'Canceled')) {
+    // Status filter
+    if (statusFilter === 'active' && (market.status === 'Closed' || market.status === 'Resolved' || market.status === 'Canceled')) {
+      return false;
+    }
+    if (statusFilter === 'closed' && (market.status !== 'Closed' && market.status !== 'Resolved' && market.status !== 'Canceled')) {
+      return false;
+    }
+
+    // Category filter - hide selected categories
+    const cats = market.categories ?? (market.category ? [market.category] : []);
+    if (hiddenCategories.size > 0 && cats.some((cat) => hiddenCategories.has(cat))) {
       return false;
     }
 
     const search = searchValue.trim().toLowerCase();
-    // Always check categories[] in addition to the legacy single category field. Markets
-    // created before multi-category will only have `category`; new ones have `categories[]`
-    // (with `category` mirroring categories[0]). matchesKeyword folds both into one check.
-    const cats = market.categories ?? (market.category ? [market.category] : []);
     const catBlob = cats.join(' ').toLowerCase();
     const matchesKeyword = (needle: string) =>
       market.title.toLowerCase().includes(needle) ||
@@ -377,21 +383,56 @@ export function MarketsExplorer() {
 
       {/* Filter toolbar */}
       <div className="mt-3 flex items-center gap-2 flex-wrap">
-        <button
-          type="button"
-          onClick={() => setHideClosed(!hideClosed)}
-          className={`rounded-[6px] px-3 py-1.5 text-xs font-bold transition-colors ${
-            hideClosed
-              ? 'bg-cyan/15 text-cyan ring-1 ring-cyan/30'
-              : 'bg-white/[0.04] text-[#4a5568] hover:bg-white/[0.06] hover:text-[#94a3b8]'
-          }`}
-        >
-          {hideClosed ? '✓ Hide closed' : 'Hide closed'}
-        </button>
-        {hideClosed && (
+        {/* Status filter */}
+        <div className="flex items-center gap-0.5 rounded-[8px] border border-white/[0.06] bg-white/[0.02] p-1">
+          {(['all', 'active', 'closed'] as const).map((status) => (
+            <button
+              key={status}
+              type="button"
+              onClick={() => setStatusFilter(status)}
+              className={`rounded-[6px] px-2.5 py-1 text-xs font-bold transition-colors ${
+                statusFilter === status
+                  ? 'bg-white/[0.08] text-white'
+                  : 'text-[#4a5568] hover:text-[#94a3b8]'
+              }`}
+            >
+              {status === 'all' ? 'All' : status === 'active' ? 'Active' : 'Closed'}
+            </button>
+          ))}
+        </div>
+
+        {/* Hide category filters - show most common ones */}
+        {(['Sports', 'Crypto', 'Earnings'] as const).map((cat) => (
+          <button
+            key={cat}
+            type="button"
+            onClick={() => {
+              const updated = new Set(hiddenCategories);
+              if (updated.has(cat)) {
+                updated.delete(cat);
+              } else {
+                updated.add(cat);
+              }
+              setHiddenCategories(updated);
+            }}
+            className={`rounded-[6px] px-3 py-1.5 text-xs font-bold transition-colors ${
+              hiddenCategories.has(cat)
+                ? 'bg-white/[0.08] text-white'
+                : 'text-[#4a5568] hover:bg-white/[0.04] hover:text-[#94a3b8]'
+            }`}
+          >
+            {hiddenCategories.has(cat) ? `✓ Hide ${cat}` : `Hide ${cat}`}
+          </button>
+        ))}
+
+        {/* Clear filters */}
+        {(statusFilter !== 'all' || hiddenCategories.size > 0) && (
           <button
             type="button"
-            onClick={() => setHideClosed(false)}
+            onClick={() => {
+              setStatusFilter('all');
+              setHiddenCategories(new Set());
+            }}
             className="text-xs font-bold text-cyan/80 transition-colors hover:text-cyan"
           >
             Clear filters
