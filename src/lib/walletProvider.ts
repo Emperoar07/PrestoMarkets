@@ -86,6 +86,15 @@ export async function refreshCircleSessionIfNeeded(): Promise<CircleSession | nu
         setCircleSession(next);
         return next;
       }
+
+      // Log incomplete response and clear session
+      const { logger } = await import('./logger');
+      logger.warn('circle-session', 'Session refresh returned incomplete response', {
+        hasUserToken: !!refreshed?.userToken,
+        hasEncryptionKey: !!refreshed?.encryptionKey,
+      });
+      setCircleSession(null);
+      return null;
     } finally {
       clearTimeout(timeoutId);
     }
@@ -101,8 +110,6 @@ export async function refreshCircleSessionIfNeeded(): Promise<CircleSession | nu
     setCircleSession(null);
     return null;
   }
-
-  return current;
 }
 
 export type CircleSocialProvider = 'google';
