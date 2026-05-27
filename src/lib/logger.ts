@@ -14,16 +14,12 @@ function log(level: LogLevel, context: string, message: string, data?: Record<st
     level,
     context,
     message,
-    data,
+    ...(data && { data }),
   };
 
   const logStr = JSON.stringify(entry);
-  if (typeof window === 'undefined') {
-    const consoleMethod = level === 'error' ? console.error : console.log;
-    consoleMethod(logStr);
-  } else {
-    console.log(logStr);
-  }
+  const consoleMethod = level === 'error' ? console.error : console.log;
+  consoleMethod(logStr);
 }
 
 export const logger = {
