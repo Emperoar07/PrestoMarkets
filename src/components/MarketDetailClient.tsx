@@ -957,10 +957,15 @@ function MarketNewsTieIn({ trendUrl, marketTitle }: { trendUrl: string; marketTi
     let cancelled = false;
     setLoading(true);
     setError("");
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
     fetch("/api/news/summarize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: trendUrl, marketTitle }),
+      signal: controller.signal,
     })
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
@@ -971,8 +976,19 @@ function MarketNewsTieIn({ trendUrl, marketTitle }: { trendUrl: string; marketTi
         }
         setData(body as NewsSummary);
       })
-      .catch((e) => { if (!cancelled) setError(String(e)); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .catch((e) => {
+        if (!cancelled) {
+          if (e instanceof Error && e.name === 'AbortError') {
+            setError("News summary took too long to load.");
+          } else {
+            setError(String(e));
+          }
+        }
+      })
+      .finally(() => {
+        clearTimeout(timeout);
+        if (!cancelled) setLoading(false);
+      });
     return () => { cancelled = true; };
   }, [trendUrl, marketTitle]);
 
