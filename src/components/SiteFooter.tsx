@@ -6,7 +6,6 @@ export function SiteFooter() {
       <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-4 px-4 md:px-7">
         <div>
           <p className="text-[11.5px] text-[#4b6280]">&copy; 2026 Presto. All rights reserved.</p>
-          <p className="mt-1 text-[11px] font-bold text-[#64748b]">Legal</p>
         </div>
         <div className="flex flex-wrap gap-5">
           <Link href="/docs" className="text-[12px] font-semibold text-[#94a3b8] transition-colors hover:text-[#25c0f4]">
@@ -23,9 +22,6 @@ export function SiteFooter() {
           </Link>
           <Link href="/build-rails" className="text-[12px] font-semibold text-[#94a3b8] transition-colors hover:text-[#25c0f4]">
             Build Rails
-          </Link>
-          <Link href="/agent" className="text-[12px] font-semibold text-[#94a3b8] transition-colors hover:text-[#25c0f4]">
-            Agent
           </Link>
         </div>
       </div>
