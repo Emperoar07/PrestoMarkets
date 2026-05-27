@@ -627,7 +627,7 @@ type GroqClassification = {
   category: string;
   categories?: string[];
   /** Suggested market type the drafter should target. The drafter is free to override. */
-  suggestedMarketType?: 'Prediction' | 'Opinion' | 'Opportunity';
+  suggestedMarketType?: 'Prediction' | 'Opinion';
   reason: string;
 };
 
@@ -660,7 +660,7 @@ Return JSON only:
   "momentumScore": 0.0-1.0,
   "category": "Crypto|BTC|ETH|SOL|POL|Sports|Football|Basketball|Tennis|DeFi|AI|Politics|Tech|Markets|Arc|Web3",
   "categories": ["primary", "secondary", "..."],
-  "suggestedMarketType": "Prediction" | "Opinion" | "Opportunity",
+  "suggestedMarketType": "Prediction" | "Opinion",
   "reason": "one sentence"
 }
 
@@ -670,13 +670,11 @@ markets. Use Football/Basketball/Tennis for sport result markets. First entry eq
 
 suggestedMarketType — pick based on the topic nature:
 - "Prediction" — verifiable external event (price target, election result, launch date)
-- "Opinion" — community sentiment / preference (which protocol is better, will a proposal
-  be perceived as net-positive, will users prefer X over Y)
-- "Opportunity" — capital / builder allocation signals (will N devs join, will TVL hit X,
-  will an ecosystem attract this many users)
+- "Opinion" — community sentiment, preference, public choice, or ecosystem direction
+  (which protocol is better, will users prefer X over Y, should builders focus on X)
 DO NOT default to Prediction. If the topic is really about how people FEEL about something
-rather than what will HAPPEN, pick Opinion. If it's about future capital/builder flow,
-pick Opportunity.
+rather than what will HAPPEN, pick Opinion. If it is about future capital or builder flow
+without a hard external threshold, pick Opinion.
 
 If the research audit is weak, mark worthy=false unless the context clearly provides a
 better public settlement source the drafter can use.`;
@@ -693,12 +691,14 @@ better public settlement source the drafter can use.`;
       .slice(0, 4);
   }
 
+  const suggestedMarketType = parsed.suggestedMarketType === 'Opinion' ? 'Opinion' : 'Prediction';
+
   return {
     worthy: parsed.worthy ?? false,
     momentumScore: Math.min(1, Math.max(0, parsed.momentumScore ?? 0)),
     category: parsed.category ?? categories?.[0] ?? 'Crypto',
     categories,
-    suggestedMarketType: parsed.suggestedMarketType,
+    suggestedMarketType,
     reason: parsed.reason ?? '',
   };
 }
@@ -711,7 +711,7 @@ type GeminiDraft = {
   rules: string;
   sourceOfTruth: string;
   closeDate: string;
-  type: 'Prediction' | 'Opinion' | 'Opportunity';
+  type: 'Prediction' | 'Opinion';
   /** When the question is non-binary (e.g. "which of these will happen first?"), the drafter
    * may return 2-6 outcome labels and the contract treats it as a poll. Empty / undefined
    * keeps the default binary YES/NO behavior. */
@@ -1016,10 +1016,10 @@ function formatMarketPrecedents(precedents: MarketPrecedent[]) {
 }
 
 type DraftContext = {
-  /** Suggested market type from the classifier ("Prediction" | "Opinion" | "Opportunity"). */
-  suggestedType?: 'Prediction' | 'Opinion' | 'Opportunity';
+  /** Suggested market type from the classifier ("Prediction" | "Opinion"). */
+  suggestedType?: 'Prediction' | 'Opinion';
   /** Counts of the agent's existing active markets by type so the drafter can push diversity. */
-  mix?: { Prediction: number; Opinion: number; Opportunity: number };
+  mix?: { Prediction: number; Opinion: number };
   /** Public examples used for market shape and wording only, never settlement facts. */
   precedents?: MarketPrecedent[];
 };
@@ -1045,11 +1045,11 @@ async function draftWithGemini(trend: TrendItem, category: string, ctx: DraftCon
     thirtyDays: isoDays(30),
     ninetyDays: isoDays(90),
   };
-  const mix = ctx.mix ?? { Prediction: 0, Opinion: 0, Opportunity: 0 };
-  const totalActive = mix.Prediction + mix.Opinion + mix.Opportunity;
+  const mix = ctx.mix ?? { Prediction: 0, Opinion: 0 };
+  const totalActive = mix.Prediction + mix.Opinion;
   const underrepresented = totalActive === 0
     ? null
-    : (['Opinion', 'Opportunity', 'Prediction'] as const)
+    : (['Opinion', 'Prediction'] as const)
         .map((t) => ({ t, share: mix[t] / totalActive }))
         .sort((a, b) => a.share - b.share)[0].t;
   const breakingNewsCopyRule = trend.source.startsWith('breaking-')
@@ -1066,15 +1066,15 @@ async function draftWithGemini(trend: TrendItem, category: string, ctx: DraftCon
 
 You are the drafter stage. Create a market from this trend.
 
-Topic: "${trend.topic}"
-Context: "${trend.query}"
+News headline or topic summary: "${trend.topic}"
+News context and details: "${trend.query}"
 Original trend source URL: "${trend.url ?? '(not supplied)'}"
 Research audit and workflow:
 ${formatResearchAssessment(research)}
 
 Category: "${category}"
 Classifier suggested type: ${ctx.suggestedType ?? '(none — pick yourself)'}
-Current active-agent-market mix: Prediction ${mix.Prediction}, Opinion ${mix.Opinion}, Opportunity ${mix.Opportunity}${underrepresented ? ` — prefer ${underrepresented} unless the topic is genuinely a poor fit` : ''}
+Current active-agent-market mix: Prediction ${mix.Prediction}, Opinion ${mix.Opinion}${underrepresented ? ` — prefer ${underrepresented} unless the topic is genuinely a poor fit` : ''}
 
 Comparable Polymarket examples from its public market-data API:
 ${precedents}
@@ -1093,13 +1093,16 @@ Presto horizon analysis:
 - You may choose a different closeDate only when the original source states a more exact date.
 
 Rules for a good market:
-- Title must be a clear question under 90 characters (binary YES/NO OR a multi-option poll)
+- Title must be a clear STRAIGHTFORWARD QUESTION under 90 characters (binary YES/NO OR a multi-option poll)
+- Generate questions like "Will X happen by Y?" or "Will X exceed Y?" — NOT news headlines
+- Do NOT make the title a copy of the news headline. Use it as background context instead.
 - Lead with the tradable hook: named asset/team/person, measurable threshold, and deadline
 - Avoid vague hooks like "Will this be big?" Prefer "Will BTC close above $110k on Friday?"
 - Rules must define exactly when each outcome wins
 - Source of truth must be a concrete public http or https URL that the resolver can read
 - Source of truth should satisfy the required evidence in the research audit. If the trend
   came from search/social, rewrite it around the primary source rather than the social post.
+- Description should include the original news topic/headline as context for what sparked the market.
 ${breakingNewsCopyRule}
 ${priceRangeRule}
 
@@ -1117,11 +1120,10 @@ If the trend looks like a 24h news cycle, do NOT set a 30-day close. Pick today 
 
 Type guidance — REREAD the platform context above. Don't reflexively pick Prediction:
 - "Prediction" — externally verifiable factual outcome (price target, election result, launch date)
-- "Opinion" — community sentiment / preference (will users prefer X over Y, will a proposal be perceived as net-positive)
-- "Opportunity" — capital / builder allocation signals (will N devs join, will TVL hit X)
+- "Opinion" — community sentiment, preference, public choice, or ecosystem direction
 
-If the classifier suggested Opinion or Opportunity, take that suggestion seriously unless the
-topic obviously fits a different type. If multiple agent markets are already the same type,
+If the classifier suggested Opinion, take that suggestion seriously unless the topic
+obviously fits a different type. If multiple agent markets are already the same type,
 prefer the underrepresented type to keep variety on the platform.
 
 For most binary questions, leave "outcomeOptions" empty (defaults to YES/NO). When the
@@ -1131,12 +1133,12 @@ provide poll options.
 
 Return JSON only:
 {
-  "title": "...",
-  "description": "one sentence description",
+  "title": "straightforward question, not a news headline",
+  "description": "one sentence including the news topic/headline as context",
   "rules": "Concise resolution rules for each outcome.",
   "sourceOfTruth": "specific public source (e.g. CoinGecko, official announcement, SEC filing)",
   "closeDate": "YYYY-MM-DD",
-  "type": "Prediction|Opinion|Opportunity",
+  "type": "Prediction|Opinion",
   "outcomeOptions": ["Option A", "Option B", "Option C"]
 }`;
 
@@ -1161,6 +1163,8 @@ Return JSON only:
     ? trend.url
     : (isSafeHttpUrl(parsed.sourceOfTruth) ? parsed.sourceOfTruth : trend.url ?? parsed.sourceOfTruth);
 
+  const parsedType = parsed.type === 'Opinion' ? 'Opinion' : 'Prediction';
+
   return {
     title: cleanDraftText(parsed.title, trend),
     description: cleanDraftText(parsed.description, trend, parsed.title),
@@ -1168,7 +1172,7 @@ Return JSON only:
     sourceOfTruth,
     closeDate: normalizeDraftCloseDate(parsed.closeDate, trend, horizon),
     outcomeOptions,
-    type: trend.marketStructure === 'price-range' ? 'Prediction' : (parsed.type as GeminiDraft['type']) ?? 'Prediction',
+    type: trend.marketStructure === 'price-range' ? 'Prediction' : parsedType,
   };
 }
 
@@ -1178,22 +1182,32 @@ function fallbackTemplateFromTrend(trend: TrendItem, suggestedType?: string): Ge
   const horizon = analyzeMarketHorizon(trend);
   const isPriceRange = trend.marketStructure === 'price-range' && Boolean(trend.outcomeOptions?.length);
 
-  // Sanitize topic to safe title
-  const sanitizedTitle = trend.topic
-    .replace(/[^a-zA-Z0-9\s?]/g, '')
-    .slice(0, 85)
-    .trim();
-  const title = cleanDraftText(sanitizedTitle.endsWith('?') ? sanitizedTitle : `${sanitizedTitle}?`, trend);
+  let title: string;
+  let description: string;
+
+  if (isPriceRange) {
+    // Price range markets keep original behavior
+    title = cleanDraftText(`${trend.topic} price by ${horizon.closeDate}?`, trend);
+    description = cleanDraftText(trend.topic, trend);
+  } else {
+    // News-based trends: generate straightforward question, include headline in description
+    const sanitizedTopic = trend.topic
+      .replace(/[^a-zA-Z0-9\s]/g, '')
+      .slice(0, 60)
+      .trim();
+    title = cleanDraftText(`Will ${sanitizedTopic}?`, trend);
+    description = cleanDraftText(`News: ${trend.topic}`, trend);
+  }
 
   return {
     title,
-    description: cleanDraftText(isPriceRange ? trend.topic : `Will ${trend.topic.toLowerCase()}?`, trend),
+    description,
     rules: cleanDraftText(isPriceRange
       ? `Resolve to the single range containing the USD price at the first available source observation at or after close time. Outcomes: ${trend.outcomeOptions?.join('; ')}.`
       : 'YES wins if the event occurs by the close date. NO wins if it does not occur or remains unresolved.', trend),
     sourceOfTruth: trend.url ?? trend.source ?? 'Public sources',
     closeDate: trend.closeDate ?? horizon.closeDate,
-    type: isPriceRange ? 'Prediction' : (suggestedType as 'Prediction' | 'Opinion' | 'Opportunity') || 'Prediction',
+    type: isPriceRange ? 'Prediction' : suggestedType === 'Opinion' ? 'Opinion' : 'Prediction',
     outcomeOptions: trend.outcomeOptions,
   };
 }
@@ -1306,12 +1320,12 @@ const AGENT_PER_RUN_CAP = Math.max(1, Number(process.env.PRESTO_AGENT_PER_RUN_CA
 // pipeline more. Default 2 for safety while we're early.
 const AGENT_ACTIVE_MARKET_CAP = Math.max(0, Number(process.env.PRESTO_AGENT_ACTIVE_MARKET_CAP ?? 2));
 
-function countAgentMarketTypeMix(markets: AppMarket[]): { Prediction: number; Opinion: number; Opportunity: number } {
-  const out = { Prediction: 0, Opinion: 0, Opportunity: 0 };
+function countAgentMarketTypeMix(markets: AppMarket[]): { Prediction: number; Opinion: number } {
+  const out = { Prediction: 0, Opinion: 0 };
   for (const m of markets) {
     if (m.createdByType !== 'agent') continue;
     if (m.status !== 'Open' && m.status !== 'Closing soon') continue;
-    if (m.type === 'Prediction' || m.type === 'Opinion' || m.type === 'Opportunity') out[m.type] += 1;
+    if (m.type === 'Prediction' || m.type === 'Opinion') out[m.type] += 1;
   }
   return out;
 }
@@ -1474,7 +1488,7 @@ export async function runAgentPipeline(): Promise<PipelineResult[]> {
         createdThisRun += 1;
         // Reflect the new market in the type mix so subsequent picks (when per-run cap > 1)
         // see the updated distribution.
-        if (draft.type === 'Prediction' || draft.type === 'Opinion' || draft.type === 'Opportunity') {
+        if (draft.type === 'Prediction' || draft.type === 'Opinion') {
           typeMix[draft.type] += 1;
         }
       }
