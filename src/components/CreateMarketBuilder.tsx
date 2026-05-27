@@ -11,14 +11,13 @@ import { createMarketCategories } from '@/lib/categories';
 import { CloseDatePicker } from './CloseDatePicker';
 import { getResolveFeeUsdc } from '@/lib/resolveFee';
 
-const marketTypes: MarketType[] = ['Prediction', 'Opinion', 'Opportunity'];
+const marketTypes: MarketType[] = ['Prediction', 'Opinion'];
 const resolutionModes: ResolutionMode[] = ['Human resolver', 'Community resolver', 'Agent assisted'];
 const maxInlineImageBytes = 300_000;
 
 const typeCopy: Record<MarketType, string> = {
   Prediction: 'A future outcome with a clear source of truth.',
-  Opinion: 'Community conviction. Sentiment over fact.',
-  Opportunity: 'Where builders and capital should look.',
+  Opinion: 'Community conviction, poll choices, and public sentiment.',
 };
 
 export function CreateMarketBuilder() {
@@ -311,7 +310,7 @@ export function CreateMarketBuilder() {
         {/* Market family — inline radio row with generous spacing */}
         <div className="mt-14">
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">Market family</p>
-          <div className="mt-5 grid gap-3 sm:grid-cols-3 sm:gap-5">
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 sm:gap-5">
             {marketTypes.map((type) => {
               const isActive = selectedType === type;
               return (

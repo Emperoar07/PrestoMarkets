@@ -13,7 +13,7 @@ const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'Presto Markets',
-  description: 'Prediction, opinion, and opportunity markets on Arc.',
+  description: 'Prediction and opinion markets on Arc.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

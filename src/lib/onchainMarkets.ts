@@ -31,7 +31,7 @@ function truncateAddress(address: string) {
 
 function getMarketType(kind: number): MarketType {
   if (kind === 1) return 'Opinion';
-  if (kind === 2) return 'Opportunity';
+  if (kind === 2) return 'Opinion';
   return 'Prediction';
 }
 

@@ -14,11 +14,7 @@ const pillars = [
   },
   {
     title: 'Opinion markets',
-    copy: 'Turn sentiment, taste, and community conviction into visible market signals.',
-  },
-  {
-    title: 'Opportunity markets',
-    copy: 'Surface public Arc opportunities and let builders vote with capital.',
+    copy: 'Turn sentiment, taste, community conviction, and poll choices into visible market signals.',
   },
 ];
 
@@ -68,7 +64,7 @@ export function HomeExperience() {
         <section className="mx-auto max-w-[1400px] px-4 py-20 md:px-7">
           <div className="mb-2 text-[clamp(24px,3.5vw,38px)] font-extrabold tracking-tight text-white">Prediction markets with the Presto feel.</div>
 
-          <div className="mt-10 grid gap-4 md:grid-cols-3">
+          <div className="mt-10 grid gap-4 md:grid-cols-2">
             {pillars.map((pillar) => (
               <div key={pillar.title} className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6 transition-transform hover:-translate-y-1">
                 <h2 className="text-[17px] font-extrabold tracking-tight text-[#f1f5f9]">{pillar.title}</h2>

@@ -28,7 +28,7 @@ function MarketCardComponent({ market }: { market: MarketCardMarket }) {
     <Link
       href={`/markets/${market.id}`}
       onMouseEnter={() => prefetchMarketDetail(market.id, refreshAccountPortfolio)}
-      className="group flex h-[236px] min-w-0 flex-col overflow-hidden rounded-[16px] border border-white/[0.06] bg-[#131a27] p-4 transition-all hover:border-white/[0.1] hover:bg-[#161e2e] sm:p-5"
+      className="group flex h-[236px] min-w-0 flex-col overflow-hidden rounded-[16px] border border-white/[0.06] bg-[#131a27] p-4 transition-all hover:border-white/[0.1] hover:bg-[#161e2e]"
     >
       <div className="flex min-h-[40px] items-start gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#0d1a24]">
@@ -54,7 +54,7 @@ function MarketCardComponent({ market }: { market: MarketCardMarket }) {
 
       {isPollMarket ? (
         <div
-          className="mt-3 min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain pr-1 [scrollbar-color:#283449_transparent] [scrollbar-width:thin]"
+          className="scrollbar-hide mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-1"
           aria-label="Market outcomes"
         >
           {market.pollOptions?.map((option, index) => {
@@ -62,10 +62,10 @@ function MarketCardComponent({ market }: { market: MarketCardMarket }) {
             return (
               <div
                 key={`${option}-${index}`}
-                className="flex items-center justify-between rounded-[8px] border px-3 py-1.5"
+                className="flex min-h-[36px] items-center justify-between rounded-[8px] border px-2.5 py-1.5"
                 style={{ borderColor: `${color}1F`, backgroundColor: `${color}0A` }}
               >
-                <span className="flex min-w-0 items-center gap-2 text-[12px] font-bold text-[#cbd5e1]">
+                <span className="flex min-w-0 items-center gap-2 text-[12px] font-bold leading-tight text-[#cbd5e1]">
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                   <span className="truncate">{option}</span>
                 </span>
@@ -114,10 +114,10 @@ function MarketCardComponent({ market }: { market: MarketCardMarket }) {
         </div>
       ) : null}
 
-      <div className="mt-3 flex items-center justify-between border-t border-white/[0.04] pt-3">
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/[0.04] pt-3">
         <span className="text-xs text-[#4a5568]">{market.volume} Vol.</span>
         {isPollMarket ? (
-          <span className="text-[10px] font-bold uppercase text-[#64748b]">
+          <span className="shrink-0 rounded-[8px] bg-[#0d1520] px-2 py-1 text-[10px] font-black uppercase text-[#64748b]">
             {isLive ? (market.closeDate ? <Countdown closeDate={market.closeDate} /> : 'Live') : isResolved ? 'Resolved' : market.closeLabel}
           </span>
         ) : null}

@@ -1,4 +1,4 @@
-export type MarketType = 'Prediction' | 'Opinion' | 'Opportunity';
+export type MarketType = 'Prediction' | 'Opinion';
 export type MarketStatus = 'Open' | 'Closing soon' | 'Closed' | 'Resolved' | 'Canceled' | 'Draft';
 export type ResolutionMode = 'Human resolver' | 'Community resolver' | 'Agent assisted';
 export type MarketCreatedByType = 'user' | 'admin' | 'agent';
@@ -120,10 +120,10 @@ export const markets: Market[] = [
   },
   {
     id: 'arc-consumer-app-gap',
-    type: 'Opportunity',
-    title: 'Is consumer payments the biggest Arc opportunity this quarter?',
-    description: 'A public opportunity market for surfacing where builders should focus next.',
-    category: 'Opportunities',
+    type: 'Opinion',
+    title: 'Should consumer payments be Arc builders top focus this quarter?',
+    description: 'A public opinion market for surfacing where builders should focus next.',
+    category: 'Ecosystem',
     volume: '$11.9K',
     liquidity: '$7.5K',
     closeLabel: '14 days',
@@ -133,7 +133,7 @@ export const markets: Market[] = [
     resolver: 'Presto council',
     resolutionMode: 'Agent assisted',
     sourceOfTruth: 'Public Arc ecosystem submissions, builder activity, and confirmed launch announcements.',
-    rules: 'YES wins if consumer payments receives the most verified opportunity submissions and builder commitments by close.',
+    rules: 'YES wins if consumer payments receives the most verified ecosystem submissions and builder commitments by close.',
     createdBy: '0x2bc8...a714',
     feeMode: 'USDC funding only for V1.',
     outcomes: [

@@ -53,6 +53,12 @@ function assertAgentScores(agent: AgentCreateMarketRequest['agent']) {
   }
 }
 
+function normalizeMarketType(value: unknown): MarketType {
+  const raw = typeof value === 'string' ? value.toLowerCase() : '';
+  const oldBuilderSignalType = ['oppor', 'tunity'].join('');
+  return raw === 'opinion' || raw === oldBuilderSignalType ? 'Opinion' : 'Prediction';
+}
+
 export async function POST(req: NextRequest) {
   const apiKey = req.headers.get('x-api-key');
   const validKey = process.env.PRESTO_AGENT_API_KEY;
@@ -120,7 +126,7 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await agentCreateMarket({
-      type: body.type ?? 'Prediction',
+      type: normalizeMarketType(body.type),
       // sanitizeFeedText strips prompt-injection sentinels from any caller-supplied string
       // that lands in onchain metadata and feeds into later LLM prompts (resolver evidence,
       // future pipeline runs that re-ingest existing markets).

@@ -46,7 +46,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const [showRulesSchema, setShowRulesSchema] = useState(false);
   const [payWith, setPayWith] = useState<StableSymbol>('USDC');
   const isCircleWallet = connectedWallet?.mode === 'circle-user-controlled';
-  const unit = payWith === 'EURC' ? '€' : '$';
+  const unit = payWith === 'EURC' ? 'EURC ' : '$';
 
   useEffect(() => {
     if (!connectedWallet?.address) return;
@@ -429,8 +429,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
           </section>
 
           {/* ── Right aside — trade panel ── */}
-          <aside id="trade-panel" className="h-fit scroll-mt-28 lg:sticky lg:top-24">
-            <div className="rounded-[18px] border border-white/[0.06] bg-[#141e30] p-5">
+          <aside id="trade-panel" className="min-w-0 h-fit scroll-mt-28 lg:sticky lg:top-24">
+            <div className="min-w-0 overflow-hidden rounded-[18px] border border-white/[0.06] bg-[#141e30] p-4 sm:p-5">
 
               <div className="mb-4 grid grid-cols-2 rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-1">
                 {([
@@ -505,7 +505,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               </div>
 
               ) : (
-                <div className={`grid grid-cols-1 gap-2 ${tradeMode === 'liquidity' ? 'opacity-70' : ''}`}>
+                <div className={`scrollbar-hide grid max-h-[244px] grid-cols-1 gap-2 overflow-y-auto pr-1 ${tradeMode === 'liquidity' ? 'opacity-70' : ''}`}>
                   {market.outcomes.map((outcome, index) => {
                     const active = selectedOutcome === outcome.label;
                     const color = getOutcomeColor(index);
@@ -520,7 +520,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                           backgroundColor: `${color}18`,
                           boxShadow: `0 0 16px -4px ${color}4D`,
                         } : undefined}
-                        className={`rounded-[12px] border px-4 py-4 text-left transition-all ${
+                        className={`min-w-0 rounded-[12px] border px-3 py-3 text-left transition-all ${
                           active ? '' : 'border-white/[0.06] bg-[#0f172a] hover:border-white/10'
                         }`}
                       >
@@ -623,20 +623,20 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   <span className="font-black text-white">
                     {tradeMode === 'liquidity'
                       ? isBinaryMarket ? 'Balanced YES + NO' : 'Balanced across all outcomes'
-                      : isLimitOrder ? `${limitPrice || '0'}c limit` : `${activeOutcome.odds}c per share`}
+                      : isLimitOrder ? `${limitPrice || '0'}\u00a2 limit` : `${activeOutcome.odds}\u00a2 per share`}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center justify-between gap-3 text-sm">
                   <span className="text-muted">Total shares</span>
-                  <span className="font-black text-white">
+                  <span className="min-w-0 break-words text-right font-black text-white [overflow-wrap:anywhere]">
                     {tradeMode === 'liquidity'
                       ? liquiditySideAmount > 0 ? `${liquiditySideAmount.toFixed(2)} each x ${market.outcomes.length} outcomes` : '—'
                       : estimatedShares > 0 ? estimatedShares.toFixed(2) : '—'}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center justify-between gap-3 text-sm">
                   <span className="text-muted">{tradeMode === 'liquidity' ? 'Position' : 'Settlement preview'}</span>
-                  <span className={`font-black ${potentialReturn > amountValue ? 'text-mint' : 'text-white'}`}>
+                  <span className={`min-w-0 break-words text-right font-black [overflow-wrap:anywhere] ${potentialReturn > amountValue ? 'text-mint' : 'text-white'}`}>
                     {tradeMode === 'liquidity'
                       ? 'Neutral depth'
                       : potentialReturn > 0 ? `${unit}${potentialReturn.toFixed(2)}` : '—'}
@@ -670,7 +670,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 ))}
                 disabled={!canTrade || isSubmitting || amountValue <= 0 || isLimitOrder}
                 style={tradeMode === 'buy' ? { backgroundColor: activeOutcomeColor } : undefined}
-                className={`mt-5 w-full rounded-[12px] py-4 font-black tracking-wide text-ink transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 ${
+                className={`mt-5 w-full min-w-0 rounded-[12px] px-3 py-4 font-black tracking-wide text-ink transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 ${
                   tradeMode === 'liquidity' ? 'bg-cyan' : ''
                 }`}
               >

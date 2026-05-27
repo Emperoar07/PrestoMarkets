@@ -20,7 +20,6 @@ import type { CreateLiveMarketInput } from './liveActions';
 
 function getMarketKind(type: string) {
   if (type === 'Opinion') return 1;
-  if (type === 'Opportunity') return 2;
   return 0;
 }
 
