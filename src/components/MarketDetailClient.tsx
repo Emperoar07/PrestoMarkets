@@ -316,12 +316,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             <div className="mt-6 min-w-0 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
               <h2 className="text-base font-black text-white">Resolution rules</h2>
               <p className="mt-2 break-words text-sm leading-7 text-muted [overflow-wrap:anywhere]">{market.rules}</p>
-              <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-1">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-muted">Resolver</p>
-                  <p className="mt-1.5 break-all text-sm leading-6 text-white">{market.resolverAddress || market.resolver}</p>
-                  <p className="mt-1 text-xs text-cyan">{market.resolutionMode}</p>
-                </div>
+              <div className="mt-4 border-t border-white/[0.06] pt-4">
+                <p className="text-xs text-cyan">{market.resolutionMode}</p>
               </div>
             </div>
 
