@@ -1,8 +1,18 @@
 import dynamic from 'next/dynamic';
 import { Suspense } from 'react';
+import { SkeletonCard } from '@/components/SkeletonCard';
+
+const LoadingFallback = () => (
+  <div className="mx-auto max-w-[1100px] px-4 pb-16 pt-20">
+    <div className="grid gap-6 md:grid-cols-2">
+      <SkeletonCard />
+      <SkeletonCard />
+    </div>
+  </div>
+);
 
 const MarketDetailClient = dynamic(() => import('@/components/MarketDetailClient').then(mod => ({ default: mod.MarketDetailClient })), {
-  loading: () => <div className="mx-auto max-w-[1100px] px-4 pb-16 pt-20 text-center text-white">Loading market...</div>,
+  loading: LoadingFallback,
   ssr: true,
 });
 
@@ -10,7 +20,7 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
   const { id } = await params;
 
   return (
-    <Suspense fallback={<div className="mx-auto max-w-[1100px] px-4 pb-16 pt-20 text-center text-white">Loading market...</div>}>
+    <Suspense fallback={<LoadingFallback />}>
       <MarketDetailClient marketId={id} />
     </Suspense>
   );
