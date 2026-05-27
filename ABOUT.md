@@ -23,7 +23,7 @@ The current testnet implementation includes:
 - A five-phase agent orchestration system that perceives trends, analyzes them against platform type guidance, plans market drafts, validates safety, executes onchain, and verifies settlement.
 - A durable request queue with checkpoint persistence so long-running operations can pause and resume without losing state.
 - A provider pool with circuit breaker logic so a single LLM provider outage doesn't silence the agent.
-- Three market types: prediction markets (external resolution), opinion markets (community vote), and opportunity markets (ecosystem signal).
+- Two market types: prediction markets (external resolution) and opinion markets (community vote).
 - Autonomous agent execution every 10 minutes via Vercel cron, processing pending market creation requests.
 - Comprehensive observability: health checks, queue metrics, provider status, failure recovery procedures.
 

@@ -8,7 +8,7 @@ These are the things the next chat should not rediscover or change casually.
 
 * Presto Markets is a separate product and repo. Do not merge it back into Presto DEX.
 * Keep the Presto brand family: dark navy, cyan, rounded cards, strong typography, and clean plain copy. No em-dashes or rhetorical hyphens in documentation.
-* The product is public by default. Opportunity markets do not need privacy on Arc.
+* The product is public by default. All markets resolve with transparent evidence.
 * Use USDC first. Do not introduce USYC yield until the accounting and redemption math is separately reviewed.
 * The autonomous agent runs on Arc Testnet with a five-phase orchestration system. It is live and running.
 * Do not replace market contracts with Arc App Kit. App Kit is a rail layer for funding, sending, bridging, wallets, and paymaster flows.
@@ -17,7 +17,7 @@ These are the things the next chat should not rediscover or change casually.
 * Keep V1 simple. We are not planning mainnet yet. Focus on testnet stability and scale.
 * Agent autonomous resolution is implemented and running. Markets settled by agent require declared-source evidence to meet confidence threshold.
 * Do not add AMM pricing until fixed share markets work safely on testnet.
-* Market creation supports prediction, opinion, and opportunity markets. Agent creates prediction markets autonomously daily.
+* Market creation supports prediction and opinion markets. Agent creates prediction markets autonomously daily.
 * Documentation should be human tone, precise, straightforward. Avoid hype and unnecessary hyphens.
 * GitHub repo is `https://github.com/Emperoar07/PrestoMarkets`.
 * Local repo is `C:\Users\bolaj\presto-markets`.
@@ -42,7 +42,7 @@ C:\Users\bolaj\presto-markets
 The app is a Next.js 16 project with the Presto dark navy and cyan brand style. Current features:
 
 * Landing page
-* Markets list page with filtering (prediction, opinion, opportunity)
+* Markets list page with filtering (prediction, opinion)
 * Market create page (manual creation)
 * Market detail page with live trading
 * Portfolio and My Shares page with cost basis tracking
@@ -68,21 +68,18 @@ TypeScript compilation passes with zero errors.
 
 ## Product Direction
 
-Presto Markets should combine three product ideas:
+Presto Markets combines two product ideas:
 
 * Prediction markets inspired by Polymarket
 * Opinion markets inspired by Opinion Labs
-* Opportunity markets inspired by builder opportunity markets
 
 The phrase is:
 
 ```text
-Your opinions. Your opportunities. Your predictions.
+Your opinions. Your predictions.
 ```
 
-Arc is a strong fit because Presto Markets can use USDC first, stablecoin gas, fast finality, public settlement records, and later multi currency settlement.
-
-Opportunity markets should be public on Arc. They do not need private execution.
+Arc is a strong fit because Presto Markets can use USDC first, stablecoin gas, fast finality, public settlement records, and later multi-currency settlement.
 
 ## Arc MCP
 
@@ -175,7 +172,7 @@ Phase 2 is the product workflow phase.
 
 Already started:
 
-* Market kind support for prediction, opinion, and opportunity markets
+* Market kind support for prediction and opinion markets
 * Public rules fields
 * Source of truth fields
 * UI copy based on Arc prediction market positioning
@@ -183,7 +180,7 @@ Already started:
 * Live Arc factory reads for deployed market discovery
 * Live Arc factory writes for market creation
 * Live market transactions for USDC approval, buy, resolve, claim, and refund flows
-* Market filters for prediction, opinion, opportunity, open, closing soon, resolved, canceled, draft, and onchain markets
+* Market filters for prediction, opinion, open, closing soon, resolved, canceled, draft, and onchain markets
 * Circle User-Controlled Wallet endpoint scaffolding for user sessions, email/social device tokens, initialization challenges, and wallet listing
 * Branded Circle wallet onboarding panel with official Circle email OTP, Google, and PIN flows plus external wallet fallback
 * Google social login hook through Circle Web SDK with the OAuth Web Client ID configured locally and in Vercel envs
@@ -247,7 +244,7 @@ We are not planning mainnet deployment yet. The focus is testnet stability and l
 The agent publishes MCP tools and resources at `/api/mcp/agent`. External agents can call Presto agent tools:
 
 * fetch_trends: fetch live trend signals
-* classify_trend: classify as prediction/opinion/opportunity
+* classify_trend: classify as prediction or opinion
 * draft_market: draft market parameters with LLM
 * validate_market: safety checks
 * create_market: submit onchain
@@ -283,12 +280,6 @@ Opinion markets:
 * Example: Which product direction should a community back?
 * Needs clear voting or settlement rule
 
-Opportunity markets:
-
-* Public builder or ecosystem opportunity discovery
-* Example: Which Arc app category should builders focus on next?
-* Should be public and easy to create
-
 ## Circle Product Choices
 
 Current:
@@ -319,7 +310,6 @@ Current approach:
 * Manual resolver fallback for edge cases.
 * Agent-assisted resolution requires declared-source evidence at confidence threshold.
 * No USYC yield until math is reviewed separately.
-* No private opportunity markets.
 * No complex AMM until fixed share markets prove safe at scale.
 * Focus on testnet stability, not mainnet preparation.
 

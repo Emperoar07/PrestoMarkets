@@ -39,7 +39,7 @@ Queue → Graph Orchestrator → Provider Pool → Pipeline Stages → Arc Testn
 
 1. **Perceive.** Fetch trends from Cointelegraph, CoinDesk, ESPN, X, CoinGecko, and other sources. Cluster related news by fuzzy title matching.
 
-2. **Analyze.** Classify each trend as Prediction, Opinion, or Opportunity market type. Score cross-outlet momentum using Serper API.
+2. **Analyze.** Classify each trend as Prediction or Opinion market type. Score cross-outlet momentum using Serper API.
 
 3. **Plan.** Draft market structure with LLM: outcome categories, resolution criteria, close date. LLM sees the trend, platform context, and market type guidance.
 

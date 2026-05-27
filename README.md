@@ -6,7 +6,7 @@ The idea is simple. Prediction markets work best when the rails feel native, whe
 
 ## What you can do
 
-**Create markets in three flavors.** Prediction markets resolve from an external source of truth. Opinion markets resolve from community vote. Opportunity markets resolve from ecosystem signal like builder activity or capital flow. Each one accepts a close date, up to four categories, a description, an image, optional multi-outcome poll options, and a resolver of your choosing.
+**Create markets in two flavors.** Prediction markets resolve from an external source of truth. Opinion markets resolve from community vote. Each one accepts a close date, up to four categories, a description, an image, optional multi-outcome poll options, and a resolver of your choosing.
 
 **Trade with stablecoins.** Buy YES or NO shares with USDC. EURC payments route through the Circle App Kit swap so users holding euros never need to think about preswapping. Market orders execute against the live share contract. Limit orders are coming soon.
 
