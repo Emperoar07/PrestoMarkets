@@ -1,11 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import Link from 'next/link';
 import { MarketCard } from './MarketCard';
 import { MarketSignalChart } from './MarketSignalChart';
 import { SkeletonCard } from './SkeletonCard';
-import { NewsCard } from './NewsCard';
 import { useAppState } from '@/lib/appState';
 import type { AppMarket } from '@/lib/appState';
 
@@ -40,7 +38,14 @@ function sortMarkets(list: AppMarket[], sort: SortKey): AppMarket[] {
         return at - bt;
       });
     }
-    return group.reverse();
+    return group.reverse().sort((a, b) => {
+      const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (at && bt) return bt - at;
+      if (at) return -1;
+      if (bt) return 1;
+      return 0;
+    });
   };
 
   return [...sortGroup(open), ...sortGroup(closed)];
@@ -132,66 +137,6 @@ function getCatFromUrl() {
   return new URLSearchParams(window.location.search).get('cat') ?? 'Trending';
 }
 
-// ─── Breaking news panel ──────────────────────────────────────────────────────
-// Pulls real crypto news from /api/news/breaking, which itself fetches Cointelegraph,
-// Decrypt, The Block, CoinDesk, and TechCrunch Crypto RSS, ranks them, and caches the
-// result for 24h. The agent's market drafts and the news feed are separate concerns.
-type NewsItem = { title: string; url: string; source: string; publishedAt: string };
-
-function BreakingNewsPanel() {
-  const [items, setItems] = useState<NewsItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/news/breaking')
-      .then((r) => r.json())
-      .then((data: { items?: NewsItem[] }) => { if (!cancelled) setItems(data.items ?? []); })
-      .catch(() => { if (!cancelled) setItems([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
-
-  const visible = items.slice(0, 5);
-  const remaining = Math.max(0, items.length - visible.length);
-
-  return (
-    <div className="rounded-[16px] border border-white/[0.06] bg-[#0d1520] p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-[15px] font-black text-white">Breaking news</h3>
-      </div>
-      {loading ? (
-        <p className="text-xs text-[#4a5568]">Loading…</p>
-      ) : visible.length === 0 ? (
-        <p className="text-xs text-[#4a5568]">News feed unavailable right now.</p>
-      ) : (
-        <ol className="space-y-4">
-          {visible.map((item, i) => (
-            <li key={item.url}>
-              <a href={item.url} target="_blank" rel="noreferrer" className="flex items-start gap-3 group">
-                <span className="mt-0.5 w-4 shrink-0 text-[11px] font-black text-[#334155]">{i + 1}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="line-clamp-2 text-[13px] font-bold leading-snug text-[#cbd5e1] group-hover:text-white transition-colors">
-                    {item.title}
-                  </p>
-                  <p className="mt-1 text-[10.5px] font-bold uppercase tracking-widest text-[#4a5568]">
-                    {item.source}
-                  </p>
-                </div>
-              </a>
-            </li>
-          ))}
-        </ol>
-      )}
-      {remaining > 0 ? (
-        <Link href="/news" className="mt-5 block border-t border-white/[0.04] pt-4 text-[12px] font-bold text-cyan/80 transition-colors hover:text-cyan">
-          See {remaining} more
-        </Link>
-      ) : null}
-    </div>
-  );
-}
-
 // ─── Hot topics panel ─────────────────────────────────────────────────────────
 function HotTopicsPanel({ markets, topics: derivedTopics }: { markets: AppMarket[]; topics: string[] }) {
   const topics = derivedTopics.slice(0, 5).map((topic) => {
@@ -241,21 +186,6 @@ export function MarketsExplorer() {
 
   const dynamicTopics = useMemo(() => deriveTopics(markets), [markets]);
 
-  const breakingMarkets = useMemo(() => {
-    return markets
-      .filter(
-        (m) =>
-          m.createdByType === 'agent' &&
-          m.status !== 'Resolved' &&
-          m.status !== 'Canceled',
-      )
-      .sort((a, b) => {
-        const aClose = a.closeDate ? new Date(a.closeDate).getTime() : 0;
-        const bClose = b.closeDate ? new Date(b.closeDate).getTime() : 0;
-        return aClose - bClose;
-      })
-      .slice(0, 4);
-  }, [markets]);
 
   // Reset pill selection if the derived topic no longer exists in updated data
   useEffect(() => {
@@ -341,43 +271,11 @@ export function MarketsExplorer() {
   return (
     <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-[185px] md:pt-40 md:px-7">
 
-      {/* Side panels: breaking + hot topics. The big featured-market hero was removed in
+      {/* Side panel: hot topics. The big featured-market hero was removed in
           favor of letting the market grid speak for itself. */}
       {showSidePanels ? (
-        <div className="mb-8 grid gap-4 md:grid-cols-2">
-          <BreakingNewsPanel />
+        <div className="mb-8">
           <HotTopicsPanel markets={markets} topics={dynamicTopics} />
-        </div>
-      ) : null}
-
-      {/* Breaking news markets section */}
-      {breakingMarkets.length > 0 ? (
-        <div className="mb-12">
-          <div className="mb-6 flex items-center justify-between">
-            <h2 className="text-2xl font-bold text-white">⚡ Breaking News Markets</h2>
-            <a href="/breaking-news" className="text-cyan-400 hover:text-cyan-300">
-              View all →
-            </a>
-          </div>
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {breakingMarkets.map((market) => {
-              const yesOdds = market.outcomes.find((o) => o.label.toUpperCase() === 'YES');
-              return (
-                <NewsCard
-                  key={market.id}
-                  id={market.id}
-                  title={market.title}
-                  imageURI={market.imageURI}
-                  yesPercentage={yesOdds?.odds || 50}
-                  noPercentage={100 - (yesOdds?.odds || 50)}
-                  closeDate={market.closeDate || new Date().toISOString()}
-                  volume={fmtVol(parseVolume(market.volume))}
-                  category={market.category}
-                  type={market.type}
-                />
-              );
-            })}
-          </div>
         </div>
       ) : null}
 
