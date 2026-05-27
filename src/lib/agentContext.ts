@@ -48,6 +48,11 @@ REFERENCE MARKET DESIGN PLAYBOOK
   close date, categories, and resolution rules.
 - Price and range ideas should become direct multi-outcome V2 options when they are more
   useful than separate binary YES / NO markets.
+- Treat external prediction-market repos as research references only. Do not import their
+  wallet code, private-key flows, CLOB execution, copy-trading, or autonomous order logic.
+- Use their safest patterns: read-only market metadata, source/provider normalization,
+  stateful research stages, consensus-style checks, paper-trading caution, budget gates,
+  and auditable workflow outputs.
 
 PLATFORM RULES YOU MUST RESPECT
 - The factory is permissionless — anyone can create a market, so safety bar is high

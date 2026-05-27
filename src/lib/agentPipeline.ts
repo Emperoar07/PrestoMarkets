@@ -15,6 +15,7 @@ import { fetchOnchainMarkets } from './onchainMarkets';
 import { sanitizeFeedText } from './feedSanitizer';
 import { assertPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
 import { logger } from './logger';
+import { assessTrendResearchQuality, formatResearchAssessment } from './agentResearch';
 import type { CreateLiveMarketInput } from './liveActions';
 import type { AgentMarketMetadata } from './marketMetadata';
 import type { AppMarket } from './appState';
@@ -631,6 +632,7 @@ type GroqClassification = {
 };
 
 async function classifyTrend(trend: TrendItem): Promise<GroqClassification> {
+  const research = assessTrendResearchQuality(trend);
   const prompt = `${AGENT_PLATFORM_CONTEXT}
 
 ---
@@ -641,11 +643,16 @@ Topic: "${trend.topic}"
 Context: "${trend.query}"
 Source: "${trend.source}"
 
+Research audit:
+${formatResearchAssessment(research, 4)}
+
 A good market topic:
 - Has a clear binary outcome (YES/NO) OR a small set of discrete outcomes (poll-style)
 - Is resolvable within hours to 90 days from a verifiable public source
 - Has measurable stakes (price level, regulatory decision, launch, election, sports result)
 - Is NOT defamatory, hate speech, or about personal harm
+- Has at least a thin path to public evidence. Social/search momentum alone is discovery,
+  not settlement evidence.
 
 Return JSON only:
 {
@@ -669,7 +676,10 @@ suggestedMarketType — pick based on the topic nature:
   will an ecosystem attract this many users)
 DO NOT default to Prediction. If the topic is really about how people FEEL about something
 rather than what will HAPPEN, pick Opinion. If it's about future capital/builder flow,
-pick Opportunity.`;
+pick Opportunity.
+
+If the research audit is weak, mark worthy=false unless the context clearly provides a
+better public settlement source the drafter can use.`;
 
   const result = await callLlmJson({ task: 'safety', prompt, maxTokens: 320, temperature: 0.3 });
   const parsed = extractJsonObject(result.text) as Partial<GroqClassification> & { categories?: unknown };
@@ -1021,6 +1031,7 @@ async function draftWithGemini(trend: TrendItem, category: string, ctx: DraftCon
   // is allocated as 0, returning 429 'limit: 0' indefinitely.
   const now = new Date();
   const horizon = analyzeMarketHorizon(trend);
+  const research = assessTrendResearchQuality(trend);
   const isoDays = (d: number) => isoDateAfter(d, now);
   const isoHours = (h: number) => isoHoursAfter(h, now);
   // Today + tomorrow + future anchors so the model can pick a tight close for breaking
@@ -1058,6 +1069,9 @@ You are the drafter stage. Create a market from this trend.
 Topic: "${trend.topic}"
 Context: "${trend.query}"
 Original trend source URL: "${trend.url ?? '(not supplied)'}"
+Research audit and workflow:
+${formatResearchAssessment(research)}
+
 Category: "${category}"
 Classifier suggested type: ${ctx.suggestedType ?? '(none — pick yourself)'}
 Current active-agent-market mix: Prediction ${mix.Prediction}, Opinion ${mix.Opinion}, Opportunity ${mix.Opportunity}${underrepresented ? ` — prefer ${underrepresented} unless the topic is genuinely a poor fit` : ''}
@@ -1084,6 +1098,8 @@ Rules for a good market:
 - Avoid vague hooks like "Will this be big?" Prefer "Will BTC close above $110k on Friday?"
 - Rules must define exactly when each outcome wins
 - Source of truth must be a concrete public http or https URL that the resolver can read
+- Source of truth should satisfy the required evidence in the research audit. If the trend
+  came from search/social, rewrite it around the primary source rather than the social post.
 ${breakingNewsCopyRule}
 ${priceRangeRule}
 
@@ -1190,7 +1206,8 @@ type SafetyResult = {
   reason: string;
 };
 
-async function safetyCheckWithHaiku(draft: GeminiDraft): Promise<SafetyResult> {
+async function safetyCheckWithHaiku(draft: GeminiDraft, trend?: TrendItem): Promise<SafetyResult> {
+  const research = trend ? assessTrendResearchQuality(trend) : null;
   const prompt = `You are a safety reviewer for a prediction market platform. Evaluate this market draft.
 
 Title: "${draft.title}"
@@ -1198,12 +1215,14 @@ Rules: "${draft.rules}"
 Source of truth: "${draft.sourceOfTruth}"
 Close date: "${draft.closeDate}"
 Outcomes: "${draft.outcomeOptions?.join(' | ') ?? 'YES | NO'}"
+${research ? `\nResearch audit:\n${formatResearchAssessment(research, 4)}\n` : ''}
 
 Reject if ANY of:
 - Outcome is unverifiable or depends on private information
 - Title is ambiguous (multiple valid interpretations)
 - Rules do not clearly define when each listed outcome wins
 - Source of truth is vague ("social media", "general news")
+- Source of truth does not meet the research audit's required evidence for this topic
 - Close date is in the past or more than 180 days away
 - Content is defamatory, harmful, or targets a private individual
 - Market is about illegal activity
@@ -1236,6 +1255,7 @@ async function createOnchain(
   const agentConfidence = String(Math.round(safety.confidence * 100)) + '%';
   const imageURI = await fetchTrendImageURI(trend);
   const horizon = analyzeMarketHorizon(trend);
+  const research = assessTrendResearchQuality(trend);
   const input: MarketDraft = {
     type: draft.type,
     title: draft.title,
@@ -1257,7 +1277,7 @@ async function createOnchain(
         ? 'grok-x-live+groq-llama3+gemini-flash+claude-haiku'
         : 'groq-llama3+gemini-flash+claude-haiku',
       agentConfidence,
-      agentReason: `${classification.reason} | Horizon: ${horizon.reason} | Safety: ${safety.reason}`,
+      agentReason: `${classification.reason} | Research: ${research.sourceAudit} | Horizon: ${horizon.reason} | Safety: ${safety.reason}`,
       trendSource: trend.source,
       trendUrl: trend.url,
       momentumScore: Math.round(classification.momentumScore * 100), // stored as 0-100 to match trends route
@@ -1305,6 +1325,7 @@ function countActiveAgentMarkets(markets: AppMarket[]): number {
 // Minimum momentum the classifier must return for a trend to even reach the drafter.
 // Anything weaker is filtered out before we spend draft + safety budget.
 const MIN_MOMENTUM = 0.6;
+const MIN_RESEARCH_SCORE = 50;
 // Composite signal threshold for actually creating onchain. Even if a trend passes
 // the classifier and safety, we only create when it's a strong signal worth a market.
 // composite = momentum * safety.confidence
@@ -1347,6 +1368,11 @@ export async function runAgentPipeline(): Promise<PipelineResult[]> {
   const scored: Scored[] = [];
   for (const trend of trends) {
     try {
+      const research = assessTrendResearchQuality(trend);
+      if (research.score < MIN_RESEARCH_SCORE) {
+        results.push({ ok: false, topic: trend.topic, stage: 'research', reason: research.sourceAudit });
+        continue;
+      }
       const classification = await classifyTrend(trend);
       if (!classification.worthy || classification.momentumScore < MIN_MOMENTUM) {
         results.push({ ok: false, topic: trend.topic, stage: 'classify', reason: classification.reason });
@@ -1417,7 +1443,7 @@ export async function runAgentPipeline(): Promise<PipelineResult[]> {
         continue;
       }
 
-      const safety = await safetyCheckWithHaiku(draft);
+      const safety = await safetyCheckWithHaiku(draft, trend);
       if (!safety.pass || safety.confidence < CONFIDENCE_THRESHOLD) {
         results.push({ ok: false, topic: trend.topic, stage: 'safety', reason: safety.reason });
         continue;
