@@ -15,6 +15,12 @@ export type TrendResearchAssessment = {
   referenceLessons: string[];
 };
 
+export type ResearchDecision = {
+  action: 'Proceed' | 'Refine' | 'Pivot';
+  oversight: 'full-auto' | 'gate-only' | 'skip';
+  reason: string;
+};
+
 const REFERENCE_REPO_LESSONS = [
   'LangGraph: keep research, judgment, and execution as separate stateful stages with clear handoff data.',
   'Polymarket Agents: use RAG, news, web search, and market metadata as read-only context before drafting.',
@@ -25,7 +31,16 @@ const REFERENCE_REPO_LESSONS = [
   'Dr. Manhattan: use exchange-agnostic market models for inspiration, but keep authenticated trading adapters isolated.',
   'OctoBot: default to paper/simulated strategy reasoning before any real wallet or automated execution path.',
   'Polymarket CLOB clients: read-only market data is safe context; private-key trading code is out of scope for Presto market creation.',
+  'Agent Switchboard: treat every external tool as a registry entry with category, access method, auth surface, and risk tier before wiring it in.',
+  'AutoResearchClaw: use Proceed, Refine, or Pivot decisions so weak evidence becomes a retry or skip instead of a low-quality market.',
+  'AutoResearchClaw: use targeted gate-only oversight at high-leverage moments instead of asking for step-by-step human approval.',
 ];
+
+const TOOL_POLICY =
+  'Tool policy: research, search, RAG, and market-metadata tools are read-only context; browser or computer-use tools require sandboxing and timeouts; wallet, payment, trading, and x402 tools require explicit spending policy and manual configuration; unknown auth metadata is treated as risky until verified.';
+
+const DEBATE_ROLES =
+  'Research debate roles: Pragmatist checks tradability and user demand; Skeptic checks ambiguity, manipulation, and weak sources; Methodologist checks close date, metric, and settlement evidence.';
 
 function hostOf(value?: string) {
   if (!value) return '';
@@ -93,11 +108,47 @@ export function assessTrendResearchQuality(trend: TrendLike): TrendResearchAsses
   };
 }
 
+export function getResearchDecision(assessment: TrendResearchAssessment): ResearchDecision {
+  if (assessment.score >= 85) {
+    return {
+      action: 'Proceed',
+      oversight: 'full-auto',
+      reason: 'Source quality is strong enough for autonomous drafting if the market rules stay precise.',
+    };
+  }
+
+  if (assessment.score >= 65) {
+    return {
+      action: 'Proceed',
+      oversight: 'gate-only',
+      reason: 'Source quality is usable, but the drafter must preserve the required evidence and exact settlement metric.',
+    };
+  }
+
+  if (assessment.score >= 50) {
+    return {
+      action: 'Refine',
+      oversight: 'gate-only',
+      reason: 'Evidence is thin, so convert discovery signal into a stronger primary source before deployment.',
+    };
+  }
+
+  return {
+    action: 'Pivot',
+    oversight: 'skip',
+    reason: 'Evidence is too weak for an onchain market; skip this candidate unless a concrete source appears.',
+  };
+}
+
 export function formatResearchAssessment(assessment: TrendResearchAssessment, lessonLimit = 5) {
+  const decision = getResearchDecision(assessment);
   return [
     assessment.sourceAudit,
+    `Decision policy: ${decision.action} with ${decision.oversight} oversight. ${decision.reason}`,
     `Required evidence: ${assessment.requiredEvidence}`,
     `Research plan: ${assessment.researchPlan}`,
+    TOOL_POLICY,
+    DEBATE_ROLES,
     'Reference repo lessons:',
     ...assessment.referenceLessons.slice(0, lessonLimit).map((lesson) => `- ${lesson}`),
   ].join('\n');

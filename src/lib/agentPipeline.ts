@@ -15,7 +15,7 @@ import { fetchOnchainMarkets } from './onchainMarkets';
 import { sanitizeFeedText } from './feedSanitizer';
 import { assertPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
 import { logger } from './logger';
-import { assessTrendResearchQuality, formatResearchAssessment } from './agentResearch';
+import { assessTrendResearchQuality, formatResearchAssessment, getResearchDecision } from './agentResearch';
 import type { CreateLiveMarketInput } from './liveActions';
 import type { AgentMarketMetadata } from './marketMetadata';
 import type { AppMarket } from './appState';
@@ -1369,8 +1369,14 @@ export async function runAgentPipeline(): Promise<PipelineResult[]> {
   for (const trend of trends) {
     try {
       const research = assessTrendResearchQuality(trend);
-      if (research.score < MIN_RESEARCH_SCORE) {
-        results.push({ ok: false, topic: trend.topic, stage: 'research', reason: research.sourceAudit });
+      const researchDecision = getResearchDecision(research);
+      if (researchDecision.action === 'Pivot' || research.score < MIN_RESEARCH_SCORE) {
+        results.push({
+          ok: false,
+          topic: trend.topic,
+          stage: 'research',
+          reason: `${research.sourceAudit} ${researchDecision.reason}`,
+        });
         continue;
       }
       const classification = await classifyTrend(trend);

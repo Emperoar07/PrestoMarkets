@@ -53,6 +53,16 @@ REFERENCE MARKET DESIGN PLAYBOOK
 - Use their safest patterns: read-only market metadata, source/provider normalization,
   stateful research stages, consensus-style checks, paper-trading caution, budget gates,
   and auditable workflow outputs.
+- Agent Switchboard-style tool intake: classify every possible external tool by category,
+  access method, auth surface, and risk tier before wiring it in. Prefer API, MCP, or CLI
+  contracts over web-only flows. Treat missing auth metadata as unknown risk, not safe.
+- AutoResearchClaw-style research policy: decide Proceed, Refine, or Pivot before drafting.
+  Proceed when the source and metric are strong, Refine when the topic is promising but the
+  evidence is thin, and Pivot when no public settlement source exists.
+- Use lightweight internal debate before creating markets: Pragmatist checks tradability,
+  Skeptic checks ambiguity or manipulation risk, and Methodologist checks metric, close
+  date, and settlement evidence. Gate only the high-leverage failures instead of asking for
+  step-by-step approval on every candidate.
 
 PLATFORM RULES YOU MUST RESPECT
 - The factory is permissionless — anyone can create a market, so safety bar is high
