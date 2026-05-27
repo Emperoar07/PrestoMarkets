@@ -41,6 +41,7 @@ export function SiteHeader() {
   // portfolio/activity/create. Keeps secondary pages uncluttered.
   const showCategoryNav = pathname === '/markets';
   const isCreatePage = pathname === '/markets/create';
+  const isBreakingNewsPage = pathname === '/breaking-news';
 
   const [searchValue, setSearchValue] = useState('');
   const [activeCategory, setActiveCategory] = useState('Trending');
@@ -221,6 +222,14 @@ export function SiteHeader() {
             Explore Markets
           </Link>
           {!isLandingPage ? (
+            <Link href="/breaking-news" className={mobileNavLinkClass(isBreakingNewsPage)} onClick={() => setMobileMenuOpen(false)}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
+                <circle cx="12" cy="12" r="1" /><path d="M12 3v6m0 6v6" /><path d="M7 7l3-3m0 16l-3-3" /><path d="M17 7l-3-3m0 16l3-3" />
+              </svg>
+              Breaking News
+            </Link>
+          ) : null}
+          {!isLandingPage ? (
             <Link href="/markets/create" className={mobileNavLinkClass(isCreatePage)} onClick={() => setMobileMenuOpen(false)}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0 opacity-50">
                 <circle cx="12" cy="12" r="10" /><path d="M12 8v8M8 12h8" />
@@ -294,6 +303,11 @@ export function SiteHeader() {
           <Link href="/markets" className={navLinkClass(isExplorePage && !isCreatePage)}>
             Explore Markets
           </Link>
+          {!isLandingPage ? (
+            <Link href="/breaking-news" className={navLinkClass(isBreakingNewsPage)}>
+              ⚡ Breaking News
+            </Link>
+          ) : null}
           {!isLandingPage ? (
             <Link href="/markets/create" className={navLinkClass(isCreatePage)}>
               Create Market
