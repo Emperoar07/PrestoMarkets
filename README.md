@@ -1,6 +1,6 @@
 # Presto Markets
 
-Presto Markets is a prediction market app built for Arc, Circle's stablecoin native L1. People come here to spin up public markets in a couple of clicks, trade YES or NO with USDC and EURC, and follow the same signal data the platform itself reads from. Every market is its own onchain contract, every settlement is published with evidence, and every agent created market carries a visible audit trail so traders always know what they are looking at.
+Presto Markets is a prediction market app built for Arc, Circle's stablecoin native L1. People come here to spin up public markets in a couple of clicks, trade USDC-settled outcome shares with optional EURC-to-USDC payments, and follow the same signal data the platform itself reads from. Every market is its own onchain contract, every settlement is published with evidence, and every agent created market carries a visible audit trail so traders always know what they are looking at.
 
 The idea is simple. Prediction markets work best when the rails feel native, when stablecoins are the default unit of account, and when the path from "interesting question" to "live, tradable market" takes less than a minute. Arc gives us that foundation. Presto layers a calm, editorial interface on top of it.
 
@@ -12,7 +12,7 @@ The idea is simple. Prediction markets work best when the rails feel native, whe
 
 **Add balanced liquidity.** Liquidity providers split a single deposit into balanced YES and NO depth, which gives every fresh market clean starting odds and a readable signal.
 
-**Settle with confidence.** Resolvers post evidence URIs that the contract stores forever. Agent assisted resolution lets the resolver use a built in research oracle to gather sources before signing the final transaction.
+**Settle with confidence.** Resolvers post evidence URIs that the contract stores forever. Funded Agent assisted markets can settle automatically after close when evidence from their declared sources reaches the confidence threshold; uncertain markets remain pending review.
 
 **Watch the agent at work.** The Presto Markets agent runs on a daily cadence, reads live trend signals from a dozen sources, ranks them by cross outlet momentum, and creates the few markets that clear a composite signal threshold. The agent has its own ERC-8004 identity, its own wallet, and its own activity feed on the app.
 
@@ -22,7 +22,7 @@ Presto Markets sits on a small set of well chosen rails. The goal was to pick to
 
 **Arc Testnet, USDC native gas.** Every market is its own contract, deployed by the Presto factory. Settlement is in USDC. EURC bought through Circle App Kit auto swaps into USDC at signing time. The multi outcome factory handles poll markets with three to twelve outcomes.
 
-**Next.js 14 App Router.** Server components do the data fetching for trend feeds, news summaries, and onchain reads. Client components own the trading flow, wallet state, and live odds. Tailwind handles the visual system.
+**Next.js 16 App Router.** Server components do the data fetching for trend feeds, news summaries, and onchain reads. Client components own the trading flow, wallet state, and live odds. Tailwind handles the visual system.
 
 **Wallet rails through Circle and viem.** Circle User Controlled Wallets give first time users an email plus PIN onboarding experience that feels closer to a consumer app than a web3 wallet. External EVM wallets connect through the same surface for users who already carry MetaMask or similar. Session tokens auto refresh so the trading flow does not interrupt a working trader.
 
@@ -30,20 +30,20 @@ Presto Markets sits on a small set of well chosen rails. The goal was to pick to
 
 **Trend ingestion.** The agent reads Cointelegraph, Decrypt, The Block, CoinDesk, BBC, TechCrunch, Hacker News, Google News, ESPN, TheSportsDB football fixtures, LiveScore, X via Grok live search, and live CoinGecko prices for BTC, ETH, SOL, and ARC. News stories get clustered by fuzzy title fingerprint so a single event covered by five outlets ranks higher than five separate stories.
 
-**Agent resolution oracle.** When a market needs settling and the resolver picks Agent assisted, the resolver can invoke an Anthropic powered research oracle that gathers sources, summarizes evidence, suggests a winning outcome, and posts a confidence score. The resolver still signs the final Arc transaction so accountability stays in the right place.
+**Agent resolution oracle.** For agent-resolved testnet markets, the configured resolver can submit a high-confidence outcome supported by declared-source evidence. Missing or inconclusive evidence leaves a market pending review and never automatically cancels it. Interactive resolver tools retain a controlled evidence-review workflow before a signed Arc transaction.
 
-**Observability.** Activity page, news page, agent identity card, market detail news tie ins, and per market audit trails are all driven by the same data the agent itself reads from. What the agent sees, the user sees.
+**Observability.** Activity page, market news tie ins, agent identity card, and per market audit trails are driven by the same data the agent itself reads from. What the agent sees, the user sees.
 
 ## Build rails
 
 The day to day stack:
 
-1. **Next.js 14 + TypeScript + Tailwind** for the app shell.
+1. **Next.js 16 + TypeScript + Tailwind** for the app shell.
 2. **viem + Arc Testnet RPC** for every onchain read and write.
 3. **Circle App Kit** for user controlled wallets, swaps, and tx receipts.
 4. **Anthropic, Groq, OpenRouter, Cerebras, Together** as the LLM fallback chain.
 5. **Grok, Serper, CoinGecko, TheSportsDB, ESPN** as the trend ingestion mesh.
-6. **Vercel cron** for the daily agent tick and the news cache refresh.
+6. **Vercel and GitHub scheduled triggers** for agent creation and resolution checks.
 7. **ERC-8004 agent identity** registered onchain so the agent's track record is verifiable.
 
 The repo is organized so each rail lives in one obvious place. `src/lib/agentPipeline.ts` owns the classify-draft-safety pipeline. `src/lib/agentContext.ts` owns the shared platform context. `src/lib/circleActions.ts` owns the Circle wallet path. `src/lib/liveActions.ts` owns the external wallet path. `app/api/agents/*` and `app/api/news/*` own the cron and feed endpoints.

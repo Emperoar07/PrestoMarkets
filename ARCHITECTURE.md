@@ -54,4 +54,4 @@ Cost basis is computed from `SharesBought` logs. To avoid scanning from block 0 
 
 ## Agent
 
-A single EOA (`AGENT_PRIVATE_KEY`) is registered on `IdentityRegistry` (agent ID `16339`). Daily Vercel cron hits `/api/cron/market-factory` to draft markets from trends, and `/api/cron/auto-resolve` to settle markets where the source-of-truth metadata can be verified. All agent writes go through `agentWallet.ts` with min-safety / min-momentum gates.
+A single EOA (`AGENT_PRIVATE_KEY`) is registered on `IdentityRegistry` (agent ID `16339`). `PRESTO_AGENT_RESOLVER_ADDRESS` must equal that EOA: user-selected Agent assisted markets and autonomous agent markets both record that signer as their onchain resolver. Daily Vercel cron hits `/api/cron/market-factory` to draft markets from trends, and `/api/cron/auto-resolve` to settle expired Agent assisted markets only when declared-source evidence clears the confidence threshold. Missing or inconclusive evidence leaves a market pending review. All agent writes go through `agentWallet.ts` with min-safety / min-momentum gates.

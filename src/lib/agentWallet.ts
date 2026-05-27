@@ -75,7 +75,10 @@ function getClients() {
 export async function agentCreateMarket(input: CreateLiveMarketInput & { agentResolverAddress?: string }) {
   try {
     const { account, publicClient, walletClient, factoryAddress, multiOutcomeFactoryAddress } = getClients();
-    const resolver = (input.agentResolverAddress ?? account.address) as Address;
+    if (input.agentResolverAddress && input.agentResolverAddress.toLowerCase() !== account.address.toLowerCase()) {
+      throw new Error('Configured agent resolver address must match the agent wallet that signs resolution transactions.');
+    }
+    const resolver = account.address;
     const outcomeOptions = getOutcomeOptions(input);
     const useMultiOutcome = outcomeOptions.length > 2;
     const selectedFactory = useMultiOutcome ? multiOutcomeFactoryAddress : factoryAddress;

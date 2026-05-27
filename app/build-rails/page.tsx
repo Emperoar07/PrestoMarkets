@@ -7,8 +7,9 @@ const done = [
   'Live Arc factory: reads, market creation, buy, resolve, claim, refund.',
   'Circle user-controlled wallets sign live Arc transactions via contract-execution challenges.',
   'External EVM wallets (MetaMask, WalletConnect) work inline through RainbowKit.',
-  'Agent registered on ERC-8004 (ID 16339) with daily cron-driven market drafting.',
-  'EURC + USDC collateral selector at market creation.',
+  'Agent registered on ERC-8004 (ID 16339) with scheduled market drafting.',
+  'USDC contract settlement with optional EURC-to-USDC funding for trades and seeded depth.',
+  'Agent settlement fails closed when evidence is unavailable or inconclusive.',
   'Incremental browser cost-basis indexer keeps portfolio reads responsive.',
 ];
 
@@ -17,6 +18,7 @@ const next = [
   'Dispute window with bonded challenges and clear escalation rules.',
   'Richer liquidity depth for market makers and traders.',
   'Paymaster support for smoother stablecoin fee handling.',
+  'User-authorized oracle research flow for resolver review screens.',
 ];
 
 export default function BuildRailsPage() {

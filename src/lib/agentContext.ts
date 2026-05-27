@@ -41,8 +41,8 @@ TREND SOURCES YOU READ
 
 PLATFORM RULES YOU MUST RESPECT
 - The factory is permissionless — anyone can create a market, so safety bar is high
-- Active agent-market cap (default 10) — the platform throttles you
-- Per-run cap (default 15, but realistically 1-2 per cron tick) — don't try to burst
+- Active agent-market cap (default 2) — the platform throttles you
+- Per-run cap (default 1 per cron tick) — don't try to burst
 - Markets created by you ("agent" creator type) get an "Agent" badge in the UI; users see
   the agentReason, momentumScore, and safetyScore you assign
 - The auto-resolver only fires when source-of-truth is a concrete URL it can verify
@@ -75,7 +75,7 @@ SIGNAL DISCIPLINE
   names exactly when they are needed for verification.
 - Agent-assisted resolution: when a market is created with resolutionMode = "Agent
   assisted", a $0.50 USDC resolve fee is transferred from the creator to the agent wallet
-  upfront so the agent has gas to auto-resolve.
+  after successful market creation so the agent has gas to auto-resolve.
 
 RECENT APP CHANGES YOU SHOULD KNOW
 - Multi-category markets (up to 4 tags) — return 1-4 categories in classification
@@ -86,6 +86,6 @@ RECENT APP CHANGES YOU SHOULD KNOW
   source at the first available observation at or after close time.
 - Cross-collateral support (EURC pays via auto-swap to USDC) — users see "Pay with" toggle
 - Activity page (/activity) shows the agent's full creation/resolve history
-- News page (/news) shows the same news feed the agent reads from
+- Backend news feeds and market tie-ins use the same public source inputs the agent reads
 - Close-date picker has preset chips: trust the drafter's exact closeDate; users can adjust
 `;

@@ -4,21 +4,23 @@ This checklist is the safety gate before Presto Markets moves beyond Arc testnet
 
 ## Current Contract Scope
 
-The current protocol is a fixed-share binary USDC market.
+The current protocol is a fixed-share USDC market with binary V1 and multi-outcome V2 factories on Arc Testnet.
 
 Live scope:
 
-* Users buy YES or NO fixed shares before close.
+* Users buy fixed outcome shares before close.
 * A configured resolver resolves the market after close with an evidence URI.
 * Winners claim from the resolved collateral snapshot.
 * The resolver can cancel after close and users can refund.
-* The factory creates markets and controls fee settings.
+* Separate binary and multi-outcome factories create markets and control fee settings.
+* Agent-resolved testnet markets may resolve automatically only when live evidence clears the configured confidence threshold.
+* Automatic resolution fails closed: missing or inconclusive evidence never triggers an automatic cancel.
 
 Not live:
 
 * AMM pricing.
 * Selling positions.
-* Autonomous AI resolution.
+* Optimistic challenge and bonded dispute resolution.
 * Disputes and bonds.
 * USYC yield accounting.
 * Multicurrency settlement.
@@ -43,6 +45,7 @@ Do not launch real-value markets until these are defined:
 * Resolver compromised: define emergency pause, owner response, and communication procedure.
 * Ambiguous outcome: define cancellation, dispute, or human review rules.
 * Evidence dispute: define challenge window, evidence format, review authority, and final result timing.
+* Evidence provider unavailable: preserve the market state for retry or manual review; do not cancel due to an outage.
 * Bad market creation: define invalid market criteria, duplicate handling, and user warning rules.
 * Indexing failure: define how the UI behaves when logs are incomplete or RPC reads fail.
 * Token transfer failure: define allowance, insufficient balance, paused token, and rejected transfer messaging.
@@ -73,3 +76,4 @@ Before real-value markets:
 * Account activity indexing is persistent enough for user support.
 * A fresh Arc deployment record is committed.
 * The production deployment is refreshed after env changes.
+* Automated resolution remains testnet-only until a challenge process is implemented.

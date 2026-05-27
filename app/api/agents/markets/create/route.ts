@@ -100,6 +100,9 @@ export async function POST(req: NextRequest) {
     if (!agentAddress) {
       throw new Error('AGENT_PRIVATE_KEY must be configured to verify agent identity.');
     }
+    if (resolverAddress.toLowerCase() !== agentAddress.toLowerCase()) {
+      throw new Error('PRESTO_AGENT_RESOLVER_ADDRESS must match the configured agent wallet that signs automatic resolutions.');
+    }
 
     try {
       const identityStatus = await getAgentIdentityStatus();
@@ -130,8 +133,8 @@ export async function POST(req: NextRequest) {
       closeDate: resolveCloseDate(body),
       rules: sanitizeFeedText(body.rules.trim()),
       sourceOfTruth: sanitizeFeedText(body.sourceOfTruth.trim()),
-      resolver: resolverAddress ?? 'Presto Agent',
-      resolutionMode: body.resolutionMode ?? 'Agent assisted',
+      resolver: resolverAddress,
+      resolutionMode: 'Agent assisted',
       imageURI: body.imageURI?.trim() || undefined,
       outcomeOptions: Array.isArray(body.outcomeOptions)
         ? body.outcomeOptions.map((o) => sanitizeFeedText(String(o).trim())).filter(Boolean).slice(0, 12)

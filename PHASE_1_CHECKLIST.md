@@ -20,6 +20,10 @@
      - Old value: starts with `0x3b9c7145...`
      - Action: Delete old, add new (generate fresh private key)
      - Validation: New key is different from old value
+
+   - [ ] `PRESTO_AGENT_RESOLVER_ADDRESS`
+     - Action: Set this to the public address derived from the new `AGENT_PRIVATE_KEY`
+     - Validation: Agent-assisted market creation refuses any resolver address that does not match the signing wallet
    
    - [ ] `PRESTO_AGENT_API_KEY`
      - Old value: starts with `3423c96e...`
@@ -53,6 +57,7 @@
    # Copy each new secret value and update local .env.local
    # This file will be deleted in Phase 1.2
    AGENT_PRIVATE_KEY=<new-value>
+   PRESTO_AGENT_RESOLVER_ADDRESS=<address-derived-from-agent-private-key>
    PRESTO_AGENT_API_KEY=<new-value>
    # ... etc
    ```

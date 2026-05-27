@@ -23,7 +23,7 @@ const typeCopy: Record<MarketType, string> = {
 
 export function CreateMarketBuilder() {
   const router = useRouter();
-  const { createMarket, addLiquidity } = useAppState();
+  const { connectedWallet, createMarket, addLiquidity } = useAppState();
   const [selectedType, setSelectedType] = useState<MarketType>('Prediction');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -44,7 +44,7 @@ export function CreateMarketBuilder() {
   const [imageURI, setImageURI] = useState('');
   const [outcomeStyle, setOutcomeStyle] = useState<'binary' | 'poll'>('binary');
   const [outcomeOptions, setOutcomeOptions] = useState(['YES', 'NO']);
-  const [collateral, setCollateral] = useState<'USDC' | 'EURC'>('USDC');
+  const [fundingAsset, setFundingAsset] = useState<'USDC' | 'EURC'>('USDC');
   const [initialLiquidity, setInitialLiquidity] = useState('');
   const [agentAddress, setAgentAddress] = useState<string | null>(null);
   const [showReview, setShowReview] = useState(false);
@@ -52,6 +52,8 @@ export function CreateMarketBuilder() {
   const [statusMessage, setStatusMessage] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<string, string>>>({});
   const [result, setResult] = useState<{ ok: boolean; message: string; txHash?: string; marketAddress?: string } | null>(null);
+  const isCircleWallet = connectedWallet?.mode === 'circle-user-controlled';
+  const isAgentAssisted = resolutionMode === 'Agent assisted';
 
   useEffect(() => {
     let cancelled = false;
@@ -65,14 +67,16 @@ export function CreateMarketBuilder() {
   }, []);
 
   useEffect(() => {
-    if (resolutionMode !== 'Agent assisted' || !agentAddress) return;
-    // Auto-fill resolver with the agent wallet when the user picks Agent assisted, but don't
-    // overwrite an address the user has typed themselves.
-    if (!resolver.trim() || resolver.trim().toLowerCase() === agentAddress.toLowerCase()) {
+    if (!isAgentAssisted || !agentAddress) return;
+    if (resolver.trim().toLowerCase() !== agentAddress.toLowerCase()) {
       setResolver(agentAddress);
       setFieldErrors((prev) => ({ ...prev, resolver: '' }));
     }
-  }, [resolutionMode, agentAddress, resolver]);
+  }, [isAgentAssisted, agentAddress, resolver]);
+
+  useEffect(() => {
+    if (isCircleWallet && fundingAsset === 'EURC') setFundingAsset('USDC');
+  }, [fundingAsset, isCircleWallet]);
 
   function validateField(name: string, value: string): string {
     if (name === 'title') {
@@ -189,6 +193,10 @@ export function CreateMarketBuilder() {
       setStatusMessage('Choose a category before launching.');
       return;
     }
+    if (isAgentAssisted && !agentAddress) {
+      setStatusMessage('Agent assisted resolution is unavailable until the Presto agent wallet is configured.');
+      return;
+    }
 
     const cleanOutcomeOptions = outcomeOptions.map((option) => option.trim()).filter(Boolean);
     if (outcomeStyle === 'poll' && cleanOutcomeOptions.length < 3) {
@@ -218,10 +226,11 @@ export function CreateMarketBuilder() {
       rules,
       sourceOfTruth,
       resolver,
+      agentResolverAddress: isAgentAssisted ? agentAddress ?? undefined : undefined,
       resolutionMode,
       imageURI: imageURI.trim() || undefined,
       outcomeOptions: outcomeStyle === 'poll' ? cleanOutcomeOptions : ['YES', 'NO'],
-      collateral,
+      collateral: 'USDC',
     });
 
     if (result.ok && seedAmount > 0) {
@@ -235,7 +244,7 @@ export function CreateMarketBuilder() {
         const seedResult = await addLiquidity({
           marketId: result.marketAddress,
           amount: seedAmount,
-          payWith: collateral,
+          payWith: fundingAsset,
         });
         result = {
           ok: true,
@@ -279,6 +288,10 @@ export function CreateMarketBuilder() {
     }
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
+      return;
+    }
+    if (isAgentAssisted && !agentAddress) {
+      setStatusMessage('Agent assisted resolution is unavailable until the Presto agent wallet is configured.');
       return;
     }
     setShowReview(true);
@@ -451,7 +464,13 @@ export function CreateMarketBuilder() {
                   <button
                     key={mode}
                     type="button"
-                    onClick={() => setResolutionMode(mode)}
+                    onClick={() => {
+                      setResolutionMode(mode);
+                      if (mode === 'Agent assisted' && agentAddress) {
+                        setResolver(agentAddress);
+                        setFieldErrors((prev) => ({ ...prev, resolver: '' }));
+                      }
+                    }}
                     className={`rounded-full border px-3.5 py-1.5 text-[12px] font-black transition-colors ${
                       resolutionMode === mode
                         ? 'border-cyan/50 bg-cyan/10 text-cyan'
@@ -469,14 +488,17 @@ export function CreateMarketBuilder() {
                 value={resolver}
                 onChange={(e) => setField('resolver', e.target.value, setResolver)}
                 onBlur={(e) => blurField('resolver', e.target.value)}
+                readOnly={isAgentAssisted}
                 placeholder="0x… (wallet that will sign the resolution)"
-                className={`mt-1 font-mono text-[13px] ${inputClass(fieldErrors.resolver)}`}
+                className={`mt-1 font-mono text-[13px] ${inputClass(fieldErrors.resolver)} ${isAgentAssisted ? 'cursor-not-allowed opacity-75' : ''}`}
               />
               {fieldErrors.resolver ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.resolver}</p> : null}
-              {resolutionMode === 'Agent assisted' && agentAddress && resolver.trim().toLowerCase() === agentAddress.toLowerCase() ? (
+              {isAgentAssisted && agentAddress ? (
                 <p className="mt-1.5 text-[11px] text-cyan/80">
-                  Auto-filled with the Presto agent wallet. Launching this market also prepays a <span className="font-black">${getResolveFeeUsdc()} USDC</span> resolve fee to the agent so it has gas to auto-settle.
+                  Locked to the Presto agent wallet. After creation, a <span className="font-black">${getResolveFeeUsdc()} USDC</span> funding step enables automatic evidence-based settlement after close.
                 </p>
+              ) : isAgentAssisted ? (
+                <p className="mt-1.5 text-[11px] text-red-300">The Presto agent wallet is unavailable, so this mode cannot be launched yet.</p>
               ) : null}
             </div>
           </div>
@@ -523,29 +545,37 @@ export function CreateMarketBuilder() {
               ) : null}
             </div>
             <div>
-              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Collateral</label>
+              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Initial depth payment</label>
               <div className="mt-2 flex gap-2">
-                {(['USDC', 'EURC'] as const).map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setCollateral(c)}
-                    className={`flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-[13px] font-black transition-colors ${
-                      collateral === c
-                        ? c === 'EURC'
-                          ? 'border-blue-400/50 bg-blue-400/10 text-blue-300'
-                          : 'border-cyan/50 bg-cyan/10 text-cyan'
-                        : 'border-white/[0.08] text-muted hover:border-white/20'
-                    }`}
-                  >
-                    <span>{c}</span>
-                    <span className="text-[10px] opacity-60">{c === 'EURC' ? '€' : '$'}</span>
-                  </button>
-                ))}
+                {(['USDC', 'EURC'] as const).map((c) => {
+                  const unavailable = c === 'EURC' && isCircleWallet;
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => { if (!unavailable) setFundingAsset(c); }}
+                      disabled={unavailable}
+                      title={unavailable ? 'EURC funding requires an external EVM wallet.' : ''}
+                      className={`flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-[13px] font-black transition-colors ${
+                        fundingAsset === c
+                          ? c === 'EURC'
+                            ? 'border-blue-400/50 bg-blue-400/10 text-blue-300'
+                            : 'border-cyan/50 bg-cyan/10 text-cyan'
+                          : 'border-white/[0.08] text-muted hover:border-white/20'
+                      } ${unavailable ? 'cursor-not-allowed opacity-40' : ''}`}
+                    >
+                      <span>{c}</span>
+                      <span className="text-[10px] opacity-60">{c === 'EURC' ? '€' : '$'}</span>
+                    </button>
+                  );
+                })}
                 <span className="self-center pl-2 text-[11px] text-muted/80">
-                  {collateral === 'EURC' ? 'Circle EURC on Arc' : 'Circle USDC on Arc'}
+                  {fundingAsset === 'EURC' ? 'Swapped into USDC before seeding' : 'Settles directly in USDC'}
                 </span>
               </div>
+              <p className="mt-2 text-[11px] leading-5 text-muted/80">
+                All Presto market contracts settle in USDC on Arc.
+              </p>
             </div>
             <div>
               <label className="text-[12px] font-bold uppercase tracking-wider text-muted">When does it close?</label>
@@ -664,7 +694,11 @@ export function CreateMarketBuilder() {
               </div>
               <div className="flex justify-between gap-4">
                 <dt className="text-muted">Collateral</dt>
-                <dd className={`text-right font-bold ${collateral === 'EURC' ? 'text-blue-300' : 'text-cyan'}`}>{collateral}</dd>
+                <dd className="text-right font-bold text-cyan">USDC</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-muted">Depth payment</dt>
+                <dd className={`text-right font-bold ${fundingAsset === 'EURC' ? 'text-blue-300' : 'text-cyan'}`}>{fundingAsset}</dd>
               </div>
               <div className="flex justify-between gap-4">
                 <dt className="text-muted">Resolver</dt>
@@ -683,7 +717,7 @@ export function CreateMarketBuilder() {
               <div className="flex justify-between gap-4">
                 <dt className="text-muted">Initial depth</dt>
                 <dd className="text-right font-bold text-white">
-                  {Number(initialLiquidity) > 0 ? `${initialLiquidity} ${collateral}` : 'Add later'}
+                  {Number(initialLiquidity) > 0 ? `${initialLiquidity} ${fundingAsset}` : 'Add later'}
                 </dd>
               </div>
             </dl>

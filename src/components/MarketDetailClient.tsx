@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
 import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
 import { MarketSignalChart } from './MarketSignalChart';
@@ -44,7 +43,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const [confirmHuman, setConfirmHuman] = useState(false);
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isOracleRunning, setIsOracleRunning] = useState(false);
   const [showRulesSchema, setShowRulesSchema] = useState(false);
   const [payWith, setPayWith] = useState<StableSymbol>('USDC');
   const isCircleWallet = connectedWallet?.mode === 'circle-user-controlled';
@@ -153,38 +151,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     setMessage('Agent evidence report prepared. Review it, then confirm the resolver checks before settling.');
   }
 
-  async function runOracleResearch() {
-    if (!market) return;
-    setIsOracleRunning(true);
-    setMessage('Oracle researching market… this takes 10–20 seconds.');
-    try {
-      const res = await fetch('/api/agents/resolve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ market }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setMessage(data.error ?? 'Oracle request failed.');
-        return;
-      }
-      const rec = data.recommendation;
-      setAgentOutcome(rec.outcome);
-      setAgentConfidence(rec.confidence ?? 'Medium');
-      setAgentSources((rec.sources ?? []).join('\n'));
-      setAgentNotes(
-        rec.evidenceSummary +
-        (rec.uncertainty ? `\n\nUncertainty: ${rec.uncertainty}` : ''),
-      );
-      setAgentOperator('Presto Resolution Oracle (Claude claude-sonnet-4-6)');
-      setMessage(`Oracle complete — recommended ${rec.outcome} with ${rec.confidence} confidence. Review the fields below before preparing the report.`);
-    } catch {
-      setMessage('Oracle request failed. Check your network or ANTHROPIC_API_KEY env var.');
-    } finally {
-      setIsOracleRunning(false);
-    }
-  }
-
   return (
     <>
       <SiteHeader />
@@ -288,7 +254,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             {/* Market image */}
             {market.imageURI ? (
               <div className="mt-6 overflow-hidden rounded-[14px] border border-white/[0.06]">
-                <Image src={market.imageURI} alt={market.title} width={800} height={280} className="h-[280px] w-full object-cover" priority={false} loading="lazy" onError={(e) => { e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22800%22 height=%22280%22%3E%3Crect fill=%22%23141e30%22 width=%22800%22 height=%22280%22/%3E%3C/svg%3E'; }} />
+                <img src={market.imageURI} alt={market.title} width={800} height={280} loading="lazy" decoding="async" className="h-[280px] w-full object-cover" onError={(e) => { e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22800%22 height=%22280%22%3E%3Crect fill=%22%23141e30%22 width=%22800%22 height=%22280%22/%3E%3C/svg%3E'; }} />
               </div>
             ) : null}
 
@@ -656,11 +622,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <div className="flex gap-1.5">
                   {(['USDC', 'EURC'] as const).map((sym) => {
                     const isActive = payWith === sym;
-                    // EURC works for external EVM wallets via our /api/swap proxy + viem.
-                    // Circle user-controlled wallets are blocked: Arc Testnet (chainId 5042002)
-                    // is not on Circle's signing-API allowlist, so raw-calldata signing fails,
-                    // and contractExecution requires the swap router ABI which Circle doesn't
-                    // publish. Verified via Circle MCP.
+                    // EURC swaps are currently wired for external EVM wallets only.
                     const eurcUnavailable = sym === 'EURC' && isCircleWallet;
                     return (
                       <button
@@ -668,7 +630,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                         type="button"
                         onClick={() => { if (!eurcUnavailable) choosePayWith(sym); }}
                         disabled={eurcUnavailable}
-                        title={eurcUnavailable ? 'EURC needs an external EVM wallet. Arc Testnet is not on Circle\'s signing-API chain allowlist, so app wallets can\'t sign the swap router call.' : ''}
+                        title={eurcUnavailable ? 'EURC payment requires an external EVM wallet.' : ''}
                         className={`rounded-full border px-3 py-1 text-[11px] font-black transition-colors ${
                           isActive
                             ? sym === 'EURC'
@@ -822,27 +784,12 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     <div className="rounded-[14px] border border-cyan/20 bg-cyan/[0.06] p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-cyan">Agent powered resolution</p>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-cyan">Evidence assisted resolution</p>
                           <p className="mt-1 text-xs leading-5 text-muted">
-                            Use Circle Agent Stack or another controlled agent to gather evidence. The resolver still signs the final Arc transaction.
+                            Gather evidence with a controlled agent workflow, then review and sign the final Arc transaction.
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            disabled={isOracleRunning}
-                            onClick={() => void runOracleResearch()}
-                            className="flex items-center gap-1.5 rounded-[10px] bg-cyan px-3 py-2 text-[10px] font-black uppercase tracking-widest text-ink transition-colors hover:opacity-90 disabled:opacity-50"
-                          >
-                            {isOracleRunning ? (
-                              <>
-                                <span className="inline-block h-2.5 w-2.5 animate-spin rounded-full border-2 border-ink/30 border-t-ink" />
-                                Researching…
-                              </>
-                            ) : (
-                              <>⚡ AI Research</>
-                            )}
-                          </button>
                           <button
                             type="button"
                             onClick={() => {

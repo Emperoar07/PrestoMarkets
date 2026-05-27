@@ -161,19 +161,22 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     liquidity: formatOnchainUsd(collateralValue),
     closeLabel: getCloseLabel(status, closeTime),
     status,
-    collateral: (metadata?.collateral === 'EURC' ? 'EURC' : 'USDC') as 'USDC' | 'EURC',
+    collateral: 'USDC',
     chain: 'Arc Testnet',
     resolver: truncateAddress(resolver),
     resolverAddress: resolver,
     resolutionMode: metadata?.resolutionMode || getResolutionMode(kind),
     sourceOfTruth: metadata?.sourceOfTruth || metadataURI || 'Metadata URI was not set at creation.',
-    rulesSchema: metadata?.rulesSchema ?? {
+    rulesSchema: metadata?.rulesSchema ? {
+      ...metadata.rulesSchema,
+      settlementAsset: 'USDC',
+    } : {
       type: marketType,
       outcomes: labels,
       sourceOfTruth: metadata?.sourceOfTruth || metadataURI || 'Metadata URI was not set at creation.',
       resolverMode: metadata?.resolutionMode || getResolutionMode(kind),
       closeRule: 'Market closes at the onchain closeTime. Resolver settles against the written rules and source of truth.',
-      settlementAsset: metadata?.collateral === 'EURC' ? 'EURC' : 'USDC',
+      settlementAsset: 'USDC',
     },
     rules: resolutionURI && isSafeResolutionUri(resolutionURI)
       ? `Resolved with evidence: ${resolutionURI}. Winning outcome: ${winningLabel}.`
@@ -209,7 +212,7 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     ],
     source: 'onchain',
     closeDate: new Date(Number(closeTime) * 1000).toISOString(),
-    createdAt: new Date(Number(closeTime) * 1000).toISOString(),
+    createdAt: metadata?.createdAt ?? '',
   };
 }
 

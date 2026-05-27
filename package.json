@@ -8,6 +8,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "next build --webpack",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run build && npm run test:contracts",
     "test:contracts": "hardhat test",
     "deploy:arc": "hardhat run scripts/deploy-arc.cjs --network arc",
     "deploy:arc:v2": "hardhat run scripts/deploy-arc-v2.cjs --network arc"

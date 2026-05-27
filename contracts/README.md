@@ -28,12 +28,16 @@ These contracts are Phase 3 scaffolds for a public Arc Testnet market pilot.
 npm run test:contracts
 ```
 
+## Application Settlement Automation
+
+Testnet agent-resolved markets can submit a resolution through their configured resolver when declared-source evidence is available and confident. If evidence is unavailable or inconclusive, the application leaves the market pending review rather than automatically canceling it. Optimistic challenges and bonds are required before this pattern is suitable for real value.
+
 ## Not Included Yet
 
 - AMM pricing
 - Order books
 - Dispute windows
-- Autonomous AI resolution
+- Optimistic challenge and bonded dispute resolution
 - USYC yield accounting
 - Cross chain funding
 

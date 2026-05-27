@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Hex } from 'viem';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
-import { agentCancelMarket, agentResolveMarket, getAgentAddress } from '@/lib/agentWallet';
+import { agentResolveMarket, getAgentAddress } from '@/lib/agentWallet';
 import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
 import { getAgentIdentityStatus, recordResolutionReputation } from '@/lib/agentIdentity';
 import { assertNonEmptyString } from '@/lib/typeGuards';
@@ -13,10 +13,15 @@ export const maxDuration = 300;
 
 type ResolutionResult =
   | { ok: true; action: 'resolved'; marketId: string; title: string; outcome: string; txHash: string | Hex; confidence: number }
-  | { ok: true; action: 'canceled'; marketId: string; title: string; txHash: string | Hex; reason: string }
   | { ok: false; action: 'skipped'; marketId: string; title: string; reason: string };
 
 const MIN_AUTO_RESOLVE_CONFIDENCE = 0.85;
+
+type EvidenceResult = {
+  snippets: string;
+  sources: string[];
+  unavailableReason?: string;
+};
 
 function extractSourceUrls(sourceOfTruth: string): string[] {
   return Array.from(sourceOfTruth.matchAll(/https?:\/\/[^\s,)]+/gi))
@@ -38,6 +43,15 @@ function extractSourceDomains(sourceOfTruth: string): string[] {
   return Array.from(new Set(domains));
 }
 
+function isDeclaredSourceUrl(url: string, domains: string[]): boolean {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, '');
+    return domains.includes(hostname);
+  } catch {
+    return false;
+  }
+}
+
 function buildEvidenceQuery(market: AppMarket) {
   const domains = extractSourceDomains(market.sourceOfTruth);
   if (domains.length === 0) return null;
@@ -49,10 +63,12 @@ function buildEvidenceQuery(market: AppMarket) {
   ].join(' ');
 }
 
-async function fetchLiveEvidence(market: AppMarket): Promise<{ snippets: string; sources: string[] }> {
+async function fetchLiveEvidence(market: AppMarket): Promise<EvidenceResult> {
   const apiKey = process.env.SERPER_API_KEY;
   const query = buildEvidenceQuery(market);
-  if (!apiKey || !query) return { snippets: '', sources: [] };
+  const declaredDomains = extractSourceDomains(market.sourceOfTruth);
+  if (!apiKey) return { snippets: '', sources: [], unavailableReason: 'Evidence search is not configured.' };
+  if (!query) return { snippets: '', sources: [], unavailableReason: 'No searchable source-of-truth domain was available.' };
 
   try {
     const res = await fetch('https://google.serper.dev/search', {
@@ -61,7 +77,7 @@ async function fetchLiveEvidence(market: AppMarket): Promise<{ snippets: string;
       body: JSON.stringify({ q: query, gl: 'us', num: 6 }),
       signal: createAbortSignalWithTimeout(8000), // 8 second timeout for Serper
     });
-    if (!res.ok) return { snippets: '', sources: [] };
+    if (!res.ok) return { snippets: '', sources: [], unavailableReason: `Evidence search returned HTTP ${res.status}.` };
 
     const data = await res.json() as {
       organic?: Array<{ title: string; snippet: string; link: string }>;
@@ -72,11 +88,13 @@ async function fetchLiveEvidence(market: AppMarket): Promise<{ snippets: string;
     const lines: string[] = [];
 
     for (const item of data.topStories ?? []) {
+      if (!isDeclaredSourceUrl(item.link, declaredDomains)) continue;
       lines.push(`[NEWS] ${item.title} - ${item.link}`);
       sources.push(item.link);
     }
 
     for (const item of (data.organic ?? []).slice(0, 4)) {
+      if (!isDeclaredSourceUrl(item.link, declaredDomains)) continue;
       lines.push(`[WEB] ${item.title}: ${item.snippet} - ${item.link}`);
       sources.push(item.link);
     }
@@ -86,48 +104,36 @@ async function fetchLiveEvidence(market: AppMarket): Promise<{ snippets: string;
     if (error instanceof Error && error.name === 'AbortError') {
       console.warn('[auto-resolve] Serper search timed out after 8s');
     }
-    return { snippets: '', sources: [] };
+    return { snippets: '', sources: [], unavailableReason: 'Evidence search was unavailable or timed out.' };
   }
 }
 
 async function resolveMarket(market: AppMarket): Promise<ResolutionResult> {
-  async function cancelWithReason(reason: string): Promise<ResolutionResult> {
-    const result = await agentCancelMarket(market.id);
-    if (!result.ok) {
-      return {
-        ok: false,
-        action: 'skipped',
-        marketId: market.id,
-        title: market.title,
-        reason: `${reason} Cancellation failed: ${result.error ?? 'unknown error'}`,
-      };
-    }
-
-    const txHash = assertNonEmptyString(result.txHash, 'txHash');
+  function skipResolution(reason: string): ResolutionResult {
     return {
-      ok: true,
-      action: 'canceled',
+      ok: false,
+      action: 'skipped',
       marketId: market.id,
       title: market.title,
-      txHash,
       reason,
     };
   }
 
   const declaredSourceUrls = extractSourceUrls(market.sourceOfTruth);
   if (declaredSourceUrls.length === 0) {
-    return cancelWithReason('Auto-canceled: sourceOfTruth has no concrete URL to verify.');
+    return skipResolution('Pending manual review: sourceOfTruth has no concrete URL to verify.');
   }
+  const declaredSourceDomains = extractSourceDomains(market.sourceOfTruth);
 
-  const { snippets: liveEvidence, sources: searchSources } = await fetchLiveEvidence(market);
+  const { snippets: liveEvidence, sources: searchSources, unavailableReason } = await fetchLiveEvidence(market);
   const hasLiveEvidence = liveEvidence.length > 0 && searchSources.length > 0;
   if (!hasLiveEvidence) {
-    return cancelWithReason('Auto-canceled: no live evidence found on declared source-of-truth domains.');
+    return skipResolution(`Pending manual review: ${unavailableReason ?? 'No live evidence found on declared source-of-truth domains.'}`);
   }
 
   const allowedOutcomes = market.outcomes.map((outcome) => outcome.label).filter(Boolean);
   if (allowedOutcomes.length < 2) {
-    return cancelWithReason('Auto-canceled: market outcomes are unavailable for resolution.');
+    return skipResolution('Pending manual review: market outcomes are unavailable for resolution.');
   }
   const outcomeInstructions = JSON.stringify([...allowedOutcomes, 'CANCEL']);
 
@@ -183,11 +189,16 @@ Return JSON only:
       return false;
     }
   };
-  const allSources = Array.from(new Set([...(parsed.sources ?? []), ...searchSources]))
-    .filter(isSafeHttpUrl)
+  const oracleSources = Array.isArray(parsed.sources)
+    ? parsed.sources.filter((source): source is string => typeof source === 'string')
+    : [];
+  const allSources = Array.from(new Set([...oracleSources, ...searchSources]))
+    .filter((url) => isSafeHttpUrl(url) && isDeclaredSourceUrl(url, declaredSourceDomains))
     .slice(0, 8);
-  if (parsed.outcome === 'CANCEL' || parsed.confidence < MIN_AUTO_RESOLVE_CONFIDENCE) {
-    return cancelWithReason(`Auto-canceled by oracle (confidence=${parsed.confidence.toFixed(2)}, outcome=${parsed.outcome}): ${parsed.evidenceSummary}`);
+  const confidence = Number(parsed.confidence);
+  if (parsed.outcome === 'CANCEL' || !Number.isFinite(confidence) || confidence < MIN_AUTO_RESOLVE_CONFIDENCE) {
+    const formattedConfidence = Number.isFinite(confidence) ? confidence.toFixed(2) : 'invalid';
+    return skipResolution(`Pending manual review: oracle did not reach a resolvable confidence threshold (confidence=${formattedConfidence}, outcome=${parsed.outcome}). ${parsed.evidenceSummary}`);
   }
 
   const derivedIndex = allowedOutcomes.findIndex((outcome) => outcome === parsed.outcome);
@@ -206,7 +217,7 @@ Return JSON only:
     resolvedAt: new Date().toISOString(),
     marketId: market.id,
     outcome: parsed.outcome,
-    confidence: parsed.confidence,
+    confidence,
     evidenceSummary: parsed.evidenceSummary,
     sources: allSources,
     liveEvidenceUsed: true,
@@ -229,7 +240,7 @@ Return JSON only:
     title: market.title,
     outcome: parsed.outcome,
     txHash,
-    confidence: parsed.confidence,
+    confidence,
   };
 }
 
@@ -256,7 +267,8 @@ export async function GET(req: NextRequest) {
       if (market.status === 'Resolved' || market.status === 'Canceled') return false;
       if (!market.closeDate) return false;
       if (new Date(market.closeDate).getTime() > now) return false;
-      return market.resolverAddress?.toLowerCase() === agentAddress.toLowerCase();
+      return market.resolutionMode === 'Agent assisted'
+        && market.resolverAddress?.toLowerCase() === agentAddress.toLowerCase();
     });
 
     if (expired.length === 0) {
@@ -298,7 +310,7 @@ export async function GET(req: NextRequest) {
       agentAddress,
       expired: expired.length,
       resolved: results.filter((result) => result.ok && result.action === 'resolved').length,
-      canceled: results.filter((result) => result.ok && result.action === 'canceled').length,
+      canceled: 0,
       results,
     });
   } catch (error) {

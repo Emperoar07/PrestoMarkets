@@ -4,7 +4,7 @@ import { getArcConfig } from './arcConfig';
 import { buildMarketMetadataURI } from './marketMetadata';
 import { getStoredConnectedWallet, refreshCircleSessionIfNeeded, type CircleSession } from './walletProvider';
 import { requestCircleConfirmation, type CircleConfirmDetails } from './circleConfirm';
-import { getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
+import { getAgentResolverSelectionError, getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
 import { erc20Abi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import type { CreateLiveMarketInput, LiveActionResult } from './liveActions';
 import type { MarketType } from './markets';
@@ -394,29 +394,12 @@ export async function createCircleMarket(input: CreateLiveMarketInput): Promise<
     if (!isAddress(input.resolver)) {
       throw new Error('Resolver must be a valid wallet address.');
     }
-    // Pre-pay agent resolution gas via a separate Circle PIN challenge if Agent assisted.
-    if (isAgentResolutionMode(input.resolutionMode) && isAddress(input.resolver)) {
-      const feeHuman = getResolveFeeUsdc();
-      const feeAmount = parseUnits(feeHuman, 6);
-      if (feeAmount > BigInt(0)) {
-        await runContractExecution({
-          session,
-          contractAddress: config.usdcAddress!,
-          abiFunctionSignature: 'transfer(address,uint256)',
-          abiParameters: [input.resolver, feeAmount.toString()],
-          refId: `presto-resolve-fee-${Date.now()}`,
-          preview: {
-            label: `Prepay resolve fee · $${feeHuman} USDC`,
-            action: `Pre-funds the Presto agent so it has Arc gas to auto-resolve this market when it closes. Sent directly to ${input.resolver.slice(0, 6)}…${input.resolver.slice(-4)}.`,
-            amountDisplay: `$${feeHuman} USDC`,
-            parameters: [
-              `recipient: ${input.resolver.slice(0, 6)}…${input.resolver.slice(-4)} (agent wallet)`,
-              `amount: $${feeHuman} USDC`,
-            ],
-          },
-        });
-      }
-    }
+    const agentResolverError = getAgentResolverSelectionError(input);
+    if (agentResolverError) throw new Error(agentResolverError);
+    const feeHuman = getResolveFeeUsdc();
+    const feeAmount = isAgentResolutionMode(input.resolutionMode)
+      ? parseUnits(feeHuman, 6)
+      : BigInt(0);
     const closeStamp = getCloseTimestamp(input.closeDate);
     const closeReadable = new Date(Number(closeStamp) * 1000).toLocaleString();
     const outcomeOptions = cleanOutcomeOptions(input);
@@ -453,10 +436,34 @@ export async function createCircleMarket(input: CreateLiveMarketInput): Promise<
           `kind: ${input.type}`,
         ],
       },
-      waitForConfirmation: false,
+      waitForConfirmation: feeAmount > BigInt(0),
     });
     const marketAddress = await readCreatedMarketAddress(txHash, useMultiOutcome).catch(() => undefined);
-    return { ok: true, message: 'Live market created via Circle wallet.', txHash: txHash as `0x${string}`, marketAddress };
+    let message = 'Live market created via Circle wallet.';
+    if (feeAmount > BigInt(0)) {
+      try {
+        await runContractExecution({
+          session,
+          contractAddress: config.usdcAddress!,
+          abiFunctionSignature: 'transfer(address,uint256)',
+          abiParameters: [input.resolver, feeAmount.toString()],
+          refId: `presto-resolve-fee-${Date.now()}`,
+          preview: {
+            label: `Fund automatic resolution - $${feeHuman} USDC`,
+            action: `Funds the Presto agent to settle this market automatically after it closes. Sent directly to ${input.resolver.slice(0, 6)}...${input.resolver.slice(-4)}.`,
+            amountDisplay: `$${feeHuman} USDC`,
+            parameters: [
+              `recipient: ${input.resolver.slice(0, 6)}...${input.resolver.slice(-4)} (agent wallet)`,
+              `amount: $${feeHuman} USDC`,
+            ],
+          },
+        });
+        message = 'Live market created via Circle wallet. Automatic resolution funded.';
+      } catch {
+        message = 'Live market created via Circle wallet, but automatic resolution funding was not completed. Fund the agent resolver before this market closes.';
+      }
+    }
+    return { ok: true, message, txHash: txHash as `0x${string}`, marketAddress };
   } catch (error) {
     const pending = pendingResultFromError(error, 'Market creation');
     if (pending) return pending;

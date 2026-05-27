@@ -17,7 +17,7 @@ const guide = [
   },
   {
     h: 'Resolve and settle',
-    p: 'The resolver follows the written rules, gathers evidence, posts an evidence URI to the contract, and signs the final outcome. Agent assisted resolution gives the resolver a research oracle for faster sourcing while keeping the human in the loop.',
+    p: 'The resolver follows the written rules, gathers evidence, posts an evidence URI to the contract, and signs the final outcome. Agent assisted markets can settle automatically after close when declared-source evidence reaches the required confidence; uncertain markets wait for review.',
   },
   {
     h: 'Track your position',
@@ -27,7 +27,7 @@ const guide = [
 
 const buildRails = [
   { h: 'Arc Testnet, USDC native gas', p: 'Every market is its own contract deployed by the Presto factory. Settlement is in USDC. EURC bought through Circle App Kit auto swaps into USDC at signing time.' },
-  { h: 'Next.js 14 + viem', p: 'Server components handle trend ingestion and onchain reads. Client components own the trading flow, wallet state, and live odds.' },
+  { h: 'Next.js 16 + viem', p: 'Server components handle trend ingestion and onchain reads. Client components own the trading flow, wallet state, and live odds.' },
   { h: 'Circle App Kit wallets', p: 'Email and PIN onboarding for first time users, external EVM wallets for everyone else, session tokens that auto refresh so traders are never bumped mid flow.' },
   { h: 'LLM fallback chain', p: 'Anthropic Claude leads, with Groq, OpenRouter, Cerebras, and Together standing by so the agent keeps running through any single provider outage.' },
   { h: 'Trend ingestion mesh', p: 'Cointelegraph, Decrypt, The Block, CoinDesk, BBC, TechCrunch, Hacker News, ESPN, TheSportsDB, LiveScore, X via Grok, and live CoinGecko prices feed the agent.' },

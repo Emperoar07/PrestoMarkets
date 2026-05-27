@@ -58,6 +58,7 @@ type CreateMarketInput = {
   rules: string;
   sourceOfTruth: string;
   resolver: string;
+  agentResolverAddress?: string;
   resolutionMode: ResolutionMode;
   imageURI?: string;
   outcomeOptions?: string[];
@@ -87,6 +88,14 @@ type AppStateValue = {
 const appStateContext = createContext<AppStateValue | null>(null);
 
 export function formatCompactUsd(value: number) {
+  if (value > 0 && value < 0.01) {
+    return '<$0.01';
+  }
+
+  if (value > 0 && value < 1) {
+    return `$${value.toFixed(2)}`;
+  }
+
   if (value >= 1_000_000) {
     return `$${(value / 1_000_000).toFixed(1)}M`;
   }

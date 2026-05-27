@@ -24,7 +24,7 @@ import {
   resolveCircleMarket,
 } from './circleActions';
 import { executeSwap, type StableSymbol } from './swap';
-import { getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
+import { getAgentResolverSelectionError, getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
 
 function isCircleWallet(): boolean {
   return getStoredConnectedWallet()?.mode === 'circle-user-controlled';
@@ -83,6 +83,7 @@ export type CreateLiveMarketInput = {
   rules: string;
   sourceOfTruth: string;
   resolver: string;
+  agentResolverAddress?: string;
   resolutionMode: string;
   imageURI?: string;
   outcomeOptions?: string[];
@@ -228,29 +229,23 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
       throw new Error('Resolver must be a valid wallet address.');
     }
 
-    // Pre-pay the agent's resolution gas if the creator picked Agent assisted. Direct
-    // USDC transfer to the agent's wallet — when auto-resolve runs the balance is already
-    // there. Throws on insufficient balance so the user knows to fund USDC first.
-    if (isAgentResolutionMode(input.resolutionMode) && isAddress(input.resolver)) {
-      const feeAmount = parseUnits(getResolveFeeUsdc(), 6);
-      if (feeAmount > BigInt(0)) {
-        const balance = await withRetry(() => publicClient.readContract({
-          address: config.usdcAddress,
-          abi: erc20Abi,
-          functionName: 'balanceOf',
-          args: [account],
-        }));
-        if (balance < feeAmount) {
-          throw new Error(`Need at least $${getResolveFeeUsdc()} USDC to prepay the agent's resolve gas. You have $${Number(formatUnits(balance, 6)).toFixed(2)}.`);
-        }
-        const feeTx = await walletClient.writeContract({
-          account,
-          address: config.usdcAddress,
-          abi: erc20Abi,
-          functionName: 'transfer',
-          args: [input.resolver as Address, feeAmount],
-        });
-        await withRetry(() => publicClient.waitForTransactionReceipt({ hash: feeTx }));
+    const agentResolverError = getAgentResolverSelectionError(input);
+    if (agentResolverError) throw new Error(agentResolverError);
+
+    // Check that automatic settlement can be funded before the market transaction.
+    // The actual transfer occurs only after market creation succeeds.
+    const feeAmount = isAgentResolutionMode(input.resolutionMode)
+      ? parseUnits(getResolveFeeUsdc(), 6)
+      : BigInt(0);
+    if (feeAmount > BigInt(0)) {
+      const balance = await withRetry(() => publicClient.readContract({
+        address: config.usdcAddress,
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [account],
+      }));
+      if (balance < feeAmount) {
+        throw new Error(`Need at least $${getResolveFeeUsdc()} USDC to fund automatic resolution. You have $${Number(formatUnits(balance, 6)).toFixed(2)}.`);
       }
     }
 
@@ -289,8 +284,26 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
       logs: receipt.logs,
     })[0];
     const marketAddress = created?.args.market;
+    let message = 'Live market created on Arc.';
 
-    return { ok: true, message: 'Live market created on Arc.', txHash: hash, marketAddress };
+    // Fund only after creation succeeds so an abandoned launch cannot charge the fee.
+    if (feeAmount > BigInt(0)) {
+      try {
+        const feeTx = await walletClient.writeContract({
+          account,
+          address: config.usdcAddress,
+          abi: erc20Abi,
+          functionName: 'transfer',
+          args: [input.resolver as Address, feeAmount],
+        });
+        await withRetry(() => publicClient.waitForTransactionReceipt({ hash: feeTx }));
+        message = 'Live market created on Arc. Automatic resolution funded.';
+      } catch {
+        message = 'Live market created on Arc, but automatic resolution funding was not completed. Fund the agent resolver before this market closes.';
+      }
+    }
+
+    return { ok: true, message, txHash: hash, marketAddress };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Market creation failed.' };
   }

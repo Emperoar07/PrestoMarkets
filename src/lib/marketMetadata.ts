@@ -17,6 +17,7 @@ export type AgentMarketMetadata = {
 
 export type MarketMetadata = AgentMarketMetadata & {
   schema?: 'presto.market.v1';
+  createdAt?: string;
   name: string;
   description: string;
   /** Primary category (kept for backward compat with markets created before multi-category). */
@@ -168,6 +169,7 @@ export function buildMarketMetadata(input: BuildMarketMetadataInput): MarketMeta
 
   return {
     schema: 'presto.market.v1',
+    createdAt: new Date().toISOString(),
     name: trunc(input.title, MAX.title) ?? input.title,
     description: trunc(input.description, MAX.description) ?? input.description,
     category: categories[0] ?? input.category,
@@ -177,14 +179,14 @@ export function buildMarketMetadata(input: BuildMarketMetadataInput): MarketMeta
     rules: trunc(input.rules, MAX.rules) ?? input.rules,
     sourceOfTruth: trunc(input.sourceOfTruth, MAX.sourceOfTruth) ?? input.sourceOfTruth,
     resolutionMode: input.resolutionMode as ResolutionMode,
-    collateral: input.collateral ?? 'USDC',
+    collateral: 'USDC',
     rulesSchema: {
       type: input.type,
       outcomes: outcomeOptions && outcomeOptions.length > 0 ? outcomeOptions : ['YES', 'NO'],
       sourceOfTruth: trunc(input.sourceOfTruth, MAX.sourceOfTruth) ?? input.sourceOfTruth,
       resolverMode: input.resolutionMode,
       closeRule: 'Market closes at the onchain closeTime. Resolver settles against the written rules and source of truth.',
-      settlementAsset: input.collateral ?? 'USDC',
+      settlementAsset: 'USDC',
     },
     createdByType: input.agent?.createdByType ?? 'user',
     agentName: input.agent?.agentName,
@@ -218,6 +220,9 @@ export function parseMarketMetadata(metadataURI: string): Partial<MarketMetadata
   // creation rather than rendering javascript:/data:text/html into the UI.
   if (!isSafeImage(parsed.imageURI)) parsed.imageURI = undefined;
   if (!isSafeUrl(parsed.trendUrl)) parsed.trendUrl = undefined;
+  if (parsed.createdAt && !Number.isFinite(Date.parse(parsed.createdAt))) parsed.createdAt = undefined;
+  parsed.collateral = 'USDC';
+  if (parsed.rulesSchema) parsed.rulesSchema.settlementAsset = 'USDC';
   if (parsed.categories) {
     parsed.categories = parsed.categories
       .filter((c): c is string => typeof c === 'string')
