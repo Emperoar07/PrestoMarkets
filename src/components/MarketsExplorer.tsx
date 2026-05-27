@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { MarketCard } from './MarketCard';
 import { MarketSignalChart } from './MarketSignalChart';
 import { SkeletonCard } from './SkeletonCard';
+import { NewsCard } from './NewsCard';
 import { useAppState } from '@/lib/appState';
 import type { AppMarket } from '@/lib/appState';
 
@@ -240,6 +241,22 @@ export function MarketsExplorer() {
 
   const dynamicTopics = useMemo(() => deriveTopics(markets), [markets]);
 
+  const breakingMarkets = useMemo(() => {
+    return markets
+      .filter(
+        (m) =>
+          m.createdByType === 'agent' &&
+          m.status !== 'Resolved' &&
+          m.status !== 'Canceled',
+      )
+      .sort((a, b) => {
+        const aClose = a.closeDate ? new Date(a.closeDate).getTime() : 0;
+        const bClose = b.closeDate ? new Date(b.closeDate).getTime() : 0;
+        return aClose - bClose;
+      })
+      .slice(0, 4);
+  }, [markets]);
+
   // Reset pill selection if the derived topic no longer exists in updated data
   useEffect(() => {
     if (activeHotTopic !== 'All' && !dynamicTopics.includes(activeHotTopic)) {
@@ -330,6 +347,37 @@ export function MarketsExplorer() {
         <div className="mb-8 grid gap-4 md:grid-cols-2">
           <BreakingNewsPanel />
           <HotTopicsPanel markets={markets} topics={dynamicTopics} />
+        </div>
+      ) : null}
+
+      {/* Breaking news markets section */}
+      {breakingMarkets.length > 0 ? (
+        <div className="mb-12">
+          <div className="mb-6 flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-white">⚡ Breaking News Markets</h2>
+            <a href="/breaking-news" className="text-cyan-400 hover:text-cyan-300">
+              View all →
+            </a>
+          </div>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {breakingMarkets.map((market) => {
+              const yesOdds = market.outcomes.find((o) => o.label.toUpperCase() === 'YES');
+              return (
+                <NewsCard
+                  key={market.id}
+                  id={market.id}
+                  title={market.title}
+                  imageURI={market.imageURI}
+                  yesPercentage={yesOdds?.odds || 50}
+                  noPercentage={100 - (yesOdds?.odds || 50)}
+                  closeDate={market.closeDate || new Date().toISOString()}
+                  volume={fmtVol(parseVolume(market.volume))}
+                  category={market.category}
+                  type={market.type}
+                />
+              );
+            })}
+          </div>
         </div>
       ) : null}
 
