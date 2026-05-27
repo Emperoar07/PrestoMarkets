@@ -1508,3 +1508,14 @@ export async function runAgentPipeline(): Promise<PipelineResult[]> {
 
   return results;
 }
+
+// Exports for MCP and external integrations
+export {
+  fetchTrends,
+  classifyTrend,
+  draftWithGemini,
+  safetyCheckWithHaiku,
+  type SafetyResult,
+  type GroqClassification,
+  type GeminiDraft,
+};
