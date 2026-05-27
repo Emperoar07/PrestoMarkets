@@ -265,7 +265,8 @@ async function requireSession(): Promise<CircleSession> {
   // transacting without re-signing in for as long as the tab is open.
   const session = await refreshCircleSessionIfNeeded();
   if (!session) {
-    throw new Error('Circle wallet session expired — sign in again.');
+    // Session is null — either no session exists or refresh failed/timed out
+    throw new Error('Circle wallet session expired. Please sign in again to continue.');
   }
   return session;
 }
@@ -359,7 +360,6 @@ function shouldUseMultiOutcomeFactory(input: CreateLiveMarketInput) {
 
 function getMarketKind(type: MarketType): number {
   if (type === 'Opinion') return 1;
-  if (type === 'Opportunity') return 2;
   return 0;
 }
 

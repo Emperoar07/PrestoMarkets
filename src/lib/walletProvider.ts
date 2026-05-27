@@ -46,8 +46,9 @@ function setCircleSession(session: CircleSession | null) {
  * If the current Circle session's userToken is older than ~50 minutes, mint a fresh one from
  * the stored userId so the user can keep transacting without re-signing in. Returns the
  * (possibly refreshed) session. If no userId is stored (older sessions before this field was
- * added) or the refresh call fails, returns the existing session and lets the caller hit the
- * expired-token path.
+ * added) or the refresh call fails, returns null to force re-authentication.
+ *
+ * Includes 8-second timeout to prevent hanging on slow/unresponsive Circle API.
  */
 export async function refreshCircleSessionIfNeeded(): Promise<CircleSession | null> {
   const current = circleSessionRef;
@@ -55,25 +56,52 @@ export async function refreshCircleSessionIfNeeded(): Promise<CircleSession | nu
   const ageMs = current.issuedAt ? Date.now() - current.issuedAt : Infinity;
   if (ageMs < USER_TOKEN_REFRESH_AT_MS) return current;
   if (!current.userId) return current;
+
   try {
-    const refreshed = await callCircleWalletProvider<CircleLoginResult>({
-      action: 'session',
-      userId: current.userId,
-    });
-    if (refreshed?.userToken && refreshed.encryptionKey) {
-      const next: CircleSession = {
-        ...current,
-        userToken: refreshed.userToken,
-        encryptionKey: refreshed.encryptionKey,
-        issuedAt: Date.now(),
-      };
-      setCircleSession(next);
-      return next;
+    // Add 8-second timeout to prevent hanging on slow/unresponsive Circle API
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8_000);
+
+    try {
+      const refreshed = await Promise.race([
+        callCircleWalletProvider<CircleLoginResult>({
+          action: 'session',
+          userId: current.userId,
+        }),
+        new Promise<never>((_, reject) =>
+          controller.signal.addEventListener('abort', () =>
+            reject(new Error('Session refresh timeout after 8 seconds'))
+          )
+        ),
+      ]);
+      clearTimeout(timeoutId);
+
+      if (refreshed?.userToken && refreshed.encryptionKey) {
+        const next: CircleSession = {
+          ...current,
+          userToken: refreshed.userToken,
+          encryptionKey: refreshed.encryptionKey,
+          issuedAt: Date.now(),
+        };
+        setCircleSession(next);
+        return next;
+      }
+    } finally {
+      clearTimeout(timeoutId);
     }
-  } catch {
-    // Refresh failed (network / Circle outage); let the caller fall through with the stale
-    // token. Circle will return 401 and our existing flow will surface the re-auth prompt.
+  } catch (error) {
+    // Log failure but do NOT return stale token. Force re-authentication.
+    const { logger } = await import('./logger');
+    logger.warn('circle-session', 'Session refresh failed', {
+      error: error instanceof Error ? error.message : String(error),
+      ageMs: current.issuedAt ? Date.now() - current.issuedAt : 'unknown',
+    });
+
+    // Clear the session to force user to re-auth
+    setCircleSession(null);
+    return null;
   }
+
   return current;
 }
 
@@ -611,4 +639,9 @@ async function connectExternalWalletProvider(): Promise<ConnectedWallet> {
   await ensureArc(window.ethereum);
 
   return { address, mode: 'external-eoa' };
+}
+
+// Testing helper - not used in production
+export function setCircleSessionForTesting(session: CircleSession | null) {
+  circleSessionRef = session;
 }
