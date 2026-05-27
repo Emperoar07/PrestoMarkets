@@ -316,38 +316,12 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             <div className="mt-6 min-w-0 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
               <h2 className="text-base font-black text-white">Resolution rules</h2>
               <p className="mt-2 break-words text-sm leading-7 text-muted [overflow-wrap:anywhere]">{market.rules}</p>
-              <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-2">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-muted">Source verified</p>
-                  <p className="mt-1.5 text-sm leading-6 text-white">Source information is private.</p>
-                </div>
+              <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-1">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-widest text-muted">Resolver</p>
                   <p className="mt-1.5 break-all text-sm leading-6 text-white">{market.resolverAddress || market.resolver}</p>
                   <p className="mt-1 text-xs text-cyan">{market.resolutionMode}</p>
                 </div>
-                {market.rulesSchema ? (
-                  <div className="md:col-span-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowRulesSchema(!showRulesSchema)}
-                      className="flex w-full items-center justify-between gap-2 rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-2.5 text-left transition-colors hover:border-white/10"
-                    >
-                      <span className="text-[10px] font-black uppercase tracking-widest text-muted">Machine-readable rules</span>
-                      <svg
-                        className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform duration-200 ${showRulesSchema ? 'rotate-180' : ''}`}
-                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    {showRulesSchema ? (
-                      <pre className="mt-2 max-h-56 overflow-auto break-all rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-3 text-[11px] leading-5 text-[#cbd5e1] whitespace-pre-wrap">
-                        {JSON.stringify({ schema: 'presto.market-rules.v1', ...market.rulesSchema }, null, 2)}
-                      </pre>
-                    ) : null}
-                  </div>
-                ) : null}
               </div>
             </div>
 

@@ -394,7 +394,7 @@ function RainbowExternalWalletRow() {
               className="flex min-h-[46px] items-center gap-2 rounded-[10px] border border-cyan/15 bg-cyan/5 px-3 py-2 text-left text-xs font-black text-[#e2e8f0] transition-colors hover:border-cyan/45 hover:bg-cyan/10 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {walletConnector.icon ? (
-                <img src={walletConnector.icon} alt="" className="h-5 w-5 rounded-full" />
+                <img src={walletConnector.icon} alt="" loading="lazy" decoding="async" className="h-5 w-5 rounded-full" />
               ) : (
                 <WalletFallbackIcon name={connector.name} />
               )}

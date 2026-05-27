@@ -628,7 +628,7 @@ export function CreateMarketBuilder() {
             </div>
             {imageURI ? (
               <div className="mt-4 overflow-hidden rounded-[10px] border border-white/[0.06]">
-                <img src={imageURI} alt="Market preview" className="h-40 w-full object-cover" />
+                <img src={imageURI} alt="Market preview" loading="lazy" decoding="async" className="h-40 w-full object-cover" />
               </div>
             ) : null}
           </div>
@@ -670,7 +670,7 @@ export function CreateMarketBuilder() {
             <p className="mt-2 text-[14px] leading-6 text-muted">{description || 'Add a description before launching.'}</p>
 
             {imageURI ? (
-              <img src={imageURI} alt={title || 'Market picture'} className="mt-4 h-40 w-full rounded-[10px] object-cover" />
+              <img src={imageURI} alt={title || 'Market picture'} loading="lazy" decoding="async" className="mt-4 h-40 w-full rounded-[10px] object-cover" />
             ) : null}
 
             {outcomeStyle === 'poll' ? (

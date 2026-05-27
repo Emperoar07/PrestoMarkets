@@ -4,6 +4,8 @@ import { memo } from 'react';
 import Link from 'next/link';
 import type { Market } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
+import { useAppState } from '@/lib/appState';
+import { prefetchMarketDetail } from '@/lib/marketPrefetch';
 import { Countdown } from './Countdown';
 
 type MarketCardMarket = Market & {
@@ -12,6 +14,7 @@ type MarketCardMarket = Market & {
 };
 
 function MarketCardComponent({ market }: { market: MarketCardMarket }) {
+  const { refreshAccountPortfolio } = useAppState();
   const yes = market.outcomes.find((o) => o.label === 'YES') ?? market.outcomes[0];
   const no = market.outcomes.find((o) => o.label === 'NO') ?? market.outcomes[1] ?? yes;
   const yesOdds = yes.odds;
@@ -24,6 +27,7 @@ function MarketCardComponent({ market }: { market: MarketCardMarket }) {
   return (
     <Link
       href={`/markets/${market.id}`}
+      onMouseEnter={() => prefetchMarketDetail(market.id, refreshAccountPortfolio)}
       className="group flex h-[236px] min-w-0 flex-col overflow-hidden rounded-[16px] border border-white/[0.06] bg-[#131a27] p-4 transition-all hover:border-white/[0.1] hover:bg-[#161e2e] sm:p-5"
     >
       <div className="flex min-h-[40px] items-start gap-3">
