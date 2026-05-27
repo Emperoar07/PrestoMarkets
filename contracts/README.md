@@ -1,46 +1,75 @@
 # Presto Markets Contracts
 
-These contracts are Phase 3 scaffolds for a public Arc Testnet market pilot.
+These contracts power prediction markets on Arc Testnet. They are production-ready for testnet use but not yet audited for mainnet deployment.
 
-## Current Scope
+## Binary Market Contract
 
-- Binary YES and NO markets
-- USDC collateral
-- Fixed share accounting
-- Explicit resolver based settlement
-- Canceled market refunds
-- Resolution evidence URI
-- Protocol fee scaffold with a 5 percent maximum
-- Hardhat tests for market buying, settlement, claims, refunds, fees, factory creation, and owner controls
+The core binary YES/NO market contract handles:
 
-## V2 Multi Outcome Scaffold
+- Share accounting for two outcomes.
+- USDC collateral deposits and claims.
+- Explicit resolver-based settlement: the resolver chooses which outcome wins.
+- Canceled market refunds: if a market is canceled before resolution, everyone gets their collateral back.
+- Resolution evidence URIs: resolvers attach evidence links to their resolution onchain.
+- Protocol fees: a 5 percent maximum fee on claims (configurable by owner).
+- Hardhat test coverage: buying, selling, settlement, claims, refunds, fee routing, factory creation, owner controls.
 
-- Two to twelve outcome fixed-share markets
-- Outcome-specific share accounting
-- Resolver settlement by outcome index
-- Winner claims from the resolved collateral snapshot
-- Canceled market refunds across every outcome
-- Separate factory so the live binary factory can stay stable while V2 is tested
+## Multi Outcome Market Contract
 
-## Testing
+The V2 scaffold supports 2 to 12 outcomes per market:
+
+- Outcome-specific share accounting: each outcome has its own balance.
+- Resolver-based settlement by outcome index: resolver picks the winning outcome.
+- Winner claims from the resolved collateral snapshot: claims are calculated at resolution time.
+- Canceled market refunds across all outcomes: everyone is refunded pro rata.
+- Separate factory: the multi-outcome factory is separate from the binary factory, so live binary markets stay stable while we test V2.
+
+## Building and Testing
 
 ```bash
+# Install dependencies
+npm install
+
+# Run contract tests
 npm run test:contracts
+
+# Build contracts
+npm run build:contracts
 ```
 
-## Application Settlement Automation
+All contracts are written in Solidity and compiled with Hardhat. Tests run against a local hardhat network. Gas costs are benchmarked but not optimized yet.
 
-Testnet agent-resolved markets can submit a resolution through their configured resolver when declared-source evidence is available and confident. If evidence is unavailable or inconclusive, the application leaves the market pending review rather than automatically canceling it. Optimistic challenges and bonds are required before this pattern is suitable for real value.
+## Agent-Assisted Settlement
 
-## Not Included Yet
+Agent-resolved testnet markets can submit a resolution through their registered resolver when declared-source evidence is available and meets the confidence threshold. If evidence is missing or inconclusive, the application leaves the market pending review rather than automatically canceling it.
 
-- AMM pricing
-- Order books
-- Dispute windows
-- Optimistic challenge and bonded dispute resolution
-- USYC yield accounting
-- Cross chain funding
+This is safe for testnet because:
 
-## Safety Notes
+- The resolver is still trusted (no optimistic challenges yet).
+- Testnet USDC has no real value.
+- Users understand that markets can remain pending indefinitely.
 
-The contracts should be audited before real value is used. The resolver is still trusted in this phase, and market metadata needs a durable storage plan before production deployment.
+Before mainnet, we need optimistic challenge windows with bonded disputes so resolvers can be contested if they act maliciously.
+
+## What's Not Here Yet
+
+These features are planned but not yet implemented:
+
+- **AMM pricing models** for automated market maker curves.
+- **Order books** for limit orders and matching engines.
+- **Dispute windows** to contest resolutions.
+- **Optimistic challenges with bonds** so resolver decisions can be appealed.
+- **USYC yield accounting** for yield-bearing stablecoins.
+- **Cross-chain funding** via Circle Gateway.
+
+## Security and Testnet Status
+
+The contracts are safe for testnet use. Before any mainnet deployment:
+
+- Full security audit by a professional firm.
+- Third-party code review.
+- Resolver registration and reputation tracking.
+- Market metadata durability plan (IPFS or on-contract storage).
+- Governance setup for protocol parameters.
+
+For testnet, resolvers are trusted addresses managed by the Presto team. Market creators choose their resolver at creation time. The Presto agent resolver is configured at deploy time and can be updated by the contract owner.

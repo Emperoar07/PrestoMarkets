@@ -7,24 +7,25 @@ This note is for the next chat so we can continue quickly without rebuilding con
 These are the things the next chat should not rediscover or change casually.
 
 * Presto Markets is a separate product and repo. Do not merge it back into Presto DEX.
-* Keep the Presto brand family: dark navy, cyan, rounded cards, strong typography, and clean plain copy.
+* Keep the Presto brand family: dark navy, cyan, rounded cards, strong typography, and clean plain copy. No em-dashes or rhetorical hyphens in documentation.
 * The product is public by default. Opportunity markets do not need privacy on Arc.
 * Use USDC first. Do not introduce USYC yield until the accounting and redemption math is separately reviewed.
-* The first real implementation path should be contract tests, Arc Testnet deployment, then live UI wiring.
+* The autonomous agent runs on Arc Testnet with a five-phase orchestration system. It is live and running.
 * Do not replace market contracts with Arc App Kit. App Kit is a rail layer for funding, sending, bridging, wallets, and paymaster flows.
-* Always use Arc MCP before making major Arc specific architecture decisions.
+* Always use Arc MCP before making major Arc-specific architecture decisions.
 * Always use Circle MCP before making Circle wallet, paymaster, bridge, gateway, or USDC rail decisions.
-* Keep V1 simple: manual resolver, clear source of truth, evidence URI, public settlement, claim and refund flows.
-* Do not add autonomous AI resolution until disputes, bonds, failed agent behavior, and override rules are designed.
-* Do not add AMM pricing until fixed share markets work safely.
-* Market creation should support prediction, opinion, and opportunity markets.
-* The copy should stay humane, precise, and straightforward. Avoid hype and avoid unnecessary hyphens.
+* Keep V1 simple. We are not planning mainnet yet. Focus on testnet stability and scale.
+* Agent autonomous resolution is implemented and running. Markets settled by agent require declared-source evidence to meet confidence threshold.
+* Do not add AMM pricing until fixed share markets work safely on testnet.
+* Market creation supports prediction, opinion, and opportunity markets. Agent creates prediction markets autonomously daily.
+* Documentation should be human tone, precise, straightforward. Avoid hype and unnecessary hyphens.
 * GitHub repo is `https://github.com/Emperoar07/PrestoMarkets`.
 * Local repo is `C:\Users\bolaj\presto-markets`.
+* Comprehensive documentation exists in docs/ directory: TESTNET_DEPLOYMENT.md, TESTNET_MONITORING.md, TESTNET_OPERATIONS.md, ARCHITECTURE.md, ABOUT.md.
 
 ## Current State
 
-Presto Markets is a separate repo from Presto DEX.
+Presto Markets is a separate repo from Presto DEX and is live on Arc Testnet.
 
 GitHub repo:
 
@@ -38,23 +39,32 @@ Local repo:
 C:\Users\bolaj\presto-markets
 ```
 
-The app is a Next.js project with the Presto dark navy and cyan brand style. It already has:
+The app is a Next.js 16 project with the Presto dark navy and cyan brand style. Current features:
 
 * Landing page
-* Markets list page
-* Market create page
-* Market detail page
-* Portfolio and My Shares page
-* Product rail notes for USDC, Paymaster, Wallets, Bridge Kit, CCTP, and Gateway
-* Contract scaffold for a simple USDC binary market and market factory
+* Markets list page with filtering (prediction, opinion, opportunity)
+* Market create page (manual creation)
+* Market detail page with live trading
+* Portfolio and My Shares page with cost basis tracking
+* Autonomous agent market creation on daily cadence
+* Live Circle User-Controlled Wallets (email OTP, social login, PIN)
+* External EVM wallet support via MetaMask
 * Live Arc factory reads and writes
-* Live market actions for approval, buy, resolve, claim, and refund
+* Live market actions: approval, buy, sell, resolve, claim, refund
+* Agent orchestration system (perceive, analyze, plan, authorize, execute, verify)
+* Durable request queue with checkpoint persistence
+* LLM provider pool with circuit breaker fallback
+* Health monitoring and observability endpoints
+* Autonomous cron job (every 10 minutes)
 
 The last confirmed build passed with:
 
 ```bash
 npm run build
+npm run typecheck
 ```
+
+TypeScript compilation passes with zero errors.
 
 ## Product Direction
 
@@ -192,52 +202,58 @@ Next work:
 * Expand recent event reads into a persistent indexed account history
 * Expand production hardening notes into reviewed audit findings and approved dispute or bond design
 
-## Phase 3 Started
+## Phase 3 and Phase 4: Autonomous Agent and Orchestration
 
-Phase 3 is protocol hardening.
+Agent implementation is complete and running on testnet.
 
-Already started:
+Implemented and live:
 
-* Market kind is stored in the contract
-* Protocol fee recipient exists
-* Fee cap exists
-* Resolution evidence URI exists
-* Resolved collateral snapshot exists
-* Claim preview helpers exist
-* Refund preview helpers exist
-* Factory owner controls exist
-* Hardhat test harness exists
-* `PrestoMarket.sol` tests cover setup, buy YES and NO, buyFor, invalid buys, resolver-only resolution, claim math, protocol fees, cancellation, refunds, and constructor guards
-* `PrestoMarketFactory.sol` tests cover setup, market creation, fee controls, ownership controls, and zero collateral guard
-* Arc Testnet deploy script exists
-* Arc Testnet factory deployment exists
-* Arc Testnet factory and USDC addresses are in `.env.example`
-
-Next work:
-
-* Review `docs/PRODUCTION_HARDENING.md` before real value
-* Turn the dispute and bond placeholder into a concrete protocol design before real-value launch
+* Agent orchestration system with five phases: perceive, analyze, plan, authorize, execute, verify.
+* Graph-based state machine with checkpoint persistence for pause and resume.
+* Durable request queue with idempotency, exponential backoff, and dead letter queue.
+* LLM provider pool with circuit breaker failover across Anthropic, Groq, OpenRouter, Cerebras, Together.
+* Six-stage pipeline: fetch trends, classify by market type, draft market with LLM, safety check, submit onchain, verify settlement.
+* Trend ingestion from Cointelegraph, CoinDesk, ESPN, X, CoinGecko, and other sources.
+* Autonomous cron job processing every 10 minutes via Vercel.
+* Health check endpoints with provider status and queue metrics.
+* Comprehensive monitoring and operations documentation.
+* Integration test suite validating all phases working together.
+* MCP interface for external agents to call Presto agent tools.
+* Agent CLI for local testing of agent pipeline.
+* Bearer token authentication on all privileged endpoints.
 
 Latest Arc Testnet deployment:
 
 * `PrestoMarketFactory`: `0xB5FA65ae7c76b2DeecA1906848e8805df6dCF807`
+* `PrestoMultiOutcomeMarketFactory`: check data/arc-testnet.json
 * USDC collateral: `0x3600000000000000000000000000000000000000`
-* Deployer: same local Presto deployer used by `C:\Users\bolaj\tempo-mini-dex`
+* Agent EOA: registered with ERC-8004 identity registry
 * Deployment record: `data/arc-testnet.json`
 
-## Recommended Next Scope
+## Testnet Readiness
 
-The safest next scope is account-aware live app depth.
+The app is ready for testnet operation. What's next:
 
-Order:
+* **Testnet stability and scale.** Load test agent orchestrator for high-volume requests. Optimize queue throughput. Monitor failure rates and recovery times.
+* **Provider performance.** Track LLM latency and success rates. Identify slowest providers. Monitor circuit breaker trips.
+* **Queue recovery.** Test dead letter queue inspection and resubmit workflows. Verify exponential backoff behaves correctly.
+* **Resolver quality.** Track agent-resolved markets: success rate, settlement time, evidence quality.
+* **Documentation iteration.** Collect operational feedback and update TESTNET_OPERATIONS.md based on real usage patterns.
 
-1. Verify Circle Email OTP settings in Circle Console.
-2. Expand recent event reads into a persistent indexed account history.
-3. Review the production hardening gate and turn dispute or bond placeholders into a concrete protocol design before real value beyond testnet.
+We are not planning mainnet deployment yet. The focus is testnet stability and learning what breaks.
 
-Circle User-Controlled Wallet note:
+## MCP and External Agents
 
-* Circle's official User-Controlled Wallet model does not expose raw private-key export. The app should support user-owned signing, wallet recovery, copy address, and disconnect instead of promising seed phrase or private-key export.
+The agent publishes MCP tools and resources at `/api/mcp/agent`. External agents can call Presto agent tools:
+
+* fetch_trends: fetch live trend signals
+* classify_trend: classify as prediction/opinion/opportunity
+* draft_market: draft market parameters with LLM
+* validate_market: safety checks
+* create_market: submit onchain
+* resolve_market: settle market
+
+Agents can also read agent status and see autonomous market creation activity.
 
 ## Design Rules
 
@@ -294,22 +310,31 @@ Planned:
 
 Do not mark planned rails as live until they are actually wired and tested.
 
-## Safety Notes
+## Safety Notes for Testnet
 
-Keep V1 simple:
+Current approach:
 
-* USDC collateral first
-* Public markets first
-* Manual resolver first
-* No USYC yield until math is reviewed separately
-* No autonomous AI resolution until disputes and bonds are designed
-* No private opportunity markets
-* No complex AMM until fixed share markets work safely
+* USDC collateral only.
+* Public markets by default.
+* Manual resolver fallback for edge cases.
+* Agent-assisted resolution requires declared-source evidence at confidence threshold.
+* No USYC yield until math is reviewed separately.
+* No private opportunity markets.
+* No complex AMM until fixed share markets prove safe at scale.
+* Focus on testnet stability, not mainnet preparation.
+
+Before mainnet deployment, we need:
+
+* Security audit by professional firm.
+* Dispute and bond protocol design.
+* Resolver reputation system.
+* Market metadata durability (IPFS or onchain storage).
+* Governance setup for protocol parameters.
 
 ## First Prompt For Next Chat
 
 Use this:
 
 ```text
-We are in C:\Users\bolaj\presto-markets. Read DEVNOTE.md and README.md first. Continue Presto Markets from Phase 2 and Phase 3. Use Arc MCP for Arc specific decisions and Circle MCP for Circle wallet or rail decisions. Keep live contract wiring honest and do not add AMM, AI resolution, USYC, or later rails without MCP-backed design.
+We are in C:\Users\bolaj\presto-markets. Read DEVNOTE.md, README.md, and ARCHITECTURE.md first. The autonomous agent is live on Arc Testnet with full orchestration (perceive, analyze, plan, authorize, execute, verify), queue processing every 10 minutes, and comprehensive monitoring. We are focused on testnet stability and scale. Use Arc MCP for Arc decisions and Circle MCP for Circle wallet decisions. Do not add mainnet planning, AMM pricing, USYC yield, or complex features without MCP-backed design. Keep documentation in human tone without em-dashes.
 ```
