@@ -952,7 +952,7 @@ function MarketNewsTieIn({ trendUrl, marketTitle }: { trendUrl: string; marketTi
     setError("");
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    const timeout = setTimeout(() => controller.abort(), 3000); // 3 second timeout
 
     fetch("/api/news/summarize", {
       method: "POST",
