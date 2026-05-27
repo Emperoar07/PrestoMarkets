@@ -225,8 +225,36 @@ async function handleToolCall(name: string, args: Record<string, any>): Promise<
 /**
  * POST /api/mcp/agent
  * Handle MCP protocol requests
+ * Requires: Authorization header with bearer token matching MCP_AGENT_TOKEN
  */
 export async function POST(req: NextRequest) {
+  // Authenticate using bearer token (constant-time comparison)
+  const auth = req.headers.get('authorization') || '';
+  const token = process.env.MCP_AGENT_TOKEN;
+
+  if (!token) {
+    logger.error('mcp-agent', 'MCP_AGENT_TOKEN not configured');
+    return NextResponse.json(
+      { error: 'Server configuration error' },
+      { status: 500 }
+    );
+  }
+
+  const expected = `Bearer ${token}`;
+  const isValid = auth.length === expected.length &&
+    Buffer.from(auth).equals(Buffer.from(expected));
+
+  if (!isValid) {
+    logger.warn('mcp-agent', 'Unauthorized MCP request', {
+      hasAuth: auth.length > 0,
+      method: req.method
+    });
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    );
+  }
+
   try {
     const body = await req.json();
     const { method, params } = body;
