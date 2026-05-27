@@ -6,23 +6,9 @@ import { MarketSignalChart } from './MarketSignalChart';
 import { SkeletonCard } from './SkeletonCard';
 import { useAppState } from '@/lib/appState';
 import type { AppMarket } from '@/lib/appState';
+import { parseVolume, formatVolume } from '@/lib/marketUtils';
 
 type SortKey = 'volume' | 'ending' | 'newest';
-
-function parseVolume(v: string): number {
-  const n = parseFloat(v.replace(/[^0-9.]/g, ''));
-  if (isNaN(n)) return 0;
-  if (v.includes('M')) return n * 1_000_000;
-  if (v.includes('K')) return n * 1_000;
-  return n;
-}
-
-function fmtVol(v: number) {
-  if (v === 0) return '$0';
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K`;
-  return `$${v.toFixed(0)}`;
-}
 
 function sortMarkets(list: AppMarket[], sort: SortKey): AppMarket[] {
   const copy = [...list];
@@ -167,7 +153,7 @@ function HotTopicsPanel({ markets, topics: derivedTopics }: { markets: AppMarket
             <li key={topic} className="flex items-center gap-3">
               <span className="w-4 shrink-0 text-[11px] font-black text-[#334155]">{i + 1}</span>
               <span className="flex-1 text-[13px] font-bold text-[#cbd5e1]">{topic}</span>
-              <span className="text-[12px] font-bold text-[#4a5568]">{fmtVol(vol)}</span>
+              <span className="text-[12px] font-bold text-[#4a5568]">{formatVolume(vol)}</span>
               <span className="text-base">🔥</span>
             </li>
           ))}
@@ -283,7 +269,7 @@ export function MarketsExplorer() {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-black text-white">All markets</h2>
         <span className="text-xs text-[#4a5568]">
-          <span className="font-black text-white">{fmtVol(totalVolume)}</span> total vol · Arc Testnet
+          <span className="font-black text-white">{formatVolume(totalVolume)}</span> total vol · Arc Testnet
         </span>
       </div>
 

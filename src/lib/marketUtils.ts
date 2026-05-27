@@ -29,6 +29,8 @@ export function parseVolume(v: string): number {
  */
 export function formatVolume(v: number): string {
   if (v === 0) return '$0';
+  if (v > 0 && v < 0.01) return '<$0.01';
+  if (v < 1) return `$${v.toFixed(2)}`;
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
   if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K`;
   return `$${v.toFixed(0)}`;
