@@ -286,9 +286,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     );
                   })}
                 </div>
-                <p className="mt-3 text-xs leading-5 text-muted">
-                  This market uses poll-style outcome metadata. V2 markets trade and resolve these outcomes directly when the multi-outcome factory is configured.
-                </p>
               </div>
             ) : null}
 
