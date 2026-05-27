@@ -1,5 +1,6 @@
 /**
  * Agent Queue API - Manage market creation request queue
+ * Requires: Authorization header with bearer token matching MCP_AGENT_TOKEN
  *
  * Endpoints:
  * POST /api/agents/queue/enqueue - Add request to queue
@@ -25,6 +26,20 @@ import {
   type QueueRequest,
 } from '@/lib/agentQueue';
 import { logger } from '@/lib/logger';
+
+// Authenticate using bearer token (constant-time comparison)
+function authenticateRequest(req: NextRequest): boolean {
+  const auth = req.headers.get('authorization') || '';
+  const token = process.env.MCP_AGENT_TOKEN;
+
+  if (!token) {
+    logger.error('agents-queue', 'MCP_AGENT_TOKEN not configured');
+    return false;
+  }
+
+  const expected = `Bearer ${token}`;
+  return auth.length === expected.length && Buffer.from(auth).equals(Buffer.from(expected));
+}
 
 // Enqueue a new market creation request
 async function handleEnqueue(req: NextRequest) {
@@ -229,6 +244,11 @@ async function handleResubmit(requestId: string, req: NextRequest) {
 
 // POST /api/agents/queue
 export async function POST(req: NextRequest) {
+  if (!authenticateRequest(req)) {
+    logger.warn('agents-queue', 'Unauthorized POST request');
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const url = new URL(req.url);
   const pathSegments = url.pathname.split('/').filter(Boolean);
   const queueIndex = pathSegments.indexOf('queue');
@@ -251,6 +271,11 @@ export async function POST(req: NextRequest) {
 
 // GET /api/agents/queue
 export async function GET(req: NextRequest) {
+  if (!authenticateRequest(req)) {
+    logger.warn('agents-queue', 'Unauthorized GET request');
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const url = new URL(req.url);
   const pathSegments = url.pathname.split('/').filter(Boolean);
   const queueIndex = pathSegments.indexOf('queue');

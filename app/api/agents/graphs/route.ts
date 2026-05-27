@@ -1,5 +1,6 @@
 /**
  * Agent Graph API - Start, resume, and monitor graph execution
+ * Requires: Authorization header with bearer token matching MCP_AGENT_TOKEN
  *
  * Endpoints:
  * POST /api/agents/graphs/start - Start new graph execution
@@ -11,6 +12,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runAgentGraph, resumeAgentGraph, loadCheckpoint, listCheckpoints } from '@/lib/agentGraph';
 import { logger } from '@/lib/logger';
+
+// Authenticate using bearer token (constant-time comparison)
+function authenticateRequest(req: NextRequest): boolean {
+  const auth = req.headers.get('authorization') || '';
+  const token = process.env.MCP_AGENT_TOKEN;
+
+  if (!token) {
+    logger.error('agents-graphs', 'MCP_AGENT_TOKEN not configured');
+    return false;
+  }
+
+  const expected = `Bearer ${token}`;
+  return auth.length === expected.length && Buffer.from(auth).equals(Buffer.from(expected));
+}
 
 // Start a new graph execution
 async function handleStart(req: NextRequest) {
@@ -105,6 +120,11 @@ async function handleListCheckpoints() {
 }
 
 export async function POST(req: NextRequest) {
+  if (!authenticateRequest(req)) {
+    logger.warn('agents-graphs', 'Unauthorized POST request');
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const url = new URL(req.url);
   const pathSegments = url.pathname.split('/').filter(Boolean);
   const isResume = pathSegments.includes('resume');
@@ -118,6 +138,11 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  if (!authenticateRequest(req)) {
+    logger.warn('agents-graphs', 'Unauthorized GET request');
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const url = new URL(req.url);
   const pathSegments = url.pathname.split('/').filter(Boolean);
   const graphsIndex = pathSegments.indexOf('graphs');
