@@ -12,6 +12,12 @@ type SortKey = 'volume' | 'ending' | 'newest';
 
 function sortMarkets(list: AppMarket[], sort: SortKey): AppMarket[] {
   const copy = [...list];
+  const newestKey = (market: AppMarket) => {
+    const parsed = market.createdAt ? new Date(market.createdAt).getTime() : 0;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : market.createdSortKey ?? 0;
+  };
+  if (sort === 'newest') return copy.sort((a, b) => newestKey(b) - newestKey(a));
+
   const open = copy.filter((m) => m.status === 'Open' || m.status === 'Closing soon');
   const closed = copy.filter((m) => m.status !== 'Open' && m.status !== 'Closing soon');
 
@@ -24,14 +30,7 @@ function sortMarkets(list: AppMarket[], sort: SortKey): AppMarket[] {
         return at - bt;
       });
     }
-    return group.reverse().sort((a, b) => {
-      const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      if (at && bt) return bt - at;
-      if (at) return -1;
-      if (bt) return 1;
-      return 0;
-    });
+    return group.sort((a, b) => newestKey(b) - newestKey(a));
   };
 
   return [...sortGroup(open), ...sortGroup(closed)];

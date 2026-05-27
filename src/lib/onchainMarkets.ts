@@ -90,7 +90,17 @@ function getOutcomeOdds(shares: bigint[]) {
   return shares.map((item) => Math.round(Number((item * BigInt(100)) / total)));
 }
 
-async function readMarket(client: ReturnType<typeof createPublicClient>, address: Address, index: number): Promise<AppMarket> {
+type MarketCreationInfo = {
+  createdAt?: string;
+  sortKey: number;
+};
+
+async function readMarket(
+  client: ReturnType<typeof createPublicClient>,
+  address: Address,
+  index: number,
+  creationInfo?: MarketCreationInfo,
+): Promise<AppMarket> {
   const [
     creator,
     resolver,
@@ -212,8 +222,63 @@ async function readMarket(client: ReturnType<typeof createPublicClient>, address
     ],
     source: 'onchain',
     closeDate: new Date(Number(closeTime) * 1000).toISOString(),
-    createdAt: metadata?.createdAt ?? '',
+    createdAt: metadata?.createdAt ?? creationInfo?.createdAt ?? '',
+    createdSortKey: creationInfo?.sortKey ?? index,
   };
+}
+
+async function readCreationInfo(
+  client: ReturnType<typeof createPublicClient>,
+  factories: { address: Address; abi: typeof prestoMarketFactoryAbi | typeof prestoMultiOutcomeMarketFactoryAbi }[],
+  fallbackOrder: Map<string, number>,
+): Promise<Map<string, MarketCreationInfo>> {
+  const entries = new Map<string, { blockNumber: bigint; logIndex: number; sortKey: number }>();
+
+  try {
+    for (const factory of factories) {
+      const logs = await withRetry(() => client.getContractEvents({
+        address: factory.address,
+        abi: factory.abi,
+        eventName: 'MarketCreated',
+        fromBlock: BigInt(0),
+        toBlock: 'latest',
+      }));
+
+      for (const log of logs) {
+        const marketArg = log.args.market;
+        const market = typeof marketArg === 'string' ? marketArg.toLowerCase() : undefined;
+        if (!market || !log.blockNumber) continue;
+        const logIndex = Number(log.logIndex ?? 0);
+        entries.set(market, {
+          blockNumber: log.blockNumber,
+          logIndex,
+          sortKey: Number(log.blockNumber) * 1_000_000 + logIndex,
+        });
+      }
+    }
+  } catch {
+    return new Map(Array.from(fallbackOrder.entries()).map(([address, sortKey]) => [address, { sortKey }]));
+  }
+
+  const blocks = new Map<string, string>();
+  await Promise.all(Array.from(new Set(Array.from(entries.values()).map((entry) => entry.blockNumber.toString())))
+    .map(async (blockNumber) => {
+      try {
+        const block = await withRetry(() => client.getBlock({ blockNumber: BigInt(blockNumber) }));
+        blocks.set(blockNumber, new Date(Number(block.timestamp) * 1000).toISOString());
+      } catch {
+        blocks.set(blockNumber, '');
+      }
+    }));
+
+  return new Map(Array.from(fallbackOrder.entries()).map(([address, fallbackSortKey]) => {
+    const entry = entries.get(address);
+    if (!entry) return [address, { sortKey: fallbackSortKey }];
+    return [address, {
+      sortKey: entry.sortKey,
+      createdAt: blocks.get(entry.blockNumber.toString()) || undefined,
+    }];
+  }));
 }
 
 async function readOnchainMarkets() {
@@ -247,6 +312,7 @@ async function readOnchainMarkets() {
     config.multiOutcomeFactoryAddress ? { address: config.multiOutcomeFactoryAddress as Address, abi: prestoMultiOutcomeMarketFactoryAbi } : null,
   ].filter(Boolean) as { address: Address; abi: typeof prestoMarketFactoryAbi | typeof prestoMultiOutcomeMarketFactoryAbi }[];
   const marketAddresses: Address[] = [];
+  const fallbackOrder = new Map<string, number>();
 
   for (const factory of factories) {
     const marketCount = await withRetry(() => client.readContract({
@@ -269,14 +335,24 @@ async function readOnchainMarkets() {
         }))),
       );
       marketAddresses.push(...batchAddresses);
+      for (const address of batchAddresses) {
+        fallbackOrder.set(address.toLowerCase(), fallbackOrder.size + 1);
+      }
     }
   }
+
+  const creationInfo = await readCreationInfo(client, factories, fallbackOrder);
 
   const markets: AppMarket[] = [];
   for (let i = 0; i < marketAddresses.length; i += MARKET_HYDRATION_BATCH_SIZE) {
     const batch = marketAddresses.slice(i, i + MARKET_HYDRATION_BATCH_SIZE);
     const batchMarkets = await Promise.all(
-      batch.map((address, batchIndex) => withRetry(() => readMarket(client, address, i + batchIndex))),
+      batch.map((address, batchIndex) => withRetry(() => readMarket(
+        client,
+        address,
+        i + batchIndex,
+        creationInfo.get(address.toLowerCase()),
+      ))),
     );
     markets.push(...batchMarkets);
   }

@@ -39,6 +39,16 @@ TREND SOURCES YOU READ
   not a resolution source, and their rules must never override the original verified source.
 - Live sports score signals (game outcomes nearing close)
 
+REFERENCE MARKET DESIGN PLAYBOOK
+- Polymarket-style markets work because the hook is compact, tradable, and measurable:
+  named asset/team/person, exact threshold or outcome, and a concrete deadline.
+- Opinion/social polling markets work when broad fuzzy topics become short, mutually
+  exclusive choices people can understand in seconds.
+- Borrow structure, not wording. Rewrite any reference market for Presto's own source,
+  close date, categories, and resolution rules.
+- Price and range ideas should become direct multi-outcome V2 options when they are more
+  useful than separate binary YES / NO markets.
+
 PLATFORM RULES YOU MUST RESPECT
 - The factory is permissionless — anyone can create a market, so safety bar is high
 - Active agent-market cap (default 2) — the platform throttles you
@@ -58,6 +68,10 @@ DURATION MATCHING
   in 12 hours should NOT be a 30-day market. A quarterly metric should not be a 24-hour
   market. The drafter prompt gives you specific anchors (6h / today / tomorrow / 3d / 7d
   / 30d / 90d) — pick the SHORTEST one that still gives the source time to confirm.
+
+- Do not use one-day closes by habit. BTC/ETH/SOL daily price ranges can be short, but
+  policy, product, governance, macro, earnings, launch, and season-winner markets need
+  weekly, monthly, or quarterly horizons when the event requires it.
 
 SIGNAL DISCIPLINE
 - The pipeline now ranks ALL trends first, picks from the top half by momentum with
