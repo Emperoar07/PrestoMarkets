@@ -623,7 +623,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   <span className="font-black text-white">
                     {tradeMode === 'liquidity'
                       ? isBinaryMarket ? 'Balanced YES + NO' : 'Balanced across all outcomes'
-                      : isLimitOrder ? `${limitPrice || '0'}\u00a2 limit` : `${activeOutcome.odds}\u00a2 per share`}
+                      : isLimitOrder ? `${limitPrice || '0'}c limit` : `${activeOutcome.odds}c per share`}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">

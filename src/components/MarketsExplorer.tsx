@@ -9,6 +9,20 @@ import type { AppMarket } from '@/lib/appState';
 import { parseVolume, formatVolume } from '@/lib/marketUtils';
 
 type SortKey = 'volume' | 'ending' | 'newest';
+type PeriodFilter = 'all' | 'daily' | 'weekly' | 'monthly';
+
+const sortLabels: Record<SortKey, string> = {
+  newest: 'Newest',
+  volume: 'Volume',
+  ending: 'Ending',
+};
+
+const periodLabels: Record<PeriodFilter, string> = {
+  all: 'All time',
+  daily: 'Today',
+  weekly: 'This week',
+  monthly: 'This month',
+};
 
 function sortMarkets(list: AppMarket[], sort: SortKey): AppMarket[] {
   const copy = [...list];
@@ -34,6 +48,17 @@ function sortMarkets(list: AppMarket[], sort: SortKey): AppMarket[] {
   };
 
   return [...sortGroup(open), ...sortGroup(closed)];
+}
+
+function isWithinPeriod(market: AppMarket, period: PeriodFilter): boolean {
+  if (period === 'all') return true;
+  const created = market.createdAt ? new Date(market.createdAt).getTime() : 0;
+  if (!Number.isFinite(created) || created <= 0) return false;
+
+  const age = Date.now() - created;
+  if (period === 'daily') return age <= 24 * 60 * 60 * 1000;
+  if (period === 'weekly') return age <= 7 * 24 * 60 * 60 * 1000;
+  return age <= 30 * 24 * 60 * 60 * 1000;
 }
 
 // Derive topic pills dynamically from actual market data — no static list
@@ -153,7 +178,7 @@ function HotTopicsPanel({ markets, topics: derivedTopics }: { markets: AppMarket
               <span className="w-4 shrink-0 text-[11px] font-black text-[#334155]">{i + 1}</span>
               <span className="flex-1 text-[13px] font-bold text-[#cbd5e1]">{topic}</span>
               <span className="text-[12px] font-bold text-[#4a5568]">{formatVolume(vol)}</span>
-              <span className="text-base">🔥</span>
+              <span className="rounded-full bg-cyan/10 px-2 py-0.5 text-[10px] font-black uppercase text-cyan">Hot</span>
             </li>
           ))}
         </ol>
@@ -180,6 +205,7 @@ export function MarketsExplorer() {
   }, [dynamicTopics, activeHotTopic]);
   const [searchValue, setSearchValue] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('newest');
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'resolved'>('all');
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
@@ -194,6 +220,7 @@ export function MarketsExplorer() {
       setActiveCategory(cat);
       setSearchValue('');
       setSortKey('newest');
+      setPeriodFilter('all');
     }
 
     function onCategoryChange(event: Event) {
@@ -202,6 +229,7 @@ export function MarketsExplorer() {
       setActiveHotTopic('All');
       setSearchValue('');
       setSortKey('newest');
+      setPeriodFilter('all');
     }
 
     function onSearchChange(event: Event) {
@@ -227,6 +255,7 @@ export function MarketsExplorer() {
     if (statusFilter === 'resolved' && market.status !== 'Resolved') {
       return false;
     }
+    if (!isWithinPeriod(market, periodFilter)) return false;
 
     // Category filter - hide selected categories
     const cats = market.categories ?? (market.category ? [market.category] : []);
@@ -293,7 +322,7 @@ export function MarketsExplorer() {
       </HorizScroller>
 
       {/* Sort toolbar */}
-      <div className="mt-4 flex items-center justify-between gap-4">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
         <p className="text-sm text-[#4a5568]">
           <span className="font-black text-white">{visibleMarkets.length}</span>{' '}
           market{visibleMarkets.length === 1 ? '' : 's'}
@@ -334,47 +363,76 @@ export function MarketsExplorer() {
       </div>
 
       {/* Filter toolbar - Polymarket style */}
-      <div className="mt-4 flex items-center gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-2">
 
         {/* All filter options - shown/hidden by filter toggle */}
         {showAdvancedFilters && (
           <>
-            {/* 24hr Volume dropdown */}
+            {/* Sort dropdown */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setOpenDropdown(openDropdown === 'volume' ? null : 'volume')}
                 className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
               >
-                24hr Volume
-                <span className="text-[10px]">▼</span>
+                {sortLabels[sortKey]}
+                <span className="text-[10px]">v</span>
               </button>
               {openDropdown === 'volume' && (
                 <div className="absolute top-full mt-1 left-0 rounded-[8px] border border-white/[0.06] bg-[#0d1520] py-1 z-50 min-w-[180px]">
-                  {['24hr Volume', 'Total Volume', 'Liquidity', 'Newest', 'Ending Soon'].map((item) => (
-                    <button key={item} type="button" className="block w-full px-4 py-1.5 text-left text-sm text-[#cbd5e1] hover:bg-white/[0.08] hover:text-white transition-colors" onClick={() => setOpenDropdown(null)}>
-                      {item}
+                  {([
+                    ['newest', 'Newest'],
+                    ['volume', 'Volume'],
+                    ['ending', 'Ending soon'],
+                  ] as [SortKey, string][]).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`block w-full px-4 py-1.5 text-left text-sm transition-colors hover:bg-white/[0.08] hover:text-white ${
+                        sortKey === key ? 'text-cyan' : 'text-[#cbd5e1]'
+                      }`}
+                      onClick={() => {
+                        setSortKey(key);
+                        setOpenDropdown(null);
+                      }}
+                    >
+                      {label}
                     </button>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* All / Daily / Weekly / Monthly */}
+            {/* Created period */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setOpenDropdown(openDropdown === 'period' ? null : 'period')}
                 className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
               >
-                All
-                <span className="text-[10px]">▼</span>
+                {periodLabels[periodFilter]}
+                <span className="text-[10px]">v</span>
               </button>
               {openDropdown === 'period' && (
                 <div className="absolute top-full mt-1 left-0 rounded-[8px] border border-white/[0.06] bg-[#0d1520] py-1 z-50 min-w-[120px]">
-                  {['Daily', 'Weekly', 'Monthly', 'All'].map((item) => (
-                    <button key={item} type="button" className="block w-full px-4 py-1.5 text-left text-sm text-[#cbd5e1] hover:bg-white/[0.08] hover:text-white transition-colors" onClick={() => setOpenDropdown(null)}>
-                      {item}
+                  {([
+                    ['all', 'All time'],
+                    ['daily', 'Today'],
+                    ['weekly', 'This week'],
+                    ['monthly', 'This month'],
+                  ] as [PeriodFilter, string][]).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`block w-full px-4 py-1.5 text-left text-sm transition-colors hover:bg-white/[0.08] hover:text-white ${
+                        periodFilter === key ? 'text-cyan' : 'text-[#cbd5e1]'
+                      }`}
+                      onClick={() => {
+                        setPeriodFilter(key);
+                        setOpenDropdown(null);
+                      }}
+                    >
+                      {label}
                     </button>
                   ))}
                 </div>
@@ -389,7 +447,7 @@ export function MarketsExplorer() {
                 className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
               >
                 {statusFilter === 'active' ? 'Active' : statusFilter === 'resolved' ? 'Resolved' : 'All'}
-                <span className="text-[10px]">▼</span>
+                <span className="text-[10px]">v</span>
               </button>
               {openDropdown === 'status' && (
                 <div className="absolute top-full mt-1 left-0 rounded-[8px] border border-white/[0.06] bg-[#0d1520] py-1 z-50 min-w-[120px]">
@@ -432,11 +490,12 @@ export function MarketsExplorer() {
             ))}
 
             {/* Clear filters */}
-            {(statusFilter !== 'all' || hiddenCategories.size > 0) && (
+            {(statusFilter !== 'all' || periodFilter !== 'all' || hiddenCategories.size > 0) && (
               <button
                 type="button"
                 onClick={() => {
                   setStatusFilter('all');
+                  setPeriodFilter('all');
                   setHiddenCategories(new Set());
                 }}
                 className="ml-2 text-sm font-bold text-cyan/80 transition-colors hover:text-cyan"
@@ -463,7 +522,7 @@ export function MarketsExplorer() {
         </div>
       ) : (
         <div className="mt-10 rounded-[16px] border border-dashed border-white/[0.07] bg-[#0d1520] px-8 py-14 text-center">
-          <p className="text-4xl">🔍</p>
+          <p className="text-sm font-black uppercase tracking-[0.2em] text-cyan/70">No results</p>
           <h2 className="mt-4 text-xl font-black text-white">
             {markets.length === 0 ? 'No markets on chain yet' : 'No markets match that filter'}
           </h2>
