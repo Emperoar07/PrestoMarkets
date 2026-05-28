@@ -439,50 +439,61 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
   const requests = sportsDbSports.flatMap((sport) => dates.map(async (date) => {
     const day = formatSportsDbDate(date);
     const url = `https://www.thesportsdb.com/api/v1/json/${apiKey}/eventsday.php?d=${day}&s=${encodeURIComponent(sport.sport)}`;
-    const res = await fetch(url, { next: { revalidate: 900 } });
-    if (!res.ok) return [] as TrendItem[];
-    const data = await res.json() as {
-      events?: Array<{
-        idEvent?: string;
-        strEvent?: string;
-        strHomeTeam?: string;
-        strAwayTeam?: string;
-        intHomeScore?: string | null;
-        intAwayScore?: string | null;
-        strStatus?: string | null;
-        dateEvent?: string;
-        strTimestamp?: string;
-        strThumb?: string | null;
-      }>;
-    };
 
-    return (data.events ?? []).slice(0, 3).flatMap((event): TrendItem[] => {
-      const home = sanitizeFeedText(event.strHomeTeam || '');
-      const away = sanitizeFeedText(event.strAwayTeam || '');
-      if (!home || !away) return [];
-      const score = event.intHomeScore && event.intAwayScore
-        ? `${event.intHomeScore}-${event.intAwayScore}`
-        : 'not started';
-      const status = event.strStatus || 'scheduled';
-      const eventDate = event.dateEvent || day;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
 
-      return [{
-        topic: `Will ${home} beat ${away} on ${eventDate}?`,
-        query: [
-          `${sport.category} fixture from TheSportsDB.`,
-          `Match: ${home} vs ${away}.`,
-          `Current score/status: ${score}, ${status}.`,
-          'Create a market that resolves from the final official match result.',
-        ].join(' '),
-        source: sport.source,
-        url: event.idEvent ? `https://www.thesportsdb.com/event/${event.idEvent}` : undefined,
-        imageUrl: event.strThumb || undefined,
-      }];
-    });
+    try {
+      const res = await fetch(url, {
+        next: { revalidate: 900 },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) return [] as TrendItem[];
+      const data = await res.json() as {
+        events?: Array<{
+          idEvent?: string;
+          strEvent?: string;
+          strHomeTeam?: string;
+          strAwayTeam?: string;
+          intHomeScore?: string | null;
+          intAwayScore?: string | null;
+          strStatus?: string | null;
+          dateEvent?: string;
+          strTimestamp?: string;
+          strThumb?: string | null;
+        }>;
+      };
+
+      return (data.events ?? []).slice(0, 3).flatMap((event): TrendItem[] => {
+        const home = sanitizeFeedText(event.strHomeTeam || '');
+        const away = sanitizeFeedText(event.strAwayTeam || '');
+        if (!home || !away) return [];
+        const score = event.intHomeScore && event.intAwayScore
+          ? `${event.intHomeScore}-${event.intAwayScore}`
+          : 'not started';
+        const topic = `${home} vs ${away}: ${score}`;
+        return [{
+          topic,
+          query: `${home} (${sport.category}) vs ${away}. Match ${event.strStatus || 'upcoming'}.`,
+          source: sport.source,
+          url: `https://www.thesportsdb.com/event/${event.idEvent}`,
+        }];
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        logger.warn('agent-pipeline', `TheSportsDB timeout for ${sport.sport} on ${day}`);
+        return [] as TrendItem[];
+      }
+      logger.error('agent-pipeline', `TheSportsDB fetch failed for ${sport.sport}`, { error: err instanceof Error ? err.message : String(err) });
+      return [] as TrendItem[];
+    } finally {
+      clearTimeout(timeout);
+    }
   }));
 
   const batches = await Promise.all(requests);
-  return batches.flat().slice(0, 9);
+  return batches.flat();
 }
 
 async function fetchLiveScoreFootballSignals(): Promise<TrendItem[]> {
