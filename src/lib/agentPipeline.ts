@@ -538,51 +538,61 @@ async function fetchLiveScoreFootballSignals(): Promise<TrendItem[]> {
 }
 
 async function fetchSportDbSignals(): Promise<TrendItem[]> {
-  const apiKey = process.env.SPORTDB_API_KEY;
-  if (!apiKey) return [];
-
   const endpoints = [
-    { url: 'https://api.sportdb.dev/api/football/live', category: 'Football', source: 'sportdb-football' },
-    { url: 'https://api.sportdb.dev/api/basketball/live', category: 'Basketball', source: 'sportdb-basketball' },
-  ] as const;
+    { url: 'https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id=133602', source: 'thesportsdb-news', limit: 2 },
+    { url: 'https://www.thesportsdb.com/api/v1/json/3/eventsyear.php?y=2024&s=Soccer', source: 'thesportsdb-upcoming', limit: 3 },
+  ];
 
-  const batches = await Promise.all(endpoints.map(async (endpoint) => {
-    const res = await fetch(endpoint.url, {
-      headers: { 'X-API-Key': apiKey },
-      next: { revalidate: 120 },
-    });
-    if (!res.ok) return [] as TrendItem[];
+  const results: TrendItem[] = [];
 
-    const data = await res.json() as {
-      data?: unknown[];
-      matches?: unknown[];
-      events?: unknown[];
-    };
-    const rows = (data.data ?? data.matches ?? data.events ?? []) as Array<Record<string, unknown>>;
+  for (const endpoint of endpoints) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
 
-    return rows.slice(0, 5).flatMap((row): TrendItem[] => {
-      const home = sanitizeFeedText(String(row.home_team ?? row.homeTeam ?? row.home ?? row.team_home ?? ''));
-      const away = sanitizeFeedText(String(row.away_team ?? row.awayTeam ?? row.away ?? row.team_away ?? ''));
-      if (!home || !away || home === 'undefined' || away === 'undefined') return [];
-      const status = String(row.status ?? row.match_status ?? 'live');
-      const score = String(row.score ?? row.current_score ?? `${row.home_score ?? '?'}-${row.away_score ?? '?'}`);
-      const eventId = String(row.id ?? row.event_id ?? '');
+    try {
+      const res = await fetch(endpoint.url, {
+        next: { revalidate: 1800 },
+        signal: controller.signal,
+      });
 
-      return [{
-        topic: `Will ${home} beat ${away} in their live ${endpoint.category.toLowerCase()} match?`,
-        query: [
-          `${endpoint.category} live score from SportDB.`,
-          `Match: ${home} vs ${away}.`,
-          `Current score/status: ${score}, ${status}.`,
-          'Create a market that resolves from the final official match result.',
-        ].join(' '),
-        source: endpoint.source,
-        url: eventId ? `${endpoint.url}/${eventId}` : endpoint.url,
-      }];
-    });
-  }));
+      if (!res.ok) continue;
 
-  return batches.flat().slice(0, 8);
+      const data = await res.json() as {
+        results?: Array<{
+          idEvent?: string;
+          strEvent?: string;
+          strHomeTeam?: string;
+          strAwayTeam?: string;
+          intHomeScore?: string | null;
+          intAwayScore?: string | null;
+        }>;
+      };
+
+      for (const event of (data.results ?? []).slice(0, endpoint.limit)) {
+        const home = sanitizeFeedText(event.strHomeTeam || '');
+        const away = sanitizeFeedText(event.strAwayTeam || '');
+        if (!home || !away) continue;
+
+        results.push({
+          topic: `${home} vs ${away}`,
+          query: `${home} playing ${away}. Score: ${event.intHomeScore}-${event.intAwayScore}`,
+          source: endpoint.source,
+          url: `https://www.thesportsdb.com/event/${event.idEvent}`,
+        });
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        logger.warn('agent-pipeline', `SportDB timeout for ${endpoint.source} after 10000ms`);
+        continue;
+      }
+      logger.error('agent-pipeline', `SportDB fetch failed for ${endpoint.source}`, { error: err instanceof Error ? err.message : String(err) });
+      continue;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  return results;
 }
 
 async function fetchDecryptTrends(): Promise<TrendItem[]> {
