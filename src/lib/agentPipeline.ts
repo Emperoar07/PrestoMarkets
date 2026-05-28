@@ -878,10 +878,10 @@ function isDuplicateMarket(draft: GeminiDraft, trend: TrendItem, existingMarkets
 }
 
 type MarketPrecedent = {
-  title: string;
-  questions: string[];
-  endDate?: string;
-  volume?: string;
+  id: string;
+  name: string;
+  url: string;
+  liquidity: number;
 };
 
 type HorizonAnalysis = {
@@ -1032,52 +1032,47 @@ function precedentSearchQuery(trend: TrendItem) {
 }
 
 async function fetchPolymarketPrecedents(trend: TrendItem): Promise<MarketPrecedent[]> {
-  const query = precedentSearchQuery(trend);
-  if (!query) return [];
+  const query = encodeURIComponent(trend.topic.slice(0, 100));
+  const url = `https://polymarket.com/api/search?query=${query}`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
 
   try {
-    const url = new URL('https://gamma-api.polymarket.com/public-search');
-    url.searchParams.set('q', query);
-    url.searchParams.set('events_status', 'active');
-    url.searchParams.set('limit_per_type', '3');
-    url.searchParams.set('search_tags', 'false');
-    url.searchParams.set('search_profiles', 'false');
-    url.searchParams.set('optimized', 'true');
-
     const response = await fetch(url, {
       headers: { 'User-Agent': 'PrestoMarketsAgent/1.0' },
-      next: { revalidate: 1_800 },
-      signal: AbortSignal.timeout(4_000),
+      signal: controller.signal,
     });
+
     if (!response.ok) return [];
 
-    const body = await response.json() as {
-      events?: Array<{
-        title?: string;
-        active?: boolean;
-        closed?: boolean;
-        endDate?: string;
-        markets?: Array<{ question?: string; active?: boolean; closed?: boolean }>;
+    const data = await response.json() as {
+      data?: Array<{
+        id?: string;
+        name?: string;
+        slug?: string;
+        liquidity?: number;
       }>;
     };
 
-    return (body.events ?? [])
-      .filter((event) => event.active !== false && event.closed !== true && typeof event.title === 'string')
-      .map((event) => ({
-        title: sanitizeFeedText(event.title as string).slice(0, 120),
-        questions: (event.markets ?? [])
-          .filter((market) => market.active !== false && market.closed !== true && typeof market.question === 'string')
-          .map((market) => sanitizeFeedText(market.question as string).slice(0, 140))
-          .slice(0, 4),
-        endDate: typeof event.endDate === 'string' ? event.endDate.slice(0, 10) : undefined,
-        volume: typeof (event as { volume?: unknown }).volume === 'string'
-          ? sanitizeFeedText((event as { volume: string }).volume).slice(0, 40)
-          : undefined,
+    return (data.data ?? [])
+      .slice(0, 5)
+      .map((market) => ({
+        id: market.id || '',
+        name: market.name || '',
+        url: market.slug ? `https://polymarket.com/market/${market.slug}` : '',
+        liquidity: market.liquidity || 0,
       }))
-      .filter((event) => event.title.length > 0)
-      .slice(0, 3);
-  } catch {
+      .filter((m) => m.id && m.name && m.url);
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      logger.warn('agent-pipeline', `Polymarket precedents timeout for ${trend.topic} after 10000ms`);
+      return [];
+    }
+    logger.error('agent-pipeline', `Polymarket precedents fetch failed for ${trend.topic}`, { error: err instanceof Error ? err.message : String(err) });
     return [];
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -1088,8 +1083,8 @@ function formatMarketPrecedents(precedents: MarketPrecedent[]) {
 
   return precedents
     .map((precedent, index) => {
-      const questions = precedent.questions.length > 0 ? ` Submarkets: ${precedent.questions.join(' | ')}.` : '';
-      return `${index + 1}. Event: ${precedent.title}.${precedent.endDate ? ` End date: ${precedent.endDate}.` : ''}${precedent.volume ? ` Volume signal: ${precedent.volume}.` : ''}${questions}`;
+      const liquidity = precedent.liquidity > 0 ? ` Liquidity: ${precedent.liquidity.toLocaleString()}.` : '';
+      return `${index + 1}. Market: ${precedent.name}.${liquidity} URL: ${precedent.url}`;
     })
     .join('\n');
 }
