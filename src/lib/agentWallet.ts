@@ -16,7 +16,31 @@ import { arcTestnet } from 'viem/chains';
 import { getArcConfig } from './arcConfig';
 import { erc20Abi, prestoMarketFactoryAbi, prestoMarketAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { buildMarketMetadataURI } from './marketMetadata';
+import { logger } from './logger';
 import type { CreateLiveMarketInput } from './liveActions';
+
+// Request validation helpers
+function validateMarketCreationRequest(input: CreateLiveMarketInput): { ok: boolean; error?: string } {
+  if (!input.title || input.title.length === 0) return { ok: false, error: 'Market title is required' };
+  if (input.title.length > 200) return { ok: false, error: 'Title exceeds 200 characters' };
+
+  const outcomeOptions = (input.outcomeOptions ?? []).map((option) => option.trim()).filter(Boolean);
+  const outcomes = outcomeOptions.length >= 2 ? outcomeOptions : ['YES', 'NO'];
+  if (outcomes.length < 2) return { ok: false, error: 'Market must have at least 2 outcomes' };
+  if (outcomes.length > 12) return { ok: false, error: 'Market cannot have more than 12 outcomes' };
+
+  if (!input.closeDate) return { ok: false, error: 'Close date is required' };
+  const closeTime = new Date(input.closeDate).getTime();
+  const nowTime = Date.now();
+  if (closeTime <= nowTime) return { ok: false, error: 'Close date must be in the future' };
+  if (closeTime - nowTime < 3600000) return { ok: false, error: 'Market must close at least 1 hour from now' };
+
+  if (!input.resolver || !isAddress(input.resolver)) {
+    return { ok: false, error: 'Invalid resolver address' };
+  }
+
+  return { ok: true };
+}
 
 function getMarketKind(type: string) {
   if (type === 'Opinion') return 1;
@@ -73,6 +97,13 @@ function getClients() {
 // Create a market onchain from the agent wallet
 export async function agentCreateMarket(input: CreateLiveMarketInput & { agentResolverAddress?: string }) {
   try {
+    // Validate request before writing onchain
+    const validation = validateMarketCreationRequest(input);
+    if (!validation.ok) {
+      logger.error('agent-wallet', 'Market creation validation failed', { error: validation.error, title: input.title });
+      return { ok: false, error: validation.error };
+    }
+
     const { account, publicClient, walletClient, factoryAddress, multiOutcomeFactoryAddress } = getClients();
     if (input.agentResolverAddress && input.agentResolverAddress.toLowerCase() !== account.address.toLowerCase()) {
       throw new Error('Configured agent resolver address must match the agent wallet that signs resolution transactions.');
