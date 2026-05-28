@@ -344,43 +344,60 @@ async function fetchCoinMarketCapPriceSignals(): Promise<TrendItem[]> {
   if (!apiKey) return [];
 
   const symbols = cryptoPriceAssets.map((asset) => asset.cmcSymbol).join(',');
-  const res = await fetch(
-    `https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?symbol=${symbols}&convert=USD`,
-    {
-      headers: { 'X-CMC_PRO_API_KEY': apiKey },
-      next: { revalidate: 300 },
-    },
-  );
-  if (!res.ok) return [];
 
-  const data = await res.json() as {
-    data?: Record<string, Array<{
-      slug?: string;
-      quote?: { USD?: { price?: number; percent_change_24h?: number } };
-    }> | {
-      slug?: string;
-      quote?: { USD?: { price?: number; percent_change_24h?: number } };
-    }>;
-  };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
 
-  return cryptoPriceAssets.flatMap((asset) => {
-    const raw = data.data?.[asset.cmcSymbol];
-    const item = Array.isArray(raw) ? raw[0] : raw;
-    const quote = item?.quote?.USD;
-    if (!Number.isFinite(quote?.price)) return [];
+  try {
+    const res = await fetch(
+      `https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?symbol=${symbols}&convert=USD`,
+      {
+        headers: { 'X-CMC_PRO_API_KEY': apiKey },
+        next: { revalidate: 300 },
+        signal: controller.signal,
+      },
+    );
 
-    return buildCryptoPriceSignals({
-      name: asset.name,
-      symbol: asset.symbol,
-      id: item?.slug || asset.id,
-      provider: 'CoinMarketCap',
-      source: 'coinmarketcap-price',
-      price: quote?.price as number,
-      change: quote?.percent_change_24h,
-      threshold: asset.threshold,
-      url: `https://coinmarketcap.com/currencies/${item?.slug || asset.id}/`,
+    if (!res.ok) return [];
+
+    const data = await res.json() as {
+      data?: Record<string, Array<{
+        slug?: string;
+        quote?: { USD?: { price?: number; percent_change_24h?: number } };
+      }> | {
+        slug?: string;
+        quote?: { USD?: { price?: number; percent_change_24h?: number } };
+      }>;
+    };
+
+    return cryptoPriceAssets.flatMap((asset) => {
+      const raw = data.data?.[asset.cmcSymbol];
+      const item = Array.isArray(raw) ? raw[0] : raw;
+      const quote = item?.quote?.USD;
+      if (!Number.isFinite(quote?.price)) return [];
+
+      return buildCryptoPriceSignals({
+        name: asset.name,
+        symbol: asset.symbol,
+        id: item?.slug || asset.id,
+        provider: 'CoinMarketCap',
+        source: 'coinmarketcap-price',
+        price: quote?.price as number,
+        change: quote?.percent_change_24h,
+        threshold: asset.threshold,
+        url: `https://coinmarketcap.com/currencies/${item?.slug || asset.id}/`,
+      });
     });
-  });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      logger.warn('agent-pipeline', 'CoinMarketCap API timeout after 10000ms');
+      return [];
+    }
+    logger.error('agent-pipeline', 'CoinMarketCap API failed', { error: err instanceof Error ? err.message : String(err) });
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function fetchCryptoPriceSignals(): Promise<TrendItem[]> {
