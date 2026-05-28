@@ -124,15 +124,27 @@ async function makeRequest(
   const url = `${API_BASE_URL}${path}`;
 
   try {
+    const baseHeaders: Record<string, string> = {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    };
+
+    // Merge with existing headers if provided
+    let finalHeaders = baseHeaders;
+    if (options.headers) {
+      if (options.headers instanceof Headers) {
+        options.headers.forEach((value, key) => {
+          baseHeaders[key] = value;
+        });
+      } else if (typeof options.headers === 'object') {
+        Object.assign(baseHeaders, options.headers);
+      }
+    }
+    finalHeaders = baseHeaders;
+
     const response = await fetch(url, {
       ...options,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        ...(options.headers instanceof Headers
-          ? Object.fromEntries(options.headers)
-          : (options.headers as Record<string, string>) ?? {}),
-      },
+      headers: finalHeaders,
       signal: createTimeoutSignal(),
     });
 
