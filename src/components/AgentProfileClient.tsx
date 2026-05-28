@@ -93,12 +93,14 @@ export function AgentProfileClient() {
                   <p className="text-[10px] font-black uppercase tracking-widest text-muted">ERC-8004 identity</p>
                   <p className="mt-1 text-sm font-black text-cyan">{agent.registered ? `Agent #${agent.agentId}` : 'Address visible, identity pending'}</p>
                 </div>
-                {Object.entries(agent.contracts).map(([label, value]) => (
-                  <div key={label}>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">{titleCase(label)}</p>
-                    <p className="mt-1 break-all text-sm font-black text-white">{shortAddress(value)}</p>
-                  </div>
-                ))}
+                {Object.entries(agent.contracts)
+                  .filter(([label]) => !label.toLowerCase().includes('resolver'))
+                  .map(([label, value]) => (
+                    <div key={label}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted">{titleCase(label)}</p>
+                      <p className="mt-1 break-all text-sm font-black text-white">{shortAddress(value)}</p>
+                    </div>
+                  ))}
               </div>
             ) : (
               <p className="mt-4 text-sm text-muted">{profile?.error ?? 'Agent wallet is not configured.'}</p>
