@@ -811,37 +811,32 @@ function absolutizeUrl(value: string, base: string): string | undefined {
 }
 
 async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined> {
-  if (isSafeHttpUrl(trend.imageUrl)) return trend.imageUrl;
-  if (!isSafeHttpUrl(trend.url)) return undefined;
+  if (!trend.imageUrl) return undefined;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
 
   try {
-    await assertPublicHttpUrl(trend.url);
-    const res = await fetch(trend.url, {
+    const res = await fetch(trend.imageUrl, {
       headers: { 'User-Agent': 'PrestoMarketsAgent/1.0' },
-      redirect: 'manual',
-      signal: AbortSignal.timeout(4_000),
+      signal: controller.signal,
     });
+
     if (!res.ok) return undefined;
+    const blob = await res.blob();
+    if (!blob.type.startsWith('image/')) return undefined;
 
-    const html = (await res.text()).slice(0, 500_000);
-    const patterns = [
-      /<meta\b[^>]*(?:property|name)=["']og:image(?::secure_url)?["'][^>]*content=["']([^"']+)["'][^>]*>/i,
-      /<meta\b[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']og:image(?::secure_url)?["'][^>]*>/i,
-      /<meta\b[^>]*(?:property|name)=["']twitter:image["'][^>]*content=["']([^"']+)["'][^>]*>/i,
-      /<meta\b[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']twitter:image["'][^>]*>/i,
-    ];
-
-    for (const pattern of patterns) {
-      const raw = pattern.exec(html)?.[1];
-      if (!raw) continue;
-      const image = absolutizeUrl(raw, trend.url);
-      if (isSafeHttpUrl(image)) return image;
+    return trend.imageUrl;
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      logger.warn('agent-pipeline', `Image fetch timeout for ${trend.topic} after 8000ms`);
+      return undefined;
     }
-  } catch {
+    logger.error('agent-pipeline', `Image fetch failed for ${trend.topic}`, { error: err instanceof Error ? err.message : String(err) });
     return undefined;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return undefined;
 }
 
 function normalizeText(value: string) {
