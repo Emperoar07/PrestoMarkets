@@ -813,16 +813,46 @@ function absolutizeUrl(value: string, base: string): string | undefined {
 async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined> {
   if (!trend.imageUrl) return undefined;
 
+  // SSRF protection: validate URL before fetching
+  if (!isSafeHttpUrl(trend.imageUrl)) {
+    logger.warn('agent-pipeline', `Rejected unsafe image URL for ${trend.topic}`);
+    return undefined;
+  }
+
+  try {
+    await assertPublicHttpUrl(trend.imageUrl);
+  } catch (err) {
+    logger.warn('agent-pipeline', `Image URL validation failed for ${trend.topic}: ${err instanceof Error ? err.message : String(err)}`);
+    return undefined;
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
 
   try {
     const res = await fetch(trend.imageUrl, {
       headers: { 'User-Agent': 'PrestoMarketsAgent/1.0' },
+      redirect: 'manual',
       signal: controller.signal,
     });
 
     if (!res.ok) return undefined;
+
+    // Handle redirects safely: re-validate before following
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('Location');
+      if (!location || !isSafeHttpUrl(location)) {
+        logger.warn('agent-pipeline', `Rejected redirect for image ${trend.topic}`);
+        return undefined;
+      }
+      try {
+        await assertPublicHttpUrl(location);
+      } catch (err) {
+        logger.warn('agent-pipeline', `Redirect URL validation failed: ${err instanceof Error ? err.message : String(err)}`);
+        return undefined;
+      }
+    }
+
     const blob = await res.blob();
     if (!blob.type.startsWith('image/')) return undefined;
 
