@@ -340,7 +340,7 @@ export function SiteHeader() {
                   ))}
                   <div className="border-t border-white/[0.06]" />
                   {!isLandingPage ? (
-                    <Link href="/activity" className="flex w-full items-center gap-2 px-3 py-2.5 text-[12px] font-black text-[#94a3b8] transition-colors hover:bg-white/[0.04] hover:text-white">
+                    <Link href="/activity" onClick={() => setBalanceMenuOpen(false)} className="flex w-full items-center gap-2 px-3 py-2.5 text-[12px] font-black text-[#94a3b8] transition-colors hover:bg-white/[0.04] hover:text-white">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
                         <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                       </svg>
@@ -348,7 +348,7 @@ export function SiteHeader() {
                     </Link>
                   ) : null}
                   {!isLandingPage ? (
-                    <Link href="/portfolio" className="flex w-full items-center gap-2 px-3 py-2.5 text-[12px] font-black text-[#94a3b8] transition-colors hover:bg-white/[0.04] hover:text-white">
+                    <Link href="/portfolio" onClick={() => setBalanceMenuOpen(false)} className="flex w-full items-center gap-2 px-3 py-2.5 text-[12px] font-black text-[#94a3b8] transition-colors hover:bg-white/[0.04] hover:text-white">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
                         <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
                       </svg>
