@@ -95,43 +95,58 @@ async function fetchGrokXTrends(): Promise<TrendItem[]> {
   ]
 }`;
 
-  const res = await fetch('https://api.x.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'grok-3-latest',
-      messages: [{ role: 'user', content: prompt }],
-      search_parameters: {
-        mode: 'on',
-        sources: [{ type: 'x' }],
-        return_citations: true,
-      },
-      response_format: { type: 'json_object' },
-      temperature: 0.3,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
 
-  if (!res.ok) return [];
-  const data = await res.json() as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const raw = data.choices?.[0]?.message?.content ?? '{}';
-  let parsed: { items?: Array<{ topic?: string; context?: string; url?: string }> };
   try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return [];
-  }
+    const res = await fetch('https://api.x.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'grok-3-latest',
+        messages: [{ role: 'user', content: prompt }],
+        search_parameters: {
+          mode: 'on',
+          sources: [{ type: 'x' }],
+          return_citations: true,
+        },
+        response_format: { type: 'json_object' },
+        temperature: 0.3,
+      }),
+      signal: controller.signal,
+    });
 
-  return (parsed.items ?? [])
-    .filter((item) => typeof item.topic === 'string' && item.topic.length > 0)
-    .map((item) => ({
-      topic: sanitizeFeedText(item.topic!),
-      query: sanitizeFeedText(item.context ?? item.topic!),
-      source: 'grok-x-live',
-      url: item.url,
-    }))
-    .slice(0, 6);
+    if (!res.ok) return [];
+    const data = await res.json() as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const raw = data.choices?.[0]?.message?.content ?? '{}';
+    let parsed: { items?: Array<{ topic?: string; context?: string; url?: string }> };
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+
+    return (parsed.items ?? [])
+      .filter((item) => typeof item.topic === 'string' && item.topic.length > 0)
+      .map((item) => ({
+        topic: sanitizeFeedText(item.topic!),
+        query: sanitizeFeedText(item.context ?? item.topic!),
+        source: 'grok-x-live',
+        url: item.url,
+      }))
+      .slice(0, 6);
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      logger.warn('agent-pipeline', 'Grok X API timeout after 12000ms');
+      return [];
+    }
+    logger.error('agent-pipeline', 'Grok X API failed', { error: err instanceof Error ? err.message : String(err) });
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function fetchRssTrends(input: { url: string; source: string; limit?: number }): Promise<TrendItem[]> {
