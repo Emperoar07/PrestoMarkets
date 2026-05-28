@@ -295,32 +295,48 @@ async function fetchCoinGeckoPriceSignals(): Promise<TrendItem[]> {
   const ids = cryptoPriceAssets.map((asset) => asset.id).join(',');
   const apiKey = process.env.COINGECKO_API_KEY;
   const headers: HeadersInit = apiKey ? { 'x-cg-demo-api-key': apiKey } : {};
-  const res = await fetch(
-    `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true`,
-    {
-      headers,
-      next: { revalidate: 300 },
-    },
-  );
 
-  if (!res.ok) return [];
-  const data = await res.json() as Record<string, { usd?: number; usd_24h_change?: number; last_updated_at?: number }>;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
 
-  return cryptoPriceAssets.flatMap((asset) => {
-    const price = data[asset.id]?.usd;
-    if (!Number.isFinite(price)) return [];
-    return buildCryptoPriceSignals({
-      name: asset.name,
-      symbol: asset.symbol,
-      id: asset.id,
-      provider: 'CoinGecko',
-      source: 'coingecko-price',
-      price: price as number,
-      change: data[asset.id]?.usd_24h_change,
-      threshold: asset.threshold,
-      url: `https://api.coingecko.com/api/v3/simple/price?ids=${asset.id}&vs_currencies=usd&include_last_updated_at=true`,
+  try {
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true`,
+      {
+        headers,
+        next: { revalidate: 300 },
+        signal: controller.signal,
+      },
+    );
+
+    if (!res.ok) return [];
+    const data = await res.json() as Record<string, { usd?: number; usd_24h_change?: number; last_updated_at?: number }>;
+
+    return cryptoPriceAssets.flatMap((asset) => {
+      const price = data[asset.id]?.usd;
+      if (!Number.isFinite(price)) return [];
+      return buildCryptoPriceSignals({
+        name: asset.name,
+        symbol: asset.symbol,
+        id: asset.id,
+        provider: 'CoinGecko',
+        source: 'coingecko-price',
+        price: price as number,
+        change: data[asset.id]?.usd_24h_change,
+        threshold: asset.threshold,
+        url: `https://api.coingecko.com/api/v3/simple/price?ids=${asset.id}&vs_currencies=usd&include_last_updated_at=true`,
+      });
     });
-  });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      logger.warn('agent-pipeline', 'CoinGecko API timeout after 10000ms');
+      return [];
+    }
+    logger.error('agent-pipeline', 'CoinGecko API failed', { error: err instanceof Error ? err.message : String(err) });
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function fetchCoinMarketCapPriceSignals(): Promise<TrendItem[]> {
