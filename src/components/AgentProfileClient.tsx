@@ -78,7 +78,7 @@ export function AgentProfileClient() {
           ) : null}
         </div>
 
-        <section className="mt-9 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+        <section className="mt-9">
           <div className="rounded-[18px] border border-white/[0.06] bg-[#141e30] p-6">
             <h2 className="text-xl font-black text-white">Identity receipt</h2>
             {isLoading ? (
@@ -103,66 +103,6 @@ export function AgentProfileClient() {
             ) : (
               <p className="mt-4 text-sm text-muted">{profile?.error ?? 'Agent wallet is not configured.'}</p>
             )}
-          </div>
-
-          <div className="rounded-[18px] border border-white/[0.06] bg-[#141e30] p-6">
-            <h2 className="text-xl font-black text-white">Treasury and limits</h2>
-            <div className="mt-5 space-y-4">
-              <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
-                <span className="text-sm text-muted">USDC balance</span>
-                <span className="font-black text-cyan">{profile?.treasury?.usdcBalance ?? '--'}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
-                <span className="text-sm text-muted">EURC balance</span>
-                <span className="font-black text-blue-300">{profile?.treasury?.eurcBalance ?? '--'}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
-                <span className="text-sm text-muted">Resolve fee</span>
-                <span className="font-black text-white">{profile?.treasury?.resolveFee ?? '--'}</span>
-              </div>
-              {profile?.limits ? Object.entries(profile.limits).map(([label, value]) => (
-                <div key={label} className="flex items-center justify-between border-b border-white/[0.06] pb-3">
-                  <span className="text-sm text-muted">{titleCase(label)}</span>
-                  <span className="font-black text-white">{value}</span>
-                </div>
-              )) : null}
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-6 grid gap-4 md:grid-cols-4">
-          {profile?.activity ? Object.entries(profile.activity).map(([label, value]) => (
-            <div key={label} className="rounded-[16px] border border-white/[0.06] bg-[#101827] p-5">
-              <p className="text-[10px] font-black uppercase tracking-widest text-muted">{titleCase(label)}</p>
-              <p className="mt-2 text-3xl font-black text-white">{value}</p>
-            </div>
-          )) : null}
-        </section>
-
-        <section className="mt-6 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-[18px] border border-cyan/20 bg-cyan/[0.05] p-6">
-            <h2 className="text-xl font-black text-white">Dispute and fallback policy</h2>
-            <div className="mt-5 space-y-4">
-              {(profile?.policy ?? []).map((item) => (
-                <div key={item.title} className="rounded-[14px] border border-white/[0.06] bg-[#0d1520] p-4">
-                  <p className="font-black text-white">{item.title}</p>
-                  <p className="mt-2 text-sm leading-6 text-muted">{item.summary}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-[18px] border border-white/[0.06] bg-[#141e30] p-6">
-            <h2 className="text-xl font-black text-white">Grant and demo story</h2>
-            <div className="mt-5 space-y-4">
-              {(profile?.demoStory ?? []).map((item) => (
-                <p key={item} className="rounded-[14px] border border-white/[0.06] bg-[#0d1520] p-4 text-sm leading-6 text-muted">
-                  {item}
-                </p>
-              ))}
-            </div>
-            <Link href="/build-rails" className="mt-5 inline-block font-black text-cyan transition-colors hover:text-cyan/80">
-              View build rails
-            </Link>
           </div>
         </section>
       </main>

@@ -228,22 +228,6 @@ export function SiteHeader() {
               Create Market
             </Link>
           ) : null}
-          {!isLandingPage ? (
-            <Link href="/activity" className={mobileNavLinkClass(pathname === '/activity')} onClick={() => setMobileMenuOpen(false)}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-              </svg>
-              Activity
-            </Link>
-          ) : null}
-          {!isLandingPage ? (
-            <Link href="/portfolio" className={mobileNavLinkClass(pathname === '/portfolio')} onClick={() => setMobileMenuOpen(false)}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
-                <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
-              </svg>
-              Portfolio
-            </Link>
-          ) : null}
           <a href={dexUrl} className={mobileNavLinkClass()} onClick={() => setMobileMenuOpen(false)}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
               <polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
@@ -251,24 +235,40 @@ export function SiteHeader() {
             DEX
           </a>
 
-          {/* Balance row for mobile */}
+          {/* Balance and menu for mobile */}
           {showWallet && connectedWallet ? (
-            <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/[0.06] bg-[#0d1520] px-3.5 py-2.5">
-              {(['USDC', 'EURC'] as const).map((sym) => (
-                <button
-                  key={sym}
-                  type="button"
-                  onClick={() => setActiveStable(sym)}
-                  className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] font-black transition-colors ${
-                    activeStable === sym
-                      ? sym === 'EURC' ? 'bg-blue-400/10 text-blue-300' : 'bg-cyan/10 text-cyan'
-                      : 'text-[#4a5568]'
-                  }`}
-                >
-                  {sym}
-                  <span className={activeStable === sym ? '' : 'text-[#94a3b8]'}>{balances[sym] ?? '--'}</span>
-                </button>
-              ))}
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-[#0d1520] px-3.5 py-2.5">
+                {(['USDC', 'EURC'] as const).map((sym) => (
+                  <button
+                    key={sym}
+                    type="button"
+                    onClick={() => setActiveStable(sym)}
+                    className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] font-black transition-colors ${
+                      activeStable === sym
+                        ? sym === 'EURC' ? 'bg-blue-400/10 text-blue-300' : 'bg-cyan/10 text-cyan'
+                        : 'text-[#4a5568]'
+                    }`}
+                  >
+                    {sym}
+                    <span className={activeStable === sym ? '' : 'text-[#94a3b8]'}>{balances[sym] ?? '--'}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Link href="/activity" className={mobileNavLinkClass(pathname === '/activity')} onClick={() => setMobileMenuOpen(false)}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                  </svg>
+                  Activity
+                </Link>
+                <Link href="/portfolio" className={mobileNavLinkClass(pathname === '/portfolio')} onClick={() => setMobileMenuOpen(false)}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
+                    <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
+                  </svg>
+                  Portfolio
+                </Link>
+              </div>
             </div>
           ) : null}
         </div>
@@ -297,16 +297,6 @@ export function SiteHeader() {
           {!isLandingPage ? (
             <Link href="/markets/create" className={navLinkClass(isCreatePage)}>
               Create Market
-            </Link>
-          ) : null}
-          {!isLandingPage ? (
-            <Link href="/activity" className={navLinkClass(pathname === '/activity')}>
-              Activity
-            </Link>
-          ) : null}
-          {!isLandingPage ? (
-            <Link href="/portfolio" className={navLinkClass(pathname === '/portfolio')}>
-              Portfolio
             </Link>
           ) : null}
           <a href={dexUrl} className={navLinkClass()}>
@@ -348,6 +338,23 @@ export function SiteHeader() {
                       <span className={sym === 'EURC' ? 'text-blue-300' : 'text-cyan'}>{balances[sym] ?? '--'}</span>
                     </button>
                   ))}
+                  <div className="border-t border-white/[0.06]" />
+                  {!isLandingPage ? (
+                    <Link href="/activity" className="flex w-full items-center gap-2 px-3 py-2.5 text-[12px] font-black text-[#94a3b8] transition-colors hover:bg-white/[0.04] hover:text-white">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                      </svg>
+                      Activity
+                    </Link>
+                  ) : null}
+                  {!isLandingPage ? (
+                    <Link href="/portfolio" className="flex w-full items-center gap-2 px-3 py-2.5 text-[12px] font-black text-[#94a3b8] transition-colors hover:bg-white/[0.04] hover:text-white">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                        <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
+                      </svg>
+                      Portfolio
+                    </Link>
+                  ) : null}
                 </div>
               ) : null}
             </div>
