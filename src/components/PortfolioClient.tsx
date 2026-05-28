@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
@@ -15,6 +16,9 @@ const statusStyle = {
   Failed: 'border-red-400/25 bg-red-400/10 text-red-200',
 };
 
+type FilterType = 'all' | 'open' | 'winning' | 'losing' | 'claimable';
+type SortType = 'pnl' | 'size' | 'name' | 'date';
+
 function parseUsd(value: string) {
   return Number(value.replace(/[$,]/g, '')) || 0;
 }
@@ -23,12 +27,35 @@ function formatUsd(value: number) {
   return `$${value.toFixed(2)}`;
 }
 
+function parsePnlPercent(pnl: string): number {
+  const match = pnl.match(/([+-]?\d+(?:\.\d+)?)/);
+  return match ? parseFloat(match[1]) : 0;
+}
+
 export function PortfolioClient() {
   const { positions, connectedWallet, isLoadingAccount } = useAppState();
+  const [filter, setFilter] = useState<FilterType>('all');
+  const [sort, setSort] = useState<SortType>('date');
+
   const positionValue = positions.reduce((sum, position) => sum + parseUsd(position.value), 0);
   const claimableValue = positions
     .filter((position) => position.status === 'Claimable')
     .reduce((sum, position) => sum + parseUsd(position.value), 0);
+
+  const filteredPositions = positions.filter((position) => {
+    if (filter === 'open') return position.status === 'Open';
+    if (filter === 'winning') return parsePnlPercent(position.pnl) > 0;
+    if (filter === 'losing') return parsePnlPercent(position.pnl) < 0;
+    if (filter === 'claimable') return position.status === 'Claimable';
+    return true;
+  });
+
+  const sortedPositions = [...filteredPositions].sort((a, b) => {
+    if (sort === 'pnl') return parsePnlPercent(b.pnl) - parsePnlPercent(a.pnl);
+    if (sort === 'size') return parseUsd(b.value) - parseUsd(a.value);
+    if (sort === 'name') return a.title.localeCompare(b.title);
+    return 0;
+  });
 
   return (
     <>
@@ -51,10 +78,43 @@ export function PortfolioClient() {
 
         <section className="mt-8 rounded-[16px] border border-white/[0.06] bg-[#141e30]">
           <div className="border-b border-line p-6">
-            <h2 className="text-xl font-black text-white">Share positions</h2>
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <h2 className="text-xl font-black text-white">Share positions</h2>
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortType)}
+                className="rounded-lg border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-sm font-bold text-[#94a3b8] transition-colors hover:border-cyan/30 focus:border-cyan/50 outline-none"
+              >
+                <option value="date">Newest first</option>
+                <option value="pnl">Best P&L first</option>
+                <option value="size">Largest first</option>
+                <option value="name">A to Z</option>
+              </select>
+            </div>
           </div>
+
+          <div className="flex flex-wrap gap-2 border-b border-line px-6 pt-4 pb-0">
+            {(['all', 'open', 'winning', 'losing', 'claimable'] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`rounded-lg px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition-all ${
+                  filter === f
+                    ? 'border-cyan/30 bg-cyan/10 text-cyan'
+                    : 'border-transparent text-[#94a3b8] hover:text-white'
+                }`}
+              >
+                {f === 'all' && 'All'}
+                {f === 'open' && 'Open'}
+                {f === 'winning' && 'Winning'}
+                {f === 'losing' && 'Losing'}
+                {f === 'claimable' && 'Claimable'}
+              </button>
+            ))}
+          </div>
+
           <div className="divide-y divide-line">
-            {positions.length > 0 ? positions.map((position) => (
+            {sortedPositions.length > 0 ? sortedPositions.map((position) => (
               <Link
                 key={`${position.marketId}-${position.outcome}-${position.shares}`}
                 href={`/markets/${position.marketId}#trade-panel`}
@@ -94,8 +154,25 @@ export function PortfolioClient() {
                 </span>
               </Link>
             )) : (
-              <div className="p-6 text-sm leading-6 text-muted">
-                {connectedWallet ? 'No shares were found for this wallet across the live factory markets.' : 'Connect a wallet to load your shares from live Arc market contracts.'}
+              <div className="flex flex-col items-center justify-center gap-4 py-12 px-6 text-center">
+                <div>
+                  <p className="text-sm font-bold text-white">
+                    {connectedWallet ? 'No positions yet' : 'Connect a wallet to get started'}
+                  </p>
+                  <p className="mt-2 text-sm text-muted leading-6">
+                    {connectedWallet
+                      ? 'You do not hold any shares in the live markets. Browse markets and buy shares to track your positions here.'
+                      : 'Connect your wallet to view your positions and portfolio performance across all markets.'}
+                  </p>
+                </div>
+                {connectedWallet && (
+                  <Link
+                    href="/markets"
+                    className="mt-2 inline-block rounded-lg border border-cyan/30 bg-cyan/10 px-4 py-2 text-sm font-black text-cyan transition-colors hover:bg-cyan/15"
+                  >
+                    Browse Markets
+                  </Link>
+                )}
               </div>
             )}
           </div>
