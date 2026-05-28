@@ -326,7 +326,7 @@ export function SiteHeader() {
                 </svg>
               </button>
               {balanceMenuOpen ? (
-                <div className="absolute right-0 top-[calc(100%+6px)] z-10 w-44 overflow-hidden rounded-lg border border-white/[0.06] bg-[#0d1520] shadow-xl shadow-black/40">
+                <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-44 overflow-hidden rounded-lg border border-white/[0.06] bg-[#0d1520] shadow-xl shadow-black/40">
                   {(['USDC', 'EURC'] as const).map((sym) => (
                     <button
                       key={sym}
