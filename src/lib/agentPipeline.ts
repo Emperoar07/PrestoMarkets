@@ -497,47 +497,44 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
 }
 
 async function fetchLiveScoreFootballSignals(): Promise<TrendItem[]> {
-  const key = process.env.LIVESCORE_API_KEY;
-  const secret = process.env.LIVESCORE_API_SECRET;
-  if (!key || !secret) return [];
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
 
-  const res = await fetch(
-    `https://livescore-api.com/api-client/matches/live.json?key=${encodeURIComponent(key)}&secret=${encodeURIComponent(secret)}`,
-    { next: { revalidate: 120 } },
-  );
-  if (!res.ok) return [];
+  try {
+    const res = await fetch(
+      'https://www.api-football.com/api/v3/fixtures?status=LIVE&league=39,78,61,135,94,88,307,354&season=2024',
+      {
+        headers: { 'x-apisports-key': process.env.API_FOOTBALL_API_KEY || '' },
+        signal: controller.signal,
+      },
+    );
 
-  const data = await res.json() as {
-    data?: {
-      match?: Array<{
-        id?: number;
-        status?: string;
-        scheduled?: string;
-        home?: { name?: string; logo?: string };
-        away?: { name?: string; logo?: string };
-        scores?: { score?: string };
+    if (!res.ok) return [];
+    const data = await res.json() as {
+      response?: Array<{
+        fixture?: { id?: string };
+        league?: { name?: string };
+        teams?: { home?: { name?: string }; away?: { name?: string } };
+        goals?: { home?: number; away?: number };
       }>;
     };
-  };
 
-  return (data.data?.match ?? []).slice(0, 6).flatMap((match): TrendItem[] => {
-    const home = sanitizeFeedText(match.home?.name || '');
-    const away = sanitizeFeedText(match.away?.name || '');
-    if (!home || !away) return [];
-
-    return [{
-      topic: `Will ${home} beat ${away} in their live match?`,
-      query: [
-        'Football live score from LiveScore API.',
-        `Match: ${home} vs ${away}.`,
-        `Current score/status: ${match.scores?.score || 'unknown'}, ${match.status || 'live'}.`,
-        'Create a market that resolves from the final official match result.',
-      ].join(' '),
-      source: 'livescore-api-football',
-      url: match.id ? `https://livescore-api.com/api-client/scores/events.json?id=${match.id}` : undefined,
-      imageUrl: match.home?.logo || match.away?.logo,
-    }];
-  });
+    return (data.response ?? []).slice(0, 4).map((match) => ({
+      topic: `${match.teams?.home?.name} vs ${match.teams?.away?.name}: ${match.goals?.home}-${match.goals?.away}`,
+      query: `Live: ${match.teams?.home?.name} playing ${match.teams?.away?.name} in ${match.league?.name}`,
+      source: 'api-football-live',
+      url: `https://www.api-football.com/match/${match.fixture?.id}`,
+    }));
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      logger.warn('agent-pipeline', 'api-football API timeout after 10000ms');
+      return [];
+    }
+    logger.error('agent-pipeline', 'api-football API failed', { error: err instanceof Error ? err.message : String(err) });
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function fetchSportDbSignals(): Promise<TrendItem[]> {
