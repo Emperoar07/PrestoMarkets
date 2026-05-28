@@ -150,31 +150,49 @@ async function fetchGrokXTrends(): Promise<TrendItem[]> {
 }
 
 async function fetchRssTrends(input: { url: string; source: string; limit?: number }): Promise<TrendItem[]> {
-  const res = await fetch(input.url, { headers: { 'User-Agent': 'PrestoMarketsAgent/1.0' } });
-  if (!res.ok) return [];
-  const xml = await res.text();
-  const items: TrendItem[] = [];
-  const itemRegex = /<item\b[^>]*>([\s\S]*?)<\/item>/gi;
-  const titleRegex = /<title>(?:<!\[CDATA\[)?([^<\]]+?)(?:\]\]>)?<\/title>/i;
-  const linkRegex = /<link>([^<]+)<\/link>/i;
-  const descRegex = /<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i;
-  const mediaRegex = /<(?:media:content|media:thumbnail)\b[^>]*url=["']([^"']+)["'][^>]*>/i;
-  const enclosureRegex = /<enclosure\b[^>]*url=["']([^"']+)["'][^>]*type=["']image\/[^"']+["'][^>]*>/i;
-  const limit = input.limit ?? 4;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
 
-  let match: RegExpExecArray | null;
-  while ((match = itemRegex.exec(xml)) && items.length < limit) {
-    const block = match[1];
-    const rawTitle = titleRegex.exec(block)?.[1]?.trim();
-    const link = linkRegex.exec(block)?.[1]?.trim();
-    const rawDesc = descRegex.exec(block)?.[1]?.replace(/<[^>]+>/g, '').trim();
-    const imageUrl = mediaRegex.exec(block)?.[1]?.trim() ?? enclosureRegex.exec(block)?.[1]?.trim();
-    if (!rawTitle) continue;
-    const title = sanitizeFeedText(rawTitle);
-    const desc = rawDesc ? sanitizeFeedText(rawDesc) : undefined;
-    items.push({ topic: title, query: desc?.slice(0, 240) ?? title, source: input.source, url: link, imageUrl });
+  try {
+    const res = await fetch(input.url, {
+      headers: { 'User-Agent': 'PrestoMarketsAgent/1.0' },
+      signal: controller.signal,
+    });
+
+    if (!res.ok) return [];
+    const xml = await res.text();
+    const items: TrendItem[] = [];
+    const itemRegex = /<item\b[^>]*>([\s\S]*?)<\/item>/gi;
+    const titleRegex = /<title>(?:<!\[CDATA\[)?([^<\]]+?)(?:\]\]>)?<\/title>/i;
+    const linkRegex = /<link>([^<]+)<\/link>/i;
+    const descRegex = /<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i;
+    const mediaRegex = /<(?:media:content|media:thumbnail)\b[^>]*url=["']([^"']+)["'][^>]*>/i;
+    const enclosureRegex = /<enclosure\b[^>]*url=["']([^"']+)["'][^>]*type=["']image\/[^"']+["'][^>]*>/i;
+    const limit = input.limit ?? 4;
+
+    let match: RegExpExecArray | null;
+    while ((match = itemRegex.exec(xml)) && items.length < limit) {
+      const block = match[1];
+      const rawTitle = titleRegex.exec(block)?.[1]?.trim();
+      const link = linkRegex.exec(block)?.[1]?.trim();
+      const rawDesc = descRegex.exec(block)?.[1]?.replace(/<[^>]+>/g, '').trim();
+      const imageUrl = mediaRegex.exec(block)?.[1]?.trim() ?? enclosureRegex.exec(block)?.[1]?.trim();
+      if (!rawTitle) continue;
+      const title = sanitizeFeedText(rawTitle);
+      const desc = rawDesc ? sanitizeFeedText(rawDesc) : undefined;
+      items.push({ topic: title, query: desc?.slice(0, 240) ?? title, source: input.source, url: link, imageUrl });
+    }
+    return items;
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      logger.warn('agent-pipeline', `RSS feed timeout for ${input.source} after 10000ms`);
+      return [];
+    }
+    logger.error('agent-pipeline', `RSS feed failed for ${input.source}`, { error: err instanceof Error ? err.message : String(err) });
+    return [];
+  } finally {
+    clearTimeout(timeout);
   }
-  return items;
 }
 
 async function fetchGoogleNewsTrends(): Promise<TrendItem[]> {
