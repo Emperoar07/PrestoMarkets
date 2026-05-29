@@ -22,6 +22,7 @@ import { fetchTrends, classifyTrend, draftWithGemini, safetyCheckWithHaiku, type
 import { agentCreateMarket } from '@/lib/agentWallet';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 import { logger } from '@/lib/logger';
+import { verifyBearer } from '@/lib/authCompare';
 
 /**
  * MCP Resource Handler - returns available resources and their metadata
@@ -240,9 +241,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const expected = `Bearer ${token}`;
-  const isValid = auth.length === expected.length &&
-    Buffer.from(auth).equals(Buffer.from(expected));
+  const isValid = verifyBearer(auth, token);
 
   if (!isValid) {
     logger.warn('mcp-agent', 'Unauthorized MCP request', {

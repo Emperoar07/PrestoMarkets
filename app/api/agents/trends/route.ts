@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createMarketCategories } from '@/lib/categories';
+import { verifyApiKey } from '@/lib/authCompare';
 import type { MarketType } from '@/lib/markets';
 import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
 
@@ -39,9 +40,7 @@ type GeminiMarketDraft = Partial<MarketDraft> & {
 };
 
 function requireAgentKey(req: NextRequest) {
-  const apiKey = req.headers.get('x-api-key');
-  const validKey = process.env.PRESTO_AGENT_API_KEY;
-  return Boolean(validKey && apiKey === validKey);
+  return verifyApiKey(req.headers.get('x-api-key'), process.env.PRESTO_AGENT_API_KEY);
 }
 
 function clampScore(value: unknown, fallback: number) {

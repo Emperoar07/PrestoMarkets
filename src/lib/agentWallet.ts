@@ -257,9 +257,30 @@ export async function agentBuyShares(
   }
 }
 
+// Hard ceiling on any single agent-initiated USDC transfer. The autonomous
+// agent moves funds without human review (e.g. paying x402 challenges), so an
+// upper bound caps the blast radius if an upstream is compromised or misbehaves.
+// Override with PRESTO_AGENT_MAX_TRANSFER_USDC; defaults to 5 USDC.
+function getMaxTransferUsdc(): number {
+  const parsed = Number(process.env.PRESTO_AGENT_MAX_TRANSFER_USDC);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+}
+
 export async function agentTransferUsdc(toAddress: string, amountUsdc: string) {
   try {
     if (!isAddress(toAddress)) throw new Error('Invalid destination address.');
+
+    // Validate the amount is a sane, positive, bounded number before it ever
+    // reaches parseUnits or the chain. Rejects NaN, <=0, and over-cap requests.
+    const amountNum = Number(amountUsdc);
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      throw new Error('Transfer amount must be a positive number.');
+    }
+    const maxTransfer = getMaxTransferUsdc();
+    if (amountNum > maxTransfer) {
+      throw new Error(`Transfer amount ${amountNum} USDC exceeds the agent per-transfer cap of ${maxTransfer} USDC.`);
+    }
+
     const { account, publicClient, walletClient } = getClients();
     const config = getArcConfig();
     if (!config.usdcAddress || !isAddress(config.usdcAddress)) throw new Error('USDC address not configured.');
@@ -279,6 +300,31 @@ export async function agentTransferUsdc(toAddress: string, amountUsdc: string) {
     return { ok: true, txHash: hash };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'USDC transfer failed.' };
+  }
+}
+
+// Read the onchain total shares staked on a given outcome index for a market.
+// Used by auto-resolve to detect outcomes with no winning shares (which the
+// contract refuses to resolve) so it can cancel-and-refund instead of locking funds.
+export async function agentReadTotalShares(marketAddress: string, outcomeIndex: number): Promise<bigint | null> {
+  try {
+    if (!isAddress(marketAddress)) return null;
+    if (!Number.isInteger(outcomeIndex) || outcomeIndex < 0 || outcomeIndex > 11) return null;
+    const { publicClient } = getClients();
+    const shares = await publicClient.readContract({
+      address: marketAddress as Address,
+      abi: prestoMarketAbi,
+      functionName: 'totalShares',
+      args: [outcomeIndex],
+    });
+    return typeof shares === 'bigint' ? shares : BigInt(shares as number | string);
+  } catch (error) {
+    logger.warn('agent-wallet', 'Failed to read total shares', {
+      marketAddress,
+      outcomeIndex,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
   }
 }
 

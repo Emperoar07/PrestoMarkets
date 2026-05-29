@@ -26,6 +26,7 @@ import {
   type QueueRequest,
 } from '@/lib/agentQueue';
 import { logger } from '@/lib/logger';
+import { verifyBearer } from '@/lib/authCompare';
 
 // Authenticate using bearer token (constant-time comparison)
 function authenticateRequest(req: NextRequest): boolean {
@@ -37,8 +38,7 @@ function authenticateRequest(req: NextRequest): boolean {
     return false;
   }
 
-  const expected = `Bearer ${token}`;
-  return auth.length === expected.length && Buffer.from(auth).equals(Buffer.from(expected));
+  return verifyBearer(auth, token);
 }
 
 // Enqueue a new market creation request

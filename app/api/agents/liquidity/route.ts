@@ -1,14 +1,14 @@
 ﻿import { NextRequest, NextResponse } from 'next/server';
 import { getCircleWalletsClient, ARC_CONTRACTS } from '@/lib/circleAgents';
 import { agentBuyShares } from '@/lib/agentWallet';
+import { verifyApiKey } from '@/lib/authCompare';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 import { fetchWithX402 } from '@/lib/x402Client';
 
 // GET - return liquidity analysis across markets
 export async function GET(req: NextRequest) {
   const apiKey = req.headers.get('x-api-key');
-  const validKey = process.env.PRESTO_AGENT_API_KEY;
-  const isAuthorized = Boolean(validKey && apiKey === validKey);
+  const isAuthorized = verifyApiKey(apiKey, process.env.PRESTO_AGENT_API_KEY);
 
   let walletBalance: string | null = null;
   let walletAddress: string | null = null;
@@ -59,8 +59,7 @@ export async function GET(req: NextRequest) {
 // POST - trigger liquidity provision for a specific market
 export async function POST(req: NextRequest) {
   const apiKey = req.headers.get('x-api-key');
-  const validKey = process.env.PRESTO_AGENT_API_KEY;
-  if (!validKey || apiKey !== validKey) {
+  if (!verifyApiKey(apiKey, process.env.PRESTO_AGENT_API_KEY)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

@@ -320,6 +320,16 @@ Before mainnet deployment, we need:
 * Resolver reputation system.
 * Market metadata durability (IPFS or onchain storage).
 * Governance setup for protocol parameters.
+* Independent settlement signal. Agent auto-resolution currently gates on a single LLM's self-reported confidence (MIN_AUTO_RESOLVE_CONFIDENCE in app/api/cron/auto-resolve/route.ts). The model attests its own confidence, so a hallucinated high score can settle a market to the wrong side. Replace this with an independent signal before mainnet: multi-model agreement, an oracle quorum, or a dispute window after the resolver signs.
+
+## Agent Wallet Spend Controls
+
+The autonomous agent moves USDC without human review, so transfers are bounded:
+
+* `agentTransferUsdc` rejects non-positive amounts and caps any single transfer at `PRESTO_AGENT_MAX_TRANSFER_USDC` (default 5 USDC).
+* The x402 payment client (`src/lib/x402Client.ts`) validates the challenge recipient is a real address and caps the price at `X402_MAX_PRICE_USDC` (default 1 USDC). Set `X402_ALLOWED_RECIPIENTS` (comma-separated) to restrict which addresses the agent will pay.
+* Auto-resolution cancels and refunds (rather than locking funds) when the determined outcome has zero winning shares.
+* All privileged API routes compare credentials in constant time via `src/lib/authCompare.ts` (`verifyBearer` / `verifyApiKey`).
 
 ## First Prompt For Next Chat
 

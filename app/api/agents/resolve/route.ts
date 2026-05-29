@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { buildAgentResolutionReport } from '@/lib/agentResolution';
+import { verifyApiKey } from '@/lib/authCompare';
 import type { AppMarket } from '@/lib/appState';
 
 // Rate-limit: 10 requests / 5 min per IP
@@ -34,8 +35,7 @@ export async function POST(req: NextRequest) {
   }
 
   const agentKey = req.headers.get('x-api-key');
-  const validKey = process.env.PRESTO_AGENT_API_KEY;
-  if (!validKey || agentKey !== validKey) {
+  if (!verifyApiKey(agentKey, process.env.PRESTO_AGENT_API_KEY)) {
     return NextResponse.json({ error: 'Unauthorized: PRESTO_AGENT_API_KEY required' }, { status: 401 });
   }
 

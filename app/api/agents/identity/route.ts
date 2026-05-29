@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAgentIdentityStatus, registerAgentIdentity, ERC8004_CONTRACTS } from '@/lib/agentIdentity';
 import { getAgentAddress } from '@/lib/agentWallet';
+import { verifyApiKey } from '@/lib/authCompare';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -47,8 +48,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const apiKey = req.headers.get('x-api-key');
-  const validKey = process.env.PRESTO_AGENT_API_KEY;
-  if (!validKey || apiKey !== validKey) {
+  if (!verifyApiKey(apiKey, process.env.PRESTO_AGENT_API_KEY)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

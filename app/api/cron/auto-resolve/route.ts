@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Hex } from 'viem';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
-import { agentResolveMarket, getAgentAddress } from '@/lib/agentWallet';
+import { agentResolveMarket, agentCancelMarket, agentReadTotalShares, getAgentAddress } from '@/lib/agentWallet';
+import { verifyBearer } from '@/lib/authCompare';
 import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
 import { getAgentIdentityStatus, recordResolutionReputation } from '@/lib/agentIdentity';
 import { assertNonEmptyString } from '@/lib/typeGuards';
@@ -13,8 +14,16 @@ export const maxDuration = 300;
 
 type ResolutionResult =
   | { ok: true; action: 'resolved'; marketId: string; title: string; outcome: string; txHash: string | Hex; confidence: number }
+  | { ok: true; action: 'canceled'; marketId: string; title: string; outcome: string; txHash: string | Hex; confidence: number; reason: string }
   | { ok: false; action: 'skipped'; marketId: string; title: string; reason: string };
 
+// NOTE (mainnet gate): `confidence` below is self-reported by the same LLM that
+// chooses the outcome, so this threshold only filters how confident the model
+// *claims* to be, not how correct it is. Evidence URIs are constrained to
+// declared-source domains, but the confidence scalar itself is unverified. This
+// is an accepted testnet tradeoff. Before mainnet, gate settlement on an
+// independent signal (multi-model agreement, oracle quorum, or a dispute window)
+// rather than a single model's self-attested confidence. See DEVNOTE.md.
 const MIN_AUTO_RESOLVE_CONFIDENCE = 0.85;
 
 type EvidenceResult = {
@@ -226,6 +235,30 @@ Return JSON only:
     autonomous: true,
   };
 
+  // The contract reverts (NoWinningShares) if the determined outcome has zero
+  // shares, which would otherwise leave the market Active forever and lock all
+  // collateral. When we are confident in an outcome that nobody backed, the fair
+  // settlement is to cancel and refund every participant instead of locking funds.
+  const winningShares = await agentReadTotalShares(market.id, derivedIndex);
+  if (winningShares !== null && winningShares === BigInt(0)) {
+    const cancelResult = await agentCancelMarket(market.id);
+    if (!cancelResult.ok) {
+      return skipResolution(
+        `Determined outcome "${parsed.outcome}" has no winning shares and auto-cancel failed: ${cancelResult.error ?? 'unknown error'}. Pending manual review.`,
+      );
+    }
+    return {
+      ok: true,
+      action: 'canceled',
+      marketId: market.id,
+      title: market.title,
+      outcome: parsed.outcome,
+      txHash: assertNonEmptyString(cancelResult.txHash, 'txHash'),
+      confidence,
+      reason: `Determined outcome "${parsed.outcome}" had no winning shares; canceled to refund all participants.`,
+    };
+  }
+
   const resolutionURI = `data:application/json,${encodeURIComponent(JSON.stringify(resolutionReport))}`;
   const result = await agentResolveMarket(market.id, derivedIndex, resolutionURI);
   if (!result.ok) {
@@ -251,7 +284,7 @@ export async function GET(req: NextRequest) {
   }
 
   const auth = req.headers.get('authorization');
-  if (auth !== `Bearer ${secret}`) {
+  if (!verifyBearer(auth, secret)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -310,7 +343,7 @@ export async function GET(req: NextRequest) {
       agentAddress,
       expired: expired.length,
       resolved: results.filter((result) => result.ok && result.action === 'resolved').length,
-      canceled: 0,
+      canceled: results.filter((result) => result.ok && result.action === 'canceled').length,
       results,
     });
   } catch (error) {

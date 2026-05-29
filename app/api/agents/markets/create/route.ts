@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAddress } from 'viem';
 import { agentCreateMarket, getAgentAddress } from '@/lib/agentWallet';
+import { verifyApiKey } from '@/lib/authCompare';
 import { getAgentIdentityStatus } from '@/lib/agentIdentity';
 import { sanitizeFeedText } from '@/lib/feedSanitizer';
 import { validateMarketSafety } from '@/lib/marketSafetyValidator';
@@ -61,8 +62,7 @@ function normalizeMarketType(value: unknown): MarketType {
 
 export async function POST(req: NextRequest) {
   const apiKey = req.headers.get('x-api-key');
-  const validKey = process.env.PRESTO_AGENT_API_KEY;
-  if (!validKey || apiKey !== validKey) {
+  if (!verifyApiKey(apiKey, process.env.PRESTO_AGENT_API_KEY)) {
     return NextResponse.json({ error: 'Unauthorized agent request' }, { status: 401 });
   }
 

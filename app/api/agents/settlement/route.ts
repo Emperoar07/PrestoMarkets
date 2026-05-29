@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAddress } from 'viem';
 import { agentSettlePosition } from '@/lib/agentWallet';
+import { verifyApiKey } from '@/lib/authCompare';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 
 type AgentSettlementRequest = {
@@ -10,8 +11,7 @@ type AgentSettlementRequest = {
 
 export async function POST(req: NextRequest) {
   const apiKey = req.headers.get('x-api-key');
-  const validKey = process.env.PRESTO_AGENT_API_KEY;
-  if (!validKey || apiKey !== validKey) {
+  if (!verifyApiKey(apiKey, process.env.PRESTO_AGENT_API_KEY)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

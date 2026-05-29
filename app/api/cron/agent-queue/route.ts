@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { processPendingQueue, getOrchestratorHealth } from '@/lib/agentOrchestrator';
 import { getQueueMetrics, purgeCompleted } from '@/lib/agentQueue';
 import { logger } from '@/lib/logger';
+import { verifyBearer } from '@/lib/authCompare';
 
 export const maxDuration = 60; // 60 second timeout for cron job
 
@@ -23,10 +24,7 @@ async function verifyCronSecret(req: NextRequest): Promise<boolean> {
   }
 
   const authHeader = req.headers.get('authorization') || '';
-  const expectedHeader = `Bearer ${cronSecret}`;
-
-  return authHeader.length === expectedHeader.length &&
-    Buffer.from(authHeader).equals(Buffer.from(expectedHeader));
+  return verifyBearer(authHeader, cronSecret);
 }
 
 export async function GET(req: NextRequest) {

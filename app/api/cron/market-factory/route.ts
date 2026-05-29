@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { runAgentPipeline } from '@/lib/agentPipeline';
+import { verifyBearer } from '@/lib/authCompare';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'CRON_SECRET is not configured; cron endpoints are disabled until this env var is set.' }, { status: 500 });
   }
   const auth = req.headers.get('authorization');
-  if (auth !== `Bearer ${secret}`) {
+  if (!verifyBearer(auth, secret)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

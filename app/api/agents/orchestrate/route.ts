@@ -16,6 +16,7 @@ import {
 } from '@/lib/agentOrchestrator';
 import { getQueueMetrics } from '@/lib/agentQueue';
 import { logger } from '@/lib/logger';
+import { verifyBearer } from '@/lib/authCompare';
 import type { TrendItem } from '@/lib/agentPipeline';
 
 // Authenticate using bearer token
@@ -28,8 +29,7 @@ function authenticateRequest(req: NextRequest): boolean {
     return false;
   }
 
-  const expected = `Bearer ${token}`;
-  return auth.length === expected.length && Buffer.from(auth).equals(Buffer.from(expected));
+  return verifyBearer(auth, token);
 }
 
 // Trigger orchestration for a specific trend

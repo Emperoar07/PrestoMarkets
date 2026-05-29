@@ -1,3 +1,4 @@
+import { isAddress } from 'viem';
 import { agentTransferUsdc } from './agentWallet';
 
 export type L402Challenge = {
@@ -6,18 +7,60 @@ export type L402Challenge = {
   currency: string;
 };
 
+// Maximum USDC the agent will pay to satisfy a single x402 challenge. The
+// challenge address and price are dictated by the upstream server's response,
+// so without a cap a compromised, malicious, or misconfigured endpoint could
+// drain the agent wallet. Override with X402_MAX_PRICE_USDC; defaults to 1 USDC.
+function getMaxX402PriceUsdc(): number {
+  const parsed = Number(process.env.X402_MAX_PRICE_USDC);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+// Optional allowlist of payment recipient addresses (comma-separated). When set,
+// the agent only pays challenges whose address is on the list.
+function getAllowedRecipients(): string[] {
+  return (process.env.X402_ALLOWED_RECIPIENTS ?? '')
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 function parseL402Challenge(authHeader: string): L402Challenge {
   // Example: L402 address="0xABC...", price="0.15", currency="USDC"
   const addressMatch = authHeader.match(/address="([^"]+)"/);
   const priceMatch = authHeader.match(/price="([^"]+)"/);
-  
+
   if (!addressMatch || !priceMatch) {
     throw new Error('Invalid L402 challenge header');
   }
-  
+
+  const address = addressMatch[1];
+  const price = priceMatch[1];
+
+  // Validate the recipient is a real EVM address before we ever try to pay it.
+  if (!isAddress(address)) {
+    throw new Error(`x402 challenge specified an invalid payment address: ${address}`);
+  }
+
+  // Validate the price is a positive, finite number and within the configured cap.
+  const priceNum = Number(price);
+  if (!Number.isFinite(priceNum) || priceNum <= 0) {
+    throw new Error(`x402 challenge specified an invalid price: ${price}`);
+  }
+  const maxPrice = getMaxX402PriceUsdc();
+  if (priceNum > maxPrice) {
+    throw new Error(`x402 challenge price ${priceNum} USDC exceeds the configured cap of ${maxPrice} USDC.`);
+  }
+
+  // Enforce the recipient allowlist when one is configured.
+  const allowed = getAllowedRecipients();
+  if (allowed.length > 0 && !allowed.includes(address.toLowerCase())) {
+    throw new Error(`x402 payment recipient ${address} is not on the X402_ALLOWED_RECIPIENTS allowlist.`);
+  }
+
   return {
-    address: addressMatch[1],
-    price: priceMatch[1],
+    address,
+    price,
     currency: 'USDC',
   };
 }
