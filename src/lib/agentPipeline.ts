@@ -990,15 +990,20 @@ function analyzeMarketHorizon(trend: TrendItem): HorizonAnalysis {
     };
   }
 
-  const text = `${trend.topic} ${trend.query} ${trend.source}`.toLowerCase();
-  const exactSoon = hasAny(text, ['today', 'tonight', 'in hours', 'live now', 'breaking now']);
-  if (trend.source.startsWith('breaking-') || exactSoon) {
+  // Recency ("breaking-" source) means the story is FRESH, not that it resolves in
+  // 12 hours. The horizon must come from the EVENT, not how recently it was published —
+  // otherwise every breaking pick gets a spammed same-day close. We also drop bare
+  // "today" (it appears in most headlines) and only treat genuine same-day language
+  // as intraday.
+  const text = `${trend.topic} ${trend.query}`.toLowerCase();
+  const exactSoon = hasAny(text, ['tonight', 'live now', 'in hours', 'breaking now', 'later today', 'this evening', 'kicks off tonight']);
+  if (exactSoon) {
     return {
       label: 'intraday',
       closeDate: isoHoursAfter(12, now),
       minDays: 0,
       maxDays: 2,
-      reason: 'Breaking or same-day news should resolve quickly once the public source updates.',
+      reason: 'Genuine same-day language ("tonight", "live now") should resolve quickly once the source updates.',
     };
   }
 
@@ -1074,7 +1079,9 @@ function normalizeDraftCloseDate(value: string | undefined, trend: TrendItem, ho
   if (diffDays <= 0) return fallback;
   if (diffDays > MAX_AGENT_CLOSE_DAYS) return isoDateAfter(MAX_AGENT_CLOSE_DAYS);
 
-  if (horizon.minDays >= 5 && diffDays < horizon.minDays * 0.75) return fallback;
+  // Enforce a floor for weekly-and-longer horizons (incl. the default weekly,
+  // minDays=3) so the model can't snap general news back to a 1-day close.
+  if (horizon.minDays >= 3 && diffDays < horizon.minDays * 0.75) return fallback;
   if (horizon.maxDays <= 4 && diffDays > horizon.maxDays + 1) return fallback;
   if (horizon.label === 'monthly' && diffDays < 14) return fallback;
   if (horizon.label === 'quarterly' && diffDays < 45) return fallback;
