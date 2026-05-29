@@ -1,11 +1,11 @@
 import {
   createPublicClient,
   formatUnits,
-  http,
   isAddress,
   type Address,
 } from 'viem';
 import { getArcConfig, getArcChainId } from './arcConfig';
+import { ARC_READ_BATCH, arcReadTransport } from './arcClient';
 import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { fetchMarketCostBasisIndexed } from './costBasisIndexer';
 import type { AppMarket } from './appState';
@@ -134,7 +134,8 @@ function createClient() {
         default: { http: [config.rpcUrl] },
       },
     },
-    transport: http(config.rpcUrl),
+    transport: arcReadTransport(config.rpcUrl),
+    batch: ARC_READ_BATCH,
   });
 }
 

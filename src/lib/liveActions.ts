@@ -3,7 +3,6 @@ import {
   createWalletClient,
   custom,
   formatUnits,
-  http,
   isAddress,
   parseEventLogs,
   parseUnits,
@@ -25,6 +24,7 @@ import {
 } from './circleActions';
 import { executeSwap, type StableSymbol } from './swap';
 import { getAgentResolverSelectionError, getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
+import { ARC_READ_BATCH, arcReadTransport, withRpcRetry } from './arcClient';
 
 function isCircleWallet(): boolean {
   return getStoredConnectedWallet()?.mode === 'circle-user-controlled';
@@ -33,17 +33,8 @@ function isCircleWallet(): boolean {
 const ARC_CHAIN_HEX = '0x4cef52';
 const MIN_TRADE_USDC = 0.01;
 
-async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      if (attempt === retries) throw error;
-      await new Promise<void>((resolve) => { setTimeout(resolve, 400 * (attempt + 1)); });
-    }
-  }
-  throw new Error('unreachable');
-}
+// Shared 429-aware retry with exponential backoff (see arcClient).
+const withRetry = withRpcRetry;
 
 function getArcChain() {
   return {
@@ -187,7 +178,8 @@ async function getClients() {
 
   const publicClient = createPublicClient({
     chain,
-    transport: http(config.rpcUrl),
+    transport: arcReadTransport(config.rpcUrl),
+    batch: ARC_READ_BATCH,
   });
 
   return { account, config, publicClient, walletClient };

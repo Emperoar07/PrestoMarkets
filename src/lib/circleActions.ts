@@ -1,6 +1,7 @@
-import { createPublicClient, formatUnits, http, isAddress, parseEventLogs, parseUnits, type Address, type Hex } from 'viem';
+import { createPublicClient, formatUnits, isAddress, parseEventLogs, parseUnits, type Address, type Hex } from 'viem';
 import { arcTestnet } from 'viem/chains';
 import { getArcConfig } from './arcConfig';
+import { ARC_READ_BATCH, arcReadTransport } from './arcClient';
 import { buildMarketMetadataURI } from './marketMetadata';
 import { getStoredConnectedWallet, refreshCircleSessionIfNeeded, type CircleSession } from './walletProvider';
 import { requestCircleConfirmation, type CircleConfirmDetails } from './circleConfirm';
@@ -290,7 +291,8 @@ function getPublicClient() {
 
   return createPublicClient({
     chain: arcTestnet,
-    transport: http(config.rpcUrl),
+    transport: arcReadTransport(config.rpcUrl),
+    batch: ARC_READ_BATCH,
   });
 }
 
@@ -368,7 +370,8 @@ async function readCreatedMarketAddress(txHash: string, multiOutcome = false): P
   if (!config.rpcUrl || !txHash) return undefined;
   const publicClient = createPublicClient({
     chain: arcTestnet,
-    transport: http(config.rpcUrl),
+    transport: arcReadTransport(config.rpcUrl),
+    batch: ARC_READ_BATCH,
   });
   const receipt = await publicClient.getTransactionReceipt({ hash: txHash as Hex });
   const created = parseEventLogs({

@@ -1,5 +1,6 @@
-import { createPublicClient, formatUnits, http, isAddress, type Address } from 'viem';
+import { createPublicClient, formatUnits, isAddress, type Address } from 'viem';
 import { getArcConfig, getArcChainId } from './arcConfig';
+import { ARC_READ_BATCH, arcReadTransport } from './arcClient';
 import { erc20Abi } from './contracts';
 
 export type StableSymbol = 'USDC' | 'EURC';
@@ -22,7 +23,8 @@ async function fetchErc20Balance(address: string, token: Address): Promise<strin
       nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
       rpcUrls: { default: { http: [config.rpcUrl] } },
     },
-    transport: http(config.rpcUrl),
+    transport: arcReadTransport(config.rpcUrl),
+    batch: ARC_READ_BATCH,
   });
 
   const balance = await client.readContract({
@@ -59,7 +61,8 @@ export async function fetchArcStableBalances(address: string): Promise<Record<St
       nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
       rpcUrls: { default: { http: [config.rpcUrl] } },
     },
-    transport: http(config.rpcUrl),
+    transport: arcReadTransport(config.rpcUrl),
+    batch: ARC_READ_BATCH,
   });
 
   const wallet = address as Address;

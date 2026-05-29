@@ -42,3 +42,23 @@ export function formatVolume(v: number): string {
 export function clearVolumeCache(): void {
   volumeParseCache.clear();
 }
+
+/**
+ * Estimate the payout if a chosen outcome wins, for Presto's fixed-share
+ * parimutuel markets. Shares are minted 1:1 with USDC (10 USDC = 10 shares),
+ * and winners split the whole pool pro-rata, so payout per winning share is
+ * roughly 1 / impliedProbability. At 50% odds a $10 stake estimates to ~$20;
+ * at 80% odds to ~$12.50.
+ *
+ * This is an estimate, not a quote: the real payout depends on the final pool
+ * and how shares shift before close. It is NOT a per-share price — Presto does
+ * not sell priced shares.
+ *
+ * @param amountUsdc  USDC staked (equals shares received, 1:1)
+ * @param oddsPercent current implied odds for the outcome, 0–100
+ */
+export function estimateParimutuelPayout(amountUsdc: number, oddsPercent: number): number {
+  if (!Number.isFinite(amountUsdc) || amountUsdc <= 0) return 0;
+  const prob = Number.isFinite(oddsPercent) && oddsPercent > 0 ? Math.min(oddsPercent, 100) / 100 : 0.5;
+  return amountUsdc / prob;
+}

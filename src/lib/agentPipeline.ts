@@ -1230,10 +1230,17 @@ If the classifier suggested Opinion, take that suggestion seriously unless the t
 obviously fits a different type. If multiple agent markets are already the same type,
 prefer the underrepresented type to keep variety on the platform.
 
-For most binary questions, leave "outcomeOptions" empty (defaults to YES/NO). When the
-question is naturally multi-choice ("Which of these will happen first?", "Which candidate
-will win?"), return 3 to 6 short labels (max 40 chars each). Do not include YES/NO if you
-provide poll options.
+Outcome structure — PREFER multi-outcome when the topic is naturally more than yes/no:
+- Price / level / metric questions ("where will BTC be?", "how far will X fall?"): return 3 to 5
+  mutually exclusive, exhaustive ranges that cover every possibility with no gaps or overlaps,
+  e.g. "Below $70k", "$70k to under $75k", "$75k to under $80k", "$80k or above". Do NOT collapse
+  a price story into a single "above/below threshold" YES/NO when ranges capture it better.
+- Multi-candidate races / "which will happen first" (elections, launches, matchups): return one
+  label per realistic option (3 to 12 short labels, max 40 chars each).
+- Only fall back to binary YES/NO (leave "outcomeOptions" empty) for a genuinely two-sided
+  question (a single event that either happens or does not).
+- Outcome labels must be mutually exclusive and collectively cover the outcome space. Do not
+  include YES/NO when you provide poll options. Never return exactly one option.
 
 Return JSON only:
 {
@@ -1254,13 +1261,19 @@ Return JSON only:
   }
 
   // Only carry poll options through when there are at least 3 — anything less is binary.
+  // The multi-outcome contract supports up to 12 mutually exclusive outcomes.
   let outcomeOptions: string[] | undefined = trend.outcomeOptions;
   if (!outcomeOptions && Array.isArray(parsed.outcomeOptions)) {
     const cleaned = parsed.outcomeOptions
       .filter((o): o is string => typeof o === 'string')
       .map((o) => cleanDraftText(o, trend).slice(0, 40))
       .filter(Boolean);
-    if (cleaned.length >= 3 && cleaned.length <= 6) outcomeOptions = cleaned;
+    // De-duplicate labels case-insensitively so the LLM can't produce a degenerate poll
+    // (e.g. two identical ranges) that the contract would treat as distinct outcomes.
+    const deduped = Array.from(
+      new Map(cleaned.map((label) => [label.toLowerCase(), label])).values(),
+    );
+    if (deduped.length >= 3 && deduped.length <= 12) outcomeOptions = deduped;
   }
 
   const sourceOfTruth = trend.marketStructure === 'price-range' && trend.url

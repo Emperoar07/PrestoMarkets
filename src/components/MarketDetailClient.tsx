@@ -11,6 +11,7 @@ import { formatUsd, useAppState } from '@/lib/appState';
 import { agentResolutionGuardrails, buildAgentResolutionPrompt, buildAgentResolutionReport } from '@/lib/agentResolution';
 import type { MarketStatus } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
+import { estimateParimutuelPayout } from '@/lib/marketUtils';
 
 const statusStyle: Record<MarketStatus, string> = {
   Open: 'border-mint/25 bg-mint/10 text-mint',
@@ -88,8 +89,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const activeOutcomeColor = getOutcomeColor(activeOutcomeIndex);
   const isBinaryMarket = market.outcomes.length <= 2;
   const amountValue = Number(amount) || 0;
+  // Fixed-share parimutuel: 1 USDC = 1 share. Payout if this outcome wins is an
+  // estimate derived from current implied odds, not a priced-share quote.
   const estimatedShares = amountValue > 0 ? amountValue : 0;
-  const potentialReturn = estimatedShares;
+  const potentialReturn = estimateParimutuelPayout(amountValue, Number(activeOutcome.odds));
   const liquiditySideAmount = amountValue > 0 ? amountValue / market.outcomes.length : 0;
   const canTrade = market.status === 'Open' || market.status === 'Closing soon';
   const accountPreview = accountPreviews[market.id];
@@ -616,15 +619,15 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               {/* Trade summary */}
               <div className="mt-5 space-y-2.5 border-t border-white/[0.06] pt-5">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted">{tradeMode === 'liquidity' ? 'Liquidity method' : 'Signal price'}</span>
+                  <span className="text-muted">{tradeMode === 'liquidity' ? 'Liquidity method' : isLimitOrder ? 'Limit price' : 'Implied odds'}</span>
                   <span className="font-black text-white">
                     {tradeMode === 'liquidity'
                       ? isBinaryMarket ? 'Balanced YES + NO' : 'Balanced across all outcomes'
-                      : isLimitOrder ? `${limitPrice || '0'}\u00a2 limit` : `${activeOutcome.odds}\u00a2 per share`}
+                      : isLimitOrder ? `${limitPrice || '0'}\u00a2 limit` : `${activeOutcome.odds}%`}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className="text-muted">Total shares</span>
+                  <span className="text-muted">Shares (1 USDC = 1 share)</span>
                   <span className="min-w-0 break-words text-right font-black text-white [overflow-wrap:anywhere]">
                     {tradeMode === 'liquidity'
                       ? liquiditySideAmount > 0 ? `${liquiditySideAmount.toFixed(2)} each x ${market.outcomes.length} outcomes` : '—'
@@ -632,7 +635,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className="text-muted">{tradeMode === 'liquidity' ? 'Position' : 'Settlement preview'}</span>
+                  <span className="text-muted">{tradeMode === 'liquidity' ? 'Position' : `Est. payout if ${activeOutcome.label} wins`}</span>
                   <span className={`min-w-0 break-words text-right font-black [overflow-wrap:anywhere] ${potentialReturn > amountValue ? 'text-mint' : 'text-white'}`}>
                     {tradeMode === 'liquidity'
                       ? 'Neutral depth'
