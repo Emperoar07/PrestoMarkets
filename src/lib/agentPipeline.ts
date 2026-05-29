@@ -1539,14 +1539,26 @@ export async function runAgentPipeline(): Promise<PipelineResult[]> {
     }];
   }
 
-  // Stage 2 first-pass: classify every trend so we can rank by signal strength globally.
-  // The shared LLM fallback keeps this alive when a free provider is rate-limited.
-  // one that happens to pass.
+  // Stage 2: classify candidate trends so we can rank by signal strength.
+  // Classification is the expensive LLM step. When only free providers are
+  // available, classifying all ~24 trends per run risks rate-limiting the whole
+  // pool. So we do the cheap (no-LLM) research pass first, rank by source quality
+  // then recency, and spend a bounded classify budget on the strongest, freshest
+  // candidates. Override the budget with PRESTO_AGENT_CLASSIFY_CAP.
+  const CLASSIFY_CAP = Math.max(6, Number(process.env.PRESTO_AGENT_CLASSIFY_CAP ?? 10));
   type Scored = { trend: TrendItem; classification: GroqClassification };
   const scored: Scored[] = [];
-  for (const trend of trends) {
+
+  const preranked = trends
+    .map((trend) => ({ trend, research: assessTrendResearchQuality(trend) }))
+    .sort((a, b) =>
+      (b.research.score - a.research.score) ||
+      ((b.trend.publishedAt ?? 0) - (a.trend.publishedAt ?? 0)),
+    );
+
+  let classifyCalls = 0;
+  for (const { trend, research } of preranked) {
     try {
-      const research = assessTrendResearchQuality(trend);
       const researchDecision = getResearchDecision(research);
       if (researchDecision.action === 'Pivot' || research.score < MIN_RESEARCH_SCORE) {
         results.push({
@@ -1557,6 +1569,16 @@ export async function runAgentPipeline(): Promise<PipelineResult[]> {
         });
         continue;
       }
+      if (classifyCalls >= CLASSIFY_CAP) {
+        results.push({
+          ok: false,
+          topic: trend.topic,
+          stage: 'classify',
+          reason: `Classify budget (${CLASSIFY_CAP}) reached this run; deferring lower-ranked trend to protect LLM rate limits.`,
+        });
+        continue;
+      }
+      classifyCalls += 1;
       const classification = await classifyTrend(trend);
       if (!classification.worthy || classification.momentumScore < MIN_MOMENTUM) {
         results.push({ ok: false, topic: trend.topic, stage: 'classify', reason: classification.reason });

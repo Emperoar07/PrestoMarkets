@@ -50,10 +50,6 @@ function uniqueStrings(values: Array<string | undefined>): string[] {
   return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value))));
 }
 
-function isRetryableHttpStatus(status: number): boolean {
-  return status === 401 || status === 402 || status === 429 || status === 403 || (status >= 500 && status <= 599);
-}
-
 const LLM_PROVIDER_TIMEOUT_MS = 10_000;
 
 async function callAnthropic(input: LlmCallInput): Promise<ProviderResult | null> {
@@ -72,13 +68,12 @@ async function callAnthropic(input: LlmCallInput): Promise<ProviderResult | null
     if (!text) return null;
     return { text, provider: 'anthropic', model };
   } catch (err) {
-    if (err instanceof Error && err.name === 'APIError' && err.message.includes('timeout')) {
-      logger.warn('llm-fallback', `anthropic timeout after ${LLM_PROVIDER_TIMEOUT_MS}ms`);
-      return null;
-    }
     const status = (err as { status?: number })?.status ?? 0;
-    if (isRetryableHttpStatus(status)) return null;
-    // Network or SDK errors still permit a later configured provider to answer.
+    const message = err instanceof Error ? err.message : String(err);
+    // Log every Anthropic failure so silent killers (out-of-credits 400, expired
+    // key 401, quota 429) are visible in deployment logs instead of vanishing.
+    logger.warn('llm-fallback', `anthropic failed (status ${status})`, { status, error: message.slice(0, 180) });
+    // Network/SDK/HTTP errors all permit a later configured provider to answer.
     return null;
   }
 }
@@ -90,7 +85,9 @@ async function callGemini(input: LlmCallInput): Promise<ProviderResult | null> {
   const models = uniqueStrings([
     envClean(input.task === 'reasoning' ? 'GEMINI_REASONING_MODEL' : 'GEMINI_SAFETY_MODEL'),
     envClean('GEMINI_MARKET_MODEL'),
-    'gemini-1.5-flash',
+    // gemini-1.5-flash was retired and now 404s; 2.5-flash is the current fast model.
+    'gemini-2.5-flash',
+    'gemini-flash-latest',
   ]);
 
   for (const model of models) {
@@ -229,7 +226,8 @@ async function callOpenRouter(input: LlmCallInput): Promise<ProviderResult | nul
   const models = uniqueStrings([
     envClean(input.task === 'reasoning' ? 'OPENROUTER_REASONING_MODEL' : 'OPENROUTER_SAFETY_MODEL'),
     envClean('OPENROUTER_MODEL'),
-    'qwen/qwen3-235b-a22b:free',
+    // qwen3-235b:free was delisted (404); these Llama free models are current.
+    'meta-llama/llama-3.3-70b-instruct:free',
     'meta-llama/llama-3.2-3b-instruct:free',
   ]);
   return callOpenAiCompatibleModels({
