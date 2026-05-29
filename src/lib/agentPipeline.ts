@@ -31,7 +31,20 @@ export type TrendItem = {
   closeDate?: string;
   outcomeOptions?: string[];
   marketStructure?: 'price-range';
+  /** Epoch ms when the source published this item (parsed from RSS pubDate), if known. */
+  publishedAt?: number;
 };
+
+/** Human-readable age of a trend ("3h ago", "2d ago") for prompts/logging. */
+function trendAgeLabel(trend: TrendItem): string {
+  if (typeof trend.publishedAt !== 'number' || !Number.isFinite(trend.publishedAt)) return 'unknown';
+  const ageMs = Date.now() - trend.publishedAt;
+  if (ageMs < 0) return 'just now';
+  const hours = Math.floor(ageMs / 3_600_000);
+  if (hours < 1) return `${Math.floor(ageMs / 60_000)}m ago`;
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
 
 export type MarketDraft = CreateLiveMarketInput & {
   agent: AgentMarketMetadata;
@@ -168,10 +181,14 @@ async function fetchRssTrends(input: { url: string; source: string; limit?: numb
     const descRegex = /<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i;
     const mediaRegex = /<(?:media:content|media:thumbnail)\b[^>]*url=["']([^"']+)["'][^>]*>/i;
     const enclosureRegex = /<enclosure\b[^>]*url=["']([^"']+)["'][^>]*type=["']image\/[^"']+["'][^>]*>/i;
+    // RSS uses <pubDate>/<dc:date>; Atom uses <published>/<updated>.
+    const dateRegex = /<(?:pubDate|dc:date|published|updated)>\s*(?:<!\[CDATA\[)?([^<\]]+?)(?:\]\]>)?\s*<\/(?:pubDate|dc:date|published|updated)>/i;
     const limit = input.limit ?? 4;
+    // Parse a wider window than `limit` so we can rank by recency before slicing.
+    const parseCap = Math.max(limit * 3, 12);
 
     let match: RegExpExecArray | null;
-    while ((match = itemRegex.exec(xml)) && items.length < limit) {
+    while ((match = itemRegex.exec(xml)) && items.length < parseCap) {
       const block = match[1];
       const rawTitle = titleRegex.exec(block)?.[1]?.trim();
       const link = linkRegex.exec(block)?.[1]?.trim();
@@ -180,9 +197,21 @@ async function fetchRssTrends(input: { url: string; source: string; limit?: numb
       if (!rawTitle) continue;
       const title = sanitizeFeedText(rawTitle);
       const desc = rawDesc ? sanitizeFeedText(rawDesc) : undefined;
-      items.push({ topic: title, query: desc?.slice(0, 240) ?? title, source: input.source, url: link, imageUrl });
+      const rawDate = dateRegex.exec(block)?.[1]?.trim();
+      const parsedDate = rawDate ? Date.parse(rawDate) : NaN;
+      items.push({
+        topic: title,
+        query: desc?.slice(0, 240) ?? title,
+        source: input.source,
+        url: link,
+        imageUrl,
+        publishedAt: Number.isFinite(parsedDate) ? parsedDate : undefined,
+      });
     }
-    return items;
+    // Newest first when dates are present; undated items keep their (already
+    // recency-ordered) document position at the end via stable sort.
+    items.sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0));
+    return items.slice(0, limit);
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       logger.warn('agent-pipeline', `RSS feed timeout for ${input.source} after 10000ms`);
@@ -649,27 +678,33 @@ function interleave(...lists: TrendItem[][]): TrendItem[] {
 // Top 3 breaking-news items the homepage panel surfaces with the "Agent pick" badge. We
 // fetch the same crypto-first RSS feeds the /api/news/breaking endpoint ranks, sort by
 // recency, and prepend the freshest 3 so they're the first trends the per-run cap targets.
+// How recent a story must be to count as "breaking". Items without a parsed
+// pubDate are kept (many feeds omit it) rather than dropped, so this never
+// starves the agent on a feed that doesn't publish dates.
+const BREAKING_FRESHNESS_MS = 3 * 86_400_000; // 3 days
+
 async function fetchBreakingNewsPriority(): Promise<TrendItem[]> {
   const sources = await Promise.all([
     fetchCryptoNewsTrends().catch(() => [] as TrendItem[]),
     fetchDecryptTrends().catch(() => [] as TrendItem[]),
     fetchTheBlockTrends().catch(() => [] as TrendItem[]),
   ]);
-  const flat = sources.flat();
-  // The RSS parser doesn't expose pubDate yet; the items come back already ordered by
-  // recency per outlet, so interleaving across outlets approximates a recency mix.
+  const now = Date.now();
+  // Now that the RSS parser exposes pubDate, rank genuinely by recency across
+  // outlets and drop stale stories (keeping undated ones).
+  const fresh = sources
+    .flat()
+    .filter((item) => item.publishedAt === undefined || now - item.publishedAt <= BREAKING_FRESHNESS_MS)
+    .sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0));
+
   const seen = new Set<string>();
   const out: TrendItem[] = [];
-  outer: for (let i = 0; i < 5; i++) {
-    for (const list of sources) {
-      const item = list[i];
-      if (!item) continue;
-      const key = item.topic.toLowerCase().slice(0, 60);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ ...item, source: `breaking-${item.source}` });
-      if (out.length >= 3) break outer;
-    }
+  for (const item of fresh) {
+    const key = item.topic.toLowerCase().slice(0, 60);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ ...item, source: `breaking-${item.source}` });
+    if (out.length >= 3) break;
   }
   return out;
 }
@@ -726,6 +761,11 @@ You are the classifier stage of the pipeline. Evaluate this trend for market cre
 Topic: "${trend.topic}"
 Context: "${trend.query}"
 Source: "${trend.source}"
+Published: ${trendAgeLabel(trend)}
+
+Freshness matters: a story published in the last few hours deserves higher momentum
+than a multi-day-old one. If the story is stale (days old) and the event it points to
+has likely already resolved or gone quiet, lower the momentum score accordingly.
 
 Research audit:
 ${formatResearchAssessment(research, 4)}
