@@ -35,9 +35,11 @@ function validateMarketCreationRequest(input: CreateLiveMarketInput): { ok: bool
   if (closeTime <= nowTime) return { ok: false, error: 'Close date must be in the future' };
   if (closeTime - nowTime < 3600000) return { ok: false, error: 'Market must close at least 1 hour from now' };
 
-  if (!input.resolver || !isAddress(input.resolver)) {
-    return { ok: false, error: 'Invalid resolver address' };
-  }
+  // The on-chain resolver is always the agent wallet (account.address), set inside
+  // agentCreateMarket below. input.resolver is only a display label (e.g. "Presto
+  // Agent"), so it is intentionally NOT required to be an address — requiring that
+  // here previously rejected every agent market with "Invalid resolver address".
+  // The agent-vs-configured-resolver match is still enforced via agentResolverAddress.
 
   return { ok: true };
 }
