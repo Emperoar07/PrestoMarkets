@@ -241,9 +241,9 @@ async function fetchCryptoNewsTrends(): Promise<TrendItem[]> {
 }
 
 const cryptoPriceAssets = [
-  { id: 'bitcoin', cmcSymbol: 'BTC', symbol: 'BTC', name: 'Bitcoin', category: 'BTC', threshold: 0.035 },
-  { id: 'ethereum', cmcSymbol: 'ETH', symbol: 'ETH', name: 'Ethereum', category: 'ETH', threshold: 0.045 },
-  { id: 'solana', cmcSymbol: 'SOL', symbol: 'SOL', name: 'Solana', category: 'SOL', threshold: 0.06 },
+  { id: 'bitcoin', cmcSymbol: 'BTC', symbol: 'BTC', name: 'Bitcoin', category: 'BTC', threshold: 0.035, logo: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png' },
+  { id: 'ethereum', cmcSymbol: 'ETH', symbol: 'ETH', name: 'Ethereum', category: 'ETH', threshold: 0.045, logo: 'https://assets.coingecko.com/coins/images/279/large/ethereum.png' },
+  { id: 'solana', cmcSymbol: 'SOL', symbol: 'SOL', name: 'Solana', category: 'SOL', threshold: 0.06, logo: 'https://assets.coingecko.com/coins/images/4128/large/solana.png' },
 ] as const;
 
 const cryptoPriceHorizons = [
@@ -283,6 +283,7 @@ function buildCryptoPriceSignals(input: {
   change?: number;
   threshold: number;
   url: string;
+  imageUrl?: string;
 }): TrendItem[] {
   const increment = readablePriceIncrement(input.price);
   const center = roundPrice(input.price, increment);
@@ -316,6 +317,7 @@ function buildCryptoPriceSignals(input: {
       closeDate: settleLabel,
       outcomeOptions,
       marketStructure: 'price-range',
+      imageUrl: input.imageUrl,
     };
   });
 }
@@ -336,6 +338,7 @@ function buildConvictionSignals(input: {
   price: number;
   change?: number;
   url: string;
+  imageUrl?: string;
 }): TrendItem[] {
   const increment = readablePriceIncrement(input.price);
   const formattedPrice = formatPrice(input.price);
@@ -363,6 +366,7 @@ function buildConvictionSignals(input: {
       url: input.url,
       closeDate: settleLabel,
       marketStructure: 'price-target',
+      imageUrl: input.imageUrl,
     };
   });
 }
@@ -404,6 +408,7 @@ async function fetchCoinGeckoPriceSignals(): Promise<TrendItem[]> {
           change,
           threshold: asset.threshold,
           url,
+          imageUrl: asset.logo,
         }),
         ...buildConvictionSignals({
           name: asset.name,
@@ -413,6 +418,7 @@ async function fetchCoinGeckoPriceSignals(): Promise<TrendItem[]> {
           price: price as number,
           change,
           url,
+          imageUrl: asset.logo,
         }),
       ];
     });
