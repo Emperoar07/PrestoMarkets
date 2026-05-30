@@ -417,22 +417,34 @@ async function finishCircleWalletLogin(input: {
   let wallet = await getFirstCircleWallet(input.login.userToken, input.config.blockchain);
 
   if (!wallet) {
-    const challenge = await callCircleWalletProvider<{ challengeId: string }>({
-      action: 'initialize',
-      userToken: input.login.userToken,
-    });
+    try {
+      const challenge = await callCircleWalletProvider<{ challengeId?: string }>({
+        action: 'initialize',
+        userToken: input.login.userToken,
+      });
 
-    await executeCircleChallenge({
-      appId: input.config.appId,
-      userToken: input.login.userToken,
-      encryptionKey: input.login.encryptionKey,
-      challengeId: challenge.challengeId,
-    });
-    wallet = await getFirstCircleWallet(input.login.userToken, input.config.blockchain);
+      if (challenge?.challengeId) {
+        await executeCircleChallenge({
+          appId: input.config.appId,
+          userToken: input.login.userToken,
+          encryptionKey: input.login.encryptionKey,
+          challengeId: challenge.challengeId,
+        });
+      }
+    } catch (err) {
+      // 155106 = user already initialized (PIN + wallet exist from a prior attempt).
+      // That's not fatal here — the wallet exists, we just need to poll for it below.
+      if (!(err instanceof Error && err.message.includes('155106'))) throw err;
+    }
+
+    // Circle creates the SCA wallet asynchronously after the PIN/recovery challenge,
+    // so a single immediate read often returns an empty list. Poll briefly until the
+    // wallet is indexed (this was the cause of "did not return an Arc wallet address").
+    wallet = await pollFirstCircleWallet(input.login.userToken, input.config.blockchain);
   }
 
   if (!wallet?.address) {
-    throw new Error('Circle User-Controlled Wallets did not return an Arc wallet address.');
+    throw new Error('Circle User-Controlled Wallets did not return an Arc wallet address. The wallet may still be finalizing — please try connecting again in a moment.');
   }
 
   setCircleSession({
@@ -481,6 +493,24 @@ async function getFirstCircleWallet(userToken: string, blockchain: string) {
   const wallets = data.wallets || [];
 
   return wallets.find((wallet) => wallet.blockchain === blockchain) || wallets[0] || null;
+}
+
+// Circle indexes a newly created user wallet asynchronously after the PIN/recovery
+// challenge completes, so poll a few times before concluding none exists.
+async function pollFirstCircleWallet(
+  userToken: string,
+  blockchain: string,
+  attempts = 6,
+  delayMs = 1500,
+) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const wallet = await getFirstCircleWallet(userToken, blockchain).catch(() => null);
+    if (wallet?.address) return wallet;
+    if (attempt < attempts - 1) {
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return null;
 }
 
 async function executeCircleChallenge(input: {
