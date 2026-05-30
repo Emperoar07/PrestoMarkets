@@ -324,9 +324,6 @@ export function SiteHeader() {
               >
                 <span className="text-[#4a5568]">{activeStable}</span>
                 <span className={activeStable === 'EURC' ? 'text-blue-300' : 'text-cyan font-black'}>{activeStable === 'EURC' ? (balances.EURC ?? '--') : (balances.USDC ?? '--')}</span>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`text-[#4a5568] transition-transform ${menuOpen ? 'rotate-180' : ''}`}>
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
               </button>
 
               {/* Cohesive Divider */}
