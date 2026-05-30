@@ -35,7 +35,6 @@ export function SiteHeader() {
   const router = useRouter();
   const isLandingPage = pathname === '/';
   const showWallet = !isLandingPage;
-  const isExplorePage = pathname === '/markets' || pathname.startsWith('/markets/');
   const isDocsPage = pathname === '/docs' || pathname === '/build-rails';
   const showSearchBar = !isLandingPage && !isDocsPage;
   // Category tab row only on the markets explorer itself — not market detail pages, not
@@ -217,12 +216,6 @@ export function SiteHeader() {
       >
         <div className="space-y-1 bg-[#0b1322]/95 px-3 pb-4 pt-3 backdrop-blur-lg">
           {/* Nav links */}
-          <Link href="/markets" className={mobileNavLinkClass(isExplorePage && !isCreatePage)} onClick={() => setMobileMenuOpen(false)}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
-              <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
-            </svg>
-            Explore Markets
-          </Link>
           {!isLandingPage ? (
             <Link href="/markets/create" className={mobileNavLinkClass(isCreatePage)} onClick={() => setMobileMenuOpen(false)}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0 opacity-50">
@@ -294,9 +287,6 @@ export function SiteHeader() {
           ) : null}
         </div>
         <nav className="ml-auto flex shrink-0 items-center gap-2">
-          <Link href="/markets" className={navLinkClass(isExplorePage && !isCreatePage)}>
-            Explore Markets
-          </Link>
           {!isLandingPage ? (
             <Link href="/markets/create" className={`${navLinkClass(isCreatePage)} inline-flex items-center gap-1.5`}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-70">
