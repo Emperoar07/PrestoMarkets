@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { buildAgentResolutionReport } from '@/lib/agentResolution';
 import { verifyApiKey } from '@/lib/authCompare';
@@ -80,35 +80,53 @@ Return ONLY valid JSON matching this schema:
   "uncertainty": "Any missing data or reasons a human should review before settling."
 }`;
 
-  // Execute sequentially to respect free-tier concurrency limits
-  const res1 = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    temperature: 0.1,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: userPrompt }],
-  });
-  const text1 = res1.content.find((b) => b.type === 'text')?.text ?? '';
+  let text1 = '';
+  let text2 = '';
+  let text3 = '';
+  let text = '';
 
-  const res2 = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    temperature: 0.7,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: userPrompt }],
-  });
-  const text2 = res2.content.find((b) => b.type === 'text')?.text ?? '';
+  try {
+    // Execute sequentially to respect free-tier concurrency limits
+    const res1 = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      temperature: 0.1,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userPrompt }],
+      metadata: { user_id: 'presto_resolve_oracle' },
+    });
+    if (res1.stop_reason !== 'end_turn' && res1.stop_reason !== 'stop_sequence') {
+      console.warn('Claude Researcher 1 stopped unexpectedly:', res1.stop_reason);
+    }
+    text1 = res1.content.find((b) => b.type === 'text')?.text ?? '';
 
-  const res3 = await anthropic.messages.create({
-    model: 'claude-haiku-4-3',
-    max_tokens: 1024,
-    temperature: 0.4,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: userPrompt }],
-  });
-  const text3 = res3.content.find((b) => b.type === 'text')?.text ?? '';
+    const res2 = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      temperature: 0.7,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userPrompt }],
+      metadata: { user_id: 'presto_resolve_oracle' },
+    });
+    if (res2.stop_reason !== 'end_turn' && res2.stop_reason !== 'stop_sequence') {
+      console.warn('Claude Researcher 2 stopped unexpectedly:', res2.stop_reason);
+    }
+    text2 = res2.content.find((b) => b.type === 'text')?.text ?? '';
 
-  const judgePrompt = `You are the Meta-Agent Judge. Three separate AI researchers have produced evidence reports for the following prediction market:
+    const res3 = await anthropic.messages.create({
+      model: 'claude-haiku-4-3',
+      max_tokens: 1024,
+      temperature: 0.4,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userPrompt }],
+      metadata: { user_id: 'presto_resolve_oracle' },
+    });
+    if (res3.stop_reason !== 'end_turn' && res3.stop_reason !== 'stop_sequence') {
+      console.warn('Claude Researcher 3 stopped unexpectedly:', res3.stop_reason);
+    }
+    text3 = res3.content.find((b) => b.type === 'text')?.text ?? '';
+
+    const judgePrompt = `You are the Meta-Agent Judge. Three separate AI researchers have produced evidence reports for the following prediction market:
   
 Title: ${market.title}
 Rules: ${market.rules ?? 'Standard YES/NO binary resolution.'}
@@ -132,15 +150,22 @@ Return ONLY valid JSON matching this schema:
   "uncertainty": "Any missing data or reasons a human should review before settling."
 }`;
 
-  const judgeMessage = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    temperature: 0.2,
-    system: 'You are a master Meta-Agent Judge. You output ONLY valid JSON.',
-    messages: [{ role: 'user', content: judgePrompt }],
-  });
+    const judgeMessage = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      temperature: 0.2,
+      system: 'You are a master Meta-Agent Judge. You output ONLY valid JSON.',
+      messages: [{ role: 'user', content: judgePrompt }],
+      metadata: { user_id: 'presto_resolve_oracle' },
+    });
+    if (judgeMessage.stop_reason !== 'end_turn' && judgeMessage.stop_reason !== 'stop_sequence') {
+      console.warn('Judge stopped unexpectedly:', judgeMessage.stop_reason);
+    }
+    text = judgeMessage.content.find((b) => b.type === 'text')?.text ?? '';
 
-  const text = judgeMessage.content.find((b) => b.type === 'text')?.text ?? '';
+  } catch (error) {
+    return NextResponse.json({ error: 'Resolution oracle AI API call failed: ' + (error instanceof Error ? error.message : String(error)) }, { status: 502 });
+  }
 
   let parsed: {
     outcome: string;
@@ -152,7 +177,7 @@ Return ONLY valid JSON matching this schema:
 
   try {
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    parsed = JSON.parse(jsonMatch?.[0] ?? text);
+    parsed = JSON.parse(jsonMatch?.at(0) ?? text);
   } catch {
     return NextResponse.json({ error: 'Oracle returned unparseable response', raw: text }, { status: 502 });
   }

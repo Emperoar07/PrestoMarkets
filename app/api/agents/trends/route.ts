@@ -86,7 +86,10 @@ async function draftWithGemini(input: TrendRequest): Promise<GeminiMarketDraft |
 
   const { GoogleGenerativeAI } = await import('@google/generative-ai');
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MARKET_MODEL || 'gemini-1.5-flash' });
+  const model = genAI.getGenerativeModel({
+    model: process.env.GEMINI_MARKET_MODEL || 'gemini-2.5-flash',
+    systemInstruction: 'You are a professional Presto Markets AI oracle. Your job is to analyze trends and output safe, objective binary prediction markets in structured JSON matching the requested schema.',
+  });
   const result = await model.generateContent([
     'Create one safe, objective binary prediction market from this trend.',
     'Return only JSON with: title, description, category, rules, sourceOfTruth, closeInHours, momentumScore, safetyScore, confidence, reason.',
@@ -96,7 +99,7 @@ async function draftWithGemini(input: TrendRequest): Promise<GeminiMarketDraft |
     `Trend text: ${input.trendText}`,
   ].join('\n\n'));
   const text = result.response.text();
-  const json = text.match(/\{[\s\S]*\}/)?.[0] ?? text;
+  const json = text.match(/\{[\s\S]*\}/)?.at(0) ?? text;
   return JSON.parse(json) as GeminiMarketDraft;
 }
 

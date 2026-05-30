@@ -17,6 +17,7 @@ export function NavigationLoader() {
   useEffect(() => {
     const handleAnchorClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
+      if (target.closest('button') || target.closest('[data-no-loader]')) return;
       const anchor = target.closest('a');
       
       if (!anchor) return;

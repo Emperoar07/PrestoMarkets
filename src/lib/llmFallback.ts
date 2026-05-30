@@ -63,8 +63,13 @@ async function callAnthropic(input: LlmCallInput): Promise<ProviderResult | null
       max_tokens: input.maxTokens ?? (input.task === 'reasoning' ? 1024 : 256),
       temperature: input.temperature ?? 0.2,
       messages: [{ role: 'user', content: input.prompt }],
+      metadata: { user_id: 'presto_fallback_system' },
     });
-    const text = message.content[0]?.type === 'text' ? message.content[0].text : '';
+    if (message.stop_reason !== 'end_turn' && message.stop_reason !== 'stop_sequence') {
+      logger.warn('llm-fallback', `Anthropic model ${model} stopped unexpectedly: ${message.stop_reason}`);
+    }
+    const firstContent = message.content.at(0);
+    const text = firstContent?.type === 'text' ? firstContent.text : '';
     if (!text) return null;
     return { text, provider: 'anthropic', model };
   } catch (err) {
@@ -316,5 +321,5 @@ export async function callLlmJson(input: LlmCallInput): Promise<ProviderResult> 
  */
 export function extractJsonObject(text: string): unknown {
   const match = text.match(/\{[\s\S]*\}/);
-  return JSON.parse(match?.[0] ?? text);
+  return JSON.parse(match?.at(0) ?? text);
 }
