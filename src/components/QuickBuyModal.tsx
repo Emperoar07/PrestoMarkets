@@ -17,7 +17,7 @@ interface QuickBuyModalProps {
 const quickAmounts = [10, 25, 100, 500];
 
 export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModalProps) {
-  const { connectedWallet, placeTrade, accountPreviews } = useAppState();
+  const { connectedWallet, placeTrade } = useAppState();
   const [selectedOutcome, setSelectedOutcome] = useState(initialOutcome);
   const [amount, setAmount] = useState('25');
   const [payWith, setPayWith] = useState<StableSymbol>('USDC');
@@ -80,14 +80,6 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
   const estimatedShares = amountValue > 0 ? amountValue : 0;
   const potentialReturn = estimateParimutuelPayout(amountValue, Number(activeOutcome.odds));
   const canTrade = market.status === 'Open' || market.status === 'Closing soon';
-
-  const accountPreview = new Map(Object.entries(accountPreviews)).get(market.id);
-  const displayedPositionShares = accountPreview?.outcomeShares?.length
-    ? accountPreview.outcomeShares
-    : [
-      { label: 'YES', shares: accountPreview?.yesShares ?? '0.00' },
-      { label: 'NO', shares: accountPreview?.noShares ?? '0.00' },
-    ];
 
   async function handleBuy() {
     setIsSubmitting(true);
@@ -241,33 +233,6 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
           </div>
         </div>
 
-        {/* Pay With Stablecoins */}
-        <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/[0.04] pt-3">
-          <span className="text-[10px] font-black uppercase tracking-widest text-[#475569]">{'Pay with'}</span>
-          <div className="flex gap-1.5">
-            {(['USDC', 'EURC'] as const).map((sym) => {
-              const isActive = payWith === sym;
-              const eurcUnavailable = sym === 'EURC' && isCircleWallet;
-              return (
-                <button
-                  key={sym}
-                  type="button"
-                  onClick={() => { if (!eurcUnavailable) choosePayWith(sym); }}
-                  disabled={eurcUnavailable}
-                  className={`rounded-full border px-2.5 py-0.5 text-[10px] font-black transition-colors ${
-                    isActive
-                      ? sym === 'EURC'
-                        ? 'border-blue-400/50 bg-blue-400/10 text-blue-300'
-                        : 'border-cyan/50 bg-cyan/10 text-cyan'
-                      : 'border-white/[0.08] text-[#8fa0b4] hover:border-white/20'
-                  } ${eurcUnavailable ? 'cursor-not-allowed opacity-40' : ''}`}
-                >
-                  {sym}
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
         {/* Est Return */}
         <div className="mt-3.5 space-y-2 border-t border-white/[0.04] pt-3 text-xs">
@@ -311,21 +276,6 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
             : amountValue <= 0 ? 'Enter Amount'
             : `Buy ${selectedOutcome} · ${unit}${amountValue}`}
         </button>
-
-        {/* Position Preview */}
-        {connectedWallet && accountPreview ? (
-          <div className="mt-4 border-t border-white/[0.04] pt-3">
-            <p className="text-[10px] font-black uppercase tracking-widest text-[#475569] mb-2">{'Your current shares'}</p>
-            <div className="grid grid-cols-2 gap-2 text-[11px] font-bold text-[#8fa0b4]">
-              {displayedPositionShares.map((pos) => (
-                <div key={pos.label} className="flex justify-between bg-white/[0.01] border border-white/[0.04] rounded-lg px-2.5 py-1.5">
-                  <span className="truncate">{pos.label}</span>
-                  <span className="font-black text-white shrink-0 ml-1.5">{pos.shares}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
       </div>
     </div>
   );
