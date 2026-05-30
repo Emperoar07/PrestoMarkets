@@ -52,11 +52,21 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
-    const buyParam = params.get('buy')?.toUpperCase();
-    if (buyParam === 'YES' || buyParam === 'NO') {
-      setSelectedOutcome(buyParam);
+    const buyParam = params.get('buy');
+    if (buyParam) {
+      const buyUpper = buyParam.toUpperCase();
+      if (buyUpper === 'YES' || buyUpper === 'NO') {
+        setSelectedOutcome(buyUpper);
+      } else if (market?.outcomes) {
+        const matched = market.outcomes.find(
+          (o) => o.label.toUpperCase() === buyUpper
+        );
+        if (matched) {
+          setSelectedOutcome(matched.label);
+        }
+      }
     }
-  }, []);
+  }, [market]);
 
   useEffect(() => {
     if (!connectedWallet?.address) return;

@@ -30,8 +30,7 @@ type MarketCardMarket = Market & {
 function MarketCardComponent({ market }: { market: MarketCardMarket }) {
   const { refreshAccountPortfolio } = useAppState();
   const yes = market.outcomes.find((o) => o.label === 'YES') ?? market.outcomes[0];
-  const no = market.outcomes.find((o) => o.label === 'NO') ?? market.outcomes[1] ?? yes;
-  const yesOdds = yes.odds;
+  const yesOdds = yes?.odds ?? 50;
   const isClosingSoon = market.status === 'Closing soon';
   const isLive = market.status === 'Open' || isClosingSoon;
   const isResolved = market.status === 'Resolved';
@@ -43,205 +42,123 @@ function MarketCardComponent({ market }: { market: MarketCardMarket }) {
     <Link
       href={`/markets/${market.id}`}
       onMouseEnter={() => prefetchMarketDetail(market.id, refreshAccountPortfolio)}
-      className="group flex h-[236px] min-w-0 flex-col overflow-hidden rounded-[16px] border border-white/[0.06] bg-[#131a27] p-4 transition-all hover:border-white/[0.1] hover:bg-[#161e2e]"
+      className="group flex min-h-[116px] h-fit min-w-0 items-start gap-3 overflow-hidden rounded-[12px] border border-white/[0.05] bg-[#0c121d] p-3 transition-all hover:border-white/[0.09] hover:bg-[#101929]"
     >
-      <div className="flex min-h-[40px] items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#0d1a24]">
-          {market.imageURI ? (
-            <img src={market.imageURI} alt={market.title} width={40} height={40} loading="lazy" decoding="async" className="h-full w-full object-cover" />
-          ) : (
-            <span className="text-xs font-black text-[#64748b]">{market.category.slice(0, 2).toUpperCase()}</span>
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
+      {/* Left: Icon logo */}
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-white/[0.04] bg-[#070e17]">
+        {market.imageURI ? (
+          <img src={market.imageURI} alt={market.title} width={44} height={44} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+        ) : (
+          <span className="text-[10px] font-black text-cyan/70">{market.category.slice(0, 2).toUpperCase()}</span>
+        )}
+      </div>
+
+      {/* Right: Contents column */}
+      <div className="flex flex-1 flex-col justify-between h-full min-w-0">
+        
+        {/* Title row */}
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
             {isResolved ? (
-              <span className="rounded-full border border-cyan/25 bg-cyan/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-cyan">
+              <span className="rounded-full border border-cyan/25 bg-cyan/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-cyan shrink-0">
                 Resolved
               </span>
             ) : null}
-            <h3 className="mt-0.5 line-clamp-2 text-[14px] font-bold leading-snug text-white">
+            <h3 className="line-clamp-2 text-[13px] font-bold leading-snug text-[#cbd5e1] group-hover:text-white transition-colors">
               {market.title}
             </h3>
           </div>
         </div>
-      </div>
 
-      {isPollMarket ? (
-        <div
-          className="scrollbar-hide mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-1"
-          aria-label="Market outcomes"
-        >
-          {market.pollOptions?.map((option, index) => {
-            const color = getOutcomeColor(index);
-            return (
-              <div
-                key={`${option}-${index}`}
-                className="flex min-h-[36px] items-center justify-between rounded-[8px] border px-2.5 py-1.5"
-                style={{ borderColor: `${color}1F`, backgroundColor: `${color}0A` }}
-              >
-                <span className="flex min-w-0 items-center gap-2 text-[12px] font-bold leading-tight text-[#cbd5e1]">
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-                  <span className="truncate">{option}</span>
-                </span>
-                <span className="ml-3 shrink-0 text-[12px] font-black" style={{ color }}>{market.outcomes[index]?.odds ?? 0}%</span>
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
+        {/* Outcomes layout */}
+        {isPollMarket ? (
+          /* ── Multi-outcome Poll Market: scrollable list without scrollbars ── */
+          <div className="scrollbar-hide my-2 max-h-[72px] overflow-y-auto space-y-1.5 pr-1">
+            {market.pollOptions?.map((option, index) => {
+              const color = getOutcomeColor(index);
+              const odds = market.outcomes[index]?.odds ?? 0;
+              return (
+                <div key={`${option}-${index}`} className="flex items-center justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-1.5 text-[11px] font-bold text-[#94a3b8]">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                    <span className="truncate">{option}</span>
+                    <span className="ml-1 text-[11px] font-black text-[#cbd5e1]">{odds}%</span>
+                  </span>
+                  
+                  {isLive ? (
+                    <div className="flex items-center gap-1 shrink-0 bg-white/[0.02] border border-white/[0.06] rounded-[6px] p-[2px]">
+                      <Link
+                        href={`/markets/${market.id}?buy=${encodeURIComponent(option)}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-[#132d21] text-emerald-400 hover:bg-[#183929] hover:text-emerald-300 active:scale-95 transition-all"
+                      >
+                        YES
+                      </Link>
+                      <Link
+                        href={`/markets/${market.id}?buy=${encodeURIComponent(option)}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-[#381515] text-rose-400 hover:bg-[#4c1c1c] hover:text-rose-300 active:scale-95 transition-all"
+                      >
+                        NO
+                      </Link>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] font-bold text-[#475569]">Closed</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          /* ── Binary (YES/NO) Prediction or Opinion markets ── */
+          <div className="my-2 flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold text-[#94a3b8]">
+              {isOpinion ? 'Support' : 'YES'} <span className="font-black text-[#cbd5e1]">{yesOdds}%</span>
+            </span>
 
-      {!isPollMarket ? (
-        isOpinion ? (
-          /* ── Opinion Labs "VS" Split Duel Layout ── */
-          <div className="mt-auto flex flex-col gap-2.5">
-            {/* Symmetrical Debate Progress Bar */}
-            <div className="relative h-2 w-full overflow-hidden rounded-full bg-[#1e293b] flex">
-              <div 
-                style={{ width: `${yesOdds}%` }} 
-                className="h-full bg-gradient-to-r from-cyan to-emerald-400 transition-all duration-500" 
-              />
-              <div 
-                style={{ width: `${100 - yesOdds}%` }} 
-                className="h-full bg-gradient-to-r from-red-500 to-rose-600 transition-all duration-500" 
-              />
-              <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-[#090e1a]" />
-            </div>
-
-            <div className="flex items-center justify-between gap-1">
-              {/* YES Action (Support) */}
-              {isLive ? (
+            {isLive ? (
+              <div className="flex items-center gap-1 shrink-0 bg-white/[0.02] border border-white/[0.06] rounded-[6px] p-[2px]">
                 <Link
                   href={`/markets/${market.id}?buy=yes`}
                   onClick={(e) => e.stopPropagation()}
-                  className="flex-1 flex flex-col items-center rounded-lg border border-emerald-500/20 bg-emerald-500/5 py-1.5 transition-all hover:bg-emerald-500/10 hover:border-emerald-500/40 active:scale-95"
+                  className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-[#132d21] text-emerald-400 hover:bg-[#183929] hover:text-emerald-300 active:scale-95 transition-all"
                 >
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Support</span>
-                  <span className="text-sm font-bold text-white mt-0.5">{yesOdds}%</span>
+                  YES
                 </Link>
-              ) : (
-                <div className="flex-1 flex flex-col items-center rounded-lg border border-white/[0.04] bg-white/[0.02] py-1.5">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-muted">Support</span>
-                  <span className="text-sm font-bold text-muted mt-0.5">{yesOdds}%</span>
-                </div>
-              )}
-
-              {/* VS Glassmorphic Badge */}
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#090e1a]/90 text-[10px] font-black text-cyan shadow-lg shadow-black/20">
-                VS
-              </div>
-
-              {/* NO Action (Oppose) */}
-              {isLive ? (
                 <Link
                   href={`/markets/${market.id}?buy=no`}
                   onClick={(e) => e.stopPropagation()}
-                  className="flex-1 flex flex-col items-center rounded-lg border border-rose-500/20 bg-rose-500/5 py-1.5 transition-all hover:bg-rose-500/10 hover:border-rose-500/40 active:scale-95"
+                  className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-[#381515] text-rose-400 hover:bg-[#4c1c1c] hover:text-rose-300 active:scale-95 transition-all"
                 >
-                  <span className="text-[10px] font-black uppercase tracking-wider text-rose-400">Oppose</span>
-                  <span className="text-sm font-bold text-white mt-0.5">{100 - yesOdds}%</span>
+                  NO
                 </Link>
-              ) : (
-                <div className="flex-1 flex flex-col items-center rounded-lg border border-white/[0.04] bg-white/[0.02] py-1.5">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-muted">Oppose</span>
-                  <span className="text-sm font-bold text-muted mt-0.5">{100 - yesOdds}%</span>
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          /* ── Regular Prediction Market YES/NO Capsules & Sparkline ── */
-          <div className="mt-auto flex flex-col gap-2">
-            {/* Sparkline Glow wave */}
-            {isLive ? (
-              <div className="my-1.5 flex h-7 items-center justify-between gap-4">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#64748b]">24h trend</span>
-                <svg className="h-6 w-32 overflow-visible" viewBox="0 0 120 40" onClick={(e) => e.preventDefault()}>
-                  <defs>
-                    <linearGradient id={`sparkline-grad-${market.id}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#25c0f4" stopOpacity="0.2" />
-                      <stop offset="100%" stopColor="#25c0f4" stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
-                  <path
-                    d={`${generateSparklinePath(market.id, yesOdds)} L 120,40 L 0,40 Z`}
-                    fill={`url(#sparkline-grad-${market.id})`}
-                  />
-                  <path
-                    d={generateSparklinePath(market.id, yesOdds)}
-                    fill="none"
-                    stroke="#25c0f4"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="drop-shadow-[0_0_2px_rgba(37,192,244,0.5)]"
-                  />
-                  <circle cx="120" cy={30 - (yesOdds / 100) * 20} r="2.5" fill="#25c0f4" className="animate-pulse" />
-                </svg>
               </div>
+            ) : (
+              <span className="text-[10px] font-bold text-[#475569]">Closed</span>
+            )}
+          </div>
+        )}
+
+        {/* Metadata row (only volume) */}
+        <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/[0.04] pt-2">
+          <span className="text-[10px] font-semibold text-[#475569]">{market.volume} Vol.</span>
+          <div className="flex items-center gap-2">
+            {isEurc ? (
+              <span className="rounded-full border border-blue-400/25 bg-blue-400/10 px-1.5 py-0.2 text-[8px] font-black uppercase tracking-wider text-blue-400 shrink-0">
+                EURC
+              </span>
             ) : null}
-
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[24px] font-black leading-none text-white">{yesOdds}%</span>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#4ade80]">chance</span>
-                  {isLive ? (
-                    <span className={`flex items-center gap-1 text-[10px] font-bold ${isClosingSoon ? 'text-amber-300' : 'text-[#8fa0b4]'}`}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${isClosingSoon ? 'bg-amber-300 animate-pulse' : 'bg-red-400'}`} />
-                      {market.closeDate ? <Countdown closeDate={market.closeDate} /> : 'LIVE'}
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-bold text-[#8fa0b4]">{isResolved ? 'Resolved' : market.closeLabel}</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex shrink-0 items-center gap-2">
-                {isLive ? (
-                  <>
-                    {/* Clickable YES Betting Capsule */}
-                    <Link
-                      href={`/markets/${market.id}?buy=yes`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="rounded-[8px] border border-[#0e4b30] bg-[#0a3320] px-3.5 py-2 text-sm font-bold text-[#4ade80] transition-all duration-200 hover:bg-[#0d4429] hover:text-[#5aff96] hover:border-emerald-500/40 active:scale-95"
-                    >
-                      YES {yesOdds}%
-                    </Link>
-                    {/* Clickable NO Betting Capsule */}
-                    <Link
-                      href={`/markets/${market.id}?buy=no`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="rounded-[8px] border border-[#441818] bg-[#2d1010] px-3.5 py-2 text-sm font-bold text-[#f87171] transition-all duration-200 hover:bg-[#3d1515] hover:text-[#ff8a8a] hover:border-rose-500/40 active:scale-95"
-                    >
-                      NO {100 - yesOdds}%
-                    </Link>
-                  </>
-                ) : (
-                  <span className="rounded-[8px] bg-white/[0.04] px-4 py-2.5 text-sm font-bold text-[#64748b]">
-                    {isResolved ? 'Resolved' : 'Closed'}
-                  </span>
-                )}
-              </div>
-            </div>
+            {isLive ? (
+              <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider ${isClosingSoon ? 'text-amber-400 animate-pulse' : 'text-[#475569]'}`}>
+                <span className={`h-1 w-1 rounded-full ${isClosingSoon ? 'bg-amber-400 animate-pulse' : 'bg-red-500'}`} />
+                {market.closeDate ? <Countdown closeDate={market.closeDate} /> : 'LIVE'}
+              </span>
+            ) : (
+              <span className="text-[9px] font-black uppercase tracking-wider text-[#475569]">
+                {isResolved ? 'Resolved' : market.closeLabel || 'Closed'}
+              </span>
+            )}
           </div>
-        )
-      ) : null}
-
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/[0.04] pt-3">
-        <span className="text-xs text-[#4a5568]">{market.volume} Vol.</span>
-        {isPollMarket ? (
-          <span className="shrink-0 rounded-[8px] bg-[#0d1520] px-2 py-1 text-[10px] font-black uppercase text-[#64748b]">
-            {isLive ? (market.closeDate ? <Countdown closeDate={market.closeDate} /> : 'Live') : isResolved ? 'Resolved' : market.closeLabel}
-          </span>
-        ) : null}
-        <div className="flex items-center gap-2">
-          {isEurc ? (
-            <span className="rounded-full border border-blue-400/25 bg-blue-400/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-blue-400">
-              EURC
-            </span>
-          ) : null}
-          <span className="text-xs text-[#4a5568]">{market.liquidity} Liq.</span>
         </div>
       </div>
     </Link>

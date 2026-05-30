@@ -147,46 +147,6 @@ function getCatFromUrl() {
   return new URLSearchParams(window.location.search).get('cat') ?? 'Trending';
 }
 
-// ─── Hot topics panel ─────────────────────────────────────────────────────────
-function HotTopicsPanel({ markets, topics: derivedTopics }: { markets: AppMarket[]; topics: string[] }) {
-  const topics = derivedTopics.slice(0, 5).map((topic) => {
-    const t = topic.toLowerCase();
-    const matched = markets.filter(
-      (m) =>
-        m.title.toLowerCase().includes(t) ||
-        m.category.toLowerCase().includes(t) ||
-        m.description.toLowerCase().includes(t),
-    );
-    const vol = matched.reduce((s, m) => s + parseVolume(m.volume), 0);
-    return { topic, vol, count: matched.length };
-  }).filter((t) => t.count > 0);
-
-  return (
-    <div className="rounded-[16px] border border-white/[0.06] bg-[#0d1520] p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-[15px] font-black text-white">Hot topics</h3>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4a5568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-      </div>
-      {topics.length === 0 ? (
-        <p className="text-xs text-[#4a5568]">No topic data yet.</p>
-      ) : (
-        <ol className="space-y-3">
-          {topics.map(({ topic, vol }, i) => (
-            <li key={topic} className="flex items-center gap-3">
-              <span className="w-4 shrink-0 text-[11px] font-black text-[#334155]">{i + 1}</span>
-              <span className="flex-1 text-[13px] font-bold text-[#cbd5e1]">{topic}</span>
-              <span className="text-[12px] font-bold text-[#4a5568]">{formatVolume(vol)}</span>
-              <span className="rounded-full bg-cyan/10 px-2 py-0.5 text-[10px] font-black uppercase text-cyan">Hot</span>
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
-  );
-}
-
 // ─── Main explorer ────────────────────────────────────────────────────────────
 export function MarketsExplorer() {
   const { markets, isLoadingMarkets } = useAppState();
@@ -195,7 +155,6 @@ export function MarketsExplorer() {
   const [activeHotTopic, setActiveHotTopic] = useState('All');
 
   const dynamicTopics = useMemo(() => deriveTopics(markets), [markets]);
-
 
   // Reset pill selection if the derived topic no longer exists in updated data
   useEffect(() => {
@@ -267,6 +226,15 @@ export function MarketsExplorer() {
     const catBlob = cats.join(' ').toLowerCase();
     const matchesKeyword = (needle: string) =>
       market.title.toLowerCase().includes(needle) ||
+    const cats = market.categories ?? (market.category ? [market.category] : []);
+    if (hiddenCategories.size > 0 && cats.some((cat) => hiddenCategories.has(cat))) {
+      return false;
+    }
+
+    const search = searchValue.trim().toLowerCase();
+    const catBlob = cats.join(' ').toLowerCase();
+    const matchesKeyword = (needle: string) =>
+      market.title.toLowerCase().includes(needle) ||
       market.description.toLowerCase().includes(needle) ||
       catBlob.includes(needle);
 
@@ -280,18 +248,8 @@ export function MarketsExplorer() {
   const visibleMarkets = sortMarkets(filtered, sortKey);
   const totalVolume = markets.reduce((sum, m) => sum + parseVolume(m.volume), 0);
 
-  const showSidePanels = markets.length > 0 && !searchValue && activeHotTopic === 'All';
-
   return (
     <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-[185px] md:pt-40 md:px-7">
-
-      {/* Side panel: hot topics. The big featured-market hero was removed in
-          favor of letting the market grid speak for itself. */}
-      {showSidePanels ? (
-        <div className="mb-8">
-          <HotTopicsPanel markets={markets} topics={dynamicTopics} />
-        </div>
-      ) : null}
 
       {/* ── All markets ── */}
       <div className="flex items-center justify-between">
@@ -300,26 +258,6 @@ export function MarketsExplorer() {
           <span className="font-black text-white">{formatVolume(totalVolume)}</span> total vol · Arc Testnet
         </span>
       </div>
-
-      {/* Hot topic pills — derived live from market data */}
-      <HorizScroller className="mt-3 border-b border-white/[0.04] pb-3">
-        <div className="flex gap-1.5">
-          {(['All', ...dynamicTopics]).map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setActiveHotTopic(cat)}
-              className={`min-w-fit rounded-full px-3 py-1 text-xs font-bold transition-colors ${
-                activeHotTopic === cat
-                  ? 'bg-cyan/15 text-cyan ring-1 ring-cyan/30'
-                  : 'text-[#4a5568] hover:bg-white/[0.04] hover:text-[#94a3b8]'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-      </HorizScroller>
 
       {/* Sort toolbar */}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
@@ -364,8 +302,6 @@ export function MarketsExplorer() {
 
       {/* Filter toolbar - Polymarket style */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
-
-        {/* All filter options - shown/hidden by filter toggle */}
         {showAdvancedFilters && (
           <>
             {/* Sort dropdown */}
