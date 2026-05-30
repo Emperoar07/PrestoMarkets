@@ -17,7 +17,7 @@ import {
 } from '@/lib/walletProvider';
 import { arcTestnetChain, walletConnectProjectId } from '@/lib/rainbowConfig';
 
-export function WalletConnectButton() {
+export function WalletConnectButton({ showAvatar }: { showAvatar?: boolean }) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { address: rainbowAddress, isConnected: isRainbowConnected } = useAccount();
   const { disconnect } = useDisconnect();
@@ -143,6 +143,22 @@ export function WalletConnectButton() {
   }
 
   if (wallet) {
+    let avatarIcon = null;
+    if (showAvatar) {
+      const hex = wallet.address.slice(-6);
+      const color1 = `#${hex}`;
+      const color2 = '#25c0f4';
+      const avatarStyle = {
+        background: `linear-gradient(135deg, ${color1}, ${color2})`,
+      };
+      avatarIcon = (
+        <div 
+          style={avatarStyle} 
+          className="h-4.5 w-4.5 rounded-full shrink-0 border border-white/20 shadow-inner drop-shadow-[0_0_3px_rgba(37,192,244,0.4)]" 
+        />
+      );
+    }
+
     return (
       <div ref={dropdownRef} className="relative">
         <button
@@ -150,6 +166,7 @@ export function WalletConnectButton() {
           onClick={() => setIsOpen((value) => !value)}
           className="flex items-center gap-2 rounded-lg border border-white/10 px-[14px] py-2 text-[13px] font-bold text-[#f1f5f9] transition-colors hover:border-cyan/35"
         >
+          {avatarIcon}
           {wallet.mode === 'circle-user-controlled' ? 'Circle ' : ''}{shortAddress(wallet.address)}
           <ChevronDown className={`h-3.5 w-3.5 text-[#94a3b8] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>

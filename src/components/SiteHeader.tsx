@@ -313,53 +313,63 @@ export function SiteHeader() {
             </a>
           ) : null}
           {showWallet && connectedWallet ? (
-            <div ref={balanceMenuRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setBalanceMenuOpen((open) => !open)}
-                className="flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-[#0d1520] px-2 py-1.5 text-[12px] font-black text-[#dbeafe] transition-colors hover:border-cyan/30"
-              >
-                <span className="text-[#4a5568]">{activeStable}</span>
-                <span className={activeStable === 'EURC' ? 'text-blue-300' : 'text-cyan'}>{balances[activeStable] ?? '--'}</span>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`text-[#4a5568] transition-transform ${balanceMenuOpen ? 'rotate-180' : ''}`}>
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
-              {balanceMenuOpen ? (
-                <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-44 overflow-hidden rounded-lg border border-white/[0.06] bg-[#0d1520] shadow-xl shadow-black/40">
-                  {(['USDC', 'EURC'] as const).map((sym) => (
-                    <button
-                      key={sym}
-                      type="button"
-                      onClick={() => { setActiveStable(sym); setBalanceMenuOpen(false); }}
-                      className={`flex w-full items-center justify-between px-3 py-2.5 text-[12px] font-black transition-colors hover:bg-white/[0.04] ${activeStable === sym ? 'bg-white/[0.03]' : ''}`}
-                    >
-                      <span className="text-[#94a3b8]">{sym}</span>
-                      <span className={sym === 'EURC' ? 'text-blue-300' : 'text-cyan'}>{balances[sym] ?? '--'}</span>
-                    </button>
-                  ))}
-                  <div className="border-t border-white/[0.06]" />
-                  {!isLandingPage ? (
-                    <Link href="/activity" onClick={() => setBalanceMenuOpen(false)} className="flex w-full items-center gap-2 px-3 py-2.5 text-[12px] font-black text-[#94a3b8] transition-colors hover:bg-white/[0.04] hover:text-white">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                      </svg>
-                      Activity
-                    </Link>
-                  ) : null}
-                  {!isLandingPage ? (
-                    <Link href="/portfolio" onClick={() => setBalanceMenuOpen(false)} className="flex w-full items-center gap-2 px-3 py-2.5 text-[12px] font-black text-[#94a3b8] transition-colors hover:bg-white/[0.04] hover:text-white">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-                        <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
-                      </svg>
-                      Portfolio
-                    </Link>
-                  ) : null}
-                </div>
-              ) : null}
+            <div className="flex items-center gap-px rounded-xl border border-white/[0.08] bg-[#0b1322]/80 p-0.5 shadow-lg shadow-black/20 backdrop-blur transition-all hover:border-cyan/35">
+              {/* Balance Segment */}
+              <div ref={balanceMenuRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setBalanceMenuOpen((open) => !open)}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#0d1520]/60 px-3 py-1.5 text-[12px] font-black text-[#dbeafe] transition-colors hover:bg-white/[0.02]"
+                >
+                  <span className="text-[#4a5568]">{activeStable}</span>
+                  <span className={activeStable === 'EURC' ? 'text-blue-300' : 'text-cyan font-black'}>{balances[activeStable] ?? '--'}</span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`text-[#4a5568] transition-transform ${balanceMenuOpen ? 'rotate-180' : ''}`}>
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+                {balanceMenuOpen ? (
+                  <div className="absolute left-0 top-[calc(100%+8px)] z-50 w-44 overflow-hidden rounded-lg border border-white/[0.06] bg-[#0d1520] shadow-xl shadow-black/40">
+                    {(['USDC', 'EURC'] as const).map((sym) => (
+                      <button
+                        key={sym}
+                        type="button"
+                        onClick={() => { setActiveStable(sym); setBalanceMenuOpen(false); }}
+                        className={`flex w-full items-center justify-between px-3 py-2.5 text-[12px] font-black transition-colors hover:bg-white/[0.04] ${activeStable === sym ? 'bg-white/[0.03]' : ''}`}
+                      >
+                        <span className="text-[#94a3b8]">{sym}</span>
+                        <span className={sym === 'EURC' ? 'text-blue-300' : 'text-cyan'}>{balances[sym] ?? '--'}</span>
+                      </button>
+                    ))}
+                    <div className="border-t border-white/[0.06]" />
+                    {!isLandingPage ? (
+                      <Link href="/activity" onClick={() => setBalanceMenuOpen(false)} className="flex w-full items-center gap-2 px-3 py-2.5 text-[12px] font-black text-[#94a3b8] transition-colors hover:bg-white/[0.04] hover:text-white">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                        </svg>
+                        Activity
+                      </Link>
+                    ) : null}
+                    {!isLandingPage ? (
+                      <Link href="/portfolio" onClick={() => setBalanceMenuOpen(false)} className="flex w-full items-center gap-2 px-3 py-2.5 text-[12px] font-black text-[#94a3b8] transition-colors hover:bg-white/[0.04] hover:text-white">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                          <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
+                        </svg>
+                        Portfolio
+                      </Link>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Cohesive Divider */}
+              <div className="mx-1.5 h-4 w-px bg-white/[0.08]" />
+
+              {/* Wallet segment with Avatar */}
+              <WalletConnectButton showAvatar={true} />
             </div>
-          ) : null}
-          {showWallet ? <WalletConnectButton /> : null}
+          ) : (
+            showWallet ? <WalletConnectButton /> : null
+          )}
         </nav>
       </div>
 

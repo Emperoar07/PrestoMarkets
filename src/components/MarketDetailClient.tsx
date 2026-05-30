@@ -50,6 +50,15 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const unit = payWith === 'EURC' ? 'EURC ' : '$';
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const buyParam = params.get('buy')?.toUpperCase();
+    if (buyParam === 'YES' || buyParam === 'NO') {
+      setSelectedOutcome(buyParam);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!connectedWallet?.address) return;
     const stored = readPayWith(connectedWallet.address, marketId);
     if (stored) setPayWith(stored);
