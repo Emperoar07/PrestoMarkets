@@ -7,6 +7,7 @@ import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
 import { getAgentIdentityStatus, recordResolutionReputation } from '@/lib/agentIdentity';
 import { assertNonEmptyString } from '@/lib/typeGuards';
 import { createAbortSignalWithTimeout } from '@/lib/timeoutUtils';
+import { tryDeterministicPriceResolution } from '@/lib/priceResolution';
 import type { AppMarket } from '@/lib/appState';
 
 export const runtime = 'nodejs';
@@ -126,6 +127,61 @@ async function resolveMarket(market: AppMarket): Promise<ResolutionResult> {
       title: market.title,
       reason,
     };
+  }
+
+  // Deterministic fast-path: settle crypto price-range / conviction (price-target)
+  // markets straight from the CoinGecko price — no Serper, no LLM. Falls through to
+  // the evidence pipeline when the market isn't a confidently-parseable price market.
+  const priceSettlement = await tryDeterministicPriceResolution(market);
+  if (priceSettlement) {
+    const allowedOutcomes = market.outcomes.map((outcome) => outcome.label).filter(Boolean);
+    const derivedIndex = allowedOutcomes.findIndex((label) => label === priceSettlement.label);
+    if (derivedIndex >= 0) {
+      const winningShares = await agentReadTotalShares(market.id, derivedIndex);
+      if (winningShares !== null && winningShares === BigInt(0)) {
+        const cancelResult = await agentCancelMarket(market.id);
+        if (!cancelResult.ok) {
+          return skipResolution(`Determined outcome "${priceSettlement.label}" has no winning shares and auto-cancel failed: ${cancelResult.error ?? 'unknown error'}.`);
+        }
+        return {
+          ok: true,
+          action: 'canceled',
+          marketId: market.id,
+          title: market.title,
+          outcome: priceSettlement.label,
+          txHash: assertNonEmptyString(cancelResult.txHash, 'txHash'),
+          confidence: 1,
+          reason: `Determined outcome "${priceSettlement.label}" had no winning shares; canceled to refund all participants.`,
+        };
+      }
+      const report = {
+        schema: 'presto.agent-resolution.v1',
+        resolvedAt: new Date().toISOString(),
+        marketId: market.id,
+        outcome: priceSettlement.label,
+        confidence: 1,
+        evidenceSummary: priceSettlement.summary,
+        sources: [priceSettlement.sourceUrl],
+        liveEvidenceUsed: true,
+        sourceBound: true,
+        oracle: 'coingecko-deterministic',
+        autonomous: true,
+      };
+      const resolutionURI = `data:application/json,${encodeURIComponent(JSON.stringify(report))}`;
+      const result = await agentResolveMarket(market.id, derivedIndex, resolutionURI);
+      if (result.ok) {
+        return {
+          ok: true,
+          action: 'resolved',
+          marketId: market.id,
+          title: market.title,
+          outcome: priceSettlement.label,
+          txHash: assertNonEmptyString(result.txHash, 'txHash'),
+          confidence: 1,
+        };
+      }
+      return skipResolution(`Deterministic resolve failed: ${result.error ?? 'Onchain resolve failed'}`);
+    }
   }
 
   const declaredSourceUrls = extractSourceUrls(market.sourceOfTruth);
