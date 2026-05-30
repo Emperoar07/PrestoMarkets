@@ -414,7 +414,8 @@ async function finishCircleWalletLogin(input: {
   login: CircleLoginResult;
   userHint: string;
 }): Promise<ConnectedWallet> {
-  let wallet = await getFirstCircleWallet(input.login.userToken, input.config.blockchain);
+  let wallet: { id: string; address: string; blockchain?: string } | null =
+    await getFirstCircleWallet(input.login.userToken, input.config.blockchain);
 
   if (!wallet) {
     try {
