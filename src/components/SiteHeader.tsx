@@ -349,21 +349,6 @@ export function SiteHeader() {
 
                   <div className="h-px bg-white/[0.06]" />
 
-                  {/* Stable Balance Selectors */}
-                  <div className="px-4 py-3 bg-[#0c121d]/40">
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#475569] mb-2.5">
-                      Balances
-                    </p>
-                    <div className="space-y-1.5">
-                      <div className="flex w-full items-center justify-between rounded-xl border border-cyan/30 bg-cyan/10 px-3 py-2 text-[12px] font-black text-cyan">
-                        <span>USDC</span>
-                        <span className="font-mono">{`$${balances.USDC ?? '--'}`}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="h-px bg-white/[0.06]" />
-
                   {/* Actions & Navigation Footer */}
                   <div className="flex items-center justify-between gap-2 px-4 py-3.5 bg-[#090e1a]">
                     <Link
