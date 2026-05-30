@@ -226,15 +226,6 @@ export function MarketsExplorer() {
     const catBlob = cats.join(' ').toLowerCase();
     const matchesKeyword = (needle: string) =>
       market.title.toLowerCase().includes(needle) ||
-    const cats = market.categories ?? (market.category ? [market.category] : []);
-    if (hiddenCategories.size > 0 && cats.some((cat) => hiddenCategories.has(cat))) {
-      return false;
-    }
-
-    const search = searchValue.trim().toLowerCase();
-    const catBlob = cats.join(' ').toLowerCase();
-    const matchesKeyword = (needle: string) =>
-      market.title.toLowerCase().includes(needle) ||
       market.description.toLowerCase().includes(needle) ||
       catBlob.includes(needle);
 
