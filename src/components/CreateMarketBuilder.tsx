@@ -11,19 +11,14 @@ import { createMarketCategories } from '@/lib/categories';
 import { CloseDatePicker } from './CloseDatePicker';
 import { getResolveFeeUsdc } from '@/lib/resolveFee';
 
-const marketTypes: MarketType[] = ['Prediction', 'Opinion'];
 const resolutionModes: ResolutionMode[] = ['Human resolver', 'Community resolver', 'Agent assisted'];
 const maxInlineImageBytes = 300_000;
-
-const typeCopy: Record<MarketType, string> = {
-  Prediction: 'A future outcome with a clear source of truth.',
-  Opinion: 'Community conviction, poll choices, and public sentiment.',
-};
 
 export function CreateMarketBuilder() {
   const router = useRouter();
   const { connectedWallet, createMarket, addLiquidity } = useAppState();
-  const [selectedType, setSelectedType] = useState<MarketType>('Prediction');
+  // Markets are created as Prediction by default (the type selector was removed).
+  const selectedType: MarketType = 'Prediction';
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
@@ -117,12 +112,6 @@ export function CreateMarketBuilder() {
   function blurField(name: string, value: string) {
     const error = validateField(name, value);
     setFieldErrors((prev) => ({ ...prev, [name]: error }));
-  }
-
-  function chooseType(type: MarketType) {
-    setSelectedType(type);
-    setShowReview(false);
-    setStatusMessage('');
   }
 
   function handleImageFile(file: File | undefined) {
@@ -299,7 +288,7 @@ export function CreateMarketBuilder() {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-2xl px-5 pb-36 pt-36 md:px-6 md:pt-44">
+      <main className="mx-auto max-w-3xl px-5 pb-20 pt-28 md:px-6 md:pt-32">
         <h1 className="text-[clamp(28px,3.5vw,40px)] font-black tracking-tight text-white">
           New market.
         </h1>
@@ -307,34 +296,9 @@ export function CreateMarketBuilder() {
           Write a question the world can answer. Pick how it resolves. Launch it onchain in one transaction.
         </p>
 
-        {/* Market family — inline radio row with generous spacing */}
-        <div className="mt-14">
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">Market family</p>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 sm:gap-5">
-            {marketTypes.map((type) => {
-              const isActive = selectedType === type;
-              return (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => chooseType(type)}
-                  className={`group relative rounded-[10px] border px-4 py-3.5 text-left transition-all ${
-                    isActive
-                      ? 'border-cyan/40 bg-cyan/[0.06] text-white'
-                      : 'border-white/[0.06] text-muted hover:border-white/15 hover:text-white/85'
-                  }`}
-                >
-                  <span className={`block text-[14px] font-black ${isActive ? 'text-white' : ''}`}>{type}</span>
-                  <span className="mt-1.5 block text-[11px] leading-4 text-muted/70">{typeCopy[type]}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         {/* Section: The question */}
-        <section className="mt-16">
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">01 — Question</p>
+        <section className="mt-12">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">Question</p>
           <div className="mt-5 space-y-7">
             <div>
               <label className="text-[12px] font-bold uppercase tracking-wider text-muted">What's the question?</label>
@@ -364,7 +328,7 @@ export function CreateMarketBuilder() {
 
         {/* Section: How it resolves */}
         <section className="mt-16">
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">02 — Resolution</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">Resolution</p>
           <div className="mt-5 space-y-7">
             <div>
               <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Outcome style</label>
@@ -505,7 +469,7 @@ export function CreateMarketBuilder() {
 
         {/* Section: Settings */}
         <section className="mt-16">
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">03 — Settings</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">Settings</p>
           <div className="mt-5 space-y-7">
             <div>
               <div className="flex items-baseline justify-between">
@@ -606,7 +570,7 @@ export function CreateMarketBuilder() {
 
         {/* Section: Picture */}
         <section className="mt-16">
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">04 — Picture <span className="font-medium normal-case tracking-normal text-muted/60">(optional)</span></p>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">Picture <span className="font-medium normal-case tracking-normal text-muted/60">(optional)</span></p>
           <div className="mt-5">
             <div className="flex items-end gap-3">
               <input
@@ -633,20 +597,18 @@ export function CreateMarketBuilder() {
           </div>
         </section>
 
-        {/* Sticky launch bar */}
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.06] bg-[#0a1120]/95 backdrop-blur-xl">
-          <div className="mx-auto flex max-w-2xl items-center justify-between gap-4 px-5 py-4 md:px-6">
-            <p className="text-[12px] text-muted">
-              {category ? <><span className="font-black text-white">{selectedType}</span> · {category}</> : <span className="text-muted/60">Pick a category to continue</span>}
-            </p>
-            <button
-              type="button"
-              onClick={handleReview}
-              className="rounded-full bg-cyan px-6 py-2.5 text-[13px] font-black text-ink transition-opacity hover:opacity-90"
-            >
-              Review →
-            </button>
-          </div>
+        {/* Launch — inline at the end of the form */}
+        <div className="mt-14 flex flex-col gap-3 border-t border-white/[0.06] pt-6 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[12px] text-muted">
+            {category ? <><span className="font-black text-white">{selectedType}</span> · {category}</> : <span className="text-muted/60">Pick a category to continue</span>}
+          </p>
+          <button
+            type="button"
+            onClick={handleReview}
+            className="rounded-full bg-cyan px-10 py-3 text-[14px] font-black text-ink transition-opacity hover:opacity-90"
+          >
+            Review
+          </button>
         </div>
       </main>
       {showReview ? (
