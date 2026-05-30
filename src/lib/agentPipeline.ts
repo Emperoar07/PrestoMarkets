@@ -30,7 +30,7 @@ export type TrendItem = {
   imageUrl?: string;
   closeDate?: string;
   outcomeOptions?: string[];
-  marketStructure?: 'price-range';
+  marketStructure?: 'price-range' | 'price-target';
   /** Epoch ms when the source published this item (parsed from RSS pubDate), if known. */
   publishedAt?: number;
 };
@@ -320,6 +320,53 @@ function buildCryptoPriceSignals(input: {
   });
 }
 
+// Conviction markets: binary "will [asset] reach [target] by [date]?" price-target
+// predictions. Horizons are 1-3 days so they resolve on the daily auto-resolve pass;
+// minute/hour windows need a sub-daily resolution cron (see scope notes).
+const convictionHorizons = [
+  { days: 1, movePct: 0.03 },
+  { days: 3, movePct: 0.06 },
+] as const;
+
+function buildConvictionSignals(input: {
+  name: string;
+  symbol: string;
+  provider: string;
+  source: string;
+  price: number;
+  change?: number;
+  url: string;
+}): TrendItem[] {
+  const increment = readablePriceIncrement(input.price);
+  const formattedPrice = formatPrice(input.price);
+  // Follow 24h momentum: rising → an upside "reach" target; falling → a downside "fall to" target.
+  const rising = !(Number.isFinite(input.change) && (input.change as number) < 0);
+
+  return convictionHorizons.map((horizon) => {
+    const settleDate = new Date(Date.now() + horizon.days * 86_400_000);
+    const settleLabel = settleDate.toISOString().slice(0, 10);
+    const marketDate = formatMarketDate(settleDate);
+    const rawTarget = rising ? input.price * (1 + horizon.movePct) : input.price * (1 - horizon.movePct);
+    const target = Math.max(increment, roundPrice(rawTarget, increment));
+    const verb = rising ? 'reach' : 'fall to';
+    const cmp = rising ? 'at or above' : 'at or below';
+
+    return {
+      topic: `Will ${input.name} ${verb} ${formatPrice(target)} by ${marketDate}?`,
+      query: [
+        `${input.name} (${input.symbol}) current ${input.provider} USD price is ${formattedPrice}.`,
+        Number.isFinite(input.change) ? `24 hour change is ${(input.change as number).toFixed(2)} percent.` : '',
+        `Binary YES/NO conviction market closing ${settleLabel}.`,
+        `Resolve YES if the ${input.provider} USD price is ${cmp} ${formatPrice(target)} at the first observation at or after close time; otherwise NO.`,
+      ].filter(Boolean).join(' '),
+      source: input.source,
+      url: input.url,
+      closeDate: settleLabel,
+      marketStructure: 'price-target',
+    };
+  });
+}
+
 async function fetchCoinGeckoPriceSignals(): Promise<TrendItem[]> {
   const ids = cryptoPriceAssets.map((asset) => asset.id).join(',');
   const apiKey = process.env.COINGECKO_API_KEY;
@@ -344,17 +391,30 @@ async function fetchCoinGeckoPriceSignals(): Promise<TrendItem[]> {
     return cryptoPriceAssets.flatMap((asset) => {
       const price = data[asset.id]?.usd;
       if (!Number.isFinite(price)) return [];
-      return buildCryptoPriceSignals({
-        name: asset.name,
-        symbol: asset.symbol,
-        id: asset.id,
-        provider: 'CoinGecko',
-        source: 'coingecko-price',
-        price: price as number,
-        change: data[asset.id]?.usd_24h_change,
-        threshold: asset.threshold,
-        url: `https://api.coingecko.com/api/v3/simple/price?ids=${asset.id}&vs_currencies=usd&include_last_updated_at=true`,
-      });
+      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${asset.id}&vs_currencies=usd&include_last_updated_at=true`;
+      const change = data[asset.id]?.usd_24h_change;
+      return [
+        ...buildCryptoPriceSignals({
+          name: asset.name,
+          symbol: asset.symbol,
+          id: asset.id,
+          provider: 'CoinGecko',
+          source: 'coingecko-price',
+          price: price as number,
+          change,
+          threshold: asset.threshold,
+          url,
+        }),
+        ...buildConvictionSignals({
+          name: asset.name,
+          symbol: asset.symbol,
+          provider: 'CoinGecko',
+          source: 'coingecko-conviction',
+          price: price as number,
+          change,
+          url,
+        }),
+      ];
     });
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
@@ -1208,6 +1268,8 @@ async function draftWithGemini(trend: TrendItem, category: string, ctx: DraftCon
     : '';
   const priceRangeRule = trend.marketStructure === 'price-range' && trend.outcomeOptions?.length
     ? `- This is a structured crypto price range market. You MUST use type "Prediction", closeDate "${trend.closeDate}", sourceOfTruth "${trend.url}", and return these outcomeOptions exactly: ${JSON.stringify(trend.outcomeOptions)}. The options are mutually exclusive. Resolve using the source USD quote at the first available observation at or after close time.`
+    : trend.marketStructure === 'price-target'
+    ? `- This is a binary crypto conviction (price-target) market. You MUST use type "Prediction", closeDate "${trend.closeDate}", sourceOfTruth "${trend.url}", and leave outcomeOptions empty (binary YES/NO). Keep the title as the exact reach-by-date question and put the resolution rule from the context into "rules".`
     : '';
   const precedents = formatMarketPrecedents(ctx.precedents ?? []);
 
@@ -1323,20 +1385,25 @@ Return JSON only:
     if (deduped.length >= 3 && deduped.length <= 12) outcomeOptions = deduped;
   }
 
-  const sourceOfTruth = trend.marketStructure === 'price-range' && trend.url
+  // Structured crypto markets (range + conviction price-target) carry a complete,
+  // correct question as the topic and an authoritative source URL, so force those
+  // deterministically instead of trusting the LLM to echo them (which produced
+  // mangled titles like "Bitcoin price on Jun 5? price by 2026-06-05?").
+  const isStructuredPrice = trend.marketStructure === 'price-range' || trend.marketStructure === 'price-target';
+  const sourceOfTruth = isStructuredPrice && trend.url
     ? trend.url
     : (isSafeHttpUrl(parsed.sourceOfTruth) ? parsed.sourceOfTruth : trend.url ?? parsed.sourceOfTruth);
 
   const parsedType = parsed.type === 'Opinion' ? 'Opinion' : 'Prediction';
 
   return {
-    title: cleanDraftText(parsed.title, trend),
+    title: cleanDraftText(isStructuredPrice ? trend.topic : parsed.title, trend),
     description: cleanDraftText(parsed.description, trend, parsed.title),
     rules: cleanDraftText(parsed.rules, trend),
     sourceOfTruth,
     closeDate: normalizeDraftCloseDate(parsed.closeDate, trend, horizon),
     outcomeOptions,
-    type: trend.marketStructure === 'price-range' ? 'Prediction' : parsedType,
+    type: isStructuredPrice ? 'Prediction' : parsedType,
   };
 }
 
@@ -1345,14 +1412,16 @@ Return JSON only:
 function fallbackTemplateFromTrend(trend: TrendItem, suggestedType?: string): GeminiDraft {
   const horizon = analyzeMarketHorizon(trend);
   const isPriceRange = trend.marketStructure === 'price-range' && Boolean(trend.outcomeOptions?.length);
+  const isPriceTarget = trend.marketStructure === 'price-target';
 
   let title: string;
   let description: string;
 
-  if (isPriceRange) {
-    // Price range markets keep original behavior
-    title = cleanDraftText(`${trend.topic} price by ${horizon.closeDate}?`, trend);
-    description = cleanDraftText(trend.topic, trend);
+  if (isPriceRange || isPriceTarget) {
+    // Structured crypto markets already carry a complete question as the topic.
+    // Use it verbatim — do NOT append a suffix (that mangled titles previously).
+    title = cleanDraftText(trend.topic, trend);
+    description = cleanDraftText(trend.query, trend);
   } else {
     // News-based trends: generate straightforward question, include headline in description
     const sanitizedTopic = trend.topic
@@ -1368,10 +1437,12 @@ function fallbackTemplateFromTrend(trend: TrendItem, suggestedType?: string): Ge
     description,
     rules: cleanDraftText(isPriceRange
       ? `Resolve to the single range containing the USD price at the first available source observation at or after close time. Outcomes: ${trend.outcomeOptions?.join('; ')}.`
+      : isPriceTarget
+      ? `Resolve YES if the conviction target price is met per the declared source at the first observation at or after close time; otherwise NO.`
       : 'YES wins if the event occurs by the close date. NO wins if it does not occur or remains unresolved.', trend),
     sourceOfTruth: trend.url ?? trend.source ?? 'Public sources',
     closeDate: trend.closeDate ?? horizon.closeDate,
-    type: isPriceRange ? 'Prediction' : suggestedType === 'Opinion' ? 'Opinion' : 'Prediction',
+    type: (isPriceRange || isPriceTarget) ? 'Prediction' : suggestedType === 'Opinion' ? 'Opinion' : 'Prediction',
     outcomeOptions: trend.outcomeOptions,
   };
 }

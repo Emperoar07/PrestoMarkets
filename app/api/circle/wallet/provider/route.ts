@@ -133,43 +133,36 @@ async function isFactoryDeployedMarket(marketAddress: Address, config: ReturnTyp
       chain: arcTestnet,
       transport: http(config.rpcUrl),
     });
-    const factories = [];
 
     if (config.factoryAddress) {
-      factories.push({
-        address: config.factoryAddress as Address,
-        abi: prestoMarketFactoryAbi,
-      });
-    }
-    if (config.multiOutcomeFactoryAddress) {
-      factories.push({
-        address: config.multiOutcomeFactoryAddress as Address,
-        abi: prestoMultiOutcomeMarketFactoryAbi,
-      });
-    }
-
-    for (const factory of factories) {
       try {
-        const marketCount = await publicClient.readContract({
-          address: factory.address,
-          abi: factory.abi,
-          functionName: 'marketCount',
+        const logs = await publicClient.getLogs({
+          address: config.factoryAddress as Address,
+          event: prestoMarketFactoryAbi.find((x) => x.type === 'event' && x.name === 'MarketCreated') as any,
+          args: {
+            market: marketAddress,
+          },
+          fromBlock: 'earliest',
         });
+        if (logs.length > 0) return true;
+      } catch (err) {
+        console.error('[circle-security] Failed standard factory logs read:', err);
+      }
+    }
 
-        for (let i = 0; i < Number(marketCount); i++) {
-          const market = await publicClient.readContract({
-            address: factory.address,
-            abi: factory.abi,
-            functionName: 'markets',
-            args: [BigInt(i)],
-          });
-
-          if ((market as Address).toLowerCase() === marketAddress.toLowerCase()) {
-            return true;
-          }
-        }
-      } catch {
-        continue;
+    if (config.multiOutcomeFactoryAddress) {
+      try {
+        const logs = await publicClient.getLogs({
+          address: config.multiOutcomeFactoryAddress as Address,
+          event: prestoMultiOutcomeMarketFactoryAbi.find((x) => x.type === 'event' && x.name === 'MarketCreated') as any,
+          args: {
+            market: marketAddress,
+          },
+          fromBlock: 'earliest',
+        });
+        if (logs.length > 0) return true;
+      } catch (err) {
+        console.error('[circle-security] Failed multi-outcome factory logs read:', err);
       }
     }
 

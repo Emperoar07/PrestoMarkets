@@ -22,6 +22,8 @@ export type CircleSession = {
   userId?: string;
   /** Epoch ms when this userToken was issued. Tokens are hard-capped at 60min by Circle. */
   issuedAt?: number;
+  /** Epoch ms when this Circle session association was first created. We cap this at 13 days to enforce the 14-day token refresh hard limit. */
+  userCreatedAt?: number;
 };
 
 // Circle's userToken + encryptionKey grant impersonation against Circle's API for the user's
@@ -53,6 +55,19 @@ function setCircleSession(session: CircleSession | null) {
 export async function refreshCircleSessionIfNeeded(): Promise<CircleSession | null> {
   const current = circleSessionRef;
   if (!current) return null;
+
+  // Hard limit: stored User IDs/sessions expire after 14 days in Circle UCW. We force re-auth after 13 days to be safe.
+  const userCreatedAt = current.userCreatedAt || current.issuedAt || Date.now();
+  const userAgeMs = Date.now() - userCreatedAt;
+  if (userAgeMs > 13 * 24 * 60 * 60 * 1000) {
+    const { logger } = await import('./logger');
+    logger.warn('circle-session', 'Circle session expired after 13 days hard limit. Requesting re-authentication.', {
+      userCreatedAt,
+    });
+    setCircleSession(null);
+    return null;
+  }
+
   const ageMs = current.issuedAt ? Date.now() - current.issuedAt : Infinity;
   if (ageMs < USER_TOKEN_REFRESH_AT_MS) return current;
   if (!current.userId) return current;
@@ -427,6 +442,7 @@ async function finishCircleWalletLogin(input: {
     walletId: wallet.id,
     userId: input.login.userID || input.login.userId || input.userHint,
     issuedAt: Date.now(),
+    userCreatedAt: Date.now(),
   });
 
   return {

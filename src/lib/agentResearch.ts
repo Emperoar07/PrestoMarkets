@@ -3,7 +3,7 @@ type TrendLike = {
   query: string;
   source: string;
   url?: string;
-  marketStructure?: 'price-range';
+  marketStructure?: 'price-range' | 'price-target';
 };
 
 export type TrendResearchAssessment = {
