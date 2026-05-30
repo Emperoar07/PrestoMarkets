@@ -42,7 +42,7 @@ function MarketCardComponent({ market }: { market: MarketCardMarket }) {
     <Link
       href={`/markets/${market.id}`}
       onMouseEnter={() => prefetchMarketDetail(market.id, refreshAccountPortfolio)}
-      className="group flex min-h-[116px] h-fit min-w-0 items-start gap-3 overflow-hidden rounded-[12px] border border-white/[0.05] bg-[#0c121d] p-3 transition-all hover:border-white/[0.09] hover:bg-[#101929]"
+      className="group flex h-[140px] min-w-0 items-stretch gap-3 overflow-hidden rounded-[12px] border border-white/[0.05] bg-[#0c121d] p-3 transition-all hover:border-white/[0.09] hover:bg-[#101929]"
     >
       {/* Left: Icon logo */}
       <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-white/[0.04] bg-[#070e17]">
@@ -73,7 +73,7 @@ function MarketCardComponent({ market }: { market: MarketCardMarket }) {
         {/* Outcomes layout */}
         {isPollMarket ? (
           /* ── Multi-outcome Poll Market: scrollable list without scrollbars ── */
-          <div className="scrollbar-hide my-2 max-h-[72px] overflow-y-auto space-y-1.5 pr-1">
+          <div className="scrollbar-hide my-1 max-h-[48px] overflow-y-auto space-y-1 pr-1">
             {market.pollOptions?.map((option, index) => {
               const color = getOutcomeColor(index);
               const odds = market.outcomes[index]?.odds ?? 0;
