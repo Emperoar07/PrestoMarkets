@@ -46,7 +46,6 @@ export function SiteHeader() {
   const [activeCategory, setActiveCategory] = useState('Trending');
   const [connectedWallet, setConnectedWallet] = useState<ConnectedWallet | null>(null);
   const [balances, setBalances] = useState<Record<StableSymbol, string | null>>({ USDC: null, EURC: null });
-  const [activeStable, setActiveStable] = useState<StableSymbol>('USDC');
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -235,21 +234,9 @@ export function SiteHeader() {
           {showWallet && connectedWallet ? (
             <div className="mt-3 space-y-2">
               <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-[#0d1520] px-3.5 py-2.5">
-                {(['USDC', 'EURC'] as const).map((sym) => (
-                  <button
-                    key={sym}
-                    type="button"
-                    onClick={() => setActiveStable(sym)}
-                    className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] font-black transition-colors ${
-                      activeStable === sym
-                        ? sym === 'EURC' ? 'bg-blue-400/10 text-blue-300' : 'bg-cyan/10 text-cyan'
-                        : 'text-[#4a5568]'
-                    }`}
-                  >
-                    {sym}
-                    <span className={activeStable === sym ? '' : 'text-[#94a3b8]'}>{sym === 'EURC' ? (balances.EURC ?? '--') : (balances.USDC ?? '--')}</span>
-                  </button>
-                ))}
+                <div className="flex items-center gap-1.5 rounded-lg bg-cyan/10 px-2 py-1 text-[12px] font-black text-cyan">
+                  USDC <span>{balances.USDC ?? '--'}</span>
+                </div>
               </div>
               <div className="flex flex-col gap-1">
                 <Link href="/activity" className={mobileNavLinkClass(pathname === '/activity')} onClick={() => setMobileMenuOpen(false)}>
@@ -322,8 +309,8 @@ export function SiteHeader() {
                 onClick={() => setMenuOpen((open) => !open)}
                 className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#0b1322]/80 px-3 py-1 text-[12px] font-black text-[#dbeafe] transition-colors hover:border-cyan/35"
               >
-                <span className="text-[#4a5568]">{activeStable}</span>
-                <span className={activeStable === 'EURC' ? 'text-blue-300' : 'text-cyan font-black'}>{activeStable === 'EURC' ? (balances.EURC ?? '--') : (balances.USDC ?? '--')}</span>
+                <span className="text-[#4a5568]">USDC</span>
+                <span className="text-cyan font-black">{balances.USDC ?? '--'}</span>
               </button>
 
               {/* Wallet pill */}
@@ -368,32 +355,10 @@ export function SiteHeader() {
                       Balances
                     </p>
                     <div className="space-y-1.5">
-                      {(['USDC', 'EURC'] as const).map((sym) => {
-                        const isActive = activeStable === sym;
-                        const eurcUnavailable = sym === 'EURC' && connectedWallet.mode === 'circle-user-controlled';
-                        return (
-                          <button
-                            key={sym}
-                            type="button"
-                            disabled={eurcUnavailable}
-                            onClick={() => {
-                              if (!eurcUnavailable) {
-                                setActiveStable(sym);
-                              }
-                            }}
-                            className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-[12px] font-black transition-all ${
-                              isActive
-                                ? sym === 'EURC'
-                                  ? 'border-blue-400/30 bg-blue-400/10 text-blue-300'
-                                  : 'border-cyan/30 bg-cyan/10 text-cyan'
-                                : 'border-white/[0.04] bg-white/[0.01] text-[#94a3b8] hover:bg-white/[0.03] hover:text-white'
-                            } ${eurcUnavailable ? 'cursor-not-allowed opacity-40' : ''}`}
-                          >
-                            <span>{sym}</span>
-                            <span className="font-mono">{sym === 'EURC' ? `€${balances.EURC ?? '--'}` : `$${balances.USDC ?? '--'}`}</span>
-                          </button>
-                        );
-                      })}
+                      <div className="flex w-full items-center justify-between rounded-xl border border-cyan/30 bg-cyan/10 px-3 py-2 text-[12px] font-black text-cyan">
+                        <span>USDC</span>
+                        <span className="font-mono">{`$${balances.USDC ?? '--'}`}</span>
+                      </div>
                     </div>
                   </div>
 
