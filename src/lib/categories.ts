@@ -1,4 +1,4 @@
-export const primaryViewCategories = ['Trending', 'Breaking', 'New'] as const;
+export const primaryViewCategories = ['Trending', 'New'] as const;
 
 export const topicNavCategories = [
   'Politics',

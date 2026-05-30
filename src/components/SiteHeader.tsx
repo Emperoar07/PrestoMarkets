@@ -251,7 +251,7 @@ export function SiteHeader() {
                     }`}
                   >
                     {sym}
-                    <span className={activeStable === sym ? '' : 'text-[#94a3b8]'}>{balances[sym] ?? '--'}</span>
+                    <span className={activeStable === sym ? '' : 'text-[#94a3b8]'}>{sym === 'EURC' ? (balances.EURC ?? '--') : (balances.USDC ?? '--')}</span>
                   </button>
                 ))}
               </div>
@@ -322,7 +322,7 @@ export function SiteHeader() {
                   className="flex items-center gap-1.5 rounded-lg bg-[#0d1520]/60 px-3 py-1.5 text-[12px] font-black text-[#dbeafe] transition-colors hover:bg-white/[0.02]"
                 >
                   <span className="text-[#4a5568]">{activeStable}</span>
-                  <span className={activeStable === 'EURC' ? 'text-blue-300' : 'text-cyan font-black'}>{balances[activeStable] ?? '--'}</span>
+                  <span className={activeStable === 'EURC' ? 'text-blue-300' : 'text-cyan font-black'}>{activeStable === 'EURC' ? (balances.EURC ?? '--') : (balances.USDC ?? '--')}</span>
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`text-[#4a5568] transition-transform ${balanceMenuOpen ? 'rotate-180' : ''}`}>
                     <polyline points="6 9 12 15 18 9" />
                   </svg>
@@ -337,7 +337,7 @@ export function SiteHeader() {
                         className={`flex w-full items-center justify-between px-3 py-2.5 text-[12px] font-black transition-colors hover:bg-white/[0.04] ${activeStable === sym ? 'bg-white/[0.03]' : ''}`}
                       >
                         <span className="text-[#94a3b8]">{sym}</span>
-                        <span className={sym === 'EURC' ? 'text-blue-300' : 'text-cyan'}>{balances[sym] ?? '--'}</span>
+                        <span className={sym === 'EURC' ? 'text-blue-300' : 'text-cyan'}>{sym === 'EURC' ? (balances.EURC ?? '--') : (balances.USDC ?? '--')}</span>
                       </button>
                     ))}
                     <div className="border-t border-white/[0.06]" />
@@ -395,8 +395,6 @@ export function SiteHeader() {
                         <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
                         <polyline points="17 6 23 6 23 12" />
                       </svg>
-                    ) : cat === 'Breaking' ? (
-                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
                     ) : null}
                     {cat}
                   </button>

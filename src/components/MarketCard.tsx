@@ -27,7 +27,13 @@ type MarketCardMarket = Market & {
   closeDate?: string;
 };
 
-function MarketCardComponent({ market }: { market: MarketCardMarket }) {
+function MarketCardComponent({
+  market,
+  onQuickBuy,
+}: {
+  market: MarketCardMarket;
+  onQuickBuy?: (market: MarketCardMarket, outcome: string) => void;
+}) {
   const { refreshAccountPortfolio } = useAppState();
   const yes = market.outcomes.find((o) => o.label === 'YES') ?? market.outcomes[0];
   const yesOdds = yes?.odds ?? 50;
@@ -61,7 +67,7 @@ function MarketCardComponent({ market }: { market: MarketCardMarket }) {
           <div className="flex flex-wrap items-center gap-1.5">
             {isResolved ? (
               <span className="rounded-full border border-cyan/25 bg-cyan/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-cyan shrink-0">
-                Resolved
+                {'Resolved'}
               </span>
             ) : null}
             <h3 className="line-clamp-2 text-[13px] font-bold leading-snug text-[#cbd5e1] group-hover:text-white transition-colors">
@@ -76,7 +82,7 @@ function MarketCardComponent({ market }: { market: MarketCardMarket }) {
           <div className="scrollbar-hide my-1 max-h-[48px] overflow-y-auto space-y-1 pr-1">
             {market.pollOptions?.map((option, index) => {
               const color = getOutcomeColor(index);
-              const odds = market.outcomes[index]?.odds ?? 0;
+              const odds = market.outcomes.find((_, idx) => idx === index)?.odds ?? 0;
               return (
                 <div key={`${option}-${index}`} className="flex items-center justify-between gap-2">
                   <span className="flex min-w-0 items-center gap-1.5 text-[11px] font-bold text-[#94a3b8]">
@@ -87,23 +93,39 @@ function MarketCardComponent({ market }: { market: MarketCardMarket }) {
                   
                   {isLive ? (
                     <div className="flex items-center gap-1 shrink-0 bg-white/[0.02] border border-white/[0.06] rounded-[6px] p-[2px]">
-                      <Link
-                        href={`/markets/${market.id}?buy=${encodeURIComponent(option)}`}
-                        onClick={(e) => e.stopPropagation()}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (onQuickBuy) {
+                            onQuickBuy(market, option);
+                          } else {
+                            window.location.href = `/markets/${market.id}?buy=${encodeURIComponent(option)}`;
+                          }
+                        }}
                         className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-[#132d21] text-emerald-400 hover:bg-[#183929] hover:text-emerald-300 active:scale-95 transition-all"
                       >
-                        YES
-                      </Link>
-                      <Link
-                        href={`/markets/${market.id}?buy=${encodeURIComponent(option)}`}
-                        onClick={(e) => e.stopPropagation()}
+                        {'YES'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (onQuickBuy) {
+                            onQuickBuy(market, option);
+                          } else {
+                            window.location.href = `/markets/${market.id}?buy=${encodeURIComponent(option)}`;
+                          }
+                        }}
                         className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-[#381515] text-rose-400 hover:bg-[#4c1c1c] hover:text-rose-300 active:scale-95 transition-all"
                       >
-                        NO
-                      </Link>
+                        {'NO'}
+                      </button>
                     </div>
                   ) : (
-                    <span className="text-[10px] font-bold text-[#475569]">Closed</span>
+                    <span className="text-[10px] font-bold text-[#475569]">{'Closed'}</span>
                   )}
                 </div>
               );
@@ -118,23 +140,39 @@ function MarketCardComponent({ market }: { market: MarketCardMarket }) {
 
             {isLive ? (
               <div className="flex items-center gap-1 shrink-0 bg-white/[0.02] border border-white/[0.06] rounded-[6px] p-[2px]">
-                <Link
-                  href={`/markets/${market.id}?buy=yes`}
-                  onClick={(e) => e.stopPropagation()}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (onQuickBuy) {
+                      onQuickBuy(market, 'YES');
+                    } else {
+                      window.location.href = `/markets/${market.id}?buy=yes`;
+                    }
+                  }}
                   className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-[#132d21] text-emerald-400 hover:bg-[#183929] hover:text-emerald-300 active:scale-95 transition-all"
                 >
-                  YES
-                </Link>
-                <Link
-                  href={`/markets/${market.id}?buy=no`}
-                  onClick={(e) => e.stopPropagation()}
+                  {'YES'}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (onQuickBuy) {
+                      onQuickBuy(market, 'NO');
+                    } else {
+                      window.location.href = `/markets/${market.id}?buy=no`;
+                    }
+                  }}
                   className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-[#381515] text-rose-400 hover:bg-[#4c1c1c] hover:text-rose-300 active:scale-95 transition-all"
                 >
-                  NO
-                </Link>
+                  {'NO'}
+                </button>
               </div>
             ) : (
-              <span className="text-[10px] font-bold text-[#475569]">Closed</span>
+              <span className="text-[10px] font-bold text-[#475569]">{'Closed'}</span>
             )}
           </div>
         )}
@@ -145,7 +183,7 @@ function MarketCardComponent({ market }: { market: MarketCardMarket }) {
           <div className="flex items-center gap-2">
             {isEurc ? (
               <span className="rounded-full border border-blue-400/25 bg-blue-400/10 px-1.5 py-0.2 text-[8px] font-black uppercase tracking-wider text-blue-400 shrink-0">
-                EURC
+                {'EURC'}
               </span>
             ) : null}
             {isLive ? (

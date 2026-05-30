@@ -114,7 +114,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const potentialReturn = estimateParimutuelPayout(amountValue, Number(activeOutcome.odds));
   const liquiditySideAmount = amountValue > 0 ? amountValue / market.outcomes.length : 0;
   const canTrade = market.status === 'Open' || market.status === 'Closing soon';
-  const accountPreview = accountPreviews[market.id];
+  const accountPreview = new Map(Object.entries(accountPreviews)).get(market.id);
   const displayedPositionShares = accountPreview?.outcomeShares?.length
     ? accountPreview.outcomeShares
     : [
@@ -452,25 +452,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             <div className="min-w-0 overflow-hidden rounded-[18px] border border-white/[0.06] bg-[#141e30] p-4 sm:p-5">
 
               <div className="mb-4 grid grid-cols-2 rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-1">
-                {([
-                  ['buy', 'Buy'],
-                  ['liquidity', 'Add liquidity'],
-                ] as const).map(([mode, label]) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setTradeMode(mode)}
-                    className={`rounded-[9px] py-2 text-sm font-black transition-colors ${
-                      tradeMode === mode ? 'bg-[#1a2540] text-white' : 'text-muted hover:text-white'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {tradeMode === 'buy' ? (
-                <div className="mb-4 grid grid-cols-2 rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-1">
                   {([
                     ['market', 'Market'],
                     ['limit', 'Limit'],
@@ -487,7 +468,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     </button>
                   ))}
                 </div>
-              ) : null}
 
               {isBinaryMarket ? (
               <div className={`grid grid-cols-2 gap-2 ${tradeMode === 'liquidity' ? 'opacity-70' : ''}`}>
@@ -604,36 +584,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   </p>
                 </div>
               ) : null}
-
-              {/* Pay with */}
-              <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/[0.06] pt-4">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-muted">Pay with</span>
-                <div className="flex gap-1.5">
-                  {(['USDC', 'EURC'] as const).map((sym) => {
-                    const isActive = payWith === sym;
-                    // EURC swaps are currently wired for external EVM wallets only.
-                    const eurcUnavailable = sym === 'EURC' && isCircleWallet;
-                    return (
-                      <button
-                        key={sym}
-                        type="button"
-                        onClick={() => { if (!eurcUnavailable) choosePayWith(sym); }}
-                        disabled={eurcUnavailable}
-                        title={eurcUnavailable ? 'EURC payment requires an external EVM wallet.' : ''}
-                        className={`rounded-full border px-3 py-1 text-[11px] font-black transition-colors ${
-                          isActive
-                            ? sym === 'EURC'
-                              ? 'border-blue-400/50 bg-blue-400/10 text-blue-300'
-                              : 'border-cyan/50 bg-cyan/10 text-cyan'
-                            : 'border-white/[0.08] text-muted hover:border-white/20'
-                        } ${eurcUnavailable ? 'cursor-not-allowed opacity-40' : ''}`}
-                      >
-                        {sym}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
 
               {/* Trade summary */}
               <div className="mt-5 space-y-2.5 border-t border-white/[0.06] pt-5">

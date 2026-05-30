@@ -191,20 +191,12 @@ export function CreateMarketBuilder() {
       setStatusMessage('Add at least three poll options to launch through the V2 factory.');
       return;
     }
-    const seedAmount = Number(initialLiquidity) || 0;
-    const seededOutcomeCount = outcomeStyle === 'poll' ? cleanOutcomeOptions.length : 2;
-    const minimumSeedAmount = seededOutcomeCount * 0.01;
-    if (initialLiquidity.trim() && seedAmount < minimumSeedAmount) {
-      setStatusMessage(`Initial depth needs at least ${minimumSeedAmount.toFixed(2)} USDC so every outcome receives a seed.`);
-      return;
-    }
-
     const parsedCloseDate = new Date(closeDate);
 
     setIsSubmitting(true);
     setStatusMessage('Submitting market creation to Arc...');
 
-    let result = await createMarket({
+    const result = await createMarket({
       type: selectedType,
       title,
       description,
@@ -220,30 +212,6 @@ export function CreateMarketBuilder() {
       outcomeOptions: outcomeStyle === 'poll' ? cleanOutcomeOptions : ['YES', 'NO'],
       collateral: 'USDC',
     });
-
-    if (result.ok && seedAmount > 0) {
-      if (!result.marketAddress) {
-        result = {
-          ...result,
-          message: `${result.message} Open the new market to add the initial depth.`,
-        };
-      } else {
-        setStatusMessage('Market created. Seeding balanced outcome depth...');
-        const seedResult = await addLiquidity({
-          marketId: result.marketAddress,
-          amount: seedAmount,
-          payWith: fundingAsset,
-        });
-        result = {
-          ok: true,
-          message: seedResult.ok
-            ? `${result.message} Initial depth added: ${seedResult.message}`
-            : `${result.message} Initial depth can be added from the market page: ${seedResult.message}`,
-          txHash: seedResult.txHash ?? result.txHash,
-          marketAddress: result.marketAddress,
-        };
-      }
-    }
 
     setIsSubmitting(false);
     setStatusMessage(result.ok ? '' : result.message);
@@ -508,39 +476,6 @@ export function CreateMarketBuilder() {
               ) : null}
             </div>
             <div>
-              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Initial depth payment</label>
-              <div className="mt-2 flex gap-2">
-                {(['USDC', 'EURC'] as const).map((c) => {
-                  const unavailable = c === 'EURC' && isCircleWallet;
-                  return (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => { if (!unavailable) setFundingAsset(c); }}
-                      disabled={unavailable}
-                      title={unavailable ? 'EURC funding requires an external EVM wallet.' : ''}
-                      className={`flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-[13px] font-black transition-colors ${
-                        fundingAsset === c
-                          ? c === 'EURC'
-                            ? 'border-blue-400/50 bg-blue-400/10 text-blue-300'
-                            : 'border-cyan/50 bg-cyan/10 text-cyan'
-                          : 'border-white/[0.08] text-muted hover:border-white/20'
-                      } ${unavailable ? 'cursor-not-allowed opacity-40' : ''}`}
-                    >
-                      <span>{c}</span>
-                      <span className="text-[10px] opacity-60">{c === 'EURC' ? '€' : '$'}</span>
-                    </button>
-                  );
-                })}
-                <span className="self-center pl-2 text-[11px] text-muted/80">
-                  {fundingAsset === 'EURC' ? 'Swapped into USDC before seeding' : 'Settles directly in USDC'}
-                </span>
-              </div>
-              <p className="mt-2 text-[11px] leading-5 text-muted/80">
-                All Presto market contracts settle in USDC on Arc.
-              </p>
-            </div>
-            <div>
               <label className="text-[12px] font-bold uppercase tracking-wider text-muted">When does it close?</label>
               <CloseDatePicker
                 value={closeDate}
@@ -551,19 +486,6 @@ export function CreateMarketBuilder() {
                 errored={Boolean(fieldErrors.closeDate)}
               />
               {fieldErrors.closeDate ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.closeDate}</p> : null}
-            </div>
-            <div>
-              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Creator funded depth</label>
-              <input
-                value={initialLiquidity}
-                onChange={(event) => setInitialLiquidity(event.target.value)}
-                placeholder="Optional amount to seed both sides"
-                inputMode="decimal"
-                className={`mt-1 ${inputClass()}`}
-              />
-              <p className="mt-2 text-[11px] leading-5 text-muted/80">
-                If set, Presto creates the market then splits this amount evenly across every outcome.
-              </p>
             </div>
           </div>
         </section>
@@ -658,10 +580,6 @@ export function CreateMarketBuilder() {
                 <dd className="text-right font-bold text-cyan">USDC</dd>
               </div>
               <div className="flex justify-between gap-4">
-                <dt className="text-muted">Depth payment</dt>
-                <dd className={`text-right font-bold ${fundingAsset === 'EURC' ? 'text-blue-300' : 'text-cyan'}`}>{fundingAsset}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
                 <dt className="text-muted">Resolver</dt>
                 <dd className="text-right font-mono text-[12px] text-white">{resolver ? `${resolver.slice(0, 6)}…${resolver.slice(-4)}` : '—'}</dd>
               </div>
@@ -675,12 +593,6 @@ export function CreateMarketBuilder() {
                   <dd className="text-right font-bold text-cyan">${getResolveFeeUsdc()} USDC</dd>
                 </div>
               ) : null}
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted">Initial depth</dt>
-                <dd className="text-right font-bold text-white">
-                  {Number(initialLiquidity) > 0 ? `${initialLiquidity} ${fundingAsset}` : 'Add later'}
-                </dd>
-              </div>
             </dl>
 
             <div className="mt-5 space-y-3 border-t border-white/[0.06] pt-5 text-[13px]">

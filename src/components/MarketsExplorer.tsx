@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MarketCard } from './MarketCard';
 import { MarketSignalChart } from './MarketSignalChart';
 import { SkeletonCard } from './SkeletonCard';
+import { QuickBuyModal } from './QuickBuyModal';
 import { useAppState } from '@/lib/appState';
 import type { AppMarket } from '@/lib/appState';
 import { parseVolume, formatVolume } from '@/lib/marketUtils';
@@ -112,13 +113,13 @@ function deriveTopics(markets: AppMarket[]): string[] {
     const words = market.title.replace(/[?!,.'";:]/g, '').split(/\s+/).filter(Boolean);
     let i = 1;
     while (i < words.length) {
-      const w = words[i];
+      const w = words.at(i);
       if (!w || TOPIC_STOP.has(w.toLowerCase()) || !/^[A-Z0-9]/.test(w) || w.length < 3) {
         i++;
         continue;
       }
-      const w2 = words[i + 1];
-      const w3 = words[i + 2];
+      const w2 = words.at(i + 1);
+      const w3 = words.at(i + 2);
       if (
         w2 && w3 &&
         /^[A-Z0-9]/.test(w2) && /^[A-Z0-9]/.test(w3) &&
@@ -153,6 +154,7 @@ export function MarketsExplorer() {
 
   const [activeCategory, setActiveCategory] = useState(getCatFromUrl);
   const [activeHotTopic, setActiveHotTopic] = useState('All');
+  const [quickBuyTarget, setQuickBuyTarget] = useState<{ market: any; outcome: string } | null>(null);
 
   const dynamicTopics = useMemo(() => deriveTopics(markets), [markets]);
 
@@ -244,7 +246,7 @@ export function MarketsExplorer() {
 
       {/* ── All markets ── */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-black text-white">All markets</h2>
+        <h2 className="text-xl font-black text-white">{'All markets'}</h2>
         <span className="text-xs text-[#4a5568]">
           <span className="font-black text-white">{formatVolume(totalVolume)}</span> total vol · Arc Testnet
         </span>
@@ -302,7 +304,7 @@ export function MarketsExplorer() {
                 onClick={() => setOpenDropdown(openDropdown === 'volume' ? null : 'volume')}
                 className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
               >
-                {sortLabels[sortKey]}
+                {sortKey === 'newest' ? 'Newest' : sortKey === 'volume' ? 'Volume' : 'Ending'}
                 <span className="text-[10px]">v</span>
               </button>
               {openDropdown === 'volume' && (
@@ -337,7 +339,7 @@ export function MarketsExplorer() {
                 onClick={() => setOpenDropdown(openDropdown === 'period' ? null : 'period')}
                 className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
               >
-                {periodLabels[periodFilter]}
+                {periodFilter === 'all' ? 'All time' : periodFilter === 'daily' ? 'Today' : periodFilter === 'weekly' ? 'This week' : 'This month'}
                 <span className="text-[10px]">v</span>
               </button>
               {openDropdown === 'period' && (
@@ -412,7 +414,7 @@ export function MarketsExplorer() {
                   }}
                   className="w-4 h-4 rounded accent-cyan cursor-pointer"
                 />
-                <span className="text-sm text-[#cbd5e1]">Hide {cat}</span>
+                <span className="text-sm text-[#cbd5e1]">{'Hide '} {cat}</span>
               </label>
             ))}
 
@@ -444,12 +446,16 @@ export function MarketsExplorer() {
       ) : visibleMarkets.length > 0 ? (
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {visibleMarkets.map((market) => (
-            <MarketCard key={market.id} market={market} />
+            <MarketCard
+              key={market.id}
+              market={market}
+              onQuickBuy={(m, outcome) => setQuickBuyTarget({ market: m, outcome })}
+            />
           ))}
         </div>
       ) : (
         <div className="mt-10 rounded-[16px] border border-dashed border-white/[0.07] bg-[#0d1520] px-8 py-14 text-center">
-          <p className="text-sm font-black uppercase tracking-[0.2em] text-cyan/70">No results</p>
+          <p className="text-sm font-black uppercase tracking-[0.2em] text-cyan/70">{'No results'}</p>
           <h2 className="mt-4 text-xl font-black text-white">
             {markets.length === 0 ? 'No markets on chain yet' : 'No markets match that filter'}
           </h2>
@@ -459,6 +465,13 @@ export function MarketsExplorer() {
               : 'Try a different category or search term.'}
           </p>
         </div>
+      )}
+      {quickBuyTarget && (
+        <QuickBuyModal
+          market={quickBuyTarget.market}
+          initialOutcome={quickBuyTarget.outcome}
+          onClose={() => setQuickBuyTarget(null)}
+        />
       )}
     </main>
   );
