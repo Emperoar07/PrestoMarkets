@@ -197,14 +197,20 @@ export function MarketsExplorer() {
       setSearchValue((event as CustomEvent<string>).detail ?? '');
     }
 
+    function onToggleFilters() {
+      setShowAdvancedFilters((value) => !value);
+    }
+
     syncFromUrl();
     window.addEventListener('popstate', syncFromUrl);
     window.addEventListener('presto:category-change', onCategoryChange);
     window.addEventListener('presto:market-search', onSearchChange);
+    window.addEventListener('presto:toggle-filters', onToggleFilters);
     return () => {
       window.removeEventListener('popstate', syncFromUrl);
       window.removeEventListener('presto:category-change', onCategoryChange);
       window.removeEventListener('presto:market-search', onSearchChange);
+      window.removeEventListener('presto:toggle-filters', onToggleFilters);
     };
   }, []);
 
@@ -242,27 +248,8 @@ export function MarketsExplorer() {
   const totalVolume = markets.reduce((sum, m) => sum + parseVolume(m.volume), 0);
 
   return (
-    <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-[185px] md:pt-40 md:px-7">
+    <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-[150px] md:pt-[120px] md:px-7">
 
-      {/* Sort / filter icon (header + count + Newest/Volume/Ending toggle removed) */}
-      <div className="flex items-center justify-end">
-        <button
-          type="button"
-          onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-          className={`flex items-center gap-2 rounded-[8px] px-3 py-2 text-sm font-bold transition-colors ${
-            showAdvancedFilters
-              ? 'bg-cyan/15 text-cyan'
-              : 'bg-white/[0.04] text-[#cbd5e1] hover:bg-white/[0.08] hover:text-white'
-          }`}
-          title="Toggle filter options"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="4" y1="6" x2="20" y2="6" />
-            <line x1="4" y1="12" x2="20" y2="12" />
-            <line x1="4" y1="18" x2="20" y2="18" />
-          </svg>
-        </button>
-      </div>
 
       {/* Filter toolbar - Polymarket style */}
       <div className="mt-4 flex flex-wrap items-center gap-2">

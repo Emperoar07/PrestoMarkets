@@ -6,8 +6,9 @@ import { usePathname, useRouter } from 'next/navigation';
 import { BrandMark } from './BrandMark';
 import { WalletConnectButton } from './WalletConnectButton';
 import { fetchArcStableBalances, type StableSymbol } from '@/lib/walletBalance';
-import { getStoredConnectedWallet, subscribeConnectedWallet, type ConnectedWallet } from '@/lib/walletProvider';
+import { getStoredConnectedWallet, subscribeConnectedWallet, disconnectExternalWallet, type ConnectedWallet } from '@/lib/walletProvider';
 import { primaryViewCategories, topicNavCategories } from '@/lib/categories';
+import { useDisconnect } from 'wagmi';
 
 const dexUrl = process.env.NEXT_PUBLIC_PRESTO_DEX_URL?.trim() || 'https://prestodex-arc.vercel.app';
 
@@ -47,9 +48,11 @@ export function SiteHeader() {
   const [connectedWallet, setConnectedWallet] = useState<ConnectedWallet | null>(null);
   const [balances, setBalances] = useState<Record<StableSymbol, string | null>>({ USDC: null, EURC: null });
   const [activeStable, setActiveStable] = useState<StableSymbol>('USDC');
-  const [balanceMenuOpen, setBalanceMenuOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const balanceMenuRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [copied, setCopied] = useState(false);
+  const { disconnect } = useDisconnect();
   const categoryScrollRef = useRef<HTMLDivElement>(null);
   const loadBalances = useCallback(async () => {
     if (!connectedWallet?.address) {
@@ -109,15 +112,15 @@ export function SiteHeader() {
   }, [loadBalances]);
 
   useEffect(() => {
-    if (!balanceMenuOpen) return undefined;
+    if (!menuOpen) return undefined;
     function handleClickOutside(event: MouseEvent) {
-      if (balanceMenuRef.current && !balanceMenuRef.current.contains(event.target as Node)) {
-        setBalanceMenuOpen(false);
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [balanceMenuOpen]);
+  }, [menuOpen]);
 
   // Lock body scroll when mobile menu is open
   useEffect(() => {
@@ -295,11 +298,17 @@ export function SiteHeader() {
             Explore Markets
           </Link>
           {!isLandingPage ? (
-            <Link href="/markets/create" className={navLinkClass(isCreatePage)}>
+            <Link href="/markets/create" className={`${navLinkClass(isCreatePage)} inline-flex items-center gap-1.5`}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-70">
+                <circle cx="12" cy="12" r="10" /><path d="M12 8v8M8 12h8" />
+              </svg>
               Create Market
             </Link>
           ) : null}
-          <a href={dexUrl} className={navLinkClass()}>
+          <a href={dexUrl} className={`${navLinkClass()} inline-flex items-center gap-1.5`}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-70">
+              <path d="m17 2 4 4-4 4" /><path d="M3 6h18" /><path d="m7 22-4-4 4-4" /><path d="M21 18H3" />
+            </svg>
             DEX
           </a>
           {showWallet ? (
@@ -307,65 +316,158 @@ export function SiteHeader() {
               href="https://faucet.circle.com"
               target="_blank"
               rel="noreferrer"
-              className="rounded-lg border border-cyan/30 bg-cyan/10 px-2 py-1 text-[13px] font-bold text-cyan transition-colors hover:border-cyan/50 hover:bg-cyan/15"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan/30 bg-cyan/10 px-2 py-1 text-[13px] font-bold text-cyan transition-colors hover:border-cyan/50 hover:bg-cyan/15"
             >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                <path d="M12 2.5s6 6.3 6 10.5a6 6 0 0 1-12 0c0-4.2 6-10.5 6-10.5Z" />
+              </svg>
               Faucet
             </a>
           ) : null}
           {showWallet && connectedWallet ? (
-            <div className="flex items-center gap-px rounded-xl border border-white/[0.08] bg-[#0b1322]/80 p-0.5 shadow-lg shadow-black/20 backdrop-blur transition-all hover:border-cyan/35">
-              {/* Balance Segment */}
-              <div ref={balanceMenuRef} className="relative">
-                <button
-                  type="button"
-                  onClick={() => setBalanceMenuOpen((open) => !open)}
-                  className="flex items-center gap-1.5 rounded-lg bg-[#0d1520]/60 px-3 py-1.5 text-[12px] font-black text-[#dbeafe] transition-colors hover:bg-white/[0.02]"
-                >
-                  <span className="text-[#4a5568]">{activeStable}</span>
-                  <span className={activeStable === 'EURC' ? 'text-blue-300' : 'text-cyan font-black'}>{activeStable === 'EURC' ? (balances.EURC ?? '--') : (balances.USDC ?? '--')}</span>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`text-[#4a5568] transition-transform ${balanceMenuOpen ? 'rotate-180' : ''}`}>
-                    <polyline points="6 9 12 15 18 9" />
-                  </svg>
-                </button>
-                {balanceMenuOpen ? (
-                  <div className="absolute left-0 top-[calc(100%+8px)] z-50 w-44 overflow-hidden rounded-lg border border-white/[0.06] bg-[#0d1520] shadow-xl shadow-black/40">
-                    {(['USDC', 'EURC'] as const).map((sym) => (
-                      <button
-                        key={sym}
-                        type="button"
-                        onClick={() => { setActiveStable(sym); setBalanceMenuOpen(false); }}
-                        className={`flex w-full items-center justify-between px-3 py-2.5 text-[12px] font-black transition-colors hover:bg-white/[0.04] ${activeStable === sym ? 'bg-white/[0.03]' : ''}`}
-                      >
-                        <span className="text-[#94a3b8]">{sym}</span>
-                        <span className={sym === 'EURC' ? 'text-blue-300' : 'text-cyan'}>{sym === 'EURC' ? (balances.EURC ?? '--') : (balances.USDC ?? '--')}</span>
-                      </button>
-                    ))}
-                    <div className="border-t border-white/[0.06]" />
-                    {!isLandingPage ? (
-                      <Link href="/activity" onClick={() => setBalanceMenuOpen(false)} className="flex w-full items-center gap-2 px-3 py-2.5 text-[12px] font-black text-[#94a3b8] transition-colors hover:bg-white/[0.04] hover:text-white">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-                          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                        </svg>
-                        Activity
-                      </Link>
-                    ) : null}
-                    {!isLandingPage ? (
-                      <Link href="/portfolio" onClick={() => setBalanceMenuOpen(false)} className="flex w-full items-center gap-2 px-3 py-2.5 text-[12px] font-black text-[#94a3b8] transition-colors hover:bg-white/[0.04] hover:text-white">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-                          <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
-                        </svg>
-                        Portfolio
-                      </Link>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+            <div ref={menuRef} className="relative flex items-center gap-px rounded-xl border border-white/[0.08] bg-[#0b1322]/80 p-0.5 shadow-lg shadow-black/20 backdrop-blur transition-all hover:border-cyan/35">
+              {/* Balance Segment Trigger */}
+              <button
+                type="button"
+                onClick={() => setMenuOpen((open) => !open)}
+                className="flex items-center gap-1.5 rounded-lg bg-[#0d1520]/60 px-3 py-1.5 text-[12px] font-black text-[#dbeafe] transition-colors hover:bg-white/[0.02]"
+              >
+                <span className="text-[#4a5568]">{activeStable}</span>
+                <span className={activeStable === 'EURC' ? 'text-blue-300' : 'text-cyan font-black'}>{activeStable === 'EURC' ? (balances.EURC ?? '--') : (balances.USDC ?? '--')}</span>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`text-[#4a5568] transition-transform ${menuOpen ? 'rotate-180' : ''}`}>
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
 
               {/* Cohesive Divider */}
               <div className="mx-1.5 h-4 w-px bg-white/[0.08]" />
 
-              {/* Wallet segment with Avatar */}
-              <WalletConnectButton showAvatar={true} />
+              {/* Wallet Segment Trigger */}
+              <WalletConnectButton
+                showAvatar={true}
+                hideDropdown={true}
+                onClick={() => setMenuOpen((open) => !open)}
+                forceArrowState={menuOpen}
+              />
+
+              {/* Merged Single Dropdown Box */}
+              {menuOpen ? (
+                <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-[350px] overflow-hidden rounded-[16px] border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/55 backdrop-blur-md">
+                  {/* Identity Header */}
+                  <div className="px-4 pb-3.5 pt-4 bg-[#0d1627]/30">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan/70">
+                        {connectedWallet.mode === 'circle-user-controlled' ? 'App Wallet' : 'External Wallet'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(connectedWallet.address);
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 1400);
+                        }}
+                        className="text-[10px] font-black uppercase tracking-[0.18em] text-[#94a3b8] transition-colors hover:text-cyan"
+                      >
+                        {copied ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+                    <p className="mt-2 text-[12px] font-mono leading-relaxed text-[#cbd5e1] break-all">
+                      {connectedWallet.address}
+                    </p>
+                  </div>
+
+                  <div className="h-px bg-white/[0.06]" />
+
+                  {/* Stable Balance Selectors */}
+                  <div className="px-4 py-3 bg-[#0c121d]/40">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#475569] mb-2.5">
+                      Balances
+                    </p>
+                    <div className="space-y-1.5">
+                      {(['USDC', 'EURC'] as const).map((sym) => {
+                        const isActive = activeStable === sym;
+                        const eurcUnavailable = sym === 'EURC' && connectedWallet.mode === 'circle-user-controlled';
+                        return (
+                          <button
+                            key={sym}
+                            type="button"
+                            disabled={eurcUnavailable}
+                            onClick={() => {
+                              if (!eurcUnavailable) {
+                                setActiveStable(sym);
+                              }
+                            }}
+                            className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-[12px] font-black transition-all ${
+                              isActive
+                                ? sym === 'EURC'
+                                  ? 'border-blue-400/30 bg-blue-400/10 text-blue-300'
+                                  : 'border-cyan/30 bg-cyan/10 text-cyan'
+                                : 'border-white/[0.04] bg-white/[0.01] text-[#94a3b8] hover:bg-white/[0.03] hover:text-white'
+                            } ${eurcUnavailable ? 'cursor-not-allowed opacity-40' : ''}`}
+                          >
+                            <span>{sym}</span>
+                            <span className="font-mono">{sym === 'EURC' ? `€${balances.EURC ?? '--'}` : `$${balances.USDC ?? '--'}`}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="h-px bg-white/[0.06]" />
+
+                  {/* Actions & Navigation Footer */}
+                  <div className="flex items-center justify-between gap-2 px-4 py-3.5 bg-[#090e1a]">
+                    <Link
+                      href="/activity"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-1.5 text-[11px] font-black text-[#94a3b8] transition-colors hover:text-white"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-70">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                      </svg>
+                      Activity
+                    </Link>
+                    
+                    <Link
+                      href="/portfolio"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-1.5 text-[11px] font-black text-[#94a3b8] transition-colors hover:text-white"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-70">
+                        <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
+                      </svg>
+                      Portfolio
+                    </Link>
+
+                    <a
+                      href={`https://testnet.arcscan.app/address/${connectedWallet.address}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1.5 text-[11px] font-black text-[#94a3b8] transition-colors hover:text-white"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-70">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                        <polyline points="15 3 21 3 21 9" />
+                        <line x1="10" y1="14" x2="21" y2="3" />
+                      </svg>
+                      Explorer
+                    </a>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        disconnect();
+                        await disconnectExternalWallet();
+                        setConnectedWallet(null);
+                        setMenuOpen(false);
+                      }}
+                      className="flex items-center gap-1 text-[11.5px] font-black text-rose-400 hover:text-rose-300"
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : (
             showWallet ? <WalletConnectButton /> : null
@@ -376,8 +478,8 @@ export function SiteHeader() {
       {/* Row 2: category nav — only on the markets explorer */}
       {showCategoryNav ? (
         <div className="border-t border-white/[0.04]">
-          <div className="mx-auto max-w-[1400px] px-4 md:px-7">
-            <div ref={categoryScrollRef} className="scrollbar-hide overflow-x-auto">
+          <div className="mx-auto flex max-w-[1400px] items-center gap-2 px-4 md:px-7">
+            <div ref={categoryScrollRef} className="scrollbar-hide min-w-0 flex-1 overflow-x-auto">
               <div className="flex items-center">
                 {primaryViewCategories.map((cat) => (
                   <button
@@ -418,6 +520,19 @@ export function SiteHeader() {
                 ))}
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event('presto:toggle-filters'))}
+              className="flex shrink-0 items-center justify-center rounded-[8px] bg-white/[0.04] px-3 py-2 text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
+              title="Sort & filter"
+              aria-label="Sort and filter"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="4" y1="6" x2="20" y2="6" />
+                <line x1="4" y1="12" x2="20" y2="12" />
+                <line x1="4" y1="18" x2="20" y2="18" />
+              </svg>
+            </button>
           </div>
         </div>
       ) : null}
