@@ -244,53 +244,24 @@ export function MarketsExplorer() {
   return (
     <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-[185px] md:pt-40 md:px-7">
 
-      {/* ── All markets ── */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-black text-white">{'All markets'}</h2>
-        <span className="text-xs text-[#4a5568]">
-          <span className="font-black text-white">{formatVolume(totalVolume)}</span> total vol · Arc Testnet
-        </span>
-      </div>
-
-      {/* Sort toolbar */}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
-        <p className="text-sm text-[#4a5568]">
-          <span className="font-black text-white">{visibleMarkets.length}</span>{' '}
-          market{visibleMarkets.length === 1 ? '' : 's'}
-          {searchValue ? ` matching "${searchValue}"` : ''}
-        </p>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-0.5 rounded-[10px] border border-white/[0.06] bg-[#0d1520] p-1">
-            {([['newest', 'Newest'], ['volume', 'Volume'], ['ending', 'Ending']] as [SortKey, string][]).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setSortKey(key)}
-                className={`rounded-[7px] px-3 py-1.5 text-xs font-bold transition-colors ${
-                  sortKey === key ? 'bg-[#1a2540] text-white' : 'text-[#4a5568] hover:text-[#94a3b8]'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-            className={`flex items-center gap-2 rounded-[8px] px-3 py-2 text-sm font-bold transition-colors ${
-              showAdvancedFilters
-                ? 'bg-cyan/15 text-cyan'
-                : 'bg-white/[0.04] text-[#cbd5e1] hover:bg-white/[0.08] hover:text-white'
-            }`}
-            title="Toggle filter options"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="4" y1="6" x2="20" y2="6" />
-              <line x1="4" y1="12" x2="20" y2="12" />
-              <line x1="4" y1="18" x2="20" y2="18" />
-            </svg>
-          </button>
-        </div>
+      {/* Sort / filter icon (header + count + Newest/Volume/Ending toggle removed) */}
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+          className={`flex items-center gap-2 rounded-[8px] px-3 py-2 text-sm font-bold transition-colors ${
+            showAdvancedFilters
+              ? 'bg-cyan/15 text-cyan'
+              : 'bg-white/[0.04] text-[#cbd5e1] hover:bg-white/[0.08] hover:text-white'
+          }`}
+          title="Toggle filter options"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="4" y1="6" x2="20" y2="6" />
+            <line x1="4" y1="12" x2="20" y2="12" />
+            <line x1="4" y1="18" x2="20" y2="18" />
+          </svg>
+        </button>
       </div>
 
       {/* Filter toolbar - Polymarket style */}
