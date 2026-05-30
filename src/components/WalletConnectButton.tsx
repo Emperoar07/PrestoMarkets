@@ -17,7 +17,7 @@ import {
 } from '@/lib/walletProvider';
 import { arcTestnetChain, walletConnectProjectId } from '@/lib/rainbowConfig';
 
-export function WalletConnectButton({ showAvatar }: { showAvatar?: boolean }) {
+export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceArrowState }: { showAvatar?: boolean; hideDropdown?: boolean; onClick?: () => void; forceArrowState?: boolean }) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { address: rainbowAddress, isConnected: isRainbowConnected } = useAccount();
   const { disconnect } = useDisconnect();
@@ -159,19 +159,26 @@ export function WalletConnectButton({ showAvatar }: { showAvatar?: boolean }) {
       );
     }
 
+    const arrowActive = hideDropdown ? forceArrowState : isOpen;
     return (
       <div ref={dropdownRef} className="relative">
         <button
           type="button"
-          onClick={() => setIsOpen((value) => !value)}
+          onClick={() => {
+            if (hideDropdown) {
+              if (onClick) onClick();
+            } else {
+              setIsOpen((value) => !value);
+            }
+          }}
           className="flex items-center gap-2 rounded-lg border border-white/10 px-[14px] py-2 text-[13px] font-bold text-[#f1f5f9] transition-colors hover:border-cyan/35"
         >
           {avatarIcon}
           {wallet.mode === 'circle-user-controlled' ? 'Circle ' : ''}{shortAddress(wallet.address)}
-          <ChevronDown className={`h-3.5 w-3.5 text-[#94a3b8] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`h-3.5 w-3.5 text-[#94a3b8] transition-transform ${arrowActive ? 'rotate-180' : ''}`} />
         </button>
 
-        {isOpen ? (
+        {isOpen && !hideDropdown ? (
           <div className="absolute right-0 mt-3 w-[360px] overflow-hidden rounded-[14px] border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/40">
             {/* Identity header */}
             <div className="px-4 pb-3 pt-4">
