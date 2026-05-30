@@ -315,21 +315,18 @@ export function SiteHeader() {
             </a>
           ) : null}
           {showWallet && connectedWallet ? (
-            <div ref={menuRef} className="relative flex items-center gap-px rounded-xl border border-white/[0.08] bg-[#0b1322]/80 p-0.5 shadow-lg shadow-black/20 backdrop-blur transition-all hover:border-cyan/35">
-              {/* Balance Segment Trigger */}
+            <div ref={menuRef} className="relative flex items-center gap-2">
+              {/* Balance pill (standalone, sized to match the header actions) */}
               <button
                 type="button"
                 onClick={() => setMenuOpen((open) => !open)}
-                className="flex items-center gap-1.5 rounded-lg bg-[#0d1520]/60 px-3 py-1.5 text-[12px] font-black text-[#dbeafe] transition-colors hover:bg-white/[0.02]"
+                className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#0b1322]/80 px-3 py-1 text-[12px] font-black text-[#dbeafe] transition-colors hover:border-cyan/35"
               >
                 <span className="text-[#4a5568]">{activeStable}</span>
                 <span className={activeStable === 'EURC' ? 'text-blue-300' : 'text-cyan font-black'}>{activeStable === 'EURC' ? (balances.EURC ?? '--') : (balances.USDC ?? '--')}</span>
               </button>
 
-              {/* Cohesive Divider */}
-              <div className="mx-1.5 h-4 w-px bg-white/[0.08]" />
-
-              {/* Wallet Segment Trigger */}
+              {/* Wallet pill */}
               <WalletConnectButton
                 showAvatar={true}
                 hideDropdown={true}

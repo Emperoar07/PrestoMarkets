@@ -171,7 +171,7 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
               setIsOpen((value) => !value);
             }
           }}
-          className="flex items-center gap-2 rounded-lg border border-white/10 px-[14px] py-2 text-[13px] font-bold text-[#f1f5f9] transition-colors hover:border-cyan/35"
+          className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-1 text-[13px] font-bold text-[#f1f5f9] transition-colors hover:border-cyan/35"
         >
           {avatarIcon}
           {wallet.mode === 'circle-user-controlled' ? 'Circle ' : ''}{shortAddress(wallet.address)}
@@ -371,7 +371,7 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
         type="button"
         onClick={() => setShowConnectPanel((value) => !value)}
         title={status || 'Sign in with Circle User-Controlled Wallets'}
-        className="rounded-lg bg-[#25c0f4] px-[18px] py-2 text-[13px] font-bold text-[#090e1a] transition-opacity hover:opacity-90"
+        className="rounded-lg bg-[#25c0f4] px-3 py-1 text-[13px] font-bold text-[#090e1a] transition-opacity hover:opacity-90"
       >
         {isPending ? 'Signing in...' : 'Sign In'}
       </button>
@@ -391,7 +391,7 @@ function RainbowExternalWalletRow() {
   ));
 
   return (
-    <div className="relative mt-3 rounded-[12px] border border-white/[0.08] bg-[#0d1627]/92 p-3 text-white shadow-lg shadow-black/20">
+    <div className="relative mt-3 text-white">
       {needsArcSwitch ? (
         <div className="mb-3 flex justify-end">
           <button
