@@ -62,11 +62,13 @@ async function callAnthropic(input: LlmCallInput): Promise<ProviderResult | null
       model,
       max_tokens: input.maxTokens ?? (input.task === 'reasoning' ? 1024 : 256),
       temperature: input.temperature ?? 0.2,
+      system: 'You are an objective Presto Markets AI oracle returning highly structured prediction market insights.',
       messages: [{ role: 'user', content: input.prompt }],
       metadata: { user_id: 'presto_fallback_system' },
     });
     if (message.stop_reason !== 'end_turn' && message.stop_reason !== 'stop_sequence') {
       logger.warn('llm-fallback', `Anthropic model ${model} stopped unexpectedly: ${message.stop_reason}`);
+      return null;
     }
     const firstContent = message.content.at(0);
     const text = firstContent?.type === 'text' ? firstContent.text : '';

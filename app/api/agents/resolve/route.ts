@@ -96,7 +96,7 @@ Return ONLY valid JSON matching this schema:
       metadata: { user_id: 'presto_resolve_oracle' },
     });
     if (res1.stop_reason !== 'end_turn' && res1.stop_reason !== 'stop_sequence') {
-      console.warn('Claude Researcher 1 stopped unexpectedly:', res1.stop_reason);
+      throw new Error(`Claude Researcher 1 stopped unexpectedly: ${res1.stop_reason}`);
     }
     text1 = res1.content.find((b) => b.type === 'text')?.text ?? '';
 
@@ -109,7 +109,7 @@ Return ONLY valid JSON matching this schema:
       metadata: { user_id: 'presto_resolve_oracle' },
     });
     if (res2.stop_reason !== 'end_turn' && res2.stop_reason !== 'stop_sequence') {
-      console.warn('Claude Researcher 2 stopped unexpectedly:', res2.stop_reason);
+      throw new Error(`Claude Researcher 2 stopped unexpectedly: ${res2.stop_reason}`);
     }
     text2 = res2.content.find((b) => b.type === 'text')?.text ?? '';
 
@@ -122,7 +122,7 @@ Return ONLY valid JSON matching this schema:
       metadata: { user_id: 'presto_resolve_oracle' },
     });
     if (res3.stop_reason !== 'end_turn' && res3.stop_reason !== 'stop_sequence') {
-      console.warn('Claude Researcher 3 stopped unexpectedly:', res3.stop_reason);
+      throw new Error(`Claude Researcher 3 stopped unexpectedly: ${res3.stop_reason}`);
     }
     text3 = res3.content.find((b) => b.type === 'text')?.text ?? '';
 
@@ -159,7 +159,7 @@ Return ONLY valid JSON matching this schema:
       metadata: { user_id: 'presto_resolve_oracle' },
     });
     if (judgeMessage.stop_reason !== 'end_turn' && judgeMessage.stop_reason !== 'stop_sequence') {
-      console.warn('Judge stopped unexpectedly:', judgeMessage.stop_reason);
+      throw new Error(`Judge stopped unexpectedly: ${judgeMessage.stop_reason}`);
     }
     text = judgeMessage.content.find((b) => b.type === 'text')?.text ?? '';
 
