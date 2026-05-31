@@ -181,14 +181,6 @@ function MarketCardComponent({
         <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/[0.04] pt-2">
           <span className="text-[10px] font-semibold text-[#475569]">{market.volume} Vol.</span>
           <div className="flex items-center gap-2">
-            {market.resolverVerified === false ? (
-              <span
-                title="Settled by a non-Presto resolver — verify who controls the outcome before trading."
-                className="rounded-full border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.2 text-[8px] font-black uppercase tracking-wider text-amber-300 shrink-0"
-              >
-                {'Unverified'}
-              </span>
-            ) : null}
             {isEurc ? (
               <span className="rounded-full border border-blue-400/25 bg-blue-400/10 px-1.5 py-0.2 text-[8px] font-black uppercase tracking-wider text-blue-400 shrink-0">
                 {'EURC'}
