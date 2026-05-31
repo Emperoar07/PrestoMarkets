@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { buildAgentResolutionReport } from '@/lib/agentResolution';
 import { verifyApiKey } from '@/lib/authCompare';
+import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 import type { AppMarket } from '@/lib/appState';
 
 // Rate-limit: 10 requests / 5 min per IP
@@ -44,16 +45,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Resolution oracle not configured (missing ANTHROPIC_API_KEY)' }, { status: 503 });
   }
 
-  let body: { market: AppMarket };
+  let body: { marketId?: string; market?: { id?: string } };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { market } = body;
-  if (!market?.id || !market?.title) {
-    return NextResponse.json({ error: 'market.id and market.title are required' }, { status: 400 });
+  // Derive the market from the canonical on-chain source instead of trusting caller-supplied
+  // fields. A leaked/shared agent key must not be able to mint an official-looking evidence
+  // report from fabricated title/rules/resolver/source data.
+  const requestedId = (body.marketId ?? body.market?.id ?? '').trim().toLowerCase();
+  if (!requestedId) {
+    return NextResponse.json({ error: 'marketId is required' }, { status: 400 });
+  }
+  const markets = await fetchOnchainMarkets().catch(() => [] as AppMarket[]);
+  const market = markets.find((m) => m.id.toLowerCase() === requestedId);
+  if (!market) {
+    return NextResponse.json({ error: 'Market not found in the deployed Arc factory.' }, { status: 404 });
   }
 
   const allowedOutcomes = market.outcomes?.map((outcome) => outcome.label).filter(Boolean) ?? ['YES', 'NO'];

@@ -140,6 +140,32 @@ async function circleFetch(path: string, input: RequestInit & { userToken?: stri
   return NextResponse.json(unwrapCircleData(data), { status: response.status });
 }
 
+// Only allow same-origin (or explicitly allowlisted) browser callers. This route relays Circle
+// session / device-token / wallet requests, so blocking cross-site callers stops a third-party
+// page from driving OTP / session quota abuse. Fails OPEN when neither Origin nor Referer is
+// present (server-to-server or some same-origin requests) so it can't break the wallet flow —
+// the route is also rate-limited and user-token-scoped.
+function isAllowedOrigin(request: Request): boolean {
+  const origin = request.headers.get('origin');
+  const referer = request.headers.get('referer');
+  if (!origin && !referer) return true;
+
+  const allowed = new Set<string>(['presto-markets.vercel.app']);
+  const host = request.headers.get('host');
+  if (host) allowed.add(host.toLowerCase());
+  for (const envUrl of [process.env.NEXT_PUBLIC_APP_URL, process.env.VERCEL_URL]) {
+    const value = (envUrl ?? '').trim();
+    if (!value) continue;
+    try { allowed.add(new URL(value.startsWith('http') ? value : `https://${value}`).host.toLowerCase()); } catch { /* ignore */ }
+  }
+
+  try {
+    return allowed.has(new URL(origin || referer || '').host.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(request: Request) {
   const ip =
     request.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
@@ -148,6 +174,10 @@ export async function POST(request: Request) {
 
   if (!checkRateLimit(ip)) {
     return jsonError('Too many requests. Please try again later.', 429);
+  }
+
+  if (!isAllowedOrigin(request)) {
+    return jsonError('Cross-origin requests are not allowed.', 403);
   }
 
   try {
