@@ -8,6 +8,7 @@ import { Countdown } from './Countdown';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
 import type { StableSymbol } from '@/lib/walletBalance';
 import { formatUsd, useAppState } from '@/lib/appState';
+import { useTransactions } from '@/lib/transactions';
 import { agentResolutionGuardrails, buildAgentResolutionPrompt, buildAgentResolutionReport } from '@/lib/agentResolution';
 import type { MarketStatus } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
@@ -26,6 +27,7 @@ const quickAmounts = [10, 25, 100, 500];
 
 export function MarketDetailClient({ marketId }: { marketId: string }) {
   const { accountPreviews, connectedWallet, getMarket, placeTrade, addLiquidity, resolveMarket, cancelMarket, claimMarket, refundMarket } = useAppState();
+  const { track } = useTransactions();
   const market = getMarket(marketId);
   const [selectedOutcome, setSelectedOutcome] = useState('YES');
   const [tradeMode, setTradeMode] = useState<'buy' | 'liquidity'>('buy');
@@ -137,11 +139,14 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const isAgentMarket = market.createdByType === 'agent';
   const isLimitOrder = tradeMode === 'buy' && orderMode === 'limit';
 
-  async function runAction(action: () => Promise<{ ok: boolean; message: string; txHash?: string }>) {
+  async function runAction(
+    action: () => Promise<{ ok: boolean; message: string; txHash?: string; pending?: boolean }>,
+    label: string,
+  ) {
     setIsSubmitting(true);
     setMessage('Waiting for wallet confirmation...');
     try {
-      const result = await action();
+      const result = await track({ label }, action);
       setMessage(result.message);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Transaction failed.');
@@ -650,7 +655,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   tradeMode === 'liquidity'
                     ? addLiquidity({ marketId, amount: amountValue, payWith })
                     : placeTrade({ marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, amount: amountValue, payWith })
-                ))}
+                ), tradeMode === 'liquidity' ? `Add liquidity · ${unit}${amountValue}` : `Buy ${selectedOutcome} · ${unit}${amountValue}`)}
                 disabled={!canTrade || isSubmitting || amountValue <= 0 || isLimitOrder}
                 style={tradeMode === 'buy' ? { backgroundColor: activeOutcomeColor } : undefined}
                 className={`mt-5 w-full min-w-0 rounded-[12px] px-3 py-4 font-black tracking-wide text-ink transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 ${
@@ -658,7 +663,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 }`}
               >
                 {!canTrade ? 'Market not open'
-                  : isSubmitting ? 'Submitting...'
+                  : isSubmitting ? 'Confirming…'
                   : amountValue <= 0 ? 'Enter an amount'
                   : isLimitOrder ? 'Limit order book phase'
                   : tradeMode === 'liquidity' ? `Add liquidity · ${unit}${amountValue}`
@@ -702,7 +707,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     {canClaim ? (
                       <button
                         type="button"
-                        onClick={() => void runAction(() => claimMarket(marketId))}
+                        onClick={() => void runAction(() => claimMarket(marketId), 'Claim winnings')}
                         disabled={isSubmitting}
                         className="w-full rounded-[12px] bg-mint/10 py-3 text-sm font-black text-mint ring-1 ring-mint/30 transition-all hover:bg-mint/15 disabled:opacity-50"
                       >
@@ -712,7 +717,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     {canRefund ? (
                       <button
                         type="button"
-                        onClick={() => void runAction(() => refundMarket(marketId))}
+                        onClick={() => void runAction(() => refundMarket(marketId), 'Refund')}
                         disabled={isSubmitting}
                         className="w-full rounded-[12px] bg-cyan/10 py-3 text-sm font-black text-cyan ring-1 ring-cyan/30 transition-all hover:bg-cyan/15 disabled:opacity-50"
                       >
@@ -881,7 +886,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                           <button
                             key={`resolve-${outcome.label}-${index}`}
                             type="button"
-                            onClick={() => void runAction(() => resolveMarket({ marketId, outcome: outcome.label, outcomeIndex: index, resolutionURI }))}
+                            onClick={() => void runAction(() => resolveMarket({ marketId, outcome: outcome.label, outcomeIndex: index, resolutionURI }), 'Resolve market')}
                             disabled={isSubmitting || !canSubmitResolution}
                             style={{
                               backgroundColor: `${color}1A`, // 10% opacity
@@ -896,7 +901,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     </div>
                     <button
                       type="button"
-                      onClick={() => void runAction(() => cancelMarket(marketId))}
+                      onClick={() => void runAction(() => cancelMarket(marketId), 'Cancel market')}
                       disabled={isSubmitting || !resolverChecksPassed || !isClosedForResolution}
                       className="w-full rounded-[10px] border border-white/[0.06] bg-[#0d1520] py-2.5 text-xs font-black text-muted transition-all hover:border-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                     >
