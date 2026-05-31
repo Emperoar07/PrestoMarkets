@@ -3,7 +3,7 @@ import { arcTestnet } from 'viem/chains';
 import { getArcConfig } from './arcConfig';
 import { ARC_READ_BATCH, arcReadTransport } from './arcClient';
 import { buildMarketMetadataURI } from './marketMetadata';
-import { getStoredConnectedWallet, refreshCircleSessionIfNeeded, type CircleSession } from './walletProvider';
+import { executeCircleChallenge, getStoredConnectedWallet, refreshCircleSessionIfNeeded, type CircleSession } from './walletProvider';
 import { requestCircleConfirmation, type CircleConfirmDetails } from './circleConfirm';
 import { getAgentResolverSelectionError, getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
 import { erc20Abi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
@@ -87,27 +87,15 @@ async function callProvider<T>(body: Record<string, unknown>): Promise<T> {
 }
 
 async function executeChallenge(session: CircleSession, challengeId: string): Promise<void> {
-  const { W3SSdk } = await import('@circle-fin/w3s-pw-web-sdk');
-  const sdk = new W3SSdk({
-    appSettings: { appId: session.appId },
-  });
-
-  // Circle's Web SDK needs a device session before challenge execution, and the
-  // auth pair must be applied to the SDK instance that runs this challenge.
-  await sdk.getDeviceId();
-  sdk.setAuthentication({
+  // Reuse the single shared Web SDK instance from walletProvider. Creating a fresh
+  // `new W3SSdk` here (a second instance, after sign-in already created one) leaves a
+  // stale global postMessage listener that swallows the iframe callback, so the PIN
+  // screen silently never appears after the buy confirmation modal closes.
+  await executeCircleChallenge({
+    appId: session.appId,
     userToken: session.userToken,
     encryptionKey: session.encryptionKey,
-  });
-
-  await new Promise<void>((resolve, reject) => {
-    sdk.execute(challengeId, (error) => {
-      if (error) {
-        reject(new Error(error.message || 'Circle PIN/biometric challenge failed.'));
-        return;
-      }
-      resolve();
-    });
+    challengeId,
   });
 }
 

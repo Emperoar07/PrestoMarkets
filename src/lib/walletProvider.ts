@@ -514,20 +514,39 @@ async function pollFirstCircleWallet(
   return null;
 }
 
-async function executeCircleChallenge(input: {
+// One shared Web SDK instance for ALL challenge executions (onboarding PIN setup
+// and every later contract execution like buy/resolve/claim). The Circle Web SDK
+// attaches a global postMessage listener per instance; creating a fresh `new W3SSdk`
+// for each challenge leaves stale listeners that can swallow the iframe callback, so
+// a later execute (e.g. a buy after sign-in) silently never shows the PIN screen.
+// Circle's own examples create the SDK once — we do the same here.
+type W3SSdkInstance = InstanceType<(typeof import('@circle-fin/w3s-pw-web-sdk'))['W3SSdk']>;
+let sharedChallengeSdk: W3SSdkInstance | null = null;
+
+async function getChallengeSdk(appId: string) {
+  if (sharedChallengeSdk) return sharedChallengeSdk;
+  const { W3SSdk } = await import('@circle-fin/w3s-pw-web-sdk');
+  const sdk = createStyledCircleSdk(new W3SSdk({ appSettings: { appId } }));
+  // The Web SDK needs a device session before executing challenges, even when the
+  // user already completed email/social/PIN auth. Done once for the shared instance.
+  await sdk.getDeviceId();
+  sharedChallengeSdk = sdk;
+  return sdk;
+}
+
+export async function executeCircleChallenge(input: {
   appId: string;
   userToken: string;
   encryptionKey: string;
   challengeId: string;
 }) {
-  const { W3SSdk } = await import('@circle-fin/w3s-pw-web-sdk');
-  const sdk = createStyledCircleSdk(new W3SSdk({
-    appSettings: { appId: input.appId },
-  }));
-
-  // The Circle Web SDK requires a device session before executing wallet
-  // challenges, even when the user has already completed email/social/PIN auth.
-  await sdk.getDeviceId();
+  if (!input.appId) {
+    throw new Error('Circle app id is missing from the session. Please sign in again.');
+  }
+  if (!input.userToken || !input.encryptionKey) {
+    throw new Error('Circle session is incomplete. Please sign in again.');
+  }
+  const sdk = await getChallengeSdk(input.appId);
   sdk.setAuthentication({
     userToken: input.userToken,
     encryptionKey: input.encryptionKey,
@@ -536,10 +555,10 @@ async function executeCircleChallenge(input: {
   await new Promise<void>((resolve, reject) => {
     sdk.execute(input.challengeId, (error) => {
       if (error) {
-        reject(new Error(error.message || 'Circle wallet challenge failed.'));
+        const code = (error as { code?: string | number })?.code;
+        reject(new Error(`Circle challenge failed${code ? ` (${code})` : ''}: ${error.message || 'the PIN screen could not be completed.'}`));
         return;
       }
-
       resolve();
     });
   });
