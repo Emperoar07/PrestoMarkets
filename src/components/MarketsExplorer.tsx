@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MarketCard } from './MarketCard';
+
+// How many market cards to mount per page (initial render + each scroll reveal). 12 = three
+// rows of the 4-column grid, so the first paint stays light even with hundreds of markets.
+const MARKETS_PAGE_SIZE = 12;
 import { MarketSignalChart } from './MarketSignalChart';
 import { SkeletonCard } from './SkeletonCard';
 import { QuickBuyModal } from './QuickBuyModal';
@@ -171,6 +175,8 @@ export function MarketsExplorer() {
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(MARKETS_PAGE_SIZE);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -246,6 +252,29 @@ export function MarketsExplorer() {
 
   const visibleMarkets = sortMarkets(filtered, sortKey);
   const totalVolume = markets.reduce((sum, m) => sum + parseVolume(m.volume), 0);
+
+  // Windowed rendering: only mount the first page of cards, then reveal more as the user
+  // scrolls (keeps the DOM small and first paint fast even with hundreds of markets).
+  const shownMarkets = visibleMarkets.slice(0, visibleCount);
+  const hasMoreMarkets = visibleCount < visibleMarkets.length;
+
+  // Restart the window at the top whenever the filter/sort inputs change.
+  useEffect(() => {
+    setVisibleCount(MARKETS_PAGE_SIZE);
+  }, [activeCategory, activeHotTopic, searchValue, sortKey, periodFilter, statusFilter, hiddenCategories]);
+
+  // Reveal the next page when the sentinel approaches the viewport.
+  useEffect(() => {
+    if (!hasMoreMarkets) return;
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries.some((entry) => entry.isIntersecting)) setVisibleCount((count) => count + MARKETS_PAGE_SIZE); },
+      { rootMargin: '600px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMoreMarkets, shownMarkets.length]);
 
   return (
     <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-[150px] md:pt-[120px] md:px-7">
@@ -402,15 +431,22 @@ export function MarketsExplorer() {
           ))}
         </div>
       ) : visibleMarkets.length > 0 ? (
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {visibleMarkets.map((market) => (
-            <MarketCard
-              key={market.id}
-              market={market}
-              onQuickBuy={(m, outcome) => setQuickBuyTarget({ market: m, outcome })}
-            />
-          ))}
-        </div>
+        <>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {shownMarkets.map((market) => (
+              <MarketCard
+                key={market.id}
+                market={market}
+                onQuickBuy={(m, outcome) => setQuickBuyTarget({ market: m, outcome })}
+              />
+            ))}
+          </div>
+          {hasMoreMarkets && (
+            <div ref={loadMoreRef} className="mt-6 flex items-center justify-center py-6" aria-hidden>
+              <div className="h-7 w-7 animate-spin rounded-full border-2 border-white/15 border-t-cyan" />
+            </div>
+          )}
+        </>
       ) : (
         <div className="mt-10 rounded-[16px] border border-dashed border-white/[0.07] bg-[#0d1520] px-8 py-14 text-center">
           <p className="text-sm font-black uppercase tracking-[0.2em] text-cyan/70">{'No results'}</p>
