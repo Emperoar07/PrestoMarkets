@@ -32,7 +32,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const [selectedOutcome, setSelectedOutcome] = useState('YES');
   const [tradeMode, setTradeMode] = useState<'buy' | 'liquidity'>('buy');
   const [orderMode, setOrderMode] = useState<'market' | 'limit'>('market');
-  const [amount, setAmount] = useState('25');
+  const [amount, setAmount] = useState('1');
   const [limitPrice, setLimitPrice] = useState('50');
   const [resolutionURI, setResolutionURI] = useState('');
   const [agentOutcome, setAgentOutcome] = useState<string>('YES');

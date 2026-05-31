@@ -21,7 +21,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
   const { connectedWallet, placeTrade } = useAppState();
   const { track } = useTransactions();
   const [selectedOutcome, setSelectedOutcome] = useState(initialOutcome);
-  const [amount, setAmount] = useState('25');
+  const [amount, setAmount] = useState('1');
   const [payWith, setPayWith] = useState<StableSymbol>('USDC');
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
