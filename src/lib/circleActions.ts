@@ -22,6 +22,13 @@ const TX_POLL_TIMEOUT_MS = 75_000;
 const TX_SOFT_CONFIRM_TIMEOUT_MS = 8_000;
 const TX_SUBMIT_LOOKUP_TIMEOUT_MS = 8_000;
 const ARC_RECEIPT_TIMEOUT_MS = 20_000;
+// Arc is the source of truth and finalizes sub-second. When a caller can observe the
+// transaction's on-chain effect directly (e.g. the buyer's shares increased), we confirm
+// from Arc instead of waiting on Circle's slower transaction indexer — which otherwise
+// leaves the progress toast spinning long after the trade has actually landed.
+const ONCHAIN_CONFIRM_TIMEOUT_MS = 30_000;
+const ONCHAIN_CONFIRM_POLL_MS = 1_500;
+const QUICK_TXHASH_LOOKUP_MS = 3_000;
 
 type CircleTxStatus =
   | 'INITIATED'
@@ -141,6 +148,10 @@ async function runContractExecution(input: {
   refId?: string;
   preview?: Partial<CircleConfirmDetails>;
   waitForConfirmation?: boolean;
+  // Optional Arc-direct confirmation: returns true once the transaction's on-chain effect
+  // is observed. When provided, success is detected from Arc (sub-second) rather than from
+  // Circle's transaction indexer, so the UI confirms promptly.
+  confirmOnchain?: () => Promise<boolean>;
 }): Promise<string> {
   // Show our own preview modal before Circle's PIN prompt. Circle's confirmation UI is
   // patchy for PIN-auth users on arbitrary contracts (no token icon, missing fee line),
@@ -182,6 +193,24 @@ async function runContractExecution(input: {
 
   await executeChallenge(input.session, challengeId);
   const waitForConfirmation = input.waitForConfirmation ?? true;
+
+  // Fast path: confirm from Arc directly when the caller can observe the on-chain effect.
+  // Arc finalizes sub-second, so this flips the UI to success promptly instead of spinning
+  // on Circle's transaction indexer (which can lag the chain by tens of seconds).
+  if (waitForConfirmation && input.confirmOnchain) {
+    const deadline = Date.now() + ONCHAIN_CONFIRM_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      if (await input.confirmOnchain().catch(() => false)) {
+        // Confirmed on Arc. Best-effort: fetch Circle's tx hash for the explorer link, but do
+        // not block success on the indexer — an empty hash just means "no link yet".
+        return await quickCircleTxHash(input.session, anchor).catch(() => '');
+      }
+      await new Promise((r) => setTimeout(r, ONCHAIN_CONFIRM_POLL_MS));
+    }
+    // Arc effect not observed in the budget — fall through to Circle's view, which still
+    // detects real failures and the slow-indexer "pending" case.
+  }
+
   let transactionId = '';
   try {
     transactionId = await findRecentTransactionId(
@@ -230,6 +259,19 @@ type ListedTransaction = {
   walletId?: string;
   state?: string;
 };
+
+// Best-effort, short lookup of the Arc tx hash Circle assigned to the just-submitted tx.
+// Used only to attach an explorer link after Arc has already confirmed the effect; returns
+// '' if Circle has not indexed the transaction record yet.
+async function quickCircleTxHash(session: CircleSession, anchorMs: number): Promise<string> {
+  const transactionId = await findRecentTransactionId(session, anchorMs, QUICK_TXHASH_LOOKUP_MS);
+  const tx = await callProvider<CircleTransaction>({
+    action: 'getTransaction',
+    userToken: session.userToken,
+    transactionId,
+  });
+  return tx.txHash ?? '';
+}
 
 async function findRecentTransactionId(session: CircleSession, anchorMs: number, timeoutMs = 30_000): Promise<string> {
   // Poll briefly: Circle may not have indexed the transaction the instant the challenge resolves.
@@ -490,6 +532,17 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: s
     });
     const buyOutcomeIndex = input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1);
 
+    // Snapshot the buyer's on-chain shares for this outcome so we can confirm the trade
+    // directly from Arc (shares increased) rather than waiting on Circle's slower indexer.
+    const sharesClient = getPublicClient();
+    const readShares = () => sharesClient.readContract({
+      address: marketAddress,
+      abi: prestoMarketAbi,
+      functionName: 'sharesOf',
+      args: [buyOutcomeIndex, ownerAddress as Address],
+    }) as Promise<bigint>;
+    const sharesBefore = await readShares().catch(() => BigInt(0));
+
     // Batch the (optional) USDC approve + the buy into ONE SCA user-op so the user signs a
     // single PIN challenge instead of two. Circle runs executeBatch on the wallet's own
     // address; each leg is [target, nativeValue, calldata]. The proxy allowlist
@@ -528,6 +581,7 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: s
         ],
       },
       waitForConfirmation: true,
+      confirmOnchain: async () => (await readShares()) > sharesBefore,
     });
     return { ok: true, message: `Bought ${input.outcome} shares via Circle wallet.`, txHash: txHash as `0x${string}` };
   } catch (error) {
