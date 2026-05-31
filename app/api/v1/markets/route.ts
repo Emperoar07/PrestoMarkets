@@ -23,7 +23,15 @@ export async function GET(req: NextRequest) {
 
   // ── No payment → 402 ──
   if (!paymentHeader) {
-    const paymentRequired = buildX402PaymentRequired(PRICE_USD);
+    let paymentRequired: ReturnType<typeof buildX402PaymentRequired>;
+    try {
+      paymentRequired = buildX402PaymentRequired(PRICE_USD);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Payment configuration is unavailable.' },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(paymentRequired, {
       status: 402,
       headers: {

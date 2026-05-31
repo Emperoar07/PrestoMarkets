@@ -18,18 +18,38 @@ export const ARC_CONTRACTS = {
   AgenticCommerce: '0x0747EEf0706327138c69792bF28Cd525089e4583',
 } as const;
 
+const ARC_TESTNET_NETWORK = 'arcTestnet';
+const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
+
+function requirePaymentAddress(): string {
+  const payTo = (process.env.PRESTO_PAYMENT_ADDRESS ?? '').trim();
+  if (!ADDRESS_RE.test(payTo)) {
+    throw new Error('PRESTO_PAYMENT_ADDRESS must be configured as the Arc Testnet USDC payment recipient.');
+  }
+  return payTo;
+}
+
+function priceToUsdcBaseUnits(priceUsd: string): string {
+  const price = Number(priceUsd);
+  if (!Number.isFinite(price) || price <= 0) {
+    throw new Error('x402 price must be a positive USDC amount.');
+  }
+  return String(Math.round(price * 1_000_000));
+}
+
 // X402 payment details for the market data API
 export function buildX402PaymentRequired(priceUsd = '0.001') {
-  const payTo = process.env.PRESTO_PAYMENT_ADDRESS ?? process.env.NEXT_PUBLIC_FACTORY_ADDRESS ?? '';
+  const payTo = requirePaymentAddress();
+  const amount = priceToUsdcBaseUnits(priceUsd);
   return {
     error: 'Payment Required',
     x402Version: 1,
     accepts: [
       {
         scheme: 'exact',
-        network: 'arcTestnet',
-        amount: String(Math.round(Number(priceUsd) * 1_000_000)), // Circle Gateway x402 field
-        maxAmountRequired: String(Math.round(Number(priceUsd) * 1_000_000)), // USDC 6-decimal base units
+        network: ARC_TESTNET_NETWORK,
+        amount, // Circle Gateway x402 field
+        maxAmountRequired: amount, // USDC 6-decimal ERC-20 base units
         resource: 'presto-markets/api/v1/markets',
         description: 'Presto Markets real-time prediction market data',
         mimeType: 'application/json',

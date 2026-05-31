@@ -12,7 +12,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { TrendItem, classifyTrend, draftWithGemini, safetyCheckWithHaiku, type GroqClassification, type SafetyResult } from './agentPipeline';
+import { TrendItem, classifyTrend, draftWithGemini, runAgentPipeline, safetyCheckWithHaiku, type GroqClassification, type SafetyResult } from './agentPipeline';
 import { fetchOnchainMarkets } from './onchainMarkets';
 import { logger } from './logger';
 
@@ -89,9 +89,7 @@ async function nodePerceive(state: GraphState): Promise<GraphState> {
   logger.info('agent-graph', `[${state.graphId}] Entering perceive node`);
 
   try {
-    // Placeholder: would call fetchTrends() in production
-    // For now, return empty to allow testing the graph flow
-    const trends: TrendItem[] = [];
+    const trends = state.trends ?? [];
 
     return {
       ...state,
@@ -260,16 +258,23 @@ async function nodeExecute(state: GraphState): Promise<GraphState> {
   logger.info('agent-graph', `[${state.graphId}] Entering execute node`);
 
   try {
-    // Placeholder: would call agentCreateMarket() here
-    // For now, simulate a transaction hash
-    const txHash = `0x${randomUUID().replace(/-/g, '').slice(0, 64)}`;
+    if (!state.selectedTrend) {
+      throw new Error('Execution requires a selected trend.');
+    }
 
-    logger.info('agent-graph', `[${state.graphId}] Market created with tx: ${txHash}`);
+    const results = await runAgentPipeline({ trends: [state.selectedTrend] });
+    const created = results.find((result): result is Extract<typeof result, { ok: true }> => result.ok);
+    if (!created) {
+      const failure = [...results].reverse().find((result) => !result.ok);
+      throw new Error(failure?.reason ?? 'Production pipeline refused market creation.');
+    }
+
+    logger.info('agent-graph', `[${state.graphId}] Market created with tx: ${created.txHash}`);
 
     return {
       ...state,
       currentNode: 'verify',
-      txHash,
+      txHash: created.txHash,
     };
   } catch (error) {
     return {

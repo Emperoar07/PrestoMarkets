@@ -13,11 +13,10 @@
 
 import { logger } from './logger';
 import { enqueueRequest, dequeueRequest, markCompleted, markFailed, generateIdempotencyKey, type QueueRequest } from './agentQueue';
-import { runAgentGraph, resumeAgentGraph, type GraphState } from './agentGraph';
-import { runStagedPipeline, type PipelineResult } from './agentStages';
+import { type GraphState } from './agentGraph';
 import { ProviderPool } from './providers/pool';
 import { AnthropicProvider } from './providers/anthropic';
-import { TrendItem } from './agentPipeline';
+import { runAgentPipeline, type PipelineResult, type TrendItem } from './agentPipeline';
 
 // ── Initialize Provider Pool ────────────────────────────────────────────────
 
@@ -82,36 +81,33 @@ export async function orchestrateMarketCreation(trend: TrendItem): Promise<Orche
     const queueItem = enqueueRequest(queueRequest);
     logger.info('orchestrator', `Request enqueued`, { requestId });
 
-    // Phase 2: Start graph execution (with checkpoint support)
-    let graphState: GraphState;
-    try {
-      graphState = await runAgentGraph({
-        graphId: requestId,
-      });
-    } catch (error) {
-      logger.error('orchestrator', `Graph execution failed`, {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    }
-
-    logger.info('orchestrator', `Graph execution complete`, {
-      decision: graphState.decision,
-      verified: graphState.verified,
-    });
-
-    // Phase 3: Initialize provider pool for LLM calls
+    // Phase 2: Initialize provider pool for LLM calls
     const providerPool = initializeProviderPool();
 
-    // Phase 4 & 5: Run staged pipeline
-    const pipelineResults = await runStagedPipeline();
+    // Phase 3: Run the production pipeline against the requested trend.
+    const pipelineResults = await runAgentPipeline({ trends: [trend] });
+    const created = pipelineResults.find((result) => result.ok);
+    const finalFailure = [...pipelineResults].reverse().find((result) => !result.ok);
+    const graphState: GraphState = {
+      graphId: requestId,
+      startedAt: queueRequest.createdAt,
+      currentNode: 'verify',
+      trends: [trend],
+      selectedTrend: created?.draft ? trend : undefined,
+      draft: created?.draft,
+      decision: created ? 'proceed' : 'reject',
+      decisionReason: created ? undefined : finalFailure?.reason ?? 'No market was created by the production pipeline.',
+      txHash: created?.txHash,
+      verified: Boolean(created),
+      verifiedAt: new Date().toISOString(),
+    };
 
-    const successfulStages = pipelineResults.filter(r => r.success);
-    const failedStages = pipelineResults.filter(r => !r.success);
+    const successfulStages = pipelineResults.filter(r => r.ok);
+    const failedStages = pipelineResults.filter(r => !r.ok);
 
     logger.info('orchestrator', `Pipeline execution complete`, {
-      successful: successfulStages.length,
-      failed: failedStages.length,
+      created: successfulStages.length,
+      refused: failedStages.length,
     });
 
     // Get provider metrics

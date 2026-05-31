@@ -16,7 +16,7 @@
  * 6. Verify: Confirm onchain state and settle
  */
 
-import { TrendItem, GroqClassification, SafetyResult } from './agentPipeline';
+import { runAgentPipeline, TrendItem, GroqClassification, SafetyResult } from './agentPipeline';
 import { logger } from './logger';
 
 // ── Stage 1: Perceive ────────────────────────────────────────────────────────
@@ -34,14 +34,7 @@ export async function stagePerceive(_input: PerceiveInput): Promise<PerceiveOutp
   logger.info('agent-stages', 'Stage 1: Perceive - fetching trends');
 
   try {
-    // Placeholder: would fetch from all sources
-    const trends: TrendItem[] = [];
-
-    return {
-      trends,
-      sourceCount: 0,
-      timestamp: new Date().toISOString(),
-    };
+    throw new Error('Standalone staged perception is disabled. Use runStagedPipeline({ trends }) or runAgentPipeline().');
   } catch (error) {
     logger.error('agent-stages', 'Stage 1 failed: Perceive', {
       error: error instanceof Error ? error.message : String(error),
@@ -74,12 +67,7 @@ export async function stageAnalyze(input: AnalyzeInput): Promise<AnalyzeOutput> 
 
   for (const trend of input.trends) {
     try {
-      // Placeholder: would classify trend
-      // const classification = await classifyTrend(trend);
-      // if (classification.worthy && classification.momentumScore > 0.6) {
-      //   filtered.push(trend);
-      // }
-      // scored.push({ trend, classification });
+      throw new Error(`Standalone staged analysis is disabled for "${trend.topic}". Use runAgentPipeline() for live classification.`);
     } catch (error) {
       logger.warn('agent-stages', `Failed to classify: ${trend.topic}`, {
         error: error instanceof Error ? error.message : String(error),
@@ -123,23 +111,7 @@ export async function stagePlan(input: PlanInput): Promise<PlanOutput> {
   logger.info('agent-stages', `Stage 3: Plan - drafting market for "${input.trend.topic}"`);
 
   try {
-    // Placeholder: would call draftWithGemini
-    const output: PlanOutput = {
-      title: `Will ${input.trend.topic}?`,
-      description: `News: ${input.trend.topic}`,
-      rules: 'YES wins if the event occurs by the close date. NO wins if it does not occur or remains unresolved.',
-      sourceOfTruth: input.trend.url || 'Public sources',
-      closeDate: input.trend.closeDate || new Date().toISOString().split('T')[0],
-      type: input.classification.suggestedMarketType || 'Prediction',
-      timestamp: new Date().toISOString(),
-    };
-
-    logger.info('agent-stages', `Stage 3: Plan complete`, {
-      duration: Date.now() - startTime,
-      title: output.title,
-    });
-
-    return output;
+    throw new Error(`Standalone staged planning is disabled for "${input.trend.topic}". Use runAgentPipeline() for live drafting.`);
   } catch (error) {
     logger.error('agent-stages', 'Stage 3 failed: Plan', {
       error: error instanceof Error ? error.message : String(error),
@@ -168,20 +140,7 @@ export async function stageAuthorize(input: AuthorizeInput): Promise<AuthorizeOu
   logger.info('agent-stages', `Stage 4: Authorize - checking safety`);
 
   try {
-    // Placeholder: would call safetyCheckWithHaiku
-    const output: AuthorizeOutput = {
-      passed: true,
-      reason: 'Market passes safety checks',
-      safetyScore: 85,
-      timestamp: new Date().toISOString(),
-    };
-
-    logger.info('agent-stages', `Stage 4: Authorize ${output.passed ? 'approved' : 'rejected'}`, {
-      duration: Date.now() - startTime,
-      reason: output.reason,
-    });
-
-    return output;
+    throw new Error(`Standalone staged authorization is disabled for "${input.plan.title}". Use runAgentPipeline() for live safety checks.`);
   } catch (error) {
     logger.error('agent-stages', 'Stage 4 failed: Authorize', {
       error: error instanceof Error ? error.message : String(error),
@@ -215,18 +174,7 @@ export async function stageExecute(input: ExecuteInput): Promise<ExecuteOutput> 
   }
 
   try {
-    // Placeholder: would call agentCreateMarket
-    const output: ExecuteOutput = {
-      txHash: `0x${'0'.repeat(64)}`,
-      timestamp: new Date().toISOString(),
-    };
-
-    logger.info('agent-stages', `Stage 5: Execute complete`, {
-      duration: Date.now() - startTime,
-      txHash: output.txHash.slice(0, 10),
-    });
-
-    return output;
+    throw new Error(`Standalone staged execution is disabled for "${input.plan.title}". Use runAgentPipeline() for live onchain execution.`);
   } catch (error) {
     logger.error('agent-stages', 'Stage 5 failed: Execute', {
       error: error instanceof Error ? error.message : String(error),
@@ -254,20 +202,7 @@ export async function stageVerify(input: VerifyInput): Promise<VerifyOutput> {
   logger.info('agent-stages', `Stage 6: Verify - confirming onchain state`);
 
   try {
-    // Placeholder: would verify transaction and extract market address
-    const output: VerifyOutput = {
-      confirmed: true,
-      marketAddress: `0x${'0'.repeat(40)}`,
-      blockNumber: 0,
-      timestamp: new Date().toISOString(),
-    };
-
-    logger.info('agent-stages', `Stage 6: Verify complete`, {
-      duration: Date.now() - startTime,
-      confirmed: output.confirmed,
-    });
-
-    return output;
+    throw new Error(`Standalone staged verification is disabled for "${input.execution.txHash}". Use runAgentPipeline() for live verification.`);
   } catch (error) {
     logger.error('agent-stages', 'Stage 6 failed: Verify', {
       error: error instanceof Error ? error.message : String(error),
@@ -287,103 +222,14 @@ export type PipelineResult = {
   duration: number;
 };
 
-export async function runStagedPipeline(): Promise<PipelineResult[]> {
+export async function runStagedPipeline(input: { trends?: TrendItem[] } = {}): Promise<PipelineResult[]> {
   const startTime = Date.now();
-  const results: PipelineResult[] = [];
-
-  try {
-    // Stage 1: Perceive
-    const perceiveOutput = await stagePerceive({});
-    results.push({
-      success: true,
-      stage: 'perceive',
-      output: perceiveOutput,
-      duration: Date.now() - startTime,
-    });
-
-    if (perceiveOutput.trends.length === 0) {
-      throw new Error('No trends available');
-    }
-
-    // Stage 2: Analyze
-    const analyzeOutput = await stageAnalyze({ trends: perceiveOutput.trends });
-    results.push({
-      success: true,
-      stage: 'analyze',
-      output: analyzeOutput,
-      duration: Date.now() - startTime,
-    });
-
-    if (analyzeOutput.filtered.length === 0) {
-      throw new Error('No trends passed analysis');
-    }
-
-    // Stage 3: Plan
-    const planOutput = await stagePlan({
-      trend: analyzeOutput.filtered[0],
-      category: 'General',
-      classification: analyzeOutput.scored[0].classification,
-    });
-    results.push({
-      success: true,
-      stage: 'plan',
-      output: planOutput,
-      duration: Date.now() - startTime,
-    });
-
-    // Stage 4: Authorize
-    const authorizeOutput = await stageAuthorize({ plan: planOutput });
-    results.push({
-      success: true,
-      stage: 'authorize',
-      output: authorizeOutput,
-      duration: Date.now() - startTime,
-    });
-
-    if (!authorizeOutput.passed) {
-      throw new Error(`Authorization failed: ${authorizeOutput.reason}`);
-    }
-
-    // Stage 5: Execute
-    const executeOutput = await stageExecute({
-      plan: planOutput,
-      authorization: authorizeOutput,
-      trendSource: analyzeOutput.filtered[0].source,
-    });
-    results.push({
-      success: true,
-      stage: 'execute',
-      output: executeOutput,
-      duration: Date.now() - startTime,
-    });
-
-    // Stage 6: Verify
-    const verifyOutput = await stageVerify({ execution: executeOutput });
-    results.push({
-      success: true,
-      stage: 'verify',
-      output: verifyOutput,
-      duration: Date.now() - startTime,
-    });
-
-    logger.info('agent-stages', 'Pipeline completed successfully', {
-      duration: Date.now() - startTime,
-    });
-  } catch (error) {
-    const stage = error instanceof Error ? error.message.split(':')[0] : 'unknown';
-    results.push({
-      success: false,
-      stage,
-      error: error instanceof Error ? error.message : String(error),
-      duration: Date.now() - startTime,
-    });
-
-    logger.error('agent-stages', 'Pipeline failed', {
-      stage,
-      error: error instanceof Error ? error.message : String(error),
-      duration: Date.now() - startTime,
-    });
-  }
-
-  return results;
+  const results = await runAgentPipeline(input);
+  return results.map((result) => ({
+    success: result.ok,
+    stage: result.ok ? 'execute' : result.stage,
+    output: result.ok ? result : undefined,
+    error: result.ok ? undefined : result.reason,
+    duration: Date.now() - startTime,
+  }));
 }

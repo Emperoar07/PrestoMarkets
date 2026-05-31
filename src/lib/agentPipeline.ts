@@ -1600,8 +1600,8 @@ function weightedRandomPick<T>(items: { item: T; weight: number }[]): T | null {
   return items[items.length - 1].item;
 }
 
-export async function runAgentPipeline(): Promise<PipelineResult[]> {
-  const trends = await fetchTrends();
+export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Promise<PipelineResult[]> {
+  const trends = input.trends?.length ? input.trends : await fetchTrends();
   const existingMarkets = await fetchOnchainMarkets().catch(() => []);
   const results: PipelineResult[] = [];
 

@@ -1,9 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createPublicClient, http, isAddress, type Address } from 'viem';
-import { arcTestnet } from 'viem/chains';
-import { getArcConfig } from '@/lib/arcConfig';
-import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
-import { prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from '@/lib/contracts';
+import { isAllowedContractExecution } from '@/lib/circleWalletPolicy';
 import crypto from 'node:crypto';
 
 function hashUserId(rawUserId: string): string {
@@ -77,14 +73,6 @@ type CircleErrorBody = {
   errors?: Array<{ message?: string; error?: string; code?: string | number }>;
 };
 
-const allowedMarketSignatures = new Set([
-  'buy(uint8,uint256)',
-  'resolve(uint8,string)',
-  'cancel()',
-  'claim()',
-  'refund()',
-]);
-
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
@@ -125,85 +113,6 @@ function requireCircleConfig() {
   }
 
   return { apiKey, appId };
-}
-
-async function isFactoryDeployedMarket(marketAddress: Address, config: ReturnType<typeof getArcConfig>): Promise<boolean> {
-  try {
-    const publicClient = createPublicClient({
-      chain: arcTestnet,
-      transport: http(config.rpcUrl),
-    });
-
-    if (config.factoryAddress) {
-      try {
-        const logs = await publicClient.getLogs({
-          address: config.factoryAddress as Address,
-          event: prestoMarketFactoryAbi.find((x) => x.type === 'event' && x.name === 'MarketCreated') as any,
-          args: {
-            market: marketAddress,
-          },
-          fromBlock: 'earliest',
-        });
-        if (logs.length > 0) return true;
-      } catch (err) {
-        console.error('[circle-security] Failed standard factory logs read:', err);
-      }
-    }
-
-    if (config.multiOutcomeFactoryAddress) {
-      try {
-        const logs = await publicClient.getLogs({
-          address: config.multiOutcomeFactoryAddress as Address,
-          event: prestoMultiOutcomeMarketFactoryAbi.find((x) => x.type === 'event' && x.name === 'MarketCreated') as any,
-          args: {
-            market: marketAddress,
-          },
-          fromBlock: 'earliest',
-        });
-        if (logs.length > 0) return true;
-      } catch (err) {
-        console.error('[circle-security] Failed multi-outcome factory logs read:', err);
-      }
-    }
-
-    return false;
-  } catch (error) {
-    console.error('[circle-security] Failed to verify market provenance:', error);
-    return false;
-  }
-}
-
-async function isAllowedContractExecution(input: CircleRequestBody): Promise<boolean> {
-  if (!input.contractAddress || !isAddress(input.contractAddress)) return false;
-  if (!input.abiFunctionSignature) return false;
-
-  const config = getArcConfig();
-  const contract = input.contractAddress.toLowerCase();
-  const factory = config.factoryAddress?.toLowerCase();
-  const multiOutcomeFactory = config.multiOutcomeFactoryAddress?.toLowerCase();
-  const usdc = config.usdcAddress?.toLowerCase();
-
-  if (factory && contract === factory) {
-    return input.abiFunctionSignature === 'createMarket(address,uint256,string,uint8)';
-  }
-
-  if (multiOutcomeFactory && contract === multiOutcomeFactory) {
-    return input.abiFunctionSignature === 'createMarket(address,uint256,string,uint8,uint8)';
-  }
-
-  if (usdc && contract === usdc) {
-    return input.abiFunctionSignature === 'approve(address,uint256)' || input.abiFunctionSignature === 'transfer(address,uint256)';
-  }
-
-  if (!allowedMarketSignatures.has(input.abiFunctionSignature)) return false;
-
-  const markets = await fetchOnchainMarkets();
-  if (markets.some((market) => market.id.toLowerCase() === contract)) {
-    return true;
-  }
-
-  const isFactoryMarket = await isFactoryDeployedMarket(input.contractAddress as Address, config);
-  return isFactoryMarket;
 }
 
 async function circleFetch(path: string, input: RequestInit & { userToken?: string } = {}) {
