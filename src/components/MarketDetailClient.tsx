@@ -342,20 +342,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               <MarketSignalChart market={market} />
             </div>
 
-            {/* Stats row */}
-            <div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-3">
-              {[
-                { label: 'Volume', value: market.volume },
-                { label: 'Closes', value: market.closeLabel },
-                { label: 'Collateral', value: market.collateral },
-              ].map((stat) => (
-                <div key={stat.label} className="rounded-[12px] border border-white/[0.06] bg-[#141e30] px-4 py-4">
-                  <p className="text-xs font-bold text-muted">{stat.label}</p>
-                  <p className="mt-1.5 text-xl font-black text-white">{stat.value}</p>
-                </div>
-              ))}
-            </div>
-
             {/* Resolution rules */}
             <div className="mt-6 min-w-0 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
               <h2 className="text-base font-black text-white">Resolution rules</h2>

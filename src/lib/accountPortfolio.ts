@@ -13,6 +13,7 @@ import type { PortfolioActivity, Position } from './portfolio';
 // Arc's public RPC returns 413 on wide getLogs queries. Cap the activity window at ~1 hour
 // of sub-second blocks (~7200 blocks at 0.5s) so each market's three log calls stay accepted.
 const activityBlockWindow = BigInt(7_200);
+const costBasisTimeoutMs = 2_000;
 
 export type AccountMarketPreview = {
   marketId: string;
@@ -147,6 +148,25 @@ async function fetchMarketCostBasis(
   return fetchMarketCostBasisIndexed(client, marketAddress, account);
 }
 
+function fallbackCostBasis() {
+  return { yes: 0, no: 0, byIndex: {} as Record<number, number> };
+}
+
+async function withFallbackTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timeout = setTimeout(() => resolve(fallback), ms);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 export async function fetchAccountPortfolio(
   markets: AppMarket[],
   accountAddress?: string | null,
@@ -172,20 +192,27 @@ export async function fetchAccountPortfolio(
 
     const address = market.id as Address;
     const outcomeLabels = market.outcomes.length > 0 ? market.outcomes.map((outcome) => outcome.label) : ['YES', 'NO'];
-    const [outcomeShareValues, claimPreview, refundable, hasClaimed, costBasis] = await Promise.all([
+    const [outcomeShareValues, claimPreview, refundable, hasClaimed] = await Promise.all([
       Promise.all(outcomeLabels.map((_, outcomeIndex) =>
         client.readContract({ address, abi: prestoMarketAbi, functionName: 'sharesOf', args: [outcomeIndex, account] }).catch(() => BigInt(0)),
       )),
       client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewClaim', args: [account] }).catch(() => [BigInt(0), BigInt(0)] as const),
       client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewRefund', args: [account] }).catch(() => BigInt(0)),
       client.readContract({ address, abi: prestoMarketAbi, functionName: 'claimed', args: [account] }).catch(() => false),
-      fetchMarketCostBasis(client, address, account).catch(() => ({ yes: 0, no: 0, byIndex: {} as Record<number, number> })),
     ]);
     const claimable = claimPreview[0];
     const yesIndex = outcomeLabels.findIndex((label) => label.toUpperCase() === 'YES');
     const noIndex = outcomeLabels.findIndex((label) => label.toUpperCase() === 'NO');
     const yesShares = outcomeShareValues[yesIndex >= 0 ? yesIndex : 0] ?? BigInt(0);
     const noShares = outcomeShareValues[noIndex >= 0 ? noIndex : 1] ?? BigInt(0);
+    const hasShares = outcomeShareValues.some((shares) => shares > BigInt(0));
+    const costBasis = hasShares
+      ? await withFallbackTimeout(
+        fetchMarketCostBasis(client, address, account).catch(() => fallbackCostBasis()),
+        costBasisTimeoutMs,
+        fallbackCostBasis(),
+      )
+      : fallbackCostBasis();
 
     previews[market.id] = {
       marketId: market.id,

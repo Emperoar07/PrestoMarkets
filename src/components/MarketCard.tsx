@@ -48,12 +48,12 @@ function MarketCardComponent({
     <Link
       href={`/markets/${market.id}`}
       onMouseEnter={() => prefetchMarketDetail(market.id, refreshAccountPortfolio)}
-      className="group flex h-[160px] min-w-0 items-stretch gap-3 overflow-hidden rounded-[12px] border border-white/[0.05] bg-[#0c121d] p-3 transition-all hover:border-white/[0.09] hover:bg-[#101929]"
+      className="group flex h-[142px] min-w-0 items-stretch gap-2.5 overflow-hidden rounded-[10px] border border-white/[0.05] bg-[#0c121d] p-2.5 transition-all hover:border-white/[0.09] hover:bg-[#101929]"
     >
       {/* Left: Icon logo */}
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-white/[0.04] bg-[#070e17]">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-white/[0.04] bg-[#070e17]">
         {market.imageURI ? (
-          <img src={market.imageURI} alt={market.title} width={44} height={44} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+          <img src={market.imageURI} alt={market.title} width={40} height={40} loading="lazy" decoding="async" className="h-full w-full object-cover" />
         ) : (
           <span className="text-[10px] font-black text-cyan/70">{market.category.slice(0, 2).toUpperCase()}</span>
         )}
@@ -70,7 +70,7 @@ function MarketCardComponent({
                 {'Resolved'}
               </span>
             ) : null}
-            <h3 className="line-clamp-2 text-[13px] font-bold leading-snug text-[#cbd5e1] group-hover:text-white transition-colors">
+            <h3 className="line-clamp-2 text-[12.5px] font-bold leading-snug text-[#cbd5e1] transition-colors group-hover:text-white">
               {market.title}
             </h3>
           </div>
@@ -79,16 +79,16 @@ function MarketCardComponent({
         {/* Outcomes layout */}
         {isPollMarket ? (
           /* ── Multi-outcome Poll Market: scrollable list without scrollbars ── */
-          <div className="scrollbar-hide my-1 max-h-[72px] overflow-y-auto space-y-1 pr-1">
+          <div className="scrollbar-hide my-1 max-h-[58px] space-y-0.5 overflow-y-auto pr-1">
             {market.pollOptions?.map((option, index) => {
               const color = getOutcomeColor(index);
               const odds = market.outcomes.find((_, idx) => idx === index)?.odds ?? 0;
               return (
                 <div key={`${option}-${index}`} className="flex items-center justify-between gap-2">
-                  <span className="flex min-w-0 items-center gap-1.5 text-[11px] font-bold text-[#94a3b8]">
+                  <span className="flex min-w-0 items-center gap-1.5 text-[10.5px] font-bold text-[#94a3b8]">
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                     <span className="truncate">{option}</span>
-                    <span className="ml-1 text-[11px] font-black text-[#cbd5e1]">{odds}%</span>
+                    <span className="ml-1 text-[10.5px] font-black text-[#cbd5e1]">{odds}%</span>
                   </span>
                   
                   {isLive ? (
@@ -133,8 +133,8 @@ function MarketCardComponent({
           </div>
         ) : (
           /* ── Binary (YES/NO) Prediction or Opinion markets ── */
-          <div className="my-2 flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold text-[#94a3b8]">
+          <div className="my-1.5 flex items-center justify-between gap-2">
+            <span className="text-[10.5px] font-bold text-[#94a3b8]">
               {isOpinion ? 'Support' : 'YES'} <span className="font-black text-[#cbd5e1]">{yesOdds}%</span>
             </span>
 
@@ -178,7 +178,7 @@ function MarketCardComponent({
         )}
 
         {/* Metadata row (only volume) */}
-        <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/[0.04] pt-2">
+        <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/[0.04] pt-1.5">
           <span className="text-[10px] font-semibold text-[#475569]">{market.volume} Vol.</span>
           <div className="flex items-center gap-2">
             {isEurc ? (

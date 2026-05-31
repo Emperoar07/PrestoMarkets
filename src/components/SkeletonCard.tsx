@@ -1,8 +1,8 @@
 export function SkeletonCard() {
   return (
-    <div className="animate-pulse flex h-[160px] items-stretch gap-3 rounded-[12px] border border-white/[0.05] bg-[#0c121d] p-3">
+    <div className="flex h-[142px] animate-pulse items-stretch gap-2.5 rounded-[10px] border border-white/[0.05] bg-[#0c121d] p-2.5">
       {/* Left: Icon logo placeholder */}
-      <div className="h-11 w-11 shrink-0 rounded-[8px] bg-white/[0.04]" />
+      <div className="h-10 w-10 shrink-0 rounded-[8px] bg-white/[0.04]" />
 
       {/* Right: Contents column placeholder */}
       <div className="flex-1 flex flex-col justify-between h-full space-y-2">
