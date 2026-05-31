@@ -1,0 +1,4 @@
+interface:
+  display_name: "Presto Market Quality"
+  short_description: "Review Presto agent market quality."
+  default_prompt: "Use the Presto market quality skill to review this agent-created market or pipeline change."

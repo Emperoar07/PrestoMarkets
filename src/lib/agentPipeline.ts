@@ -852,6 +852,52 @@ type GroqClassification = {
   reason: string;
 };
 
+const AGENT_CATEGORY_ALLOWLIST = new Set([
+  'Crypto',
+  'BTC',
+  'ETH',
+  'SOL',
+  'POL',
+  'Sports',
+  'Football',
+  'Basketball',
+  'DeFi',
+  'AI',
+  'Politics',
+  'Tech',
+  'Markets',
+  'Arc',
+  'Web3',
+  'Finance',
+  'Geopolitics',
+  'Culture',
+  'Economy',
+  'Weather',
+  'Elections',
+]);
+
+const BAD_CATEGORY_LABELS = new Set(['primary', 'secondary', 'trending', 'new', 'more', 'all']);
+
+function normalizeAgentCategory(value: unknown, trend: TrendItem): string | null {
+  if (typeof value !== 'string') return null;
+  const parts = value
+    .split('|')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  for (const part of parts) {
+    if (BAD_CATEGORY_LABELS.has(part.toLowerCase())) continue;
+    const match = Array.from(AGENT_CATEGORY_ALLOWLIST).find((allowed) => allowed.toLowerCase() === part.toLowerCase());
+    if (match) return match;
+  }
+
+  if (isFootballBasketballTrend(trend)) {
+    return /basketball|nba/i.test(`${trend.source} ${trend.topic} ${trend.query}`) ? 'Basketball' : 'Football';
+  }
+
+  return null;
+}
+
 async function classifyTrend(trend: TrendItem): Promise<GroqClassification> {
   const research = assessTrendResearchQuality(trend);
   const prompt = `${AGENT_PLATFORM_CONTEXT}
@@ -911,19 +957,20 @@ better public settlement source the drafter can use.`;
   let categories: string[] | undefined;
   if (Array.isArray(parsed.categories)) {
     categories = parsed.categories
-      .filter((c): c is string => typeof c === 'string')
-      .map((c) => c.trim())
+      .map((category) => normalizeAgentCategory(category, trend))
       .filter(Boolean)
-      .slice(0, 4);
+      .filter((category, index, list) => list.indexOf(category) === index)
+      .slice(0, 4) as string[];
   }
+  const category = normalizeAgentCategory(parsed.category, trend) ?? categories?.[0] ?? 'Crypto';
 
   const suggestedMarketType = parsed.suggestedMarketType === 'Opinion' ? 'Opinion' : 'Prediction';
 
   return {
     worthy: parsed.worthy ?? false,
     momentumScore: Math.min(1, Math.max(0, parsed.momentumScore ?? 0)),
-    category: parsed.category ?? categories?.[0] ?? 'Crypto',
-    categories,
+    category,
+    categories: categories?.length ? categories : [category],
     suggestedMarketType,
     reason: parsed.reason ?? '',
   };
@@ -1283,6 +1330,38 @@ function cleanDraftText(value: string | undefined, trend: TrendItem, fallback = 
   return cleaned.replace(/[-\u2010-\u2015]+/g, ',').replace(/\s*,\s*/g, ', ').replace(/\s+/g, ' ').trim();
 }
 
+function isObjectiveNewsTrend(trend: TrendItem): boolean {
+  const text = `${trend.topic} ${trend.query}`.toLowerCase();
+  return /\b(sec|doj|court|lawsuit|sues?|sued|charges?|charged|files?|filed|complaint|announces?|announced|plans?|planned|invests?|investment|launches?|launched|resumes?|resumed)\b/.test(text);
+}
+
+function validateDraftQuality(draft: GeminiDraft, trend: TrendItem): string | null {
+  const title = draft.title.trim();
+  const normalizedTitle = title.toLowerCase();
+
+  if (/^will\s+.+\b(says?|said|announces?|announced|plans?|planned|sues?|sued|charges?|charged|files?|filed|launches?|launched|resumes?|resumed)\b/.test(normalizedTitle)) {
+    return 'Draft title asks whether an already reported headline action happened. Reframe around a future milestone or skip.';
+  }
+
+  if (/\bsays?\s+(it\s+)?will\b/.test(normalizedTitle)) {
+    return 'Draft title copied a news headline phrase instead of creating a tradable future outcome.';
+  }
+
+  if (/\b(primary|secondary)\b/i.test(draft.title) || draft.outcomeOptions?.some((option) => BAD_CATEGORY_LABELS.has(option.toLowerCase()))) {
+    return 'Draft leaked classifier or UI labels into user-facing market text.';
+  }
+
+  if (draft.type === 'Opinion' && isObjectiveNewsTrend(trend)) {
+    return 'Objective legal, corporate, or market news must be drafted as a verifiable Prediction, not Opinion.';
+  }
+
+  if (isObjectiveNewsTrend(trend) && /^(did|has|was|were|is|are)\b/i.test(title)) {
+    return 'Draft asks about a past or current fact that should be verified directly instead of opened as a market.';
+  }
+
+  return null;
+}
+
 function precedentSearchQuery(trend: TrendItem) {
   if (trend.marketStructure === 'price-range') {
     const asset = cryptoPriceAssets.find((item) => trend.topic.toLowerCase().includes(item.name.toLowerCase()));
@@ -1448,6 +1527,12 @@ Rules for a good market:
 - Title must be a clear STRAIGHTFORWARD QUESTION under 90 characters (binary YES/NO OR a multi-option poll)
 - Generate questions like "Will X happen by Y?" or "Will X exceed Y?" — NOT news headlines
 - Do NOT make the title a copy of the news headline. Use it as background context instead.
+- Do NOT write malformed headline questions such as "Will SEC sues...", "Will SoftBank says...",
+  or "Will company announced...". If the article already reports a lawsuit, charge, filing,
+  announcement, launch, resumption, or investment plan, that event already happened. Either
+  skip it or reframe around a future milestone that has not happened yet.
+- Legal, regulatory, corporate-action, and investment-plan markets are objective Predictions,
+  not Opinion markets.
 - Lead with the tradable hook: named asset/team/person, measurable threshold, and deadline
 - Avoid vague hooks like "Will this be big?" Prefer "Will BTC close above $110k on Friday?"
 - Rules must define exactly when each outcome wins
@@ -1862,6 +1947,12 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
 
       if (isDuplicateMarket(draft, trend, existingMarkets)) {
         results.push({ ok: false, topic: trend.topic, stage: 'duplicate', reason: 'Similar active market or trend source already exists.' });
+        continue;
+      }
+
+      const qualityIssue = validateDraftQuality(draft, trend);
+      if (qualityIssue) {
+        results.push({ ok: false, topic: trend.topic, stage: 'draft-quality', reason: qualityIssue });
         continue;
       }
 
