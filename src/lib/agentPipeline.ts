@@ -1369,12 +1369,22 @@ function validateDraftQuality(draft: GeminiDraft, trend: TrendItem): string | nu
   const title = draft.title.trim();
   const normalizedTitle = title.toLowerCase();
 
-  if (/^will\s+.+\b(says?|said|announces?|announced|plans?|planned|sues?|sued|charges?|charged|files?|filed|launches?|launched|resumes?|resumed)\b/.test(normalizedTitle)) {
+  if (/^will\s+.+\b(says?|said|announces?|announced|plans?|planned|sues?|sued|charges?|charged|files?|filed|launches?|launched|resumes?|resumed|seizes|seized|captures|captured|signs|signed|acquires|acquired|unveils?|unveiled)\b/.test(normalizedTitle)) {
     return 'Draft title asks whether an already reported headline action happened. Reframe around a future milestone or skip.';
   }
 
   if (/\bsays?\s+(it\s+)?will\b/.test(normalizedTitle)) {
     return 'Draft title copied a news headline phrase instead of creating a tradable future outcome.';
+  }
+
+  // Subject immediately followed by an auxiliary verb = copied headline ("Will US has seized…").
+  if (/^will\s+(?:\S+\s+){1,3}(has|have|had|is|are|was|were)\b/.test(normalizedTitle)) {
+    return 'Draft title reads like a copied headline (subject + auxiliary verb). Use a clean base-form future question or skip.';
+  }
+
+  // Sports fixture status ("X vs Y: not started") leaked as the question.
+  if (/\bvs\.?\b/.test(normalizedTitle) && /\b(not started|upcoming|postponed|live|full ?time|half ?time|scheduled|final|abandoned)\b/.test(normalizedTitle)) {
+    return 'Draft turned a fixture status into the question. Use a match-result question such as "Will <home> beat <away>?".';
   }
 
   if (/\b(primary|secondary)\b/i.test(draft.title) || draft.outcomeOptions?.some((option) => BAD_CATEGORY_LABELS.has(option.toLowerCase()))) {
@@ -1552,18 +1562,29 @@ Copy rules for readable market writeups:
   the valid source, the deadline, and what happens if the source never confirms the claim.
 - Avoid dense pipe-separated metadata, boilerplate, and vague phrases such as "future developments".
 - Do not mention internal research scores, model names, chain names, gas, liquidity, or platform plumbing.
-- For football or basketball markets, name both teams or the named league/player metric,
-  use the official league/game source as settlement evidence when available, and keep the
-  close date close to the fixture or published decision window.
+- For football or basketball markets, draft ONE of these shapes (never a fixture status like
+  "not started"):
+  - Match result (binary): "Will <Home> beat <Away>?" — YES if the home side wins, NO on a
+    draw or away win. Name the real teams.
+  - Match result (multi-outcome) when a draw is meaningful: outcomes ["<Home> win", "Draw",
+    "<Away> win"].
+  - League/competition winner (multi-outcome): "Who will win <league/competition>?" with one
+    short label per realistic contending team (3 to 12 team names).
+  - Total goals (multi-outcome): "How many total goals in <Home> vs <Away>?" with exhaustive
+    ranges such as ["0-1", "2-3", "4-5", "6+"].
+  Use the official league / ESPN / TheSportsDB source as settlement evidence and keep the
+  close date at or just after the fixture or decision window.
 
 Rules for a good market:
 - Title must be a clear STRAIGHTFORWARD QUESTION under 90 characters (binary YES/NO OR a multi-option poll)
 - Generate questions like "Will X happen by Y?" or "Will X exceed Y?" — NOT news headlines
 - Do NOT make the title a copy of the news headline. Use it as background context instead.
 - Do NOT write malformed headline questions such as "Will SEC sues...", "Will SoftBank says...",
-  or "Will company announced...". If the article already reports a lawsuit, charge, filing,
-  announcement, launch, resumption, or investment plan, that event already happened. Either
-  skip it or reframe around a future milestone that has not happened yet.
+  "Will Israel seizes...", "Will US has seized...", or "Will <A> vs <B> not started?". If the
+  article already reports a lawsuit, charge, filing, announcement, launch, seizure, resumption,
+  or investment plan, that event already happened. Either skip it or reframe around a future
+  milestone that has not happened yet. After "Will", use a base-form verb ("Will X win/seize/
+  reach…?"), never a reported third-person headline verb ("seizes/says/has seized").
 - Legal, regulatory, corporate-action, and investment-plan markets are objective Predictions,
   not Opinion markets.
 - Lead with the tradable hook: named asset/team/person, measurable threshold, and deadline
@@ -1666,40 +1687,70 @@ Return JSON only:
 
 // ── Fallback: Simple template when all LLM providers fail ──────────────────
 
-function fallbackTemplateFromTrend(trend: TrendItem, suggestedType?: string): GeminiDraft {
+// Deterministic title cleanup for the LLM-unavailable fallback: transliterate accents
+// (so "Córdoba" -> "Cordoba", not "Crdoba"), keep digits/currency/percent, strip stray
+// symbols, and truncate on a word boundary instead of mid-word.
+function cleanHeadline(text: string, maxLen = 90): string {
+  const normalized = sanitizeFeedText(text)
+    .normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^\p{L}\p{N}\s$%.,:'/-]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (normalized.length <= maxLen) return normalized;
+  const cut = normalized.slice(0, maxLen);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > 24 ? cut.slice(0, lastSpace) : cut).trim();
+}
+
+// Fallback when the LLM pool is exhausted. We can only build a clean, grammatical question
+// deterministically for STRUCTURED trends (templated price markets) and sports fixtures
+// ("X vs Y: status" -> "Will X beat Y?"). A free-form news headline cannot be reframed into a
+// good future question without the LLM, so we return null and skip it rather than ship a
+// broken "Will <headline>?" market.
+function fallbackTemplateFromTrend(trend: TrendItem, suggestedType?: string): GeminiDraft | null {
   const horizon = analyzeMarketHorizon(trend);
   const isPriceRange = trend.marketStructure === 'price-range' && Boolean(trend.outcomeOptions?.length);
   const isPriceTarget = trend.marketStructure === 'price-target';
 
   let title: string;
   let description: string;
+  let rules: string;
+  let type: 'Prediction' | 'Opinion' = suggestedType === 'Opinion' ? 'Opinion' : 'Prediction';
 
-  if (isPriceRange || isPriceTarget) {
-    // Structured crypto markets already carry a complete question as the topic.
-    // Use it verbatim — do NOT append a suffix (that mangled titles previously).
+  if (isPriceRange) {
+    // Structured crypto markets already carry a complete question as the topic. Use it verbatim.
     title = cleanDraftText(trend.topic, trend);
     description = cleanDraftText(trend.query, trend);
+    rules = `Resolve to the single range containing the USD price at the first available source observation at or after close time. Outcomes: ${trend.outcomeOptions?.join('; ')}.`;
+    type = 'Prediction';
+  } else if (isPriceTarget) {
+    title = cleanDraftText(trend.topic, trend);
+    description = cleanDraftText(trend.query, trend);
+    rules = `Resolve YES if the conviction target price is met per the declared source at the first observation at or after close time; otherwise NO.`;
+    type = 'Prediction';
   } else {
-    // News-based trends: generate straightforward question, include headline in description
-    const sanitizedTopic = trend.topic
-      .replace(/[^a-zA-Z0-9\s]/g, '')
-      .slice(0, 60)
-      .trim();
-    title = cleanDraftText(`Will ${sanitizedTopic}?`, trend);
-    description = cleanDraftText(`${trend.topic}. Users are forecasting whether the claim is confirmed by the listed source before the market closes.`, trend);
+    // Sports fixtures arrive as "Home vs Away: <status/score>" — reframe to a clean result question.
+    const fixture = trend.topic.match(/^(.+?)\s+vs\.?\s+(.+?)(?:\s*:.*)?$/i);
+    if (fixture && isFootballBasketballTrend(trend)) {
+      const home = cleanHeadline(fixture[1], 36);
+      const away = cleanHeadline(fixture[2], 36);
+      if (!home || !away) return null;
+      title = `Will ${home} beat ${away}?`;
+      description = cleanDraftText(`${home} face ${away}. YES wins if ${home} win the match; otherwise NO.`, trend);
+      rules = `YES wins if ${home} win the match per the official result at the listed source by close. NO wins on a draw or an ${away} win. Cancel only if the fixture is postponed or cannot be evaluated.`;
+      type = 'Prediction';
+    } else {
+      return null;
+    }
   }
 
   return {
     title,
     description,
-    rules: cleanDraftText(isPriceRange
-      ? `Resolve to the single range containing the USD price at the first available source observation at or after close time. Outcomes: ${trend.outcomeOptions?.join('; ')}.`
-      : isPriceTarget
-      ? `Resolve YES if the conviction target price is met per the declared source at the first observation at or after close time; otherwise NO.`
-      : 'YES wins if the claim is confirmed by the listed source before the close date. NO wins if the source contradicts it or does not confirm it by close. Cancel only if the claim becomes ambiguous or the source cannot be evaluated.', trend),
+    rules: cleanDraftText(rules, trend),
     sourceOfTruth: trend.url ?? trend.source ?? 'Public sources',
     closeDate: trend.closeDate ?? horizon.closeDate,
-    type: (isPriceRange || isPriceTarget) ? 'Prediction' : suggestedType === 'Opinion' ? 'Opinion' : 'Prediction',
+    type,
     outcomeOptions: trend.outcomeOptions,
   };
 }
@@ -1981,7 +2032,12 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
         // Fallback to simple template when all LLM providers fail
         const err = String(e);
         if (err.includes('No LLM provider returned usable JSON')) {
-          draft = fallbackTemplateFromTrend(trend, classification.suggestedMarketType);
+          const template = fallbackTemplateFromTrend(trend, classification.suggestedMarketType);
+          if (!template) {
+            results.push({ ok: false, topic: trend.topic, stage: 'draft', reason: 'LLM providers exhausted and no clean deterministic template for this trend; skipped to avoid a malformed market.' });
+            continue;
+          }
+          draft = template;
           console.warn(`[fallback] Using template for "${trend.topic}" due to LLM provider exhaustion`);
         } else {
           results.push({ ok: false, topic: trend.topic, stage: 'draft', reason: err });
