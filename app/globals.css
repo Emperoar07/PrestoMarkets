@@ -4,7 +4,7 @@
 
 :root {
   color-scheme: dark;
-  --bg-main: #070b15;
+  --bg-main: #080d17;
   --bg-surface: #141e30;
   --bg-surface-2: #0f172a;
   --accent-primary: #25c0f4;
@@ -18,7 +18,7 @@ html {
 
 body {
   min-height: 100vh;
-  background: #070b15;
+  background: #080d17;
   color: #f1f5f9;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
