@@ -62,6 +62,8 @@ export type LiveActionResult = {
   message: string;
   txHash?: Hex;
   marketAddress?: Address;
+  /** True when submitted and finalized on Arc but Circle's indexer is still catching up. */
+  pending?: boolean;
 };
 
 export type CreateLiveMarketInput = {

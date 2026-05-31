@@ -211,13 +211,14 @@ async function runContractExecution(input: {
 
 const PENDING_TAG = '__CIRCLE_PENDING__:';
 
-function pendingResultFromError(err: unknown, label: string): { ok: boolean; message: string; txHash?: `0x${string}` } | null {
+function pendingResultFromError(err: unknown, label: string): { ok: boolean; message: string; txHash?: `0x${string}`; pending?: boolean } | null {
   const msg = err instanceof Error ? err.message : '';
   if (!msg.startsWith(PENDING_TAG)) return null;
   const hashPart = msg.slice(PENDING_TAG.length).trim();
   const hash = hashPart && hashPart !== 'undefined' ? hashPart : '';
   return {
     ok: true,
+    pending: true,
     message: `${label} submitted. Arc confirmation is updating in the background.`,
     txHash: hash ? (hash as `0x${string}`) : undefined,
   };
@@ -521,7 +522,7 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: s
           `amount: ${humanAmount}`,
         ],
       },
-      waitForConfirmation: false,
+      waitForConfirmation: true,
     });
     return { ok: true, message: `Bought ${input.outcome} shares via Circle wallet.`, txHash: txHash as `0x${string}` };
   } catch (error) {
@@ -540,7 +541,7 @@ export async function resolveCircleMarket(input: { marketAddress: string; outcom
       contractAddress: input.marketAddress,
       abiFunctionSignature: 'resolve(uint8,string)',
       abiParameters: [String(input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1)), input.resolutionURI],
-      waitForConfirmation: false,
+      waitForConfirmation: true,
     });
     return { ok: true, message: 'Market resolved via Circle wallet.', txHash: txHash as `0x${string}` };
   } catch (error) {
@@ -559,7 +560,7 @@ async function noArgAction(marketAddress: string, signature: string, label: stri
       contractAddress: marketAddress,
       abiFunctionSignature: signature,
       abiParameters: [],
-      waitForConfirmation: false,
+      waitForConfirmation: true,
     });
     return { ok: true, message: `${label} via Circle wallet.`, txHash: txHash as `0x${string}` };
   } catch (error) {
