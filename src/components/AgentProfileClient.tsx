@@ -23,6 +23,7 @@ type AgentProfile = {
   };
   limits?: Record<string, number>;
   activity?: Record<string, number>;
+  skills?: Array<{ name: string; summary: string }>;
   policy?: Array<{ title: string; summary: string }>;
   demoStory?: string[];
 };
@@ -107,6 +108,22 @@ export function AgentProfileClient() {
             )}
           </div>
         </section>
+
+        {profile?.skills?.length ? (
+          <section className="mt-6">
+            <div className="rounded-[18px] border border-white/[0.06] bg-[#141e30] p-6">
+              <h2 className="text-xl font-black text-white">Reasoning skills</h2>
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                {profile.skills.map((skill) => (
+                  <div key={skill.name} className="rounded-[14px] border border-cyan/15 bg-cyan/[0.04] p-4">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-cyan">{skill.name}</p>
+                    <p className="mt-2 text-sm leading-6 text-muted">{skill.summary}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        ) : null}
       </main>
       <SiteFooter />
     </>

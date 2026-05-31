@@ -917,18 +917,30 @@ function absolutizeUrl(value: string, base: string): string | undefined {
 }
 
 async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined> {
-  if (!trend.imageUrl) return undefined;
+  const candidates = [
+    trend.imageUrl,
+    await fetchArticleImageUrl(trend),
+  ].filter((value): value is string => Boolean(value));
 
+  for (const candidate of candidates) {
+    const image = await validateImageUrl(candidate, trend.topic);
+    if (image) return image;
+  }
+
+  return undefined;
+}
+
+async function validateImageUrl(imageUrl: string, topic: string): Promise<string | undefined> {
   // SSRF protection: validate URL before fetching
-  if (!isSafeHttpUrl(trend.imageUrl)) {
-    logger.warn('agent-pipeline', `Rejected unsafe image URL for ${trend.topic}`);
+  if (!isSafeHttpUrl(imageUrl)) {
+    logger.warn('agent-pipeline', `Rejected unsafe image URL for ${topic}`);
     return undefined;
   }
 
   try {
-    await assertPublicHttpUrl(trend.imageUrl);
+    await assertPublicHttpUrl(imageUrl);
   } catch (err) {
-    logger.warn('agent-pipeline', `Image URL validation failed for ${trend.topic}: ${err instanceof Error ? err.message : String(err)}`);
+    logger.warn('agent-pipeline', `Image URL validation failed for ${topic}: ${err instanceof Error ? err.message : String(err)}`);
     return undefined;
   }
 
@@ -936,7 +948,7 @@ async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined>
   const timeout = setTimeout(() => controller.abort(), 8_000);
 
   try {
-    const res = await fetch(trend.imageUrl, {
+    const res = await fetch(imageUrl, {
       headers: { 'User-Agent': 'PrestoMarketsAgent/1.0' },
       redirect: 'manual',
       signal: controller.signal,
@@ -948,7 +960,7 @@ async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined>
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('Location');
       if (!location || !isSafeHttpUrl(location)) {
-        logger.warn('agent-pipeline', `Rejected redirect for image ${trend.topic}`);
+        logger.warn('agent-pipeline', `Rejected redirect for image ${topic}`);
         return undefined;
       }
       try {
@@ -962,13 +974,67 @@ async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined>
     const blob = await res.blob();
     if (!blob.type.startsWith('image/')) return undefined;
 
-    return trend.imageUrl;
+    return imageUrl;
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
-      logger.warn('agent-pipeline', `Image fetch timeout for ${trend.topic} after 8000ms`);
+      logger.warn('agent-pipeline', `Image fetch timeout for ${topic} after 8000ms`);
       return undefined;
     }
-    logger.error('agent-pipeline', `Image fetch failed for ${trend.topic}`, { error: err instanceof Error ? err.message : String(err) });
+    logger.error('agent-pipeline', `Image fetch failed for ${topic}`, { error: err instanceof Error ? err.message : String(err) });
+    return undefined;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function extractHtmlImage(html: string, baseUrl: string): string | undefined {
+  const patterns = [
+    /<meta\b[^>]*(?:property|name)=["']og:image["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+    /<meta\b[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']og:image["'][^>]*>/i,
+    /<meta\b[^>]*(?:property|name)=["']twitter:image(?::src)?["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+    /<meta\b[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']twitter:image(?::src)?["'][^>]*>/i,
+  ];
+
+  for (const pattern of patterns) {
+    const raw = pattern.exec(html)?.[1]?.trim();
+    if (!raw) continue;
+    const absolute = absolutizeUrl(raw, baseUrl);
+    if (absolute && isSafeHttpUrl(absolute)) return absolute;
+  }
+
+  return undefined;
+}
+
+async function fetchArticleImageUrl(trend: TrendItem): Promise<string | undefined> {
+  if (!trend.url || !isSafeHttpUrl(trend.url)) return undefined;
+
+  try {
+    await assertPublicHttpUrl(trend.url);
+  } catch (err) {
+    logger.warn('agent-pipeline', `Article URL validation failed for image fallback ${trend.topic}: ${err instanceof Error ? err.message : String(err)}`);
+    return undefined;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+
+  try {
+    const res = await fetch(trend.url, {
+      headers: { 'User-Agent': 'PrestoMarketsAgent/1.0' },
+      redirect: 'manual',
+      signal: controller.signal,
+    });
+    if (!res.ok) return undefined;
+    const contentType = res.headers.get('content-type') ?? '';
+    if (!contentType.includes('text/html')) return undefined;
+    const html = await res.text();
+    return extractHtmlImage(html.slice(0, 300_000), trend.url);
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      logger.warn('agent-pipeline', `Article image fallback timeout for ${trend.topic}`);
+      return undefined;
+    }
+    logger.warn('agent-pipeline', `Article image fallback failed for ${trend.topic}`, { error: err instanceof Error ? err.message : String(err) });
     return undefined;
   } finally {
     clearTimeout(timeout);
@@ -1311,6 +1377,14 @@ Presto horizon analysis:
 - Reason: ${horizon.reason}
 - You may choose a different closeDate only when the original source states a more exact date.
 
+Copy rules for readable market writeups:
+- Description must be 2 plain sentences. Sentence 1 explains what happened in human terms.
+  Sentence 2 explains what users are actually forecasting. Do not paste the headline alone.
+- Rules must be bettor-facing and concrete: name the winning condition, the losing condition,
+  the valid source, the deadline, and what happens if the source never confirms the claim.
+- Avoid dense pipe-separated metadata, boilerplate, and vague phrases such as "future developments".
+- Do not mention internal research scores, model names, chain names, gas, liquidity, or platform plumbing.
+
 Rules for a good market:
 - Title must be a clear STRAIGHTFORWARD QUESTION under 90 characters (binary YES/NO OR a multi-option poll)
 - Generate questions like "Will X happen by Y?" or "Will X exceed Y?" — NOT news headlines
@@ -1360,8 +1434,8 @@ Outcome structure — PREFER multi-outcome when the topic is naturally more than
 Return JSON only:
 {
   "title": "straightforward question, not a news headline",
-  "description": "one sentence including the news topic/headline as context",
-  "rules": "Concise resolution rules for each outcome.",
+  "description": "two plain sentences: what happened, then what users are forecasting",
+  "rules": "Concrete settlement rules with YES/NO or outcome conditions, source, deadline, and no-confirmation fallback.",
   "sourceOfTruth": "specific public source (e.g. CoinGecko, official announcement, SEC filing)",
   "closeDate": "YYYY-MM-DD",
   "type": "Prediction|Opinion",
@@ -1435,7 +1509,7 @@ function fallbackTemplateFromTrend(trend: TrendItem, suggestedType?: string): Ge
       .slice(0, 60)
       .trim();
     title = cleanDraftText(`Will ${sanitizedTopic}?`, trend);
-    description = cleanDraftText(`News: ${trend.topic}`, trend);
+    description = cleanDraftText(`${trend.topic}. Users are forecasting whether the claim is confirmed by the listed source before the market closes.`, trend);
   }
 
   return {
@@ -1445,7 +1519,7 @@ function fallbackTemplateFromTrend(trend: TrendItem, suggestedType?: string): Ge
       ? `Resolve to the single range containing the USD price at the first available source observation at or after close time. Outcomes: ${trend.outcomeOptions?.join('; ')}.`
       : isPriceTarget
       ? `Resolve YES if the conviction target price is met per the declared source at the first observation at or after close time; otherwise NO.`
-      : 'YES wins if the event occurs by the close date. NO wins if it does not occur or remains unresolved.', trend),
+      : 'YES wins if the claim is confirmed by the listed source before the close date. NO wins if the source contradicts it or does not confirm it by close. Cancel only if the claim becomes ambiguous or the source cannot be evaluated.', trend),
     sourceOfTruth: trend.url ?? trend.source ?? 'Public sources',
     closeDate: trend.closeDate ?? horizon.closeDate,
     type: (isPriceRange || isPriceTarget) ? 'Prediction' : suggestedType === 'Opinion' ? 'Opinion' : 'Prediction',
@@ -1532,7 +1606,12 @@ async function createOnchain(
         ? 'grok-x-live+groq-llama3+gemini-flash+claude-haiku'
         : 'groq-llama3+gemini-flash+claude-haiku',
       agentConfidence,
-      agentReason: `${classification.reason} | Research: ${research.sourceAudit} | Horizon: ${horizon.reason} | Safety: ${safety.reason}`,
+      agentReason: [
+        classification.reason,
+        `The source check found ${research.sourceAudit.toLowerCase()}.`,
+        `The market closes on a ${horizon.label} horizon because ${horizon.reason.toLowerCase()}.`,
+        `Safety review: ${safety.reason}`,
+      ].join('\n'),
       trendSource: trend.source,
       trendUrl: trend.url,
       momentumScore: Math.round(classification.momentumScore * 100), // stored as 0-100 to match trends route

@@ -81,6 +81,18 @@ async function handleResourceRead(uri: string): Promise<any> {
         'validate_market',
         'create_market',
         'resolve_market',
+        'superpowers_planning',
+        'adhd_divergence',
+      ],
+      skills: [
+        {
+          name: 'Superpowers',
+          summary: 'Plan before drafting, inspect source quality, choose structure, and verify settlement.',
+        },
+        {
+          name: 'ADHD divergence',
+          summary: 'Compare multiple market frames before selecting the clearest writeup.',
+        },
       ],
       version: '1.0.0',
     };

@@ -25,6 +25,17 @@ const statusStyle: Record<MarketStatus, string> = {
 
 const quickAmounts = [10, 25, 100, 500];
 
+function splitAgentReason(reason?: string): string[] {
+  if (!reason?.trim()) {
+    return ['This market was created automatically by the Presto co-admin agent from public trend signals.'];
+  }
+
+  return reason
+    .split(/\s+\|\s+|\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 export function MarketDetailClient({ marketId }: { marketId: string }) {
   const { accountPreviews, connectedWallet, getMarket, isLoadingMarkets, placeTrade, addLiquidity, resolveMarket, cancelMarket, claimMarket, refundMarket } = useAppState();
   const { track } = useTransactions();
@@ -231,11 +242,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
             {/* Meta strip */}
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#8fa0b4]">
-              <span>{market.chain}</span>
-              <span className="text-white/20">·</span>
               <span>{market.volume} Vol.</span>
-              <span className="text-white/20">·</span>
-              <span>{market.liquidity} Liq.</span>
               <span className="text-white/20">·</span>
               <span>
                 Closes in {market.closeDate ? <Countdown closeDate={market.closeDate} /> : market.closeLabel}
@@ -282,7 +289,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
             {/* Description */}
             {market.description ? (
-              <p className="mt-6 text-[15px] leading-[1.8] text-[#94a3b8]">{market.description}</p>
+              <p className="mt-7 max-w-[900px] text-[16px] leading-8 text-[#94a3b8]">{market.description}</p>
             ) : null}
 
             {/* News tie-in: when the market is bound to a trend URL (agent markets carry
@@ -336,10 +343,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             </div>
 
             {/* Stats row */}
-            <div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-3">
               {[
                 { label: 'Volume', value: market.volume },
-                { label: 'Liquidity', value: market.liquidity },
                 { label: 'Closes', value: market.closeLabel },
                 { label: 'Collateral', value: market.collateral },
               ].map((stat) => (
@@ -360,28 +366,21 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   <span className="rounded-full border border-mint/30 bg-mint/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-mint">
                     ✓ Verified Presto oracle
                   </span>
-                ) : (
-                  <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-300">
-                    Unverified resolver
-                  </span>
-                )}
+                ) : null}
               </div>
-              {!market.resolverVerified ? (
-                <p className="mt-3 rounded-[10px] border border-amber-400/25 bg-amber-400/[0.07] px-3 py-2 text-xs leading-5 text-amber-200">
-                  This market is settled by {market.resolverAddress ? `${market.resolverAddress.slice(0, 6)}…${market.resolverAddress.slice(-4)}` : 'an address'} — not the Presto oracle. Whoever holds that address decides the outcome and can pay out the pool to themselves. Only trade what you are willing to trust them to settle fairly.
-                </p>
-              ) : null}
             </div>
 
             {isAgentMarket ? (
-              <div className="mt-4 rounded-[14px] border border-cyan/20 bg-cyan/[0.06] p-5">
+              <div className="mt-6 rounded-[14px] border border-cyan/20 bg-cyan/[0.06] p-6">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
+                  <div className="max-w-[920px]">
                     <p className="text-[10px] font-black uppercase tracking-widest text-cyan">Agent-created market</p>
                     <h2 className="mt-1.5 text-base font-black text-white">{market.agentName || 'Presto Market Agent'}</h2>
-                    <p className="mt-2 text-sm leading-6 text-muted">
-                      {market.agentReason || 'This market was created automatically by the Presto co-admin agent from public trend signals.'}
-                    </p>
+                    <div className="mt-4 space-y-3 text-[15px] leading-7 text-muted">
+                      {splitAgentReason(market.agentReason).map((part, index) => (
+                        <p key={`${part}-${index}`}>{part}</p>
+                      ))}
+                    </div>
                   </div>
                   <span className="rounded-full border border-cyan/25 bg-cyan/10 px-3 py-1 text-xs font-black text-cyan">
                     {market.agentConfidence || 'Confidence logged'}

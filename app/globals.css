@@ -47,7 +47,7 @@ body {
   width: min(720px, 80vw);
   height: 380px;
   transform: translateX(-50%);
-  background: radial-gradient(ellipse, rgba(37, 192, 244, 0.08) 0%, transparent 65%);
+  background: transparent;
   pointer-events: none;
 }
 

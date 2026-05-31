@@ -216,6 +216,7 @@ export interface AgentStatus {
   totalCreated: number;
   lastMarketTime?: string;
   capabilities: string[];
+  skills?: Array<{ name: string; summary: string }>;
   version: string;
 }
 

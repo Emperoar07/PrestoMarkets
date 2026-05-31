@@ -11,6 +11,17 @@ import { getResolveFeeUsdc } from '@/lib/resolveFee';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const agentSkills = [
+  {
+    name: 'Superpowers',
+    summary: 'Plans before drafting, checks source quality, picks the market structure, and verifies how the market will settle.',
+  },
+  {
+    name: 'ADHD divergence',
+    summary: 'Compares trader, skeptic, resolver, and reader frames before choosing the clearest market writeup.',
+  },
+];
+
 function formatStable(value: bigint) {
   return `$${Number(formatUnits(value, 6)).toFixed(2)}`;
 }
@@ -44,6 +55,7 @@ export async function GET() {
     return NextResponse.json({
       ok: false,
       error: 'Agent wallet is not configured.',
+      skills: agentSkills,
       policy: disputePolicy,
       demoStory: grantDemoStory,
     }, { status: 200 });
@@ -93,6 +105,7 @@ export async function GET() {
       resolvedAgentMarkets: agentMarkets.filter((market) => market.status === 'Resolved').length,
       canceledAgentMarkets: agentMarkets.filter((market) => market.status === 'Canceled').length,
     },
+    skills: agentSkills,
     policy: disputePolicy,
     demoStory: grantDemoStory,
   });
