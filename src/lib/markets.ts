@@ -33,6 +33,13 @@ export type Market = {
   resolver: string;
   resolverAddress?: string;
   resolutionMode: ResolutionMode;
+  /**
+   * True only when the on-chain `resolver` address equals the platform's trusted
+   * oracle (NEXT_PUBLIC_MARKET_RESOLVER_ADDRESS). Derived from the on-chain address,
+   * NOT from metadata — a creator can label any market "Agent assisted" in metadata
+   * while naming themselves resolver, so this flag is the real trust signal.
+   */
+  resolverVerified?: boolean;
   sourceOfTruth: string;
   rules: string;
   rulesSchema?: {

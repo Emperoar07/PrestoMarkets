@@ -29,6 +29,15 @@ function truncateAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
+// The platform's trusted oracle address. A market is "verified" only when its on-chain
+// resolver equals this — the displayed resolutionMode comes from metadata and is forgeable,
+// so address identity is the only trustworthy signal of who can settle the pool.
+const TRUSTED_RESOLVER = (process.env.NEXT_PUBLIC_MARKET_RESOLVER_ADDRESS ?? '').trim().toLowerCase();
+
+function isVerifiedResolver(resolver: string): boolean {
+  return TRUSTED_RESOLVER.length > 0 && resolver.toLowerCase() === TRUSTED_RESOLVER;
+}
+
 function getMarketType(kind: number): MarketType {
   if (kind === 1) return 'Opinion';
   if (kind === 2) return 'Opinion';
@@ -175,6 +184,7 @@ async function readMarket(
     chain: 'Arc Testnet',
     resolver: truncateAddress(resolver),
     resolverAddress: resolver,
+    resolverVerified: isVerifiedResolver(resolver),
     resolutionMode: metadata?.resolutionMode || getResolutionMode(kind),
     sourceOfTruth: metadata?.sourceOfTruth || metadataURI || 'Metadata URI was not set at creation.',
     rulesSchema: metadata?.rulesSchema ? {

@@ -335,9 +335,23 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             <div className="mt-6 min-w-0 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
               <h2 className="text-base font-black text-white">Resolution rules</h2>
               <p className="mt-2 break-words text-sm leading-7 text-muted [overflow-wrap:anywhere]">{market.rules}</p>
-              <div className="mt-4 border-t border-white/[0.06] pt-4">
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/[0.06] pt-4">
                 <p className="text-xs text-cyan">{market.resolutionMode}</p>
+                {market.resolverVerified ? (
+                  <span className="rounded-full border border-mint/30 bg-mint/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-mint">
+                    ✓ Verified Presto oracle
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-300">
+                    Unverified resolver
+                  </span>
+                )}
               </div>
+              {!market.resolverVerified ? (
+                <p className="mt-3 rounded-[10px] border border-amber-400/25 bg-amber-400/[0.07] px-3 py-2 text-xs leading-5 text-amber-200">
+                  This market is settled by {market.resolverAddress ? `${market.resolverAddress.slice(0, 6)}…${market.resolverAddress.slice(-4)}` : 'an address'} — not the Presto oracle. Whoever holds that address decides the outcome and can pay out the pool to themselves. Only trade what you are willing to trust them to settle fairly.
+                </p>
+              ) : null}
             </div>
 
             {isAgentMarket ? (
