@@ -5,7 +5,7 @@ import type { Market } from '@/lib/markets';
 import { useAppState } from '@/lib/appState';
 import { getOutcomeColor } from '@/lib/outcomeColors';
 import { estimateParimutuelPayout } from '@/lib/marketUtils';
-import type { StableSymbol } from '@/lib/swap';
+import type { StableSymbol } from '@/lib/walletBalance';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
 
 interface QuickBuyModalProps {

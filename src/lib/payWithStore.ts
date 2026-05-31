@@ -1,4 +1,4 @@
-import type { StableSymbol } from './swap';
+import type { StableSymbol } from './walletBalance';
 
 const KEY_PREFIX = 'presto:payWith:v1:';
 
@@ -10,8 +10,9 @@ export function readPayWith(account: string | undefined, marketId: string): Stab
   if (typeof window === 'undefined' || !account) return null;
   try {
     const raw = window.localStorage.getItem(key(account, marketId));
-    if (raw === 'USDC' || raw === 'EURC') return raw;
-    return null;
+    // USDC-only: a pre-migration 'EURC' value is coerced to USDC so a returning user is
+    // never routed into the removed cross-collateral swap path.
+    return raw === 'USDC' || raw === 'EURC' ? 'USDC' : null;
   } catch {
     return null;
   }

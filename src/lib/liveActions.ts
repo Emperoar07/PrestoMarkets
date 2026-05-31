@@ -22,7 +22,7 @@ import {
   refundCircleMarket,
   resolveCircleMarket,
 } from './circleActions';
-import { executeSwap, type StableSymbol } from './swap';
+import type { StableSymbol } from './walletBalance';
 import { getAgentResolverSelectionError, getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
 import { ARC_READ_BATCH, arcReadTransport, withRpcRetry } from './arcClient';
 
@@ -302,9 +302,6 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
 
 export async function buyLiveShares(input: { marketAddress: string; outcome: string; outcomeIndex?: number; amount: number; payWith?: StableSymbol }): Promise<LiveActionResult> {
   if (isCircleWallet()) {
-    if (input.payWith && input.payWith !== 'USDC') {
-      return { ok: false, message: 'Paying with EURC requires an external EVM wallet. Circle app wallets sign through PIN per call and cannot batch a swap.' };
-    }
     return buyCircleShares(input);
   }
   try {
@@ -322,23 +319,12 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
       throw new Error(`Minimum trade is $${MIN_TRADE_USDC} USDC.`);
     }
 
-    // If the user picked EURC, swap it to USDC first since every market deployed by the factory
-    // settles in USDC at the contract level. Circle's swap response returns estimatedAmount as
-    // a base-units string (e.g. '10800000' for 10.8 USDC) — use BigInt directly, NOT parseUnits.
+    // Every market deployed by the factory settles in USDC at the contract level, and the
+    // app is USDC-only, so trades always spend USDC (6-decimal ERC-20 interface on Arc).
     const marketAddress = input.marketAddress as Address;
     await assertMarketOpenForTrading(publicClient, marketAddress);
 
-    let amount: bigint;
-    if (input.payWith === 'EURC') {
-      const swapResult = await executeSwap({
-        tokenIn: 'EURC',
-        tokenOut: 'USDC',
-        amountIn: String(input.amount),
-      });
-      amount = BigInt(swapResult.amountOut);
-    } else {
-      amount = parseUnits(String(input.amount), 6);
-    }
+    const amount = parseUnits(String(input.amount), 6);
 
     const [balance, allowance] = await Promise.all([
       withRetry(() => publicClient.readContract({
@@ -480,24 +466,15 @@ export async function cancelLiveMarket(marketAddress: string): Promise<LiveActio
 }
 
 /**
- * After a settlement-style call (claim or refund) that pays the user in USDC, swap *only*
- * the delta between pre- and post-USDC balance back to the user's chosen payWith token.
- * The earlier full-balance sweep would have swapped the user's unrelated USDC holdings too.
+ * Settlement-style call (claim or refund). The app is USDC-only, so payouts simply land
+ * in the user's USDC balance — there is no cross-collateral swap-back step.
  */
-async function settleAndMaybeSwapBack(input: {
+async function settleInUsdc(input: {
   marketAddress: Address;
   functionName: 'claim' | 'refund';
-  payWith: StableSymbol | undefined;
   label: string;
 }): Promise<LiveActionResult> {
-  const { account, config, publicClient, walletClient } = await getClients();
-  const wantsSwapBack = input.payWith === 'EURC';
-
-  // Snapshot the user's USDC balance BEFORE the on-chain settle so we can swap exactly the
-  // payout delta, not whatever USDC they had sitting in the wallet.
-  const preBalance = wantsSwapBack
-    ? await publicClient.readContract({ address: config.usdcAddress, abi: erc20Abi, functionName: 'balanceOf', args: [account] })
-    : BigInt(0);
+  const { account, publicClient, walletClient } = await getClients();
 
   const hash = await walletClient.writeContract({
     account,
@@ -507,23 +484,7 @@ async function settleAndMaybeSwapBack(input: {
   });
   await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
 
-  if (!wantsSwapBack) {
-    return { ok: true, message: `${input.label} settled in USDC.`, txHash: hash };
-  }
-
-  try {
-    const postBalance = await publicClient.readContract({ address: config.usdcAddress, abi: erc20Abi, functionName: 'balanceOf', args: [account] });
-    const delta = postBalance > preBalance ? postBalance - preBalance : BigInt(0);
-    if (delta === BigInt(0)) {
-      return { ok: true, message: `${input.label} settled; no USDC payout to swap back.`, txHash: hash };
-    }
-    const human = formatUnits(delta, 6);
-    await executeSwap({ tokenIn: 'USDC', tokenOut: input.payWith!, amountIn: human });
-    return { ok: true, message: `${input.label} settled and swapped to ${input.payWith}.`, txHash: hash };
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : 'swap-back failed';
-    return { ok: true, message: `${input.label} settled in USDC. Swap to ${input.payWith} failed: ${msg}`, txHash: hash };
-  }
+  return { ok: true, message: `${input.label} settled in USDC.`, txHash: hash };
 }
 
 export async function claimLiveMarket(marketAddress: string, payWith?: StableSymbol): Promise<LiveActionResult> {
@@ -532,10 +493,9 @@ export async function claimLiveMarket(marketAddress: string, payWith?: StableSym
     return { ok: false, message: 'Market address is invalid.' };
   }
   try {
-    return await settleAndMaybeSwapBack({
+    return await settleInUsdc({
       marketAddress: marketAddress as Address,
       functionName: 'claim',
-      payWith,
       label: 'Claim',
     });
   } catch (error) {
@@ -549,10 +509,9 @@ export async function refundLiveMarket(marketAddress: string, payWith?: StableSy
     return { ok: false, message: 'Market address is invalid.' };
   }
   try {
-    return await settleAndMaybeSwapBack({
+    return await settleInUsdc({
       marketAddress: marketAddress as Address,
       functionName: 'refund',
-      payWith,
       label: 'Refund',
     });
   } catch (error) {

@@ -6,7 +6,7 @@ import { SiteFooter } from './SiteFooter';
 import { MarketSignalChart } from './MarketSignalChart';
 import { Countdown } from './Countdown';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
-import type { StableSymbol } from '@/lib/swap';
+import type { StableSymbol } from '@/lib/walletBalance';
 import { formatUsd, useAppState } from '@/lib/appState';
 import { agentResolutionGuardrails, buildAgentResolutionPrompt, buildAgentResolutionReport } from '@/lib/agentResolution';
 import type { MarketStatus } from '@/lib/markets';

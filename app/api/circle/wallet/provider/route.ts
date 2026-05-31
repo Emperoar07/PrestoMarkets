@@ -389,6 +389,6 @@ export async function POST(request: Request) {
 
     return jsonError(`Unknown Circle wallet action: ${action}`);
   } catch (error) {
-    return jsonError(error instanceof Error ? error.message : 'Circle wallet request failed.', 501);
+    return jsonError(error instanceof Error ? error.message : 'Circle wallet request failed.', 500);
   }
 }

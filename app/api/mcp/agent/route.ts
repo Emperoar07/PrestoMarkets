@@ -8,6 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { isAddress } from 'viem';
 import {
   MCP_TOOLS,
   MCP_RESOURCES,
@@ -19,10 +20,32 @@ import {
   type ResolutionResponse,
 } from '@/lib/agentMcp';
 import { fetchTrends, classifyTrend, draftWithGemini, safetyCheckWithHaiku, type TrendItem } from '@/lib/agentPipeline';
-import { agentCreateMarket } from '@/lib/agentWallet';
+import { agentCreateMarket, getAgentAddress } from '@/lib/agentWallet';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
+import { sanitizeFeedText } from '@/lib/feedSanitizer';
+import { validateMarketSafety } from '@/lib/marketSafetyValidator';
 import { logger } from '@/lib/logger';
 import { verifyBearer } from '@/lib/authCompare';
+
+// Per-IP rate limit. The bearer token gates access, but a leaked token must not be able to
+// drain LLM/Serper spend or spam onchain market creation unbounded.
+const RL_WINDOW_MS = 60_000;
+const RL_MAX = 20;
+const rlStore = new Map<string, { count: number; resetAt: number }>();
+function rateLimitOk(ip: string): boolean {
+  const now = Date.now();
+  const entry = rlStore.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rlStore.set(ip, { count: 1, resetAt: now + RL_WINDOW_MS });
+    if (rlStore.size > 5_000) {
+      for (const [k, v] of rlStore) if (now > v.resetAt) rlStore.delete(k);
+    }
+    return true;
+  }
+  if (entry.count >= RL_MAX) return false;
+  entry.count++;
+  return true;
+}
 
 /**
  * MCP Resource Handler - returns available resources and their metadata
@@ -162,16 +185,47 @@ async function handleToolCall(name: string, args: Record<string, any>): Promise<
       }
 
       case 'create_market': {
-        const input = {
+        // Same guardrails as the REST /api/agents/markets/create path: a content safety
+        // gate, prompt-injection sanitization of every caller-supplied string that lands
+        // in onchain metadata, and a resolver address that must equal the agent wallet.
+        for (const [field, value] of Object.entries({
           title: args.title,
           description: args.description,
           category: args.category,
           rules: args.rules,
           sourceOfTruth: args.sourceOfTruth,
+        })) {
+          if (typeof value !== 'string' || !value.trim()) {
+            return { success: false, error: `${field} is required.` };
+          }
+        }
+
+        const safety = validateMarketSafety(args.title, args.description, args.rules);
+        if (!safety.ok) {
+          return { success: false, error: `Rejected by safety check: ${safety.reason}` };
+        }
+
+        const resolverAddress = process.env.PRESTO_AGENT_RESOLVER_ADDRESS
+          ?? process.env.NEXT_PUBLIC_MARKET_RESOLVER_ADDRESS;
+        const agentAddress = getAgentAddress();
+        if (!resolverAddress || !isAddress(resolverAddress)) {
+          return { success: false, error: 'PRESTO_AGENT_RESOLVER_ADDRESS must be configured and valid.' };
+        }
+        if (!agentAddress || resolverAddress.toLowerCase() !== agentAddress.toLowerCase()) {
+          return { success: false, error: 'Resolver address must match the configured agent wallet.' };
+        }
+
+        const input = {
+          title: sanitizeFeedText(String(args.title).trim()),
+          description: sanitizeFeedText(String(args.description).trim()),
+          category: String(args.category).trim(),
+          rules: sanitizeFeedText(String(args.rules).trim()),
+          sourceOfTruth: sanitizeFeedText(String(args.sourceOfTruth).trim()),
           closeDate: args.closeDate,
           type: args.type,
-          resolver: 'Presto Agent',
+          resolver: resolverAddress,
           resolutionMode: 'Agent assisted',
+          agentResolverAddress: resolverAddress,
           agent: {
             createdByType: 'agent' as const,
             agentName: 'Presto MCP Agent',
@@ -229,6 +283,12 @@ async function handleToolCall(name: string, args: Record<string, any>): Promise<
  * Requires: Authorization header with bearer token matching MCP_AGENT_TOKEN
  */
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim()
+    ?? req.headers.get('x-real-ip') ?? 'unknown';
+  if (!rateLimitOk(ip)) {
+    return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 });
+  }
+
   // Authenticate using bearer token (constant-time comparison)
   const auth = req.headers.get('authorization') || '';
   const token = process.env.MCP_AGENT_TOKEN;

@@ -29,7 +29,7 @@ import {
 } from './walletProvider';
 import type { Market, MarketType, ResolutionMode } from './markets';
 import type { PortfolioActivity, Position } from './portfolio';
-import type { StableSymbol } from './swap';
+import type { StableSymbol } from './walletBalance';
 import { readPayWith, writePayWith } from './payWithStore';
 
 type OutcomeLabel = string;
