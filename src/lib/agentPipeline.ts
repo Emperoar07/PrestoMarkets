@@ -16,6 +16,7 @@ import { sanitizeFeedText } from './feedSanitizer';
 import { assertPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
 import { logger } from './logger';
 import { assessTrendResearchQuality, formatResearchAssessment, getResearchDecision } from './agentResearch';
+import { formatExaEvidence, researchTrendWithExa, summarizeExaEvidence, type ExaEvidence } from './exaResearch';
 import type { CreateLiveMarketInput } from './liveActions';
 import type { AgentMarketMetadata } from './marketMetadata';
 import type { AppMarket } from './appState';
@@ -33,6 +34,8 @@ export type TrendItem = {
   marketStructure?: 'price-range' | 'price-target';
   /** Epoch ms when the source published this item (parsed from RSS pubDate), if known. */
   publishedAt?: number;
+  /** Server-side Exa evidence bundle used for classification, drafting, and provenance notes. */
+  exaEvidence?: ExaEvidence;
 };
 
 /** Human-readable age of a trend ("3h ago", "2d ago") for prompts/logging. */
@@ -915,6 +918,9 @@ Freshness matters: a story published in the last few hours deserves higher momen
 than a multi-day-old one. If the story is stale (days old) and the event it points to
 has likely already resolved or gone quiet, lower the momentum score accordingly.
 
+Exa grounded evidence:
+${formatExaEvidence(trend.exaEvidence)}
+
 Research audit:
 ${formatResearchAssessment(research, 4)}
 
@@ -1335,6 +1341,30 @@ function isObjectiveNewsTrend(trend: TrendItem): boolean {
   return /\b(sec|doj|court|lawsuit|sues?|sued|charges?|charged|files?|filed|complaint|announces?|announced|plans?|planned|invests?|investment|launches?|launched|resumes?|resumed)\b/.test(text);
 }
 
+function shouldPreferExaPrimaryUrl(trend: TrendItem): boolean {
+  if (!trend.url) return true;
+  const source = trend.source.toLowerCase();
+  if (source.includes('grok') || source.includes('serper') || source.includes('google-news')) return true;
+  try {
+    const host = new URL(trend.url).hostname.toLowerCase();
+    return host.includes('google.') || host.includes('t.co') || host.includes('x.com') || host.includes('twitter.com');
+  } catch {
+    return true;
+  }
+}
+
+async function enrichTrendWithExa(trend: TrendItem): Promise<TrendItem> {
+  const evidence = await researchTrendWithExa(trend);
+  if (!evidence) return trend;
+
+  return {
+    ...trend,
+    url: shouldPreferExaPrimaryUrl(trend) ? evidence.primaryUrl ?? trend.url : trend.url,
+    imageUrl: trend.imageUrl ?? evidence.imageUrl,
+    exaEvidence: evidence,
+  };
+}
+
 function validateDraftQuality(draft: GeminiDraft, trend: TrendItem): string | null {
   const title = draft.title.trim();
   const normalizedTitle = title.toLowerCase();
@@ -1489,6 +1519,9 @@ You are the drafter stage. Create a market from this trend.
 News headline or topic summary: "${trend.topic}"
 News context and details: "${trend.query}"
 Original trend source URL: "${trend.url ?? '(not supplied)'}"
+Exa grounded evidence:
+${formatExaEvidence(trend.exaEvidence)}
+
 Research audit and workflow:
 ${formatResearchAssessment(research)}
 
@@ -1688,6 +1721,7 @@ Rules: "${draft.rules}"
 Source of truth: "${draft.sourceOfTruth}"
 Close date: "${draft.closeDate}"
 Outcomes: "${draft.outcomeOptions?.join(' | ') ?? 'YES | NO'}"
+${trend?.exaEvidence ? `\nExa grounded evidence:\n${formatExaEvidence(trend.exaEvidence)}\n` : ''}
 ${research ? `\nResearch audit:\n${formatResearchAssessment(research, 4)}\n` : ''}
 
 Reject if ANY of:
@@ -1729,6 +1763,7 @@ async function createOnchain(
   const imageURI = await fetchTrendImageURI(trend);
   const horizon = analyzeMarketHorizon(trend);
   const research = assessTrendResearchQuality(trend);
+  const exaSummary = summarizeExaEvidence(trend.exaEvidence);
   const input: MarketDraft = {
     type: draft.type,
     title: draft.title,
@@ -1752,12 +1787,13 @@ async function createOnchain(
       agentConfidence,
       agentReason: [
         classification.reason,
+        exaSummary,
         `The source check found ${research.sourceAudit.toLowerCase()}.`,
         `The market closes on a ${horizon.label} horizon because ${horizon.reason.toLowerCase()}.`,
         `Safety review: ${safety.reason}`,
-      ].join('\n'),
+      ].filter(Boolean).join('\n'),
       trendSource: trend.source,
-      trendUrl: trend.url,
+      trendUrl: trend.exaEvidence?.primaryUrl ?? trend.url,
       momentumScore: Math.round(classification.momentumScore * 100), // stored as 0-100 to match trends route
       safetyScore: Math.round(safety.confidence * 100),              // stored as 0-100 to match trends route
     },
@@ -1846,6 +1882,7 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   // then recency, and spend a bounded classify budget on the strongest, freshest
   // candidates. Override the budget with PRESTO_AGENT_CLASSIFY_CAP.
   const CLASSIFY_CAP = Math.max(6, Number(process.env.PRESTO_AGENT_CLASSIFY_CAP ?? 10));
+  const EXA_RESEARCH_CAP = Math.max(0, Number(process.env.PRESTO_AGENT_EXA_RESEARCH_CAP ?? 6));
   type Scored = { trend: TrendItem; classification: GroqClassification };
   const scored: Scored[] = [];
 
@@ -1857,8 +1894,15 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
     );
 
   let classifyCalls = 0;
-  for (const { trend, research } of preranked) {
+  let exaCalls = 0;
+  for (const item of preranked) {
     try {
+      let trend = item.trend;
+      if (exaCalls < EXA_RESEARCH_CAP) {
+        exaCalls += 1;
+        trend = await enrichTrendWithExa(item.trend);
+      }
+      const research = assessTrendResearchQuality(trend);
       const researchDecision = getResearchDecision(research);
       if (researchDecision.action === 'Pivot' || research.score < MIN_RESEARCH_SCORE) {
         results.push({
@@ -1886,7 +1930,7 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
       }
       scored.push({ trend, classification });
     } catch (e) {
-      results.push({ ok: false, topic: trend.topic, stage: 'classify', reason: String(e) });
+      results.push({ ok: false, topic: item.trend.topic, stage: 'classify', reason: String(e) });
     }
   }
 

@@ -42,6 +42,9 @@ TREND SOURCES YOU READ
   teach concise event framing and common outcome shapes only. They are not evidence, are
   not a resolution source, and their rules must never override the original verified source.
 - Live sports score signals (game outcomes nearing close)
+- Exa grounded research: when EXA_API_KEY is configured, the agent enriches the strongest
+  candidates with fresh search or contents highlights before classification, drafting, and
+  safety review. Use Exa as evidence context and provenance, not as the final oracle.
 
 REFERENCE MARKET DESIGN PLAYBOOK
 - Polymarket-style markets work because the hook is compact, tradable, and measurable:
@@ -147,8 +150,8 @@ RECENT APP CHANGES YOU SHOULD KNOW
 - Portfolio reads are live onchain reads, but cost-basis logs may fall back quickly when
   Arc public RPC is slow. Do not treat a temporary empty portfolio as proof that the user
   never traded.
-- Agent profile and MCP status explicitly list Superpowers and ADHD divergence as reasoning
-  skills, so future integrations can inspect those capabilities.
+- Agent profile and MCP status explicitly list Superpowers, ADHD divergence, Graphify, and
+  Exa research as reasoning skills, so future integrations can inspect those capabilities.
 - Football and basketball sources are prioritized in sports ingestion. Every generated
   agent market should carry an imageURI, using a source image first and the generated
   fallback image only when no source image is available.

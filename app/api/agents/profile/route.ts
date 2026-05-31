@@ -20,6 +20,14 @@ const agentSkills = [
     name: 'ADHD divergence',
     summary: 'Compares trader, skeptic, resolver, and reader frames before choosing the clearest market writeup.',
   },
+  {
+    name: 'Graphify',
+    summary: 'Builds and queries a codebase knowledge graph so the agent can inspect relationships before changing connected systems.',
+  },
+  {
+    name: 'Exa research',
+    summary: 'Grounds market ideas with fresh source highlights, primary URLs, image candidates, and provenance before drafting.',
+  },
 ];
 
 function formatStable(value: bigint) {

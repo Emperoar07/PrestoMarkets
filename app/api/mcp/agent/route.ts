@@ -83,6 +83,8 @@ async function handleResourceRead(uri: string): Promise<any> {
         'resolve_market',
         'superpowers_planning',
         'adhd_divergence',
+        'graphify_knowledge_graph',
+        'exa_grounded_research',
       ],
       skills: [
         {
@@ -92,6 +94,14 @@ async function handleResourceRead(uri: string): Promise<any> {
         {
           name: 'ADHD divergence',
           summary: 'Compare multiple market frames before selecting the clearest writeup.',
+        },
+        {
+          name: 'Graphify',
+          summary: 'Query a codebase knowledge graph before changing related files or reasoning about architecture.',
+        },
+        {
+          name: 'Exa research',
+          summary: 'Use fresh search and source highlights to ground market creation before drafting.',
         },
       ],
       version: '1.0.0',
