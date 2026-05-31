@@ -17,7 +17,7 @@ export function ToastStack() {
   if (entries.length === 0) return null;
 
   return (
-    <div className="pointer-events-none fixed right-4 top-4 z-[100] flex w-[320px] max-w-[calc(100vw-2rem)] flex-col gap-2">
+    <div className="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-[320px] max-w-[calc(100vw-2rem)] flex-col-reverse gap-2">
       {entries.map((entry) => {
         const meta = STAGE_META[entry.stage];
         return (
