@@ -307,7 +307,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return result;
   }, [connectedWallet?.address, refreshAll, schedulePostTransactionRefresh]);
 
-  const getMarket = useCallback((id: string) => markets.find((market) => market.id === id), [markets]);
+  const getMarket = useCallback((id: string) => {
+    const target = id.toLowerCase();
+    return markets.find((market) => market.id.toLowerCase() === target);
+  }, [markets]);
 
   const value = useMemo<AppStateValue>(() => ({
     markets,

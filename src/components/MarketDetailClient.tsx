@@ -26,7 +26,7 @@ const statusStyle: Record<MarketStatus, string> = {
 const quickAmounts = [10, 25, 100, 500];
 
 export function MarketDetailClient({ marketId }: { marketId: string }) {
-  const { accountPreviews, connectedWallet, getMarket, placeTrade, addLiquidity, resolveMarket, cancelMarket, claimMarket, refundMarket } = useAppState();
+  const { accountPreviews, connectedWallet, getMarket, isLoadingMarkets, placeTrade, addLiquidity, resolveMarket, cancelMarket, claimMarket, refundMarket } = useAppState();
   const { track } = useTransactions();
   const market = getMarket(marketId);
   const [selectedOutcome, setSelectedOutcome] = useState('YES');
@@ -89,13 +89,27 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   }
 
   if (!market) {
+    // On a cold load/refresh the onchain markets are still being fetched, so `market` is
+    // momentarily undefined. Show a loading state until the fetch settles, and only then
+    // fall back to "not found" — otherwise a hard refresh of a real market flashes an error.
+    const stillLoading = isLoadingMarkets;
     return (
       <>
         <SiteHeader />
         <main className="mx-auto max-w-[1100px] px-4 pb-16 pt-36 md:px-7 md:pt-40">
           <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-8 text-center">
-            <h1 className="text-3xl font-black text-white">Market not found</h1>
-            <p className="mt-3 text-muted">This market was not returned by the deployed Arc factory.</p>
+            {stillLoading ? (
+              <>
+                <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-white/15 border-t-cyan" aria-hidden />
+                <h1 className="text-3xl font-black text-white">Loading market…</h1>
+                <p className="mt-3 text-muted">Fetching this market from Arc.</p>
+              </>
+            ) : (
+              <>
+                <h1 className="text-3xl font-black text-white">Market not found</h1>
+                <p className="mt-3 text-muted">This market was not returned by the deployed Arc factory.</p>
+              </>
+            )}
           </div>
         </main>
         <SiteFooter />
