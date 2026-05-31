@@ -141,6 +141,14 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const potentialReturn = estimateParimutuelPayout(amountValue, Number(activeOutcome.odds));
   const liquiditySideAmount = amountValue > 0 ? amountValue / market.outcomes.length : 0;
   const canTrade = market.status === 'Open' || market.status === 'Closing soon';
+  // Real grounded-source state for agent markets (replaces the old "Source is private" copy
+  // now that markets are Exa/news-grounded). Prefer the trend URL, fall back to a public
+  // source-of-truth URL; show the host as a link, or "Source pending" when none is available.
+  const groundingUrl = [market.trendUrl, market.sourceOfTruth].find((u) => typeof u === 'string' && /^https?:\/\//i.test(u));
+  const groundingHost = (() => {
+    if (!groundingUrl) return null;
+    try { return new URL(groundingUrl).hostname.replace(/^www\./, ''); } catch { return null; }
+  })();
   const accountPreview = new Map(Object.entries(accountPreviews)).get(market.id);
   const displayedPositionShares = accountPreview?.outcomeShares?.length
     ? accountPreview.outcomeShares
@@ -374,8 +382,12 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
                 <div className="mt-4 grid gap-3 border-t border-white/[0.06] pt-4 md:grid-cols-3">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Source verified</p>
-                    <p className="mt-1.5 text-sm text-white">Source is private</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Source</p>
+                    {groundingHost ? (
+                      <a href={groundingUrl} target="_blank" rel="noopener noreferrer" className="mt-1.5 block break-all text-sm text-cyan hover:opacity-80">{groundingHost} ↗</a>
+                    ) : (
+                      <p className="mt-1.5 text-sm text-white">Source pending</p>
+                    )}
                   </div>
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-muted">Momentum</p>

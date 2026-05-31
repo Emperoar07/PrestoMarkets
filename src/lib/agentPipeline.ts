@@ -1399,6 +1399,12 @@ function validateDraftQuality(draft: GeminiDraft, trend: TrendItem): string | nu
     return 'Draft asks about a past or current fact that should be verified directly instead of opened as a market.';
   }
 
+  // Settlement must be a concrete public URL the auto-resolver can actually read — not prose
+  // like "Primary public sources". Otherwise the market can never be settled deterministically.
+  if (!isSafeHttpUrl(draft.sourceOfTruth)) {
+    return 'Source of truth must be a concrete public http(s) URL the resolver can read, not prose.';
+  }
+
   return null;
 }
 

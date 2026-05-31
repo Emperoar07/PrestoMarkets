@@ -5,6 +5,7 @@ import { verifyApiKey } from '@/lib/authCompare';
 import { getAgentIdentityStatus } from '@/lib/agentIdentity';
 import { sanitizeFeedText } from '@/lib/feedSanitizer';
 import { validateMarketSafety } from '@/lib/marketSafetyValidator';
+import { isSafeHttpUrl } from '@/lib/publicUrl';
 import type { AgentMarketMetadata } from '@/lib/marketMetadata';
 import type { MarketType, ResolutionMode } from '@/lib/markets';
 
@@ -79,6 +80,9 @@ export async function POST(req: NextRequest) {
     assertNonEmpty(body.category, 'category');
     assertNonEmpty(body.rules, 'rules');
     assertNonEmpty(body.sourceOfTruth, 'sourceOfTruth');
+    if (!isSafeHttpUrl(body.sourceOfTruth)) {
+      return NextResponse.json({ error: 'sourceOfTruth must be a concrete public http(s) URL the resolver can read.' }, { status: 400 });
+    }
     assertAgentScores(body.agent);
 
     // Validate market topic is not harmful
