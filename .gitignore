@@ -12,3 +12,9 @@ cache
 artifacts
 
 .vercel
+
+# Agent skill installs (machine-local; managed by `npx skills add` / graphify)
+.agents/skills/
+.claude/
+graphify-out/
+skills-lock.json
