@@ -7,6 +7,7 @@ import { getOutcomeColor } from '@/lib/outcomeColors';
 import { estimateParimutuelPayout } from '@/lib/marketUtils';
 import type { StableSymbol } from '@/lib/walletBalance';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
+import { useTransactions } from '@/lib/transactions';
 
 interface QuickBuyModalProps {
   market: Market & { source?: 'onchain'; closeDate?: string };
@@ -18,6 +19,7 @@ const quickAmounts = [10, 25, 100, 500];
 
 export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModalProps) {
   const { connectedWallet, placeTrade } = useAppState();
+  const { track } = useTransactions();
   const [selectedOutcome, setSelectedOutcome] = useState(initialOutcome);
   const [amount, setAmount] = useState('25');
   const [payWith, setPayWith] = useState<StableSymbol>('USDC');
@@ -85,13 +87,16 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
     setIsSubmitting(true);
     setMessage('Waiting for wallet confirmation...');
     try {
-      const result = await placeTrade({
-        marketId: market.id,
-        outcome: selectedOutcome,
-        outcomeIndex: activeOutcomeIndex,
-        amount: amountValue,
-        payWith
-      });
+      const result = await track(
+        { label: `Buy ${selectedOutcome} · ${unit}${amountValue}` },
+        () => placeTrade({
+          marketId: market.id,
+          outcome: selectedOutcome,
+          outcomeIndex: activeOutcomeIndex,
+          amount: amountValue,
+          payWith
+        }),
+      );
       setMessage(result.message);
       if (result.ok) {
         // Auto close after 2 seconds on success
@@ -272,7 +277,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
           className={`mt-4 w-full rounded-[12px] py-3.5 text-center text-xs font-black uppercase tracking-wider text-ink transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[#1a2436] disabled:text-[#475569]`}
         >
           {!canTrade ? 'Market Closed'
-            : isSubmitting ? 'Submitting...'
+            : isSubmitting ? 'Confirming…'
             : amountValue <= 0 ? 'Enter Amount'
             : `Buy ${selectedOutcome} · ${unit}${amountValue}`}
         </button>
