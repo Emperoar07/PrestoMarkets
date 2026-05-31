@@ -1,4 +1,4 @@
-import { createPublicClient, formatUnits, isAddress, parseEventLogs, parseUnits, type Address, type Hex } from 'viem';
+import { createPublicClient, encodeFunctionData, formatUnits, isAddress, parseEventLogs, parseUnits, type Address, type Hex } from 'viem';
 import { arcTestnet } from 'viem/chains';
 import { getArcConfig } from './arcConfig';
 import { ARC_READ_BATCH, arcReadTransport } from './arcClient';
@@ -488,38 +488,43 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: s
       usdcAddress,
       amount: amountValue,
     });
+    const buyOutcomeIndex = input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1);
+
+    // Batch the (optional) USDC approve + the buy into ONE SCA user-op so the user signs a
+    // single PIN challenge instead of two. Circle runs executeBatch on the wallet's own
+    // address; each leg is [target, nativeValue, calldata]. The proxy allowlist
+    // (circleWalletPolicy.inspectBatch) validates every leg before signing. The signature
+    // string must stay in sync with BATCH_SIGNATURE in circleWalletPolicy.ts.
+    const legs: Array<[string, string, string]> = [];
     if (funding.allowance < amountValue) {
-      await runContractExecution({
-      session,
-      contractAddress: config.usdcAddress!,
-      abiFunctionSignature: 'approve(address,uint256)',
-      abiParameters: [input.marketAddress, amount],
-      refId: `presto-approve-${input.marketAddress}-${Date.now()}`,
-      preview: {
-        label: `Approve USDC for ${input.outcome} buy`,
-        action: `Lets the market contract pull ${humanAmount} from your wallet for this trade. You sign one approval, then the actual buy in the next step.`,
-        amountDisplay: humanAmount,
-        parameters: [
-          `spender: ${input.marketAddress.slice(0, 6)}…${input.marketAddress.slice(-4)}`,
-          `amount: ${humanAmount} (${amount} base units)`,
-        ],
-      },
-      });
+      legs.push([
+        usdcAddress,
+        '0',
+        encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [marketAddress, amountValue] }),
+      ]);
     }
+    legs.push([
+      marketAddress,
+      '0',
+      encodeFunctionData({ abi: prestoMarketAbi, functionName: 'buy', args: [buyOutcomeIndex, amountValue] }),
+    ]);
 
     const txHash = await runContractExecution({
       session,
-      contractAddress: input.marketAddress,
-      abiFunctionSignature: 'buy(uint8,uint256)',
-      abiParameters: [String(input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1)), amount],
+      contractAddress: ownerAddress,
+      abiFunctionSignature: 'executeBatch((address, uint256, bytes)[])',
+      abiParameters: [legs],
       refId: `presto-buy-${input.marketAddress}-${Date.now()}`,
       preview: {
         label: `Buy ${input.outcome} · ${humanAmount}`,
-        action: `Mints ${input.outcome} shares for this market against your approved USDC.`,
+        action: legs.length > 1
+          ? `Approves USDC and buys ${input.outcome} shares in a single signature.`
+          : `Mints ${input.outcome} shares for this market against your approved USDC.`,
         amountDisplay: humanAmount,
         parameters: [
-          `outcome: ${input.outcome} (${input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1)})`,
+          `outcome: ${input.outcome} (${buyOutcomeIndex})`,
           `amount: ${humanAmount}`,
+          legs.length > 1 ? 'one signature: approve + buy' : 'approval already set',
         ],
       },
       waitForConfirmation: true,
