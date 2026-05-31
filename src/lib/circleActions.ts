@@ -610,7 +610,12 @@ export async function resolveCircleMarket(input: { marketAddress: string; outcom
   }
 }
 
-async function noArgAction(marketAddress: string, signature: string, label: string): Promise<LiveActionResult> {
+async function noArgAction(
+  marketAddress: string,
+  signature: string,
+  label: string,
+  confirmOnchain?: () => Promise<boolean>,
+): Promise<LiveActionResult> {
   try {
     const session = await requireSession();
     if (!isAddress(marketAddress)) throw new Error('Market address is invalid.');
@@ -620,6 +625,7 @@ async function noArgAction(marketAddress: string, signature: string, label: stri
       abiFunctionSignature: signature,
       abiParameters: [],
       waitForConfirmation: true,
+      confirmOnchain,
     });
     return { ok: true, message: `${label} via Circle wallet.`, txHash: txHash as `0x${string}` };
   } catch (error) {
@@ -629,6 +635,29 @@ async function noArgAction(marketAddress: string, signature: string, label: stri
   }
 }
 
+// Claim and refund pay USDC out to the caller's own wallet, so we confirm directly from Arc
+// the moment the wallet's USDC balance rises — the same fast-path used for buys — instead of
+// waiting on Circle's slower transaction indexer. (Cancel moves no funds to the caller, so it
+// keeps the default Circle-indexer confirmation.)
+async function settleWithUsdcConfirm(marketAddress: string, signature: string, label: string): Promise<LiveActionResult> {
+  const owner = getStoredConnectedWallet()?.address;
+  const config = getArcConfig();
+  if (owner && isAddress(owner) && config.usdcAddress && isAddress(config.usdcAddress)) {
+    const usdc = config.usdcAddress as Address;
+    const wallet = owner as Address;
+    const client = getPublicClient();
+    const readBalance = () => client.readContract({
+      address: usdc,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [wallet],
+    }) as Promise<bigint>;
+    const balanceBefore = await readBalance().catch(() => BigInt(0));
+    return noArgAction(marketAddress, signature, label, async () => (await readBalance()) > balanceBefore);
+  }
+  return noArgAction(marketAddress, signature, label);
+}
+
 export const cancelCircleMarket = (m: string) => noArgAction(m, 'cancel()', 'Market canceled');
-export const claimCircleMarket = (m: string) => noArgAction(m, 'claim()', 'Claim submitted');
-export const refundCircleMarket = (m: string) => noArgAction(m, 'refund()', 'Refund submitted');
+export const claimCircleMarket = (m: string) => settleWithUsdcConfirm(m, 'claim()', 'Claim submitted');
+export const refundCircleMarket = (m: string) => settleWithUsdcConfirm(m, 'refund()', 'Refund submitted');
