@@ -46,6 +46,20 @@ function trendAgeLabel(trend: TrendItem): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+function isFootballBasketballTrend(trend: TrendItem): boolean {
+  const haystack = `${trend.source} ${trend.topic} ${trend.query}`.toLowerCase();
+  return [
+    'football',
+    'soccer',
+    'basketball',
+    'nba',
+    'premier league',
+    'champions league',
+    'mls',
+    'fifa',
+  ].some((term) => haystack.includes(term));
+}
+
 export type MarketDraft = CreateLiveMarketInput & {
   agent: AgentMarketMetadata;
 };
@@ -511,17 +525,35 @@ async function fetchCryptoPriceSignals(): Promise<TrendItem[]> {
 }
 
 async function fetchSportsTrends(): Promise<TrendItem[]> {
-  return fetchRssTrends({
-    url: 'https://www.espn.com/espn/rss/news',
-    source: 'espn',
-    limit: 3,
-  });
+  const feeds = await Promise.all([
+    fetchRssTrends({
+      url: 'https://www.espn.com/espn/rss/soccer/news',
+      source: 'espn-football',
+      limit: 4,
+    }),
+    fetchRssTrends({
+      url: 'https://www.espn.com/espn/rss/nba/news',
+      source: 'espn-basketball',
+      limit: 4,
+    }),
+    fetchRssTrends({
+      url: 'https://news.google.com/rss/search?q=football%20OR%20soccer%20site:espn.com%20OR%20site:skysports.com&hl=en-US&gl=US&ceid=US:en',
+      source: 'google-football',
+      limit: 3,
+    }),
+    fetchRssTrends({
+      url: 'https://news.google.com/rss/search?q=basketball%20OR%20NBA%20site:espn.com%20OR%20site:nba.com&hl=en-US&gl=US&ceid=US:en',
+      source: 'google-basketball',
+      limit: 3,
+    }),
+  ]);
+
+  return feeds.flat().slice(0, 10);
 }
 
 const sportsDbSports = [
   { sport: 'Soccer', category: 'Football', source: 'thesportsdb-football' },
   { sport: 'Basketball', category: 'Basketball', source: 'thesportsdb-basketball' },
-  { sport: 'Tennis', category: 'Tennis', source: 'thesportsdb-tennis' },
 ] as const;
 
 function formatSportsDbDate(date: Date) {
@@ -573,6 +605,7 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
           query: `${home} (${sport.category}) vs ${away}. Match ${event.strStatus || 'upcoming'}.`,
           source: sport.source,
           url: `https://www.thesportsdb.com/event/${event.idEvent}`,
+          imageUrl: event.strThumb ?? undefined,
         }];
       });
     } catch (err) {
@@ -633,9 +666,10 @@ async function fetchLiveScoreFootballSignals(): Promise<TrendItem[]> {
 }
 
 async function fetchSportDbSignals(): Promise<TrendItem[]> {
+  const year = new Date().getUTCFullYear();
   const endpoints = [
-    { url: 'https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id=133602', source: 'thesportsdb-news', limit: 2 },
-    { url: 'https://www.thesportsdb.com/api/v1/json/3/eventsyear.php?y=2024&s=Soccer', source: 'thesportsdb-upcoming', limit: 3 },
+    { url: `https://www.thesportsdb.com/api/v1/json/3/eventsyear.php?y=${year}&s=Soccer`, source: 'thesportsdb-football-year', limit: 4 },
+    { url: `https://www.thesportsdb.com/api/v1/json/3/eventsyear.php?y=${year}&s=Basketball`, source: 'thesportsdb-basketball-year', limit: 4 },
   ];
 
   const results: TrendItem[] = [];
@@ -660,6 +694,7 @@ async function fetchSportDbSignals(): Promise<TrendItem[]> {
           strAwayTeam?: string;
           intHomeScore?: string | null;
           intAwayScore?: string | null;
+          strThumb?: string | null;
         }>;
       };
 
@@ -673,6 +708,7 @@ async function fetchSportDbSignals(): Promise<TrendItem[]> {
           query: `${home} playing ${away}. Score: ${event.intHomeScore}-${event.intAwayScore}`,
           source: endpoint.source,
           url: `https://www.thesportsdb.com/event/${event.idEvent}`,
+          imageUrl: event.strThumb ?? undefined,
         });
       }
     } catch (err) {
@@ -848,14 +884,14 @@ Return JSON only:
 {
   "worthy": true/false,
   "momentumScore": 0.0-1.0,
-  "category": "Crypto|BTC|ETH|SOL|POL|Sports|Football|Basketball|Tennis|DeFi|AI|Politics|Tech|Markets|Arc|Web3",
+  "category": "Crypto|BTC|ETH|SOL|POL|Sports|Football|Basketball|DeFi|AI|Politics|Tech|Markets|Arc|Web3",
   "categories": ["primary", "secondary", "..."],
   "suggestedMarketType": "Prediction" | "Opinion",
   "reason": "one sentence"
 }
 
 categories: 1-4 tags from the allowlist. Use BTC/ETH/SOL/POL for token-specific price
-markets. Use Football/Basketball/Tennis for sport result markets. First entry equals
+markets. Use Football/Basketball for sport result markets. First entry equals
 "category". Add secondary tags only when genuinely relevant.
 
 suggestedMarketType — pick based on the topic nature:
@@ -916,6 +952,26 @@ function absolutizeUrl(value: string, base: string): string | undefined {
   }
 }
 
+function sportsImageText(trend: TrendItem) {
+  const text = trend.topic
+    .replace(/\bwill\b/gi, '')
+    .replace(/\?/g, '')
+    .trim()
+    .slice(0, 54);
+
+  return text || (isFootballBasketballTrend(trend) ? 'Sports Market' : 'Presto Market');
+}
+
+function generatedMarketImageUrl(trend: TrendItem): string {
+  const isBasketball = /basketball|nba/i.test(`${trend.source} ${trend.topic} ${trend.query}`);
+  const isFootball = /football|soccer|premier league|champions league|mls|fifa/i.test(`${trend.source} ${trend.topic} ${trend.query}`);
+  const bg = isBasketball ? '1a1324' : isFootball ? '081c16' : '0b1322';
+  const fg = isBasketball ? 'f59e0b' : isFootball ? '22c55e' : '25c0f4';
+  const label = encodeURIComponent(sportsImageText(trend));
+
+  return `https://placehold.co/800x450/${bg}/${fg}/png?text=${label}`;
+}
+
 async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined> {
   const candidates = [
     trend.imageUrl,
@@ -927,7 +983,7 @@ async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined>
     if (image) return image;
   }
 
-  return undefined;
+  return generatedMarketImageUrl(trend);
 }
 
 async function validateImageUrl(imageUrl: string, topic: string): Promise<string | undefined> {
@@ -1384,6 +1440,9 @@ Copy rules for readable market writeups:
   the valid source, the deadline, and what happens if the source never confirms the claim.
 - Avoid dense pipe-separated metadata, boilerplate, and vague phrases such as "future developments".
 - Do not mention internal research scores, model names, chain names, gas, liquidity, or platform plumbing.
+- For football or basketball markets, name both teams or the named league/player metric,
+  use the official league/game source as settlement evidence when available, and keep the
+  close date close to the fixture or published decision window.
 
 Rules for a good market:
 - Title must be a clear STRAIGHTFORWARD QUESTION under 90 characters (binary YES/NO OR a multi-option poll)
@@ -1708,7 +1767,7 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   const preranked = trends
     .map((trend) => ({ trend, research: assessTrendResearchQuality(trend) }))
     .sort((a, b) =>
-      (b.research.score - a.research.score) ||
+      ((b.research.score + (isFootballBasketballTrend(b.trend) ? 8 : 0)) - (a.research.score + (isFootballBasketballTrend(a.trend) ? 8 : 0))) ||
       ((b.trend.publishedAt ?? 0) - (a.trend.publishedAt ?? 0)),
     );
 
@@ -1758,7 +1817,10 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   // Sort by momentum desc, take the top half, then weighted-random pick by momentum so
   // the same hot source doesn't always win. This is the "randomize when creating a new
   // market" — same signal floor, but variety across runs.
-  scored.sort((a, b) => b.classification.momentumScore - a.classification.momentumScore);
+  scored.sort((a, b) => (
+    (b.classification.momentumScore + (isFootballBasketballTrend(b.trend) ? 0.08 : 0))
+    - (a.classification.momentumScore + (isFootballBasketballTrend(a.trend) ? 0.08 : 0))
+  ));
   const topPool = scored.slice(0, Math.max(3, Math.ceil(scored.length / 2)));
 
   // Try candidates in pulled-from-pool order until one passes draft + safety + onchain.
@@ -1768,7 +1830,10 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   const pool = [...topPool];
 
   while (createdThisRun < AGENT_PER_RUN_CAP && liveActive < AGENT_ACTIVE_MARKET_CAP && pool.length > 0) {
-    const picked = weightedRandomPick(pool.map((s) => ({ item: s, weight: s.classification.momentumScore })));
+    const picked = weightedRandomPick(pool.map((s) => ({
+      item: s,
+      weight: s.classification.momentumScore + (isFootballBasketballTrend(s.trend) ? 0.08 : 0),
+    })));
     if (!picked) break;
     const idx = pool.indexOf(picked);
     if (idx >= 0) pool.splice(idx, 1);
