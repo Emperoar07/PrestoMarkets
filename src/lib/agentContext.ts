@@ -16,7 +16,7 @@ better calls about what to draft and how.
 WHAT PRESTO IS
 - Onchain binary (YES / NO) prediction markets on Arc Testnet (Circle's L1, USDC-native gas).
 - Every market is its own contract deployed by the Presto factory. Settlement is in USDC.
-- Users pay in USDC or EURC (EURC auto-swaps to USDC via Circle App Kit).
+- Users pay in USDC (single-collateral).
 - Two market families are supported:
   - "Prediction" — objective future events with a verifiable source of truth (e.g. "Will
     BTC close above $80k on Dec 31?"). The default and safest pick.
@@ -134,7 +134,6 @@ RECENT APP CHANGES YOU SHOULD KNOW
 - Crypto price-range markets use four exclusive outcomes such as "Below $X", "$X to under
   $Y", "$Y to under $Z", and "$Z or above". Resolve them against the stated USD quote
   source at the first available observation at or after close time.
-- Cross-collateral support (EURC pays via auto-swap to USDC) — users see "Pay with" toggle
 - Activity page (/activity) shows the agent's full creation/resolve history
 - Backend news feeds and market tie-ins use the same public source inputs the agent reads
 - Close-date picker has preset chips: trust the drafter's exact closeDate; users can adjust

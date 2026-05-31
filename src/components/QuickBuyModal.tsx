@@ -28,7 +28,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
   const modalRef = useRef<HTMLDivElement>(null);
 
   const isCircleWallet = connectedWallet?.mode === 'circle-user-controlled';
-  const unit = payWith === 'EURC' ? 'EURC ' : '$';
+  const unit = '$';
   const isBinaryMarket = market.outcomes.length <= 2;
 
   // Sync stored stable preference

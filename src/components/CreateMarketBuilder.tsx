@@ -38,7 +38,6 @@ export function CreateMarketBuilder() {
   const [imageURI, setImageURI] = useState('');
   const [outcomeStyle, setOutcomeStyle] = useState<'binary' | 'poll'>('binary');
   const [outcomeOptions, setOutcomeOptions] = useState(['YES', 'NO']);
-  const [fundingAsset, setFundingAsset] = useState<'USDC' | 'EURC'>('USDC');
   const [initialLiquidity, setInitialLiquidity] = useState('');
   const [agentAddress, setAgentAddress] = useState<string | null>(null);
   const [showReview, setShowReview] = useState(false);
@@ -46,7 +45,6 @@ export function CreateMarketBuilder() {
   const [statusMessage, setStatusMessage] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<string, string>>>({});
   const [result, setResult] = useState<{ ok: boolean; message: string; txHash?: string; marketAddress?: string } | null>(null);
-  const isCircleWallet = connectedWallet?.mode === 'circle-user-controlled';
   const isAgentAssisted = resolutionMode === 'Agent assisted';
 
   useEffect(() => {
@@ -67,10 +65,6 @@ export function CreateMarketBuilder() {
       setFieldErrors((prev) => ({ ...prev, resolver: '' }));
     }
   }, [isAgentAssisted, agentAddress, resolver]);
-
-  useEffect(() => {
-    if (isCircleWallet && fundingAsset === 'EURC') setFundingAsset('USDC');
-  }, [fundingAsset, isCircleWallet]);
 
   function validateField(name: string, value: string): string {
     if (name === 'title') {

@@ -12,7 +12,6 @@ export function getArcConfig() {
   const chainId = publicEnv(process.env.NEXT_PUBLIC_ARC_CHAIN_ID);
   const rpcUrl = publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_URL) || publicEnv(process.env.ARC_RPC_URL);
   const usdcAddress = publicEnv(process.env.NEXT_PUBLIC_USDC_ADDRESS);
-  const eurcAddress = publicEnv(process.env.NEXT_PUBLIC_EURC_ADDRESS) || '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
   const factoryAddress = publicEnv(process.env.NEXT_PUBLIC_MARKET_FACTORY_ADDRESS);
   const multiOutcomeFactoryAddress = publicEnv(process.env.NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS);
 
@@ -20,7 +19,6 @@ export function getArcConfig() {
     chainId,
     rpcUrl,
     usdcAddress,
-    eurcAddress,
     factoryAddress,
     multiOutcomeFactoryAddress,
     circlePaymasterEnabled: process.env.NEXT_PUBLIC_CIRCLE_PAYMASTER_ENABLED === 'true',

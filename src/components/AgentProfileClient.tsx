@@ -18,7 +18,6 @@ type AgentProfile = {
   };
   treasury?: {
     usdcBalance: string | null;
-    eurcBalance: string | null;
     resolveFee: string;
   };
   limits?: Record<string, number>;

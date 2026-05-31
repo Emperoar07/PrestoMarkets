@@ -80,7 +80,7 @@ export type CreateLiveMarketInput = {
   resolutionMode: string;
   imageURI?: string;
   outcomeOptions?: string[];
-  collateral?: 'USDC' | 'EURC';
+  collateral?: 'USDC';
   agent?: AgentMarketMetadata;
 };
 

@@ -60,7 +60,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const [showRulesSchema, setShowRulesSchema] = useState(false);
   const [payWith, setPayWith] = useState<StableSymbol>('USDC');
   const isCircleWallet = connectedWallet?.mode === 'circle-user-controlled';
-  const unit = payWith === 'EURC' ? 'EURC ' : '$';
+  const unit = '$';
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -555,7 +555,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               <div className="mt-5">
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-black uppercase tracking-widest text-muted">Amount</label>
-                  <span className={`text-[10px] font-black uppercase tracking-widest ${payWith === 'EURC' ? 'text-blue-300' : 'text-muted'}`}>{payWith}</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-muted">{payWith}</span>
                 </div>
                 <input
                   value={amount}

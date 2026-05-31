@@ -30,14 +30,14 @@ export type MarketMetadata = AgentMarketMetadata & {
   rules: string;
   sourceOfTruth: string;
   resolutionMode: ResolutionMode;
-  collateral?: 'USDC' | 'EURC';
+  collateral?: 'USDC';
   rulesSchema?: {
     type: MarketType;
     outcomes: string[];
     sourceOfTruth: string;
     resolverMode: string;
     closeRule: string;
-    settlementAsset: 'USDC' | 'EURC';
+    settlementAsset: 'USDC';
   };
 };
 
@@ -52,7 +52,7 @@ export type BuildMarketMetadataInput = {
   resolutionMode: ResolutionMode | string;
   imageURI?: string;
   outcomeOptions?: string[];
-  collateral?: 'USDC' | 'EURC';
+  collateral?: 'USDC';
   agent?: AgentMarketMetadata;
 };
 

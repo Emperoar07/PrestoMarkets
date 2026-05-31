@@ -70,11 +70,10 @@ export async function GET() {
   }
 
   const config = getArcConfig();
-  const [identity, markets, usdcBalance, eurcBalance] = await Promise.all([
+  const [identity, markets, usdcBalance] = await Promise.all([
     getAgentIdentityStatus().catch(() => null),
     fetchOnchainMarkets({ force: true }).catch(() => []),
     readTokenBalance(agentAddress as Address, config.usdcAddress).catch(() => null),
-    readTokenBalance(agentAddress as Address, config.eurcAddress).catch(() => null),
   ]);
   const agentMarkets = markets.filter((market) => market.createdByType === 'agent');
   const activeAgentMarkets = agentMarkets.filter((market) => market.status === 'Open' || market.status === 'Closing soon');
@@ -97,7 +96,6 @@ export async function GET() {
     },
     treasury: {
       usdcBalance,
-      eurcBalance,
       resolveFee: `$${Number(getResolveFeeUsdc()).toFixed(2)} USDC per agent-assisted market`,
     },
     limits: {

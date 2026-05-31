@@ -45,7 +45,7 @@ export function SiteHeader() {
   const [searchValue, setSearchValue] = useState('');
   const [activeCategory, setActiveCategory] = useState('Trending');
   const [connectedWallet, setConnectedWallet] = useState<ConnectedWallet | null>(null);
-  const [balances, setBalances] = useState<Record<StableSymbol, string | null>>({ USDC: null, EURC: null });
+  const [balances, setBalances] = useState<Record<StableSymbol, string | null>>({ USDC: null });
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -54,14 +54,14 @@ export function SiteHeader() {
   const categoryScrollRef = useRef<HTMLDivElement>(null);
   const loadBalances = useCallback(async () => {
     if (!connectedWallet?.address) {
-      setBalances({ USDC: null, EURC: null });
+      setBalances({ USDC: null });
       return;
     }
 
     try {
       setBalances(await fetchArcStableBalances(connectedWallet.address));
     } catch {
-      setBalances({ USDC: null, EURC: null });
+      setBalances({ USDC: null });
     }
   }, [connectedWallet?.address]);
 
@@ -85,7 +85,7 @@ export function SiteHeader() {
     let cancelled = false;
     async function run() {
       if (!connectedWallet?.address) {
-        setBalances({ USDC: null, EURC: null });
+        setBalances({ USDC: null });
         return;
       }
 
@@ -93,7 +93,7 @@ export function SiteHeader() {
         const nextBalances = await fetchArcStableBalances(connectedWallet.address);
         if (!cancelled) setBalances(nextBalances);
       } catch {
-        if (!cancelled) setBalances({ USDC: null, EURC: null });
+        if (!cancelled) setBalances({ USDC: null });
       }
     }
 

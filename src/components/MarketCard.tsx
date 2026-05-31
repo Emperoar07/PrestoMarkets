@@ -40,7 +40,6 @@ function MarketCardComponent({
   const isClosingSoon = market.status === 'Closing soon';
   const isLive = market.status === 'Open' || isClosingSoon;
   const isResolved = market.status === 'Resolved';
-  const isEurc = market.collateral === 'EURC';
   const isPollMarket = Boolean(market.pollOptions && market.pollOptions.length > 2);
   const isOpinion = market.type === 'Opinion';
 
@@ -181,11 +180,6 @@ function MarketCardComponent({
         <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/[0.04] pt-1.5">
           <span className="text-[10px] font-semibold text-[#475569]">{market.volume} Vol.</span>
           <div className="flex items-center gap-2">
-            {isEurc ? (
-              <span className="rounded-full border border-blue-400/25 bg-blue-400/10 px-1.5 py-0.2 text-[8px] font-black uppercase tracking-wider text-blue-400 shrink-0">
-                {'EURC'}
-              </span>
-            ) : null}
             {isLive ? (
               <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider ${isClosingSoon ? 'text-amber-400 animate-pulse' : 'text-[#475569]'}`}>
                 <span className={`h-1 w-1 rounded-full ${isClosingSoon ? 'bg-amber-400 animate-pulse' : 'bg-red-500'}`} />

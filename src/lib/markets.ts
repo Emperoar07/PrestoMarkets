@@ -28,7 +28,7 @@ export type Market = {
   liquidity: string;
   closeLabel: string;
   status: MarketStatus;
-  collateral: 'USDC' | 'EURC';
+  collateral: 'USDC';
   chain: 'Arc Testnet';
   resolver: string;
   resolverAddress?: string;
@@ -48,7 +48,7 @@ export type Market = {
     sourceOfTruth: string;
     resolverMode: string;
     closeRule: string;
-    settlementAsset: 'USDC' | 'EURC';
+    settlementAsset: 'USDC';
   };
   createdBy: string;
   createdByType?: MarketCreatedByType;
