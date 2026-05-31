@@ -14,8 +14,13 @@ export function BrandMark() {
   return (
     <Link href="/" className="mr-auto flex select-none items-center gap-2.5">
       <LogoMark size={34} />
-      <span className="text-[15px] font-extrabold tracking-tight text-[#f1f5f9]">
-        Presto <span className="text-[#25c0f4]">Markets</span>
+      <span className="flex flex-col leading-none">
+        <span className="text-[15px] font-extrabold tracking-tight text-[#f1f5f9]">
+          Presto <span className="text-[#25c0f4]">Markets</span>
+        </span>
+        <span className="mt-1 w-fit rounded-[4px] border border-[#25c0f4]/30 bg-[#25c0f4]/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-[#67e8f9]">
+          Testnet
+        </span>
       </span>
     </Link>
   );
