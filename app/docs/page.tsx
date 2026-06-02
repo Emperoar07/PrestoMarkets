@@ -19,6 +19,10 @@ const guide = [
     h: 'Track your position',
     p: 'The portfolio and activity pages show your positions, cost basis, claim and refund previews, and the full creation and resolve history, read directly from Arc.',
   },
+  {
+    h: 'Cover institutional workflows',
+    p: 'Beyond consumer questions, the agent favors event-driven and operational markets: macro releases like CPI, central bank rate decisions, GDP and labor data, plus geopolitical and operational risk. Each one is bound to an official or measurable source, never a marketing post, so it stays settleable.',
+  },
 ];
 
 const buildRails = [
@@ -64,7 +68,7 @@ export default function DocsPage() {
         <p className="mt-6 text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Docs</p>
         <h1 className="mt-3 text-[clamp(32px,4vw,46px)] font-black tracking-tight text-white">Presto Markets guide.</h1>
         <p className="mt-4 text-[15px] leading-7 text-muted">
-          Presto Markets is a prediction market app on Arc, Circle&apos;s stablecoin native L1. USDC sits at the center, Circle wallets handle onboarding, and a live agent opens fresh markets every day. The surface stays calm and readable so public signals can be created, traded, and settled with confidence.
+          Presto Markets is an institutional-grade prediction market on Arc, Circle&apos;s stablecoin native L1. USDC is both the unit of account and the gas, every trade is final in under a second, Circle wallets handle onboarding, and a live agent opens fresh markets every day, from consumer questions to event-driven and operational ones like macro releases, rate decisions, and geopolitical risk. The surface stays calm and readable so public signals can be created, traded, and settled with confidence.
         </p>
 
         <section className="mt-12 border-t border-white/[0.06] pt-8">

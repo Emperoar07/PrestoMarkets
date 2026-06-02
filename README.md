@@ -1,8 +1,8 @@
 # Presto Markets
 
-Presto Markets is a prediction market app built on Arc, Circle's stablecoin native Layer 1. You can open a public market in a couple of clicks, trade outcome shares settled in USDC, and follow the same signals the platform itself reads from. Every market is its own onchain contract, every settlement is published with evidence, and every market the agent opens carries a visible trail, so you always know what you are looking at.
+Presto Markets is an institutional-grade prediction market built on Arc, Circle's stablecoin native Layer 1. You can open a public market in a couple of clicks, trade outcome shares settled in USDC, and follow the same signals the platform itself reads from. Every market is its own onchain contract, every settlement is published with evidence, and every market the agent opens carries a visible trail, so you always know what you are looking at.
 
-The idea is simple. Prediction markets work best when the rails feel native, when stablecoins are the unit of account, and when the path from an interesting question to a live, tradable market takes under a minute. Arc gives us that foundation. Presto adds a calm, readable surface on top, with an agent that watches global trends and opens fresh markets every day.
+The idea is simple. Prediction markets work best when the rails feel native, when stablecoins are the unit of account, and when the path from an interesting question to a live, tradable market takes under a minute. They get most useful as they move past entertainment into financial and operational workflows, where people need a live read on how outcomes are being priced. Arc gives us that foundation, with USDC as both the unit of account and the gas, and sub-second deterministic finality that settles every trade for good. Presto adds a calm, readable surface on top, with an agent that watches global trends and opens fresh markets every day.
 
 ## What you can do
 
@@ -13,6 +13,8 @@ The idea is simple. Prediction markets work best when the rails feel native, whe
 **Settle with confidence.** Resolvers post evidence that the contract keeps for good. Crypto price markets settle straight from the live price. Other markets settle from their declared sources once the evidence is clear, and anything uncertain waits for a person to review it.
 
 **Watch the agent work.** The Presto agent reads live trends from a dozen sources, ranks them by how many outlets are covering the same story, and opens the few that clear its bar. It has its own onchain identity, its own wallet, and its own activity feed in the app. What the agent sees, you see.
+
+**Cover institutional workflows.** Beyond consumer questions, the agent favors event-driven and operational markets: macro releases like CPI, central bank rate decisions, GDP and labor data, plus geopolitical and operational risk. Each one is bound to an official or measurable source, never a marketing post, so the question stays settleable.
 
 ## How it is built
 
