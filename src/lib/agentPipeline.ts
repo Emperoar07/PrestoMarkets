@@ -17,6 +17,11 @@ import { assertPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
 import { logger } from './logger';
 import { assessTrendResearchQuality, formatResearchAssessment, getResearchDecision } from './agentResearch';
 import { formatExaEvidence, researchTrendWithExa, summarizeExaEvidence, type ExaEvidence } from './exaResearch';
+import {
+  ARC_ECOSYSTEM_CONTEXT_SUMMARY,
+  getArcEcosystemPriorityBoost,
+  isArcCommunityContextUrl,
+} from './arcEcosystemContext';
 import type { CreateLiveMarketInput } from './liveActions';
 import type { AgentMarketMetadata } from './marketMetadata';
 import type { AppMarket } from './appState';
@@ -61,6 +66,14 @@ function isFootballBasketballTrend(trend: TrendItem): boolean {
     'mls',
     'fifa',
   ].some((term) => haystack.includes(term));
+}
+
+function agentTrendPriorityBoost(trend: TrendItem): number {
+  return (isFootballBasketballTrend(trend) ? 8 : 0) + getArcEcosystemPriorityBoost(trend);
+}
+
+function isAllowedResolutionSourceUrl(value: string | undefined): value is string {
+  return isSafeHttpUrl(value) && !isArcCommunityContextUrl(value);
 }
 
 export type MarketDraft = CreateLiveMarketInput & {
@@ -595,20 +608,36 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
         }>;
       };
 
-      return (data.events ?? []).slice(0, 3).flatMap((event): TrendItem[] => {
+      return (data.events ?? []).slice(0, 10).flatMap((event): TrendItem[] => {
         const home = sanitizeFeedText(event.strHomeTeam || '');
         const away = sanitizeFeedText(event.strAwayTeam || '');
         if (!home || !away) return [];
-        const score = event.intHomeScore && event.intAwayScore
-          ? `${event.intHomeScore}-${event.intAwayScore}`
-          : 'not started';
-        const topic = `${home} vs ${away}: ${score}`;
+
+        // Only open a market on a match that has NOT started yet. A match with a score, a
+        // finished/in-play status, or a kickoff already in the past is decided or underway,
+        // so a market on it is pointless and would mis-close days later.
+        const hasScore = Boolean(event.intHomeScore) && Boolean(event.intAwayScore);
+        const status = (event.strStatus || '').toLowerCase();
+        const finishedOrLive = hasScore || /\b(ft|final|finished|aet|live|1st|2nd|half|in[ -]?play|playing|postp)\b/.test(status);
+        if (finishedOrLive) return [];
+
+        const kickoff = event.strTimestamp
+          ? new Date(event.strTimestamp)
+          : event.dateEvent ? new Date(`${event.dateEvent}T18:00:00Z`) : null;
+        const kickoffMs = kickoff && !Number.isNaN(kickoff.getTime()) ? kickoff.getTime() : null;
+        if (kickoffMs !== null && kickoffMs <= Date.now()) return [];
+
+        // Close ~30 min after a typical match ends (kickoff + ~2.5h) so the market resolves
+        // the same day, right after the result is known.
+        const closeMs = kickoffMs !== null ? kickoffMs + 2.5 * 60 * 60 * 1000 : null;
+
         return [{
-          topic,
+          topic: `${home} vs ${away}`,
           query: `${home} (${sport.category}) vs ${away}. Match ${event.strStatus || 'upcoming'}.`,
           source: sport.source,
           url: `https://www.thesportsdb.com/event/${event.idEvent}`,
           imageUrl: event.strThumb ?? undefined,
+          ...(closeMs !== null ? { closeDate: new Date(closeMs).toISOString() } : {}),
         }];
       });
     } catch (err) {
@@ -921,6 +950,9 @@ has likely already resolved or gone quiet, lower the momentum score accordingly.
 Exa grounded evidence:
 ${formatExaEvidence(trend.exaEvidence)}
 
+Arc ecosystem context:
+${ARC_ECOSYSTEM_CONTEXT_SUMMARY}
+
 Research audit:
 ${formatResearchAssessment(research, 4)}
 
@@ -931,6 +963,9 @@ A good market topic:
 - Is NOT defamatory, hate speech, or about personal harm
 - Has at least a thin path to public evidence. Social/search momentum alone is discovery,
   not settlement evidence.
+- Arc House / community.arc.io content is discovery and ecosystem context only. It can
+  raise priority for Arc-aligned institutional themes, but never counts as settlement
+  evidence.
 
 Return JSON only:
 {
@@ -1538,6 +1573,9 @@ Original trend source URL: "${trend.url ?? '(not supplied)'}"
 Exa grounded evidence:
 ${formatExaEvidence(trend.exaEvidence)}
 
+Arc ecosystem context:
+${ARC_ECOSYSTEM_CONTEXT_SUMMARY}
+
 Research audit and workflow:
 ${formatResearchAssessment(research)}
 
@@ -1597,6 +1635,9 @@ Rules for a good market:
 - Avoid vague hooks like "Will this be big?" Prefer "Will BTC close above $110k on Friday?"
 - Rules must define exactly when each outcome wins
 - Source of truth must be a concrete public http or https URL that the resolver can read
+- Source of truth must not be an Arc House / community.arc.io URL. Those posts are context
+  only; use an official source, price provider, regulator, league, company disclosure, or
+  primary news URL for settlement.
 - Source of truth should satisfy the required evidence in the research audit. If the trend
   came from search/social, rewrite it around the primary source rather than the social post.
 - Description should include the original news topic/headline as context for what sparked the market.
@@ -1676,7 +1717,9 @@ Return JSON only:
   const isStructuredPrice = trend.marketStructure === 'price-range' || trend.marketStructure === 'price-target';
   const sourceOfTruth = isStructuredPrice && trend.url
     ? trend.url
-    : (isSafeHttpUrl(parsed.sourceOfTruth) ? parsed.sourceOfTruth : trend.url ?? parsed.sourceOfTruth);
+    : (isAllowedResolutionSourceUrl(parsed.sourceOfTruth)
+      ? parsed.sourceOfTruth
+      : (isAllowedResolutionSourceUrl(trend.url) ? trend.url : parsed.sourceOfTruth));
 
   const parsedType = parsed.type === 'Opinion' ? 'Opinion' : 'Prediction';
 
@@ -1946,7 +1989,7 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   const preranked = trends
     .map((trend) => ({ trend, research: assessTrendResearchQuality(trend) }))
     .sort((a, b) =>
-      ((b.research.score + (isFootballBasketballTrend(b.trend) ? 8 : 0)) - (a.research.score + (isFootballBasketballTrend(a.trend) ? 8 : 0))) ||
+      ((b.research.score + agentTrendPriorityBoost(b.trend)) - (a.research.score + agentTrendPriorityBoost(a.trend))) ||
       ((b.trend.publishedAt ?? 0) - (a.trend.publishedAt ?? 0)),
     );
 
@@ -2004,8 +2047,8 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   // the same hot source doesn't always win. This is the "randomize when creating a new
   // market" — same signal floor, but variety across runs.
   scored.sort((a, b) => (
-    (b.classification.momentumScore + (isFootballBasketballTrend(b.trend) ? 0.08 : 0))
-    - (a.classification.momentumScore + (isFootballBasketballTrend(a.trend) ? 0.08 : 0))
+    (b.classification.momentumScore + agentTrendPriorityBoost(b.trend) / 100)
+    - (a.classification.momentumScore + agentTrendPriorityBoost(a.trend) / 100)
   ));
   const topPool = scored.slice(0, Math.max(3, Math.ceil(scored.length / 2)));
 
@@ -2018,7 +2061,7 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   while (createdThisRun < AGENT_PER_RUN_CAP && liveActive < AGENT_ACTIVE_MARKET_CAP && pool.length > 0) {
     const picked = weightedRandomPick(pool.map((s) => ({
       item: s,
-      weight: s.classification.momentumScore + (isFootballBasketballTrend(s.trend) ? 0.08 : 0),
+      weight: s.classification.momentumScore + agentTrendPriorityBoost(s.trend) / 100,
     })));
     if (!picked) break;
     const idx = pool.indexOf(picked);
@@ -2062,7 +2105,7 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
         continue;
       }
 
-      if (!isSafeHttpUrl(draft.sourceOfTruth)) {
+      if (!isAllowedResolutionSourceUrl(draft.sourceOfTruth)) {
         results.push({ ok: false, topic: trend.topic, stage: 'source', reason: 'No concrete public source URL was available for resolution.' });
         continue;
       }

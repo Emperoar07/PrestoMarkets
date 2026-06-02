@@ -7,6 +7,7 @@ import {
   createWalletClient,
   http,
   isAddress,
+  parseEventLogs,
   parseUnits,
   type Address,
   type Hex,
@@ -138,8 +139,17 @@ export async function agentCreateMarket(input: CreateLiveMarketInput & { agentRe
       ],
     });
 
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
-    return { ok: true, txHash: hash, resolverAddress: resolver };
+    const receipt = await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    const created = parseEventLogs({
+      abi: useMultiOutcome ? prestoMultiOutcomeMarketFactoryAbi : prestoMarketFactoryAbi,
+      eventName: 'MarketCreated',
+      logs: receipt.logs,
+    })[0] as { args?: { market?: unknown } } | undefined;
+    const marketAddress = typeof created?.args?.market === 'string' && isAddress(created.args.market)
+      ? created.args.market
+      : undefined;
+
+    return { ok: true, txHash: hash, marketAddress, resolverAddress: resolver };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Agent market creation failed.' };
   }
@@ -216,6 +226,10 @@ export async function agentBuyShares(
     if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
     if (!Number.isInteger(outcomeIndex) || outcomeIndex < 0 || outcomeIndex > 11) {
       throw new Error('Outcome index must be between 0 and 11.');
+    }
+    const amountNum = Number(amountUsdc);
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      throw new Error('Buy amount must be a positive USDC number.');
     }
     const { account, publicClient, walletClient } = getClients();
     const config = getArcConfig();

@@ -5,6 +5,17 @@ import { verifyApiKey } from '@/lib/authCompare';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 import { fetchWithX402 } from '@/lib/x402Client';
 
+function clampKellyFraction(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) return 0.5;
+  return Math.min(1, Math.max(0, parsed));
+}
+
+function formatPositiveUsdcAmount(amount: number): string | null {
+  const rounded = Number(amount.toFixed(6));
+  return rounded > 0 ? rounded.toFixed(6) : null;
+}
+
 // GET - return liquidity analysis across markets
 export async function GET(req: NextRequest) {
   const apiKey = req.headers.get('x-api-key');
@@ -143,7 +154,7 @@ export async function POST(req: NextRequest) {
     if (stoaRes.ok) {
       const data = await stoaRes.json();
       if (data.verdict) stoaVerdict = data.verdict.toUpperCase();
-      if (typeof data.kellyFraction === 'number') kellyFraction = data.kellyFraction;
+      if (data.kellyFraction !== undefined) kellyFraction = clampKellyFraction(data.kellyFraction);
     }
   } catch (error) {
     console.error('Stoa x402 analysis failed:', error);
@@ -155,6 +166,7 @@ export async function POST(req: NextRequest) {
   // If PASS or failed, we deploy 50/50.
   let yesAmount = amountNum / 2;
   let noAmount = amountNum / 2;
+  kellyFraction = clampKellyFraction(kellyFraction);
   
   if (stoaVerdict === 'BUY' || stoaVerdict === 'YES') {
     yesAmount = amountNum * kellyFraction;
@@ -164,37 +176,49 @@ export async function POST(req: NextRequest) {
     yesAmount = amountNum * (1 - kellyFraction);
   }
 
-  const yesStr = yesAmount.toFixed(6);
-  const noStr = noAmount.toFixed(6);
-
-  const yesResult = await agentBuyShares(body.marketAddress, 0, yesStr);
-  if (!yesResult.ok) {
-    return NextResponse.json(
-      { error: `YES buy failed (NO not attempted): ${yesResult.error}`, partialSuccess: false },
-      { status: 503 },
-    );
+  const yesStr = formatPositiveUsdcAmount(yesAmount);
+  const noStr = formatPositiveUsdcAmount(noAmount);
+  if (!yesStr && !noStr) {
+    return NextResponse.json({ error: 'amount is too small to buy shares after USDC rounding' }, { status: 400 });
   }
 
-  const noResult = await agentBuyShares(body.marketAddress, 1, noStr);
-  if (!noResult.ok) {
-    return NextResponse.json(
-      {
-        error: `NO buy failed after YES succeeded - agent holds directional YES exposure: ${noResult.error}`,
-        partialSuccess: true,
-        yesTxHash: yesResult.txHash,
-      },
-      { status: 503 },
-    );
+  let yesTxHash: string | undefined;
+  let noTxHash: string | undefined;
+
+  if (yesStr) {
+    const yesResult = await agentBuyShares(body.marketAddress, 0, yesStr);
+    if (!yesResult.ok) {
+      return NextResponse.json(
+        { error: `YES buy failed (NO not attempted): ${yesResult.error}`, partialSuccess: false },
+        { status: 503 },
+      );
+    }
+    yesTxHash = yesResult.txHash;
+  }
+
+  if (noStr) {
+    const noResult = await agentBuyShares(body.marketAddress, 1, noStr);
+    if (!noResult.ok) {
+      return NextResponse.json(
+        {
+          error: `NO buy failed${yesTxHash ? ' after YES succeeded - agent holds directional YES exposure' : ''}: ${noResult.error}`,
+          partialSuccess: Boolean(yesTxHash),
+          yesTxHash,
+        },
+        { status: 503 },
+      );
+    }
+    noTxHash = noResult.txHash;
   }
 
   return NextResponse.json({
     ok: true,
-    yesTxHash: yesResult.txHash,
-    noTxHash: noResult.txHash,
+    yesTxHash,
+    noTxHash,
     marketAddress: body.marketAddress,
     amountUsdc: body.amount,
     note: stoaVerdict
-      ? `Bought ${yesStr} YES and ${noStr} NO based on Stoa's analysis (${stoaVerdict}, Kelly ${kellyFraction})`
+      ? `Bought ${yesStr ?? '0.000000'} YES and ${noStr ?? '0.000000'} NO based on Stoa's analysis (${stoaVerdict}, Kelly ${kellyFraction})`
       : 'Bought YES and NO shares sequentially to provide neutral liquidity depth.',
     poweredBy: 'Presto Agent Wallet - Stoa x402 - Arc Testnet',
   });

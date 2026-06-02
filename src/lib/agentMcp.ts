@@ -250,8 +250,10 @@ export interface ValidationResponse {
 export interface MarketCreationResponse {
   success: boolean;
   marketId: string;
+  marketAddress?: string | null;
   txHash: string;
   url: string;
+  legacyTxMarketId?: string;
   timestamp: string;
 }
 

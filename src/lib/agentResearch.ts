@@ -1,3 +1,5 @@
+import { isArcCommunityContextUrl, isArcInstitutionalMarketTheme } from './arcEcosystemContext';
+
 type TrendLike = {
   topic: string;
   query: string;
@@ -69,6 +71,10 @@ export function assessTrendResearchQuality(trend: TrendLike): TrendResearchAsses
     score = 92;
     requiredEvidence = 'Use the named price API or official price data endpoint, including the asset, quote currency, and observation time.';
     researchPlan = 'Treat the data-provider quote as the primary source, preserve the generated outcome ranges, and avoid editorial news as settlement evidence.';
+  } else if (isArcCommunityContextUrl(trend.url)) {
+    score = 54;
+    requiredEvidence = 'Arc House is ecosystem context only. Find an official data, regulator, company, league, price-provider, or reputable primary news URL before deployment.';
+    researchPlan = 'Use the Arc community post only to identify a promising market area, then pivot settlement to a concrete primary source.';
   } else if (containsAny(source, ['sports', 'espn', 'livescore', 'thesportsdb'])) {
     score = 84;
     requiredEvidence = 'Use the league, team, fixture, or official scoreboard URL that reports the final result.';
@@ -89,6 +95,12 @@ export function assessTrendResearchQuality(trend: TrendLike): TrendResearchAsses
     score = hasUrl ? 70 : 42;
     requiredEvidence = 'Use the article URL for context, and prefer a primary announcement URL when the article references one.';
     researchPlan = 'Extract the concrete claim, avoid vague sentiment, and keep the close date aligned with the event described by the source.';
+  }
+
+  if (!isArcCommunityContextUrl(trend.url) && isArcInstitutionalMarketTheme(trend)) {
+    score = Math.max(score, hasUrl ? 76 : 50);
+    requiredEvidence = 'Prefer official macro data, policy releases, company disclosures, regulator/court records, league sources, price providers, or primary news over ecosystem commentary.';
+    researchPlan = 'Prioritize this Arc-aligned institutional theme only if the exact metric, decision maker, deadline, and settlement URL are concrete.';
   }
 
   const grade: TrendResearchAssessment['grade'] =

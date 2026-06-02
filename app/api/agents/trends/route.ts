@@ -3,6 +3,7 @@ import { createMarketCategories } from '@/lib/categories';
 import { verifyApiKey } from '@/lib/authCompare';
 import type { MarketType } from '@/lib/markets';
 import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
+import { ARC_ECOSYSTEM_CONTEXT_SUMMARY, isArcCommunityContextUrl } from '@/lib/arcEcosystemContext';
 
 type TrendRequest = {
   trendText: string;
@@ -57,6 +58,9 @@ function fallbackDraft(input: TrendRequest): MarketDraft {
   const category = isCreateMarketCategory(input.category)
     ? input.category
     : 'Trending';
+  const sourceOfTruth = input.trendUrl && !isArcCommunityContextUrl(input.trendUrl)
+    ? input.trendUrl
+    : 'Primary public sources linked from the trend, official announcements, or reputable public data sources.';
 
   return {
     type: 'Prediction',
@@ -64,7 +68,7 @@ function fallbackDraft(input: TrendRequest): MarketDraft {
     description: `Agent-created market candidate based on public trend momentum: ${input.trendText.slice(0, 240)}`,
     category,
     rules: 'YES wins if the claim in the trend is confirmed by the listed source of truth before close. NO wins if it is contradicted or not confirmed before close. Cancel if the claim is ambiguous, unverifiable, or materially changes.',
-    sourceOfTruth: input.trendUrl || 'Primary public sources linked from the trend, official announcements, or reputable public data sources.',
+    sourceOfTruth,
     closeInHours: 72,
     agent: {
       agentName: 'Presto Trend Agent',
@@ -93,6 +97,8 @@ async function draftWithGemini(input: TrendRequest): Promise<GeminiMarketDraft |
   const result = await model.generateContent([
     'Create one safe, objective binary prediction market from this trend.',
     'Return only JSON with: title, description, category, rules, sourceOfTruth, closeInHours, momentumScore, safetyScore, confidence, reason.',
+    `Arc ecosystem context: ${ARC_ECOSYSTEM_CONTEXT_SUMMARY}`,
+    'If the trend URL is community.arc.io, treat it as ecosystem context only and choose a non-community sourceOfTruth before auto-creation.',
     `Allowed categories: ${createMarketCategories.join(', ')}`,
     `Trend source: ${input.trendSource || 'X/public trend'}`,
     `Trend URL: ${input.trendUrl || 'none'}`,
@@ -109,6 +115,8 @@ async function classifyWithFallback(input: TrendRequest, draft: MarketDraft) {
     'Return only JSON with safetyScore, momentumScore, duplicateRisk, shouldCreate, reason.',
     JSON.stringify({
       trend: input,
+      arcContext: ARC_ECOSYSTEM_CONTEXT_SUMMARY,
+      sourcePolicy: 'community.arc.io is ecosystem context only and must not be used as final settlement sourceOfTruth.',
       draft: {
         title: draft.title,
         rules: draft.rules,
@@ -184,15 +192,18 @@ export async function POST(req: NextRequest) {
   }
 
   const shouldAutoCreate = draft.agent.momentumScore >= 70 && draft.agent.safetyScore >= 75;
+  const sourceNeedsPrimaryEvidence = isArcCommunityContextUrl(draft.sourceOfTruth);
 
   return NextResponse.json({
     ok: true,
     draft,
-    shouldAutoCreate,
+    shouldAutoCreate: shouldAutoCreate && !sourceNeedsPrimaryEvidence,
     next: {
       endpoint: '/api/agents/markets/create',
       method: 'POST',
-      note: 'Submit this draft to create an agent-badged onchain market. No human approval required when shouldAutoCreate is true.',
+      note: sourceNeedsPrimaryEvidence
+        ? 'Arc community content is context only. Replace sourceOfTruth with an official, primary, or reputable news URL before creating.'
+        : 'Submit this draft to create an agent-badged onchain market. No human approval required when shouldAutoCreate is true.',
     },
   });
 }

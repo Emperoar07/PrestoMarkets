@@ -119,18 +119,28 @@ async function handleListCheckpoints() {
   }
 }
 
+function getGraphRoute(req: NextRequest) {
+  const url = new URL(req.url);
+  const pathSegments = url.pathname.split('/').filter(Boolean);
+  const graphsIndex = pathSegments.indexOf('graphs');
+  const pathGraphId = graphsIndex >= 0 ? pathSegments[graphsIndex + 1] : undefined;
+  const pathAction = graphsIndex >= 0 ? pathSegments[graphsIndex + 2] : undefined;
+  const action = url.searchParams.get('action')?.trim()
+    ?? (pathAction === 'resume' ? 'resume' : pathGraphId);
+  const graphId = url.searchParams.get('graphId')?.trim()
+    ?? (pathAction === 'resume' ? pathGraphId : pathGraphId);
+  return { action, graphId };
+}
+
 export async function POST(req: NextRequest) {
   if (!authenticateRequest(req)) {
     logger.warn('agents-graphs', 'Unauthorized POST request');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const url = new URL(req.url);
-  const pathSegments = url.pathname.split('/').filter(Boolean);
-  const isResume = pathSegments.includes('resume');
-  const graphId = isResume ? pathSegments[pathSegments.indexOf('graphs') + 1] : null;
+  const { action, graphId } = getGraphRoute(req);
 
-  if (isResume && graphId) {
+  if (action === 'resume' && graphId) {
     return handleResume(graphId);
   } else {
     return handleStart(req);
@@ -143,13 +153,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const url = new URL(req.url);
-  const pathSegments = url.pathname.split('/').filter(Boolean);
-  const graphsIndex = pathSegments.indexOf('graphs');
-  const graphId = pathSegments[graphsIndex + 1];
-  const isCheckpoints = pathSegments[graphsIndex + 1] === 'checkpoints';
+  const { action, graphId } = getGraphRoute(req);
 
-  if (isCheckpoints) {
+  if (action === 'checkpoints') {
     return handleListCheckpoints();
   } else if (graphId) {
     return handleGetState(graphId);

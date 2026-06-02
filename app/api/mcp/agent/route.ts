@@ -8,7 +8,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { isAddress } from 'viem';
 import {
   MCP_TOOLS,
   MCP_RESOURCES,
@@ -20,12 +19,11 @@ import {
   type ResolutionResponse,
 } from '@/lib/agentMcp';
 import { fetchTrends, classifyTrend, draftWithGemini, safetyCheckWithHaiku, type TrendItem } from '@/lib/agentPipeline';
-import { agentCreateMarket, getAgentAddress } from '@/lib/agentWallet';
+import { agentCreateMarket } from '@/lib/agentWallet';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
-import { sanitizeFeedText } from '@/lib/feedSanitizer';
-import { validateMarketSafety } from '@/lib/marketSafetyValidator';
 import { logger } from '@/lib/logger';
 import { verifyBearer } from '@/lib/authCompare';
+import { prepareAgentCreateMarketInput } from '@/lib/agentMarketValidation';
 
 // Per-IP rate limit. The bearer token gates access, but a leaked token must not be able to
 // drain LLM/Serper spend or spam onchain market creation unbounded.
@@ -207,62 +205,43 @@ async function handleToolCall(name: string, args: Record<string, any>): Promise<
       }
 
       case 'create_market': {
-        // Same guardrails as the REST /api/agents/markets/create path: a content safety
-        // gate, prompt-injection sanitization of every caller-supplied string that lands
-        // in onchain metadata, and a resolver address that must equal the agent wallet.
-        for (const [field, value] of Object.entries({
-          title: args.title,
-          description: args.description,
-          category: args.category,
-          rules: args.rules,
-          sourceOfTruth: args.sourceOfTruth,
-        })) {
-          if (typeof value !== 'string' || !value.trim()) {
-            return { success: false, error: `${field} is required.` };
-          }
-        }
-
-        const safety = validateMarketSafety(args.title, args.description, args.rules);
-        if (!safety.ok) {
-          return { success: false, error: `Rejected by safety check: ${safety.reason}` };
-        }
-
-        const resolverAddress = process.env.PRESTO_AGENT_RESOLVER_ADDRESS
-          ?? process.env.NEXT_PUBLIC_MARKET_RESOLVER_ADDRESS;
-        const agentAddress = getAgentAddress();
-        if (!resolverAddress || !isAddress(resolverAddress)) {
-          return { success: false, error: 'PRESTO_AGENT_RESOLVER_ADDRESS must be configured and valid.' };
-        }
-        if (!agentAddress || resolverAddress.toLowerCase() !== agentAddress.toLowerCase()) {
-          return { success: false, error: 'Resolver address must match the configured agent wallet.' };
-        }
-
-        const input = {
-          title: sanitizeFeedText(String(args.title).trim()),
-          description: sanitizeFeedText(String(args.description).trim()),
-          category: String(args.category).trim(),
-          rules: sanitizeFeedText(String(args.rules).trim()),
-          sourceOfTruth: sanitizeFeedText(String(args.sourceOfTruth).trim()),
-          closeDate: args.closeDate,
-          type: args.type,
-          resolver: resolverAddress,
-          resolutionMode: 'Agent assisted',
-          agentResolverAddress: resolverAddress,
-          agent: {
-            createdByType: 'agent' as const,
+        // Keep this path on the same safety rail as /api/agents/markets/create.
+        const input = await prepareAgentCreateMarketInput(args as any, {
+          defaultAgent: {
             agentName: 'Presto MCP Agent',
             agentSource: 'mcp',
             agentConfidence: '85%',
+            momentumScore: 85,
+            safetyScore: 85,
           },
-        };
+        });
 
         const result = await agentCreateMarket(input);
+        const marketAddress = result.ok ? result.marketAddress ?? '' : '';
+        const legacyTxMarketId = result.ok ? (result.txHash as string).slice(0, 42) : '';
+        if (result.ok && !marketAddress) {
+          return {
+            success: false,
+            error: 'Market transaction succeeded, but the MarketCreated event did not include a market address. Check the transaction receipt before retrying.',
+            result: {
+              success: false,
+              marketId: '',
+              marketAddress: null,
+              txHash: result.txHash as string,
+              url: '',
+              legacyTxMarketId,
+              timestamp: new Date().toISOString(),
+            } satisfies MarketCreationResponse,
+          };
+        }
 
         const response: MarketCreationResponse = {
           success: result.ok,
-          marketId: result.ok ? (result.txHash as string).slice(0, 42) : '',
+          marketId: marketAddress,
+          marketAddress: marketAddress || null,
           txHash: result.ok ? (result.txHash as string) : '',
-          url: result.ok ? `https://presto-markets.vercel.app/markets/${(result.txHash as string).slice(0, 42)}` : '',
+          url: marketAddress ? `https://presto-markets.vercel.app/markets/${marketAddress}` : '',
+          legacyTxMarketId,
           timestamp: new Date().toISOString(),
         };
 

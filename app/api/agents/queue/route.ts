@@ -242,6 +242,33 @@ async function handleResubmit(requestId: string, req: NextRequest) {
   }
 }
 
+function getPathParts(req: NextRequest, root: string) {
+  const url = new URL(req.url);
+  const pathSegments = url.pathname.split('/').filter(Boolean);
+  const rootIndex = pathSegments.indexOf(root);
+  return {
+    url,
+    first: rootIndex >= 0 ? pathSegments[rootIndex + 1] : undefined,
+    second: rootIndex >= 0 ? pathSegments[rootIndex + 2] : undefined,
+  };
+}
+
+function getPostRoute(req: NextRequest) {
+  const { url, first, second } = getPathParts(req, 'queue');
+  const queryAction = url.searchParams.get('action')?.trim();
+  const queryRequestId = url.searchParams.get('requestId')?.trim();
+  if (queryAction) return { action: queryAction, requestId: queryRequestId };
+  if (second === 'resubmit') return { action: 'resubmit', requestId: first };
+  return { action: first, requestId: queryRequestId ?? first };
+}
+
+function getGetRoute(req: NextRequest) {
+  const { url, first } = getPathParts(req, 'queue');
+  const action = url.searchParams.get('action')?.trim() ?? first;
+  const requestId = url.searchParams.get('requestId')?.trim() ?? (action && action !== 'metrics' && action !== 'dead-letter' ? action : undefined);
+  return { action, requestId };
+}
+
 // POST /api/agents/queue
 export async function POST(req: NextRequest) {
   if (!authenticateRequest(req)) {
@@ -249,11 +276,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const url = new URL(req.url);
-  const pathSegments = url.pathname.split('/').filter(Boolean);
-  const queueIndex = pathSegments.indexOf('queue');
-  const action = pathSegments[queueIndex + 1];
-  const requestId = pathSegments[queueIndex + 1];
+  const { action, requestId } = getPostRoute(req);
 
   if (action === 'enqueue') {
     return handleEnqueue(req);
@@ -276,17 +299,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const url = new URL(req.url);
-  const pathSegments = url.pathname.split('/').filter(Boolean);
-  const queueIndex = pathSegments.indexOf('queue');
-  const action = pathSegments[queueIndex + 1];
+  const { action, requestId } = getGetRoute(req);
 
   if (action === 'metrics') {
     return handleMetrics();
   } else if (action === 'dead-letter') {
     return handleDeadLetterQueue();
-  } else if (action) {
-    return handleGetItem(action);
+  } else if (requestId) {
+    return handleGetItem(requestId);
   } else {
     return handleListItems(req);
   }

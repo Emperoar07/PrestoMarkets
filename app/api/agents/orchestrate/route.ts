@@ -149,6 +149,13 @@ async function handleHealth() {
   }
 }
 
+function getRouteAction(req: NextRequest) {
+  const url = new URL(req.url);
+  const pathSegments = url.pathname.split('/').filter(Boolean);
+  const orchestrateIndex = pathSegments.indexOf('orchestrate');
+  return url.searchParams.get('action')?.trim() ?? pathSegments[orchestrateIndex + 1];
+}
+
 // POST /api/agents/orchestrate
 export async function POST(req: NextRequest) {
   if (!authenticateRequest(req)) {
@@ -156,10 +163,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const url = new URL(req.url);
-  const pathSegments = url.pathname.split('/').filter(Boolean);
-  const orchestrateIndex = pathSegments.indexOf('orchestrate');
-  const action = pathSegments[orchestrateIndex + 1];
+  const action = getRouteAction(req);
 
   if (action === 'process-queue') {
     return handleProcessQueue(req);
@@ -177,10 +181,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const url = new URL(req.url);
-  const pathSegments = url.pathname.split('/').filter(Boolean);
-  const orchestrateIndex = pathSegments.indexOf('orchestrate');
-  const action = pathSegments[orchestrateIndex + 1];
+  const action = getRouteAction(req);
 
   if (action === 'health') {
     return handleHealth();

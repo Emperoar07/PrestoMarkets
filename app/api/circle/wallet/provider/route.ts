@@ -18,6 +18,7 @@ const circleBaseUrl = envClean('CIRCLE_BASE_URL', 'https://api.circle.com');
 const rateLimitWindow = 60_000;
 const rateLimitMax = 80;
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+const sensitiveLimitStore = new Map<string, { count: number; resetAt: number }>();
 
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
@@ -35,6 +36,28 @@ function checkRateLimit(ip: string): boolean {
   entry.count++;
   return true;
 }
+
+function checkSensitiveRateLimit(key: string, max: number, windowMs: number): boolean {
+  const now = Date.now();
+  const entry = sensitiveLimitStore.get(key);
+  if (!entry || now > entry.resetAt) {
+    sensitiveLimitStore.set(key, { count: 1, resetAt: now + windowMs });
+    if (sensitiveLimitStore.size > 20_000) {
+      for (const [storeKey, val] of sensitiveLimitStore) {
+        if (now > val.resetAt) sensitiveLimitStore.delete(storeKey);
+      }
+    }
+    return true;
+  }
+  if (entry.count >= max) return false;
+  entry.count++;
+  return true;
+}
+
+function normalizeLimiterPart(value: string | undefined, fallback = 'unknown') {
+  return (value || fallback).trim().toLowerCase().slice(0, 160);
+}
+
 const arcWalletBlockchain = envClean('CIRCLE_WALLET_BLOCKCHAIN', 'ARC-TESTNET');
 const arcWalletAccountType = envClean('CIRCLE_WALLET_ACCOUNT_TYPE', 'SCA');
 
@@ -218,6 +241,9 @@ export async function POST(request: Request) {
     if (action === 'session') {
       if (!body.userId) return jsonError('userId is required.');
       const hashedUserId = hashUserId(body.userId);
+      if (!checkSensitiveRateLimit(`session:${hashedUserId}:${ip}`, 12, 60_000)) {
+        return jsonError('Too many session token requests. Please wait a minute and try again.', 429);
+      }
 
       return circleFetch('/v1/w3s/users/token', {
         method: 'POST',
@@ -233,6 +259,16 @@ export async function POST(request: Request) {
 
       const isEmailLogin = body.loginMethod === 'email';
       if (isEmailLogin && !body.email) return jsonError('email is required for email login.');
+      const limiterSubject = isEmailLogin
+        ? normalizeLimiterPart(body.email)
+        : normalizeLimiterPart(body.deviceId);
+      const limiterKey = `deviceToken:${body.loginMethod ?? 'social'}:${limiterSubject}:${ip}`;
+      const allowed = isEmailLogin
+        ? checkSensitiveRateLimit(limiterKey, 3, 10 * 60_000)
+        : checkSensitiveRateLimit(limiterKey, 10, 60_000);
+      if (!allowed) {
+        return jsonError('Too many wallet login token requests. Please wait and try again.', 429);
+      }
 
       return circleFetch(isEmailLogin ? '/v1/w3s/users/email/token' : '/v1/w3s/users/social/token', {
         method: 'POST',
