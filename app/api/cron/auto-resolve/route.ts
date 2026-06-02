@@ -26,6 +26,11 @@ type ResolutionResult =
 // independent signal (multi-model agreement, oracle quorum, or a dispute window)
 // rather than a single model's self-attested confidence. See DEVNOTE.md.
 const MIN_AUTO_RESOLVE_CONFIDENCE = 0.85;
+// A market closed longer than this that still can't be confidently resolved is canceled
+// (refunded) instead of parked in "pending manual review" forever, so the agent's active-market
+// cap is never permanently held by unsettleable markets. Permanently-unresolvable cases (no
+// source URL, no outcomes, oracle says CANCEL) are canceled immediately without waiting.
+const FORCE_CANCEL_GRACE_MS = 2 * 60 * 60 * 1000;
 
 type EvidenceResult = {
   snippets: string;
@@ -129,6 +134,28 @@ async function resolveMarket(market: AppMarket): Promise<ResolutionResult> {
     };
   }
 
+  // Cancel-and-refund a market that cannot be confidently resolved, so it always reaches a
+  // terminal state and frees the agent's active-market cap.
+  async function cancelUnresolvable(reason: string): Promise<ResolutionResult> {
+    const cancelResult = await agentCancelMarket(market.id);
+    if (!cancelResult.ok) {
+      return skipResolution(`${reason} Auto-cancel failed: ${cancelResult.error ?? 'unknown error'}.`);
+    }
+    return {
+      ok: true,
+      action: 'canceled',
+      marketId: market.id,
+      title: market.title,
+      outcome: 'CANCEL',
+      txHash: assertNonEmptyString(cancelResult.txHash, 'txHash'),
+      confidence: 1,
+      reason: `${reason} Canceled to refund all participants.`,
+    };
+  }
+
+  const closedMsAgo = market.closeDate ? Date.now() - new Date(market.closeDate).getTime() : Infinity;
+  const pastCancelGrace = closedMsAgo > FORCE_CANCEL_GRACE_MS;
+
   // Deterministic fast-path: settle crypto price-range / conviction (price-target)
   // markets straight from the CoinGecko price — no Serper, no LLM. Falls through to
   // the evidence pipeline when the market isn't a confidently-parseable price market.
@@ -186,19 +213,21 @@ async function resolveMarket(market: AppMarket): Promise<ResolutionResult> {
 
   const declaredSourceUrls = extractSourceUrls(market.sourceOfTruth);
   if (declaredSourceUrls.length === 0) {
-    return skipResolution('Pending manual review: sourceOfTruth has no concrete URL to verify.');
+    // No verifiable URL means it can never be auto-resolved — cancel and refund now.
+    return cancelUnresolvable('No concrete source URL to verify, so this market cannot be settled.');
   }
   const declaredSourceDomains = extractSourceDomains(market.sourceOfTruth);
 
   const { snippets: liveEvidence, sources: searchSources, unavailableReason } = await fetchLiveEvidence(market);
   const hasLiveEvidence = liveEvidence.length > 0 && searchSources.length > 0;
   if (!hasLiveEvidence) {
-    return skipResolution(`Pending manual review: ${unavailableReason ?? 'No live evidence found on declared source-of-truth domains.'}`);
+    const reason = unavailableReason ?? 'No live evidence found on declared source-of-truth domains.';
+    return pastCancelGrace ? cancelUnresolvable(reason) : skipResolution(`Pending: ${reason}`);
   }
 
   const allowedOutcomes = market.outcomes.map((outcome) => outcome.label).filter(Boolean);
   if (allowedOutcomes.length < 2) {
-    return skipResolution('Pending manual review: market outcomes are unavailable for resolution.');
+    return cancelUnresolvable('Market outcomes are unavailable for resolution.');
   }
   const outcomeInstructions = JSON.stringify([...allowedOutcomes, 'CANCEL']);
 
@@ -263,18 +292,16 @@ Return JSON only:
   const confidence = Number(parsed.confidence);
   if (parsed.outcome === 'CANCEL' || !Number.isFinite(confidence) || confidence < MIN_AUTO_RESOLVE_CONFIDENCE) {
     const formattedConfidence = Number.isFinite(confidence) ? confidence.toFixed(2) : 'invalid';
-    return skipResolution(`Pending manual review: oracle did not reach a resolvable confidence threshold (confidence=${formattedConfidence}, outcome=${parsed.outcome}). ${parsed.evidenceSummary}`);
+    const reason = `Oracle did not reach a resolvable confidence threshold (confidence=${formattedConfidence}, outcome=${parsed.outcome}). ${parsed.evidenceSummary}`;
+    // An explicit CANCEL verdict is definitive; low confidence gets the grace window to let
+    // better evidence appear before we cancel.
+    return parsed.outcome === 'CANCEL' || pastCancelGrace ? cancelUnresolvable(reason) : skipResolution(`Pending: ${reason}`);
   }
 
   const derivedIndex = allowedOutcomes.findIndex((outcome) => outcome === parsed.outcome);
   if (derivedIndex < 0) {
-    return {
-      ok: false,
-      action: 'skipped',
-      marketId: market.id,
-      title: market.title,
-      reason: `Oracle returned an unrecognised outcome string "${parsed.outcome}". Allowed outcomes: ${allowedOutcomes.join(', ')}.`,
-    };
+    const reason = `Oracle returned an unrecognised outcome "${parsed.outcome}". Allowed: ${allowedOutcomes.join(', ')}.`;
+    return pastCancelGrace ? cancelUnresolvable(reason) : skipResolution(reason);
   }
 
   const resolutionReport = {
