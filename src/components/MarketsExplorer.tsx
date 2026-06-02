@@ -171,7 +171,7 @@ export function MarketsExplorer() {
   const [searchValue, setSearchValue] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('newest');
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'resolved'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'resolved'>('active');
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -221,8 +221,11 @@ export function MarketsExplorer() {
   }, []);
 
   const filtered = markets.filter((market) => {
+    // Canceled markets are refunded dead-ends — never surface them in the grid.
+    // Refunds stay reachable from the portfolio, so hiding them here is safe.
+    if (market.status === 'Canceled') return false;
     // Status filter
-    if (statusFilter === 'active' && (market.status === 'Closed' || market.status === 'Resolved' || market.status === 'Canceled')) {
+    if (statusFilter === 'active' && (market.status === 'Closed' || market.status === 'Resolved')) {
       return false;
     }
     if (statusFilter === 'resolved' && market.status !== 'Resolved') {
