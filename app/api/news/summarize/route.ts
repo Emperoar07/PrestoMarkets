@@ -9,7 +9,7 @@
 import { NextResponse } from 'next/server';
 import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
 import { sanitizeFeedText } from '@/lib/feedSanitizer';
-import { assertPublicHttpUrl, isSafeHttpUrl } from '@/lib/publicUrl';
+import { assertPublicHttpUrl, fetchPublicHttpUrl, isSafeHttpUrl } from '@/lib/publicUrl';
 
 export const runtime = 'nodejs';
 export const revalidate = 86400;
@@ -100,10 +100,9 @@ export async function POST(req: Request) {
   try {
     let res: Response | null = null;
     for (let i = 0; i <= MAX_REDIRECTS; i++) {
-      res = await fetch(url, {
+      res = await fetchPublicHttpUrl(url, {
         headers: { 'User-Agent': 'PrestoMarketsNewsBot/1.0 (+https://presto-markets.vercel.app)' },
-        next: { revalidate: 86400 },
-        redirect: 'manual',
+        maxBytes: MAX_BODY_BYTES,
       });
       if (![301, 302, 303, 307, 308].includes(res.status)) break;
       const location = res.headers.get('location');

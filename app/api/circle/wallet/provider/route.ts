@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { isAllowedContractExecution } from '@/lib/circleWalletPolicy';
+import { checkFixedWindowRateLimit, getClientIp, hasBrowserOriginSignal, isTrustedBrowserOrigin } from '@/lib/requestGuards';
 import crypto from 'node:crypto';
 
 function hashUserId(rawUserId: string): string {
@@ -21,37 +22,19 @@ const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 const sensitiveLimitStore = new Map<string, { count: number; resetAt: number }>();
 
 function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitStore.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitStore.set(ip, { count: 1, resetAt: now + rateLimitWindow });
-    if (rateLimitStore.size > 10_000) {
-      for (const [key, val] of rateLimitStore) {
-        if (now > val.resetAt) rateLimitStore.delete(key);
-      }
-    }
-    return true;
-  }
-  if (entry.count >= rateLimitMax) return false;
-  entry.count++;
-  return true;
+  return checkFixedWindowRateLimit(rateLimitStore, ip, {
+    max: rateLimitMax,
+    windowMs: rateLimitWindow,
+    maxEntries: 10_000,
+  });
 }
 
 function checkSensitiveRateLimit(key: string, max: number, windowMs: number): boolean {
-  const now = Date.now();
-  const entry = sensitiveLimitStore.get(key);
-  if (!entry || now > entry.resetAt) {
-    sensitiveLimitStore.set(key, { count: 1, resetAt: now + windowMs });
-    if (sensitiveLimitStore.size > 20_000) {
-      for (const [storeKey, val] of sensitiveLimitStore) {
-        if (now > val.resetAt) sensitiveLimitStore.delete(storeKey);
-      }
-    }
-    return true;
-  }
-  if (entry.count >= max) return false;
-  entry.count++;
-  return true;
+  return checkFixedWindowRateLimit(sensitiveLimitStore, key, {
+    max,
+    windowMs,
+    maxEntries: 20_000,
+  });
 }
 
 function normalizeLimiterPart(value: string | undefined, fallback = 'unknown') {
@@ -95,6 +78,8 @@ type CircleErrorBody = {
   code?: string | number;
   errors?: Array<{ message?: string; error?: string; code?: string | number }>;
 };
+
+const browserOriginActions = new Set<CircleAction>(['createUser', 'deviceToken', 'session']);
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -163,37 +148,18 @@ async function circleFetch(path: string, input: RequestInit & { userToken?: stri
   return NextResponse.json(unwrapCircleData(data), { status: response.status });
 }
 
-// Only allow same-origin (or explicitly allowlisted) browser callers. This route relays Circle
-// session / device-token / wallet requests, so blocking cross-site callers stops a third-party
-// page from driving OTP / session quota abuse. Fails OPEN when neither Origin nor Referer is
-// present (server-to-server or some same-origin requests) so it can't break the wallet flow —
-// the route is also rate-limited and user-token-scoped.
+// Reject explicit cross-site browser callers. Login/session actions require a trusted browser
+// origin signal; user-token-scoped actions can still support backend/no-header callers.
+function configuredOrigins() {
+  return [process.env.NEXT_PUBLIC_APP_URL, process.env.VERCEL_URL];
+}
+
 function isAllowedOrigin(request: Request): boolean {
-  const origin = request.headers.get('origin');
-  const referer = request.headers.get('referer');
-  if (!origin && !referer) return true;
-
-  const allowed = new Set<string>(['presto-markets.vercel.app']);
-  const host = request.headers.get('host');
-  if (host) allowed.add(host.toLowerCase());
-  for (const envUrl of [process.env.NEXT_PUBLIC_APP_URL, process.env.VERCEL_URL]) {
-    const value = (envUrl ?? '').trim();
-    if (!value) continue;
-    try { allowed.add(new URL(value.startsWith('http') ? value : `https://${value}`).host.toLowerCase()); } catch { /* ignore */ }
-  }
-
-  try {
-    return allowed.has(new URL(origin || referer || '').host.toLowerCase());
-  } catch {
-    return false;
-  }
+  return !hasBrowserOriginSignal(request.headers) || isTrustedBrowserOrigin(request.headers, configuredOrigins());
 }
 
 export async function POST(request: Request) {
-  const ip =
-    request.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
-    request.headers.get('x-real-ip') ??
-    'unknown';
+  const ip = getClientIp(request.headers);
 
   if (!checkRateLimit(ip)) {
     return jsonError('Too many requests. Please try again later.', 429);
@@ -206,6 +172,10 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({})) as CircleRequestBody;
     const action = body.action || 'config';
+
+    if (browserOriginActions.has(action) && !isTrustedBrowserOrigin(request.headers, configuredOrigins())) {
+      return jsonError('This wallet action requires a same-origin browser request.', 403);
+    }
 
     if (action === 'config') {
       const { appId } = requireCircleConfig();

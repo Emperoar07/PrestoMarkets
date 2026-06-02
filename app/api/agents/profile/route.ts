@@ -6,10 +6,14 @@ import { getArcConfig, getArcChainId } from '@/lib/arcConfig';
 import { erc20Abi } from '@/lib/contracts';
 import { disputePolicy, grantDemoStory } from '@/lib/disputePolicy';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
+import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
 import { getResolveFeeUsdc } from '@/lib/resolveFee';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+const profileRateLimitStore = new Map<string, { count: number; resetAt: number }>();
+const profileCacheHeaders = { 'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=30' };
 
 const agentSkills = [
   {
@@ -57,7 +61,12 @@ async function readTokenBalance(address: Address, token: string | undefined) {
   return formatStable(balance);
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const ip = getClientIp(request.headers);
+  if (!checkFixedWindowRateLimit(profileRateLimitStore, ip, { max: 60, windowMs: 60_000, maxEntries: 5_000 })) {
+    return NextResponse.json({ ok: false, error: 'Too many requests. Please try again later.' }, { status: 429 });
+  }
+
   const agentAddress = getAgentAddress();
   if (!agentAddress || !isAddress(agentAddress)) {
     return NextResponse.json({
@@ -66,13 +75,13 @@ export async function GET() {
       skills: agentSkills,
       policy: disputePolicy,
       demoStory: grantDemoStory,
-    }, { status: 200 });
+    }, { status: 200, headers: profileCacheHeaders });
   }
 
   const config = getArcConfig();
   const [identity, markets, usdcBalance] = await Promise.all([
     getAgentIdentityStatus().catch(() => null),
-    fetchOnchainMarkets({ force: true }).catch(() => []),
+    fetchOnchainMarkets().catch(() => []),
     readTokenBalance(agentAddress as Address, config.usdcAddress).catch(() => null),
   ]);
   const agentMarkets = markets.filter((market) => market.createdByType === 'agent');
@@ -114,5 +123,5 @@ export async function GET() {
     skills: agentSkills,
     policy: disputePolicy,
     demoStory: grantDemoStory,
-  });
+  }, { headers: profileCacheHeaders });
 }

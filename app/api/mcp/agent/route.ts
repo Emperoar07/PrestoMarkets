@@ -115,7 +115,7 @@ async function handleResourceRead(uri: string): Promise<any> {
  * MCP Tool Handler - routes tool calls to appropriate functions
  */
 async function handleToolCall(name: string, args: Record<string, any>): Promise<any> {
-  logger.info('mcp-agent', `Tool called: ${name}`, { args });
+  logger.info('mcp-agent', `Tool called: ${name}`, { argKeys: Object.keys(args ?? {}) });
 
   try {
     switch (name) {
@@ -319,7 +319,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { method, params } = body;
 
-    logger.info('mcp-agent', `MCP request: ${method}`, { params });
+    logger.info('mcp-agent', `MCP request: ${method}`, {
+      hasParams: Boolean(params),
+      paramKeys: params && typeof params === 'object' ? Object.keys(params) : [],
+    });
 
     // MCP protocol methods
     switch (method) {

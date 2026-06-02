@@ -66,9 +66,9 @@ export async function POST(req: NextRequest) {
     // bodies back to the caller.
     let vercelEnvSet = false;
     const vercelToken = process.env.VERCEL_TOKEN;
-    const vercelProjectId = process.env.VERCEL_PROJECT_ID ?? 'prj_MRjpZNy9yykIfO3c4wX344tIldWA';
+    const vercelProjectId = process.env.VERCEL_PROJECT_ID;
     const agentIdIsNumeric = typeof result.agentId === 'string' && /^\d+$/.test(result.agentId);
-    if (vercelToken && agentIdIsNumeric) {
+    if (vercelToken && vercelProjectId && agentIdIsNumeric) {
       try {
         const body = JSON.stringify({ key: 'AGENT_ERC8004_ID', value: result.agentId, type: 'plain', target: ['production', 'preview'] });
         const headers = { 'Authorization': `Bearer ${vercelToken}`, 'Content-Type': 'application/json' };
