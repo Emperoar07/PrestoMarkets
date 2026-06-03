@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
 import { MarketSignalChart } from './MarketSignalChart';
+import { MarketQualityPanel } from './MarketQualityPanel';
 import { Countdown } from './Countdown';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
 import type { StableSymbol } from '@/lib/walletBalance';
@@ -350,6 +351,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               <MarketSignalChart market={market} />
             </div>
 
+            <MarketQualityPanel market={market} />
+
             {/* Resolution rules */}
             <div className="mt-6 min-w-0 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
               <h2 className="text-base font-black text-white">Resolution rules</h2>
@@ -408,9 +411,14 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     <p className="mt-1.5 break-all text-sm text-white">{market.resolverAddress || market.resolver}</p>
                   </div>
                 </div>
-                <a href="/agent" className="ml-0 mt-4 inline-block text-sm font-bold text-cyan hover:opacity-80">
-                  View agent profile
-                </a>
+                <div className="mt-4 flex flex-wrap gap-4">
+                  <a href="/agent" className="inline-block text-sm font-bold text-cyan hover:opacity-80">
+                    View agent profile
+                  </a>
+                  <a href="/calibration" className="inline-block text-sm font-bold text-cyan hover:opacity-80">
+                    Agent calibration →
+                  </a>
+                </div>
               </div>
             ) : null}
 
@@ -475,6 +483,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
               </div>
             ) : null}
+
+            {/* ── Phase 3 mount slot (feature/phase3-social) ──
+                Mount <MarketComments marketId={market.id} /> here — bottom of the left column,
+                so it never collides with <MarketQualityPanel /> at the top. */}
           </section>
 
           {/* ── Right aside — trade panel ── */}
