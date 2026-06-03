@@ -1,13 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { BrandMark } from './BrandMark';
 import { WalletConnectButton } from './WalletConnectButton';
 import { fetchArcStableBalances, type StableSymbol } from '@/lib/walletBalance';
 import { getStoredConnectedWallet, subscribeConnectedWallet, disconnectExternalWallet, type ConnectedWallet } from '@/lib/walletProvider';
-import { primaryViewCategories, topicNavCategories } from '@/lib/categories';
+import { extractMarketCategories, mergeTopicNavCategories, primaryViewCategories } from '@/lib/categories';
+import { useAppState } from '@/lib/appState';
 import { useDisconnect } from 'wagmi';
 
 const dexUrl = process.env.NEXT_PUBLIC_PRESTO_DEX_URL?.trim() || 'https://prestodex-arc.vercel.app';
@@ -51,6 +52,10 @@ export function SiteHeader() {
   const menuRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
   const { disconnect } = useDisconnect();
+  const { markets } = useAppState();
+  // Nav chips are dynamic: curated base categories first, then any categories the live
+  // markets actually use (e.g. agent-coined ones like Space or Gaming) appended.
+  const navCategories = useMemo(() => mergeTopicNavCategories(extractMarketCategories(markets)), [markets]);
   const categoryScrollRef = useRef<HTMLDivElement>(null);
   const loadBalances = useCallback(async () => {
     if (!connectedWallet?.address) {
@@ -438,7 +443,7 @@ export function SiteHeader() {
 
                 <div className="mx-1 h-4 w-px shrink-0 bg-white/[0.1]" />
 
-                {topicNavCategories.map((cat) => (
+                {navCategories.map((cat) => (
                   <button
                     key={cat}
                     type="button"

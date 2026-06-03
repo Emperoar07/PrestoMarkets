@@ -11,6 +11,7 @@ import { SkeletonCard } from './SkeletonCard';
 import { QuickBuyModal } from './QuickBuyModal';
 import { useAppState } from '@/lib/appState';
 import type { AppMarket } from '@/lib/appState';
+import { extractMarketCategories } from '@/lib/categories';
 import { parseVolume, formatVolume } from '@/lib/marketUtils';
 
 type SortKey = 'volume' | 'ending' | 'newest';
@@ -161,6 +162,8 @@ export function MarketsExplorer() {
   const [quickBuyTarget, setQuickBuyTarget] = useState<{ market: any; outcome: string } | null>(null);
 
   const dynamicTopics = useMemo(() => deriveTopics(markets), [markets]);
+  // Categories actually present in the markets, for the "Hide category" filter controls.
+  const hideableCategories = useMemo(() => extractMarketCategories(markets).slice(0, 6), [markets]);
 
   // Reset pill selection if the derived topic no longer exists in updated data
   useEffect(() => {
@@ -387,8 +390,8 @@ export function MarketsExplorer() {
               )}
             </div>
 
-            {/* Hide category checkboxes */}
-            {(['Sports', 'Crypto', 'Earnings'] as const).map((cat) => (
+            {/* Hide category checkboxes — derived from the categories live markets actually use */}
+            {hideableCategories.map((cat) => (
               <label key={cat} className="flex items-center gap-2 px-3 py-2 cursor-pointer rounded-[8px] transition-colors hover:bg-white/[0.04]">
                 <input
                   type="checkbox"
