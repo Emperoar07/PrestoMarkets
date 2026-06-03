@@ -22,10 +22,10 @@ export type AccountStats = {
   marketsTraded: number;
   /** Resolved binary markets this address created where the >50% confidence side won. */
   resolvedCorrect: number;
-  /** Calibration accuracy over the markets this address created (0..1), or null. */
-  accuracy: number | null;
-  /** Brier score over the markets this address created (lower better), or null. */
-  brier: number | null;
+  /** Calibration accuracy over the markets this address created (0..1). 0 when unscored. */
+  accuracy: number;
+  /** Brier score over the markets this address created (lower better). 0 when unscored. */
+  brier: number;
   /** Markets this address created. */
   createdCount: number;
 };
@@ -70,8 +70,8 @@ export async function getAllAccountStats(): Promise<AccountStats[]> {
       realizedPnl: 0,
       marketsTraded: 0,
       resolvedCorrect: calibration.accuracy !== null ? Math.round(calibration.accuracy * calibration.scored) : 0,
-      accuracy: calibration.accuracy,
-      brier: calibration.brier,
+      accuracy: calibration.accuracy ?? 0,
+      brier: calibration.brier ?? 0,
       createdCount: created.length,
     };
   });
@@ -87,8 +87,8 @@ export async function getAccountStats(address: string): Promise<AccountStats> {
       realizedPnl: 0,
       marketsTraded: 0,
       resolvedCorrect: 0,
-      accuracy: null,
-      brier: null,
+      accuracy: 0,
+      brier: 0,
       createdCount: 0,
     }
   );

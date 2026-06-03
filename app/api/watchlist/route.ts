@@ -1,0 +1,78 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
+import { addWatchlistItem, listWatchlist, removeWatchlistItem } from '@/lib/socialDb';
+import { getSocialSession } from '@/lib/socialSession';
+import { normalizeMarketId } from '@/lib/socialValidation';
+
+const watchlistRateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+async function readMarketId(request: NextRequest): Promise<string | null> {
+  let body: { marketId?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return null;
+  }
+  return normalizeMarketId(body.marketId);
+}
+
+export async function GET(request: NextRequest) {
+  const session = getSocialSession(request);
+  if (!session) return NextResponse.json({ error: 'Sign in is required.' }, { status: 401 });
+
+  try {
+    const items = await listWatchlist(session.address);
+    return NextResponse.json({ items });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Watchlist is unavailable.' },
+      { status: 503 },
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const ip = getClientIp(request.headers);
+  if (!checkFixedWindowRateLimit(watchlistRateLimitStore, ip, { max: 30, windowMs: 60_000, maxEntries: 5_000 })) {
+    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+  }
+
+  const session = getSocialSession(request);
+  if (!session) return NextResponse.json({ error: 'Sign in is required.' }, { status: 401 });
+
+  const marketId = await readMarketId(request);
+  if (!marketId) return NextResponse.json({ error: 'Valid marketId is required.' }, { status: 400 });
+
+  try {
+    const item = await addWatchlistItem(session.address, marketId);
+    return NextResponse.json({ item }, { status: 201 });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Watchlist item could not be saved.' },
+      { status: 503 },
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const ip = getClientIp(request.headers);
+  if (!checkFixedWindowRateLimit(watchlistRateLimitStore, ip, { max: 30, windowMs: 60_000, maxEntries: 5_000 })) {
+    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+  }
+
+  const session = getSocialSession(request);
+  if (!session) return NextResponse.json({ error: 'Sign in is required.' }, { status: 401 });
+
+  const marketId = await readMarketId(request);
+  if (!marketId) return NextResponse.json({ error: 'Valid marketId is required.' }, { status: 400 });
+
+  try {
+    await removeWatchlistItem(session.address, marketId);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Watchlist item could not be removed.' },
+      { status: 503 },
+    );
+  }
+}

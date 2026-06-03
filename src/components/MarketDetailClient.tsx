@@ -6,6 +6,8 @@ import { SiteFooter } from './SiteFooter';
 import { MarketSignalChart } from './MarketSignalChart';
 import { MarketQualityPanel } from './MarketQualityPanel';
 import { Countdown } from './Countdown';
+import { AlertPrefsControl } from './AlertPrefsControl';
+import { MarketComments } from './MarketComments';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
 import type { StableSymbol } from '@/lib/walletBalance';
 import { formatUsd, useAppState } from '@/lib/appState';
@@ -946,6 +948,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
           </aside>
 
         </div>
+        <AlertPrefsControl marketId={marketId} />
+        <MarketComments marketId={marketId} />
       </main>
       <SiteFooter />
     </>

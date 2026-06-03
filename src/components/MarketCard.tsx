@@ -7,6 +7,7 @@ import { getOutcomeColor } from '@/lib/outcomeColors';
 import { useAppState } from '@/lib/appState';
 import { prefetchMarketDetail } from '@/lib/marketPrefetch';
 import { Countdown } from './Countdown';
+import { WatchlistButton } from './WatchlistButton';
 
 function generateSparklinePath(marketId: string, odds: number): string {
   const seed = marketId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -180,6 +181,7 @@ function MarketCardComponent({
         <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/[0.04] pt-1.5">
           <span className="text-[10px] font-semibold text-[#475569]">{market.volume} Vol.</span>
           <div className="flex items-center gap-2">
+            <WatchlistButton marketId={market.id} />
             {isLive ? (
               <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider ${isClosingSoon ? 'text-amber-400 animate-pulse' : 'text-[#475569]'}`}>
                 <span className={`h-1 w-1 rounded-full ${isClosingSoon ? 'bg-amber-400 animate-pulse' : 'bg-red-500'}`} />

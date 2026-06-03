@@ -1,0 +1,70 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
+import { createComment, listComments } from '@/lib/socialDb';
+import { getSocialSession } from '@/lib/socialSession';
+import { normalizeMarketId, sanitizeCommentBody } from '@/lib/socialValidation';
+
+const commentWriteRateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const marketId = normalizeMarketId(id);
+  if (!marketId) {
+    return NextResponse.json({ error: 'Valid market id is required.' }, { status: 400 });
+  }
+
+  try {
+    const comments = await listComments(marketId);
+    return NextResponse.json({ comments });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Comments are unavailable.' },
+      { status: 503 },
+    );
+  }
+}
+
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ip = getClientIp(request.headers);
+  if (!checkFixedWindowRateLimit(commentWriteRateLimitStore, ip, { max: 12, windowMs: 60_000, maxEntries: 5_000 })) {
+    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+  }
+
+  const session = getSocialSession(request);
+  if (!session) {
+    return NextResponse.json({ error: 'Sign in is required.' }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const marketId = normalizeMarketId(id);
+  if (!marketId) {
+    return NextResponse.json({ error: 'Valid market id is required.' }, { status: 400 });
+  }
+
+  let body: { body?: string; parentId?: number | null };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+  }
+
+  const commentBody = sanitizeCommentBody(body.body);
+  if (!commentBody) {
+    return NextResponse.json({ error: 'Comment body is required.' }, { status: 400 });
+  }
+
+  try {
+    const comment = await createComment({
+      marketId,
+      authorAddress: session.address,
+      body: commentBody,
+      parentId: typeof body.parentId === 'number' ? body.parentId : null,
+    });
+    return NextResponse.json({ comment }, { status: 201 });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Comment could not be saved.' },
+      { status: 503 },
+    );
+  }
+}
