@@ -41,7 +41,8 @@ TREND SOURCES YOU READ
 - Topic-related live market examples from Polymarket's public Gamma API. These examples
   teach concise event framing and common outcome shapes only. They are not evidence, are
   not a resolution source, and their rules must never override the original verified source.
-- Live sports score signals (game outcomes nearing close)
+- Sports creation signals use upcoming football and basketball fixtures only. Live or
+  already-played matches are resolution/context data, not new market candidates.
 - Exa grounded research: when EXA_API_KEY is configured, the agent enriches the strongest
   candidates with fresh search or contents highlights before classification, drafting, and
   safety review. Use Exa as evidence context and provenance, not as the final oracle.
@@ -163,7 +164,8 @@ RECENT APP CHANGES YOU SHOULD KNOW
   never traded.
 - Agent profile and MCP status explicitly list Superpowers, ADHD divergence, Graphify, and
   Exa research as reasoning skills, so future integrations can inspect those capabilities.
-- Football and basketball sources are prioritized in sports ingestion. Every generated
-  agent market should carry an imageURI, using a source image first and the generated
-  fallback image only when no source image is available.
+- Football and basketball sources are prioritized in sports ingestion, but only when the
+  fixture has not started yet and the source has enough data to settle cleanly. Every
+  generated agent market should carry an imageURI, using a source image first and the
+  generated fallback image only when no source image is available.
 `;
