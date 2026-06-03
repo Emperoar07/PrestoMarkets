@@ -1,8 +1,8 @@
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import type { Market } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
 
-type MarketSignalChartMarket = Pick<Market, 'outcomes' | 'volume' | 'liquidity'>;
+type MarketSignalChartMarket = Pick<Market, 'id' | 'outcomes' | 'volume' | 'liquidity'>;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -46,9 +46,26 @@ function buildSmoothPath(points: number[], width: number, height: number, offset
   return path;
 }
 
-function MarketSignalChartComponent({ market, compact = false }: { market: MarketSignalChartMarket; compact?: boolean }) {
+function MarketSignalChartComponent({ market, compact = false, live = false }: { market: MarketSignalChartMarket; compact?: boolean; live?: boolean }) {
   const volume = parseUsd(market.volume);
   const liquidity = parseUsd(market.liquidity);
+
+  // Real pool-ratio history (detail page only). Each entry is a per-outcome 0..100 series.
+  // Falls back to the synthetic signal when there aren't enough trades to plot.
+  const [realSeries, setRealSeries] = useState<number[][] | null>(null);
+  useEffect(() => {
+    if (!live || !market.id) return undefined;
+    let cancelled = false;
+    fetch(`/api/markets/${market.id}/history`, { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const history: Array<{ probabilities: number[] }> = data?.history ?? [];
+        if (cancelled || history.length < 2) return;
+        setRealSeries(market.outcomes.map((_, index) => history.map((point) => (point.probabilities[index] ?? 0) * 100)));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [live, market.id, market.outcomes.length]);
 
   const W = compact ? 460 : 1000;
   const H = compact ? 120 : 420;
@@ -61,11 +78,16 @@ function MarketSignalChartComponent({ market, compact = false }: { market: Marke
   // Memoize outcome series calculation
   const outcomeSeries = useMemo(() =>
     market.outcomes.map((outcome, index) => {
+      const real = realSeries?.[index];
+      const useReal = Boolean(real && real.length >= 2);
       const phase = index * (Math.PI / market.outcomes.length);
-      const points = buildSignalPoints(outcome.odds, index === 0 ? volume : liquidity, index === 0 ? liquidity : volume, phase);
-      return { label: outcome.label, odds: outcome.odds, points, color: getOutcomeColor(index) };
+      const points = useReal
+        ? (real as number[])
+        : buildSignalPoints(outcome.odds, index === 0 ? volume : liquidity, index === 0 ? liquidity : volume, phase);
+      const odds = useReal ? Math.round((real as number[])[real!.length - 1]) : outcome.odds;
+      return { label: outcome.label, odds, points, color: getOutcomeColor(index) };
     }),
-    [market.outcomes, volume, liquidity]
+    [market.outcomes, volume, liquidity, realSeries]
   );
 
   // Memoize paths calculation
