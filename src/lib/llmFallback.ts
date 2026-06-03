@@ -2,8 +2,9 @@
  * Provider-agnostic JSON LLM call with automatic fallback across free / cheap providers.
  *
  * Tries Anthropic first when ANTHROPIC_API_KEY is set, then falls through to Gemini,
- * Groq, OpenRouter, Cerebras, and Together as each becomes available. Providers that
- * error or return malformed JSON are skipped so another configured provider can answer.
+ * Groq, Mistral, OpenRouter, Cerebras, Together, and HuggingFace as each becomes available.
+ * Providers that error or return malformed JSON are skipped so another configured provider
+ * can answer.
  *
  * All providers other than Anthropic use the OpenAI-compatible chat completions shape,
  * so this file only needs a tiny adapter per provider.
@@ -227,6 +228,29 @@ async function callGroq(input: LlmCallInput): Promise<ProviderResult | null> {
   });
 }
 
+async function callMistral(input: LlmCallInput): Promise<ProviderResult | null> {
+  const key = envClean('MISTRAL_API_KEY');
+  if (!key) return null;
+  const models = uniqueStrings([
+    envClean(input.task === 'reasoning' ? 'MISTRAL_REASONING_MODEL' : 'MISTRAL_SAFETY_MODEL'),
+    envClean('MISTRAL_MODEL'),
+    input.task === 'reasoning' ? 'mistral-large-latest' : 'mistral-small-latest',
+    'open-mistral-nemo',
+  ]);
+  return callOpenAiCompatibleModels({
+    baseUrl: 'https://api.mistral.ai/v1',
+    apiKey: key,
+    models,
+    provider: 'mistral',
+    basePayload: {
+      messages: [{ role: 'user', content: input.prompt }],
+      max_tokens: input.maxTokens ?? (input.task === 'reasoning' ? 1024 : 256),
+      temperature: input.temperature ?? 0.2,
+      ...((input.jsonMode ?? true) ? { response_format: { type: 'json_object' as const } } : {}),
+    },
+  });
+}
+
 async function callOpenRouter(input: LlmCallInput): Promise<ProviderResult | null> {
   const key = envClean('OPENROUTER_API_KEY');
   if (!key) return null;
@@ -294,12 +318,37 @@ async function callTogether(input: LlmCallInput): Promise<ProviderResult | null>
   });
 }
 
+async function callHuggingFace(input: LlmCallInput): Promise<ProviderResult | null> {
+  const key = envClean('HUGGINGFACE_API_KEY') || envClean('HF_TOKEN') || envClean('HF_API_KEY');
+  if (!key) return null;
+  const models = uniqueStrings([
+    envClean(input.task === 'reasoning' ? 'HUGGINGFACE_REASONING_MODEL' : 'HUGGINGFACE_SAFETY_MODEL'),
+    envClean('HUGGINGFACE_MODEL'),
+    input.task === 'reasoning' ? 'meta-llama/Llama-3.3-70B-Instruct' : 'meta-llama/Llama-3.1-8B-Instruct',
+    'Qwen/Qwen2.5-7B-Instruct',
+  ]);
+  // HF's OpenAI-compatible router auto-routes to an available inference provider. Not every
+  // backend supports json_object response_format, so we don't force it — extractJsonObject
+  // tolerates fenced / prefixed JSON.
+  return callOpenAiCompatibleModels({
+    baseUrl: 'https://router.huggingface.co/v1',
+    apiKey: key,
+    models,
+    provider: 'huggingface',
+    basePayload: {
+      messages: [{ role: 'user', content: input.prompt }],
+      max_tokens: input.maxTokens ?? (input.task === 'reasoning' ? 1024 : 256),
+      temperature: input.temperature ?? 0.2,
+    },
+  });
+}
+
 /**
  * Try providers in order until one returns a JSON object. Callers still parse and
  * validate the task-specific fields they require.
  */
 export async function callLlmJson(input: LlmCallInput): Promise<ProviderResult> {
-  const chain = [callAnthropic, callGemini, callGroq, callOpenRouter, callCerebras, callTogether];
+  const chain = [callAnthropic, callGemini, callGroq, callMistral, callOpenRouter, callCerebras, callTogether, callHuggingFace];
   for (const fn of chain) {
     const result = await fn(input);
     if (!result) continue;
