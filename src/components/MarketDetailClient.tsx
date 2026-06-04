@@ -356,6 +356,19 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               <MarketSignalChart market={market} live />
             </div>
 
+            {/* Market activity */}
+            <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
+              <h2 className="text-base font-black text-white">Market activity</h2>
+              <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-3">
+                {market.activity.map((item) => (
+                  <div key={item.label}>
+                    <p className="text-xs font-bold text-muted">{item.label}</p>
+                    <p className="mt-1 text-xl font-black text-white">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <MarketQualityPanel market={market} />
 
             {/* Resolution rules */}
@@ -432,18 +445,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               </details>
             ) : null}
 
-            {/* Market activity */}
-            <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
-              <h2 className="text-base font-black text-white">Market activity</h2>
-              <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-3">
-                {market.activity.map((item) => (
-                  <div key={item.label}>
-                    <p className="text-xs font-bold text-muted">{item.label}</p>
-                    <p className="mt-1 text-xl font-black text-white">{item.value}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
             {/* Settlement record */}
             {hasSettlementRecord ? (
               <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">

@@ -67,8 +67,7 @@ export function MarketComments({ marketId, canWrite }: { marketId: string; canWr
     <section className="mt-8 rounded-[14px] border border-white/[0.06] bg-[#111b2b] p-5">
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan">Evidence thread</p>
-          <h2 className="mt-1 text-xl font-black text-white">Comments and source updates</h2>
+          <h2 className="text-xl font-black text-white">Comments</h2>
         </div>
         {canWrite ? <SocialSignInButton onSignedIn={() => setMessage('Signed in. You can post now.')} /> : null}
       </div>
