@@ -371,22 +371,38 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             </div>
 
             {isAgentMarket ? (
-              <div className="mt-6 rounded-[14px] border border-cyan/20 bg-cyan/[0.06] p-6">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="max-w-[920px]">
+              <details className="group mt-6 rounded-[14px] border border-cyan/20 bg-cyan/[0.06]">
+                <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-cyan/[0.04] [&::-webkit-details-marker]:hidden">
+                  <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-widest text-cyan">Agent-created market</p>
-                    <h2 className="mt-1.5 text-base font-black text-white">{market.agentName || 'Presto Market Agent'}</h2>
-                    <div className="mt-4 space-y-3 text-[15px] leading-7 text-muted">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <h2 className="text-base font-black text-white">{market.agentName || 'Presto Market Agent'}</h2>
+                      {groundingHost ? (
+                        <span className="max-w-[220px] truncate text-xs font-bold text-muted">{groundingHost}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <span className="rounded-full border border-cyan/25 bg-cyan/10 px-3 py-1 text-xs font-black text-cyan">
+                      {market.agentConfidence || 'Confidence logged'}
+                    </span>
+                    <span className="rounded-[8px] border border-white/[0.06] bg-white/[0.03] px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-muted group-open:hidden">
+                      Details
+                    </span>
+                    <span className="hidden rounded-[8px] border border-cyan/20 bg-cyan/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-cyan group-open:inline-flex">
+                      Hide
+                    </span>
+                  </div>
+                </summary>
+                <div className="px-5 pb-5">
+                  <div className="border-t border-white/[0.06] pt-4">
+                    <div className="space-y-3 text-[15px] leading-7 text-muted">
                       {splitAgentReason(market.agentReason).map((part, index) => (
                         <p key={`${part}-${index}`}>{part}</p>
                       ))}
                     </div>
                   </div>
-                  <span className="rounded-full border border-cyan/25 bg-cyan/10 px-3 py-1 text-xs font-black text-cyan">
-                    {market.agentConfidence || 'Confidence logged'}
-                  </span>
-                </div>
-                <div className="mt-4 grid gap-3 border-t border-white/[0.06] pt-4 md:grid-cols-3">
+                  <div className="mt-4 grid gap-3 border-t border-white/[0.06] pt-4 md:grid-cols-3">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-muted">Source</p>
                     {groundingHost ? (
@@ -404,7 +420,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     <p className="mt-1.5 text-sm text-white">{market.safetyScore ?? 'Not scored'}</p>
                   </div>
                 </div>
-                <div className="mt-4 grid gap-3 border-t border-white/[0.06] pt-4 md:grid-cols-2">
+                  <div className="mt-4 grid gap-3 border-t border-white/[0.06] pt-4 md:grid-cols-2">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-muted">Action receipt</p>
                     <p className="mt-1.5 break-all text-sm text-white">create-market:{market.id}</p>
@@ -414,7 +430,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     <p className="mt-1.5 break-all text-sm text-white">{market.resolverAddress || market.resolver}</p>
                   </div>
                 </div>
-                <div className="mt-4 flex flex-wrap gap-4">
+                  <div className="mt-4 flex flex-wrap gap-4">
                   <a href="/agent" className="inline-block text-sm font-bold text-cyan hover:opacity-80">
                     View agent profile
                   </a>
@@ -422,7 +438,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     Agent calibration →
                   </a>
                 </div>
-              </div>
+                </div>
+              </details>
             ) : null}
 
             {/* Market activity */}
@@ -950,8 +967,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
           </aside>
 
         </div>
-        <AlertPrefsControl marketId={marketId} />
-        <MarketComments marketId={marketId} />
+        {connectedWallet ? <AlertPrefsControl marketId={marketId} /> : null}
+        <MarketComments marketId={marketId} canWrite={Boolean(connectedWallet)} />
       </main>
       <SiteFooter />
     </>

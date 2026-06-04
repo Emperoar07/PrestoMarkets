@@ -15,7 +15,7 @@ function shortAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-export function MarketComments({ marketId }: { marketId: string }) {
+export function MarketComments({ marketId, canWrite }: { marketId: string; canWrite: boolean }) {
   const [comments, setComments] = useState<CommentRow[]>([]);
   const [body, setBody] = useState('');
   const [message, setMessage] = useState('');
@@ -70,30 +70,32 @@ export function MarketComments({ marketId }: { marketId: string }) {
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan">Evidence thread</p>
           <h2 className="mt-1 text-xl font-black text-white">Comments and source updates</h2>
         </div>
-        <SocialSignInButton onSignedIn={() => setMessage('Signed in. You can post now.')} />
+        {canWrite ? <SocialSignInButton onSignedIn={() => setMessage('Signed in. You can post now.')} /> : null}
       </div>
 
-      <div className="mt-5">
-        <textarea
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-          maxLength={1000}
-          placeholder="Add a market note, source update, or settlement concern."
-          rows={3}
-          className="w-full resize-none rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-3 text-sm leading-6 text-white outline-none transition-colors placeholder:text-[#475569] focus:border-cyan/40"
-        />
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <p className="text-xs text-muted">{body.length}/1000</p>
-          <button
-            type="button"
-            onClick={() => void submitComment()}
-            disabled={isSubmitting || body.trim().length === 0}
-            className="rounded-[8px] bg-cyan px-4 py-2 text-xs font-black text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {isSubmitting ? 'Posting...' : 'Post'}
-          </button>
+      {canWrite ? (
+        <div className="mt-5">
+          <textarea
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            maxLength={1000}
+            placeholder="Add a market note, source update, or settlement concern."
+            rows={3}
+            className="w-full resize-none rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-3 text-sm leading-6 text-white outline-none transition-colors placeholder:text-[#475569] focus:border-cyan/40"
+          />
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <p className="text-xs text-muted">{body.length}/1000</p>
+            <button
+              type="button"
+              onClick={() => void submitComment()}
+              disabled={isSubmitting || body.trim().length === 0}
+              className="rounded-[8px] bg-cyan px-4 py-2 text-xs font-black text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isSubmitting ? 'Posting...' : 'Post'}
+            </button>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {message ? <p className="mt-3 text-sm text-muted">{message}</p> : null}
 
