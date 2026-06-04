@@ -8,6 +8,7 @@ import { MarketQualityPanel } from './MarketQualityPanel';
 import { Countdown } from './Countdown';
 import { AlertPrefsControl } from './AlertPrefsControl';
 import { MarketComments } from './MarketComments';
+import { EmbedSnippetButton } from './EmbedSnippetButton';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
 import type { StableSymbol } from '@/lib/walletBalance';
 import { formatUsd, useAppState } from '@/lib/appState';
@@ -436,6 +437,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 ))}
               </div>
             </div>
+            <EmbedSnippetButton marketId={market.id} />
 
             {/* Settlement record */}
             {hasSettlementRecord ? (
