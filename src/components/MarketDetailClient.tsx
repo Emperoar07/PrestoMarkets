@@ -306,13 +306,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               <p className="mt-7 max-w-[900px] text-[16px] leading-8 text-[#94a3b8]">{market.description}</p>
             ) : null}
 
-            {/* News tie-in: when the market is bound to a trend URL (agent markets carry
-                trendUrl), show the article title, an LLM summary, and a
-                "Read more" link to the original. */}
-            {market.trendUrl ? (
-              <MarketNewsTieIn trendUrl={market.trendUrl} marketTitle={market.title} />
-            ) : null}
-
             {/* Market image */}
             {market.imageURI ? (
               <div className="mt-6 overflow-hidden rounded-[14px] border border-white/[0.06]">
@@ -965,75 +958,3 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 }
 
 
-type NewsSummary = { title: string; summary: string; source: string; provider?: string };
-
-function MarketNewsTieIn({ trendUrl, marketTitle }: { trendUrl: string; marketTitle: string }) {
-  const [data, setData] = useState<NewsSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>("");
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError("");
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-
-    fetch("/api/news/summarize", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: trendUrl, marketTitle }),
-      signal: controller.signal,
-    })
-      .then(async (res) => {
-        const body = await res.json().catch(() => ({}));
-        if (cancelled) return;
-        if (!res.ok || !body.summary) {
-          setError(body.error ?? "News summary unavailable.");
-          return;
-        }
-        setData(body as NewsSummary);
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          if (e instanceof Error && e.name === 'AbortError') {
-            setError("News summary took too long to load.");
-          } else {
-            setError(String(e));
-          }
-        }
-      })
-      .finally(() => {
-        clearTimeout(timeout);
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [trendUrl, marketTitle]);
-
-  return (
-    <section className="mt-7 min-w-0 overflow-hidden rounded-[14px] border border-cyan/15 bg-cyan/[0.04] p-5">
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-        <p className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-cyan/80">News tie-in</p>
-      </div>
-      {loading ? (
-        <p className="mt-3 text-[13px] text-muted">Fetching summary…</p>
-      ) : error ? (
-        <p className="mt-3 text-[13px] text-muted">{error}</p>
-      ) : data ? (
-        <>
-          {data.title ? <h3 className="mt-2 break-words text-[16px] font-black leading-snug text-white [overflow-wrap:anywhere]">{data.title}</h3> : null}
-          <p className="mt-2 break-words text-[14px] leading-7 text-[#cbd5e1] [overflow-wrap:anywhere]">{data.summary}</p>
-          <a
-            href={data.source}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-3 inline-flex items-center gap-1 text-[12px] font-bold text-cyan/90 transition-colors hover:text-cyan"
-          >
-            Read more <span aria-hidden>↗</span>
-          </a>
-        </>
-      ) : null}
-    </section>
-  );
-}
