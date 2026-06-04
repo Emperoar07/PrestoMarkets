@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
 import { useAppState } from '@/lib/appState';
+import { computePortfolioInsights } from '@/lib/portfolioInsights';
 
 const statusStyle = {
   Open: 'border-cyan/25 bg-cyan/10 text-cyan',
@@ -33,14 +34,11 @@ function parsePnlPercent(pnl: string): number {
 }
 
 export function PortfolioClient() {
-  const { positions, connectedWallet, isLoadingAccount } = useAppState();
+  const { positions, connectedWallet, isLoadingAccount, markets } = useAppState();
   const [filter, setFilter] = useState<FilterType>('all');
   const [sort, setSort] = useState<SortType>('date');
 
-  const positionValue = positions.reduce((sum, position) => sum + parseUsd(position.value), 0);
-  const claimableValue = positions
-    .filter((position) => position.status === 'Claimable')
-    .reduce((sum, position) => sum + parseUsd(position.value), 0);
+  const insights = computePortfolioInsights(positions, markets);
 
   const filteredPositions = positions.filter((position) => {
     if (filter === 'open') return position.status === 'Open';
@@ -63,18 +61,62 @@ export function PortfolioClient() {
       <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-36 md:px-7 md:pt-40">
         <h1 className="text-[clamp(44px,6vw,68px)] font-black tracking-tight text-white">Portfolio</h1>
 
-        <section className="mt-8 grid gap-4 md:grid-cols-2">
+        <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
             <p className="text-sm text-muted">Position value</p>
-            <p className="mt-2 text-3xl font-black text-white">{formatUsd(positionValue)}</p>
-            <p className="mt-1 text-sm font-bold text-mint">{isLoadingAccount ? 'Loading account reads' : `${positions.length} tracked positions`}</p>
+            <p className="mt-2 text-3xl font-black text-white">{formatUsd(insights.totalValue)}</p>
+            <p className="mt-1 text-sm font-bold text-mint">{isLoadingAccount ? 'Loading account reads' : `${positions.length} positions`}</p>
+          </div>
+          <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
+            <p className="text-sm text-muted">Unrealized P&L</p>
+            <p className={`mt-2 text-3xl font-black ${insights.unrealizedPnl < 0 ? 'text-red-200' : 'text-mint'}`}>
+              {insights.unrealizedPnl >= 0 ? '+' : ''}{formatUsd(insights.unrealizedPnl)}
+            </p>
+            <p className="mt-1 text-sm font-bold text-muted">Value − cost basis</p>
+          </div>
+          <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
+            <p className="text-sm text-muted">Cost basis</p>
+            <p className="mt-2 text-3xl font-black text-white">{formatUsd(insights.totalCost)}</p>
+            <p className="mt-1 text-sm font-bold text-muted">Total invested</p>
           </div>
           <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
             <p className="text-sm text-muted">Claimable</p>
-            <p className="mt-2 text-3xl font-black text-white">{formatUsd(claimableValue)}</p>
-            <p className="mt-1 text-sm font-bold text-muted">Claim from resolved market pages</p>
+            <p className="mt-2 text-3xl font-black text-white">{formatUsd(insights.claimableValue)}</p>
+            <p className="mt-1 text-sm font-bold text-muted">{insights.claimableCount} to claim</p>
           </div>
         </section>
+
+        {(insights.claimableCount > 0 || insights.closingSoonCount > 0) ? (
+          <section className="mt-4 flex flex-wrap gap-3">
+            {insights.claimableCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => setFilter('claimable')}
+                className="rounded-full border border-mint/30 bg-mint/10 px-4 py-2 text-sm font-black text-mint transition-colors hover:bg-mint/15"
+              >
+                ⚡ {insights.claimableCount} claimable — {formatUsd(insights.claimableValue)}
+              </button>
+            ) : null}
+            {insights.closingSoonCount > 0 ? (
+              <span className="rounded-full border border-yellow-400/25 bg-yellow-400/10 px-4 py-2 text-sm font-black text-yellow-200">
+                ⏳ {insights.closingSoonCount} position{insights.closingSoonCount > 1 ? 's' : ''} closing soon
+              </span>
+            ) : null}
+          </section>
+        ) : null}
+
+        {insights.exposure.length > 0 ? (
+          <section className="mt-4 rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
+            <p className="text-sm text-muted">Exposure by category</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {insights.exposure.map((entry) => (
+                <span key={entry.category} className="rounded-full border border-white/[0.08] bg-[#0d1520] px-3 py-1.5 text-sm text-white">
+                  {entry.category} <span className="font-black text-cyan">{Math.round(entry.pct * 100)}%</span>
+                </span>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="mt-8 rounded-[16px] border border-white/[0.06] bg-[#141e30]">
           <div className="border-b border-line p-6">
