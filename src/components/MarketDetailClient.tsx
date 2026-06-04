@@ -369,7 +369,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               <details className="group mt-6 rounded-[14px] border border-cyan/20 bg-cyan/[0.06]">
                 <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-cyan/[0.04] [&::-webkit-details-marker]:hidden">
                   <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-cyan">Agent-created market</p>
+                    {isResolver ? (
+                      <p className="text-[10px] font-black uppercase tracking-widest text-cyan">Agent-created market</p>
+                    ) : null}
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                       <h2 className="text-base font-black text-white">{market.agentName || 'Presto Market Agent'}</h2>
                     </div>
@@ -420,9 +422,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   <a href="/agent" className="inline-block text-sm font-bold text-cyan hover:opacity-80">
                     View agent profile
                   </a>
-                  <a href="/calibration" className="inline-block text-sm font-bold text-cyan hover:opacity-80">
-                    Agent calibration →
-                  </a>
+                  {isResolver ? (
+                    <a href="/calibration" className="inline-block text-sm font-bold text-cyan hover:opacity-80">
+                      Agent calibration →
+                    </a>
+                  ) : null}
                 </div>
                 </div>
               </details>
