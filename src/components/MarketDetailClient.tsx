@@ -350,7 +350,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             </div>
 
             {/* Market activity */}
-            <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
+            <div className="mt-8">
               <h2 className="text-base font-black text-white">Market activity</h2>
               <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-3">
                 {market.activity.map((item) => (
