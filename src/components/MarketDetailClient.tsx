@@ -8,7 +8,7 @@ import { MarketQualityPanel } from './MarketQualityPanel';
 import { Countdown } from './Countdown';
 import { AlertPrefsControl } from './AlertPrefsControl';
 import { MarketComments } from './MarketComments';
-import { EmbedSnippetButton } from './EmbedSnippetButton';
+import { ShareMarketButton } from './EmbedSnippetButton';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
 import type { StableSymbol } from '@/lib/walletBalance';
 import { formatUsd, useAppState } from '@/lib/appState';
@@ -246,7 +246,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   Agent
                 </span>
               ) : null}
-              <EmbedSnippetButton marketId={market.id} />
+              <ShareMarketButton marketId={market.id} title={market.title} />
             </div>
 
             {/* Title */}
@@ -950,7 +950,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
         </div>
         {connectedWallet ? <AlertPrefsControl marketId={marketId} /> : null}
-        <MarketComments marketId={marketId} canWrite={Boolean(connectedWallet)} />
+        <MarketComments marketId={marketId} />
       </main>
       <SiteFooter />
     </>

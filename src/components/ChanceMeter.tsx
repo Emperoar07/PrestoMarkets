@@ -10,8 +10,8 @@ export function ChanceMeter({ percent }: { percent: number }) {
         <path d="M12 54 A38 38 0 0 1 88 54" className="fill-none stroke-[#475569]/75 stroke-[6] [stroke-linecap:round]" />
         <path d="M12 54 A38 38 0 0 1 88 54" style={{ strokeDasharray: dash, stroke: color }} className="fill-none stroke-[6] [stroke-linecap:round]" />
       </svg>
-      <div className="absolute left-0 right-0 top-[18px] text-center">
-        <strong className="block text-[7.5px] font-black leading-none text-white">{clamped}%</strong>
+      <div className="absolute left-0 right-0 top-[21px] text-center">
+        <strong className="block text-[8.5px] font-black leading-none text-white">{clamped}%</strong>
         <span className="mt-[3px] block text-[9px] font-extrabold leading-none text-[#94a3b8]">chance</span>
       </div>
     </div>
