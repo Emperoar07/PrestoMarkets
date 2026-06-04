@@ -45,7 +45,6 @@ export function MarketQualityPanel({ market }: { market: Market }) {
 
   const flags: string[] = [];
   if (!hasConcreteSource) flags.push('No concrete public source URL — settlement could be ambiguous.');
-  if (!verifiedResolver) flags.push('Resolver is not the verified Presto oracle — verify independently.');
   if (market.type === 'Opinion') flags.push('Opinion market — resolves on a stated judgment, not a hard external fact.');
   if (typeof market.safetyScore === 'number' && market.safetyScore < 70) {
     flags.push(`Safety score ${market.safetyScore} is below the usual bar.`);
