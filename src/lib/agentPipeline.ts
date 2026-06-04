@@ -989,26 +989,6 @@ function absolutizeUrl(value: string, base: string): string | undefined {
   }
 }
 
-function sportsImageText(trend: TrendItem) {
-  const text = trend.topic
-    .replace(/\bwill\b/gi, '')
-    .replace(/\?/g, '')
-    .trim()
-    .slice(0, 54);
-
-  return text || (isFootballBasketballTrend(trend) ? 'Sports Market' : 'Presto Market');
-}
-
-function generatedMarketImageUrl(trend: TrendItem): string {
-  const isBasketball = /basketball|nba/i.test(`${trend.source} ${trend.topic} ${trend.query}`);
-  const isFootball = /football|soccer|premier league|champions league|mls|fifa/i.test(`${trend.source} ${trend.topic} ${trend.query}`);
-  const bg = isBasketball ? '1a1324' : isFootball ? '081c16' : '0b1322';
-  const fg = isBasketball ? 'f59e0b' : isFootball ? '22c55e' : '25c0f4';
-  const label = encodeURIComponent(sportsImageText(trend));
-
-  return `https://placehold.co/800x450/${bg}/${fg}/png?text=${label}`;
-}
-
 async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined> {
   const candidates = [
     trend.imageUrl,
@@ -1020,7 +1000,9 @@ async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined>
     if (image) return image;
   }
 
-  return generatedMarketImageUrl(trend);
+  // No real source image: leave imageURI unset so the UI uses its clean built-in
+  // category tile instead of a text-on-color "writeup" image (which read as decoration).
+  return undefined;
 }
 
 async function validateImageUrl(imageUrl: string, topic: string): Promise<string | undefined> {

@@ -6,7 +6,9 @@ import type { Market } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
 import { useAppState } from '@/lib/appState';
 import { prefetchMarketDetail } from '@/lib/marketPrefetch';
+import { deriveDisplayType } from '@/lib/marketDisplay';
 import { Countdown } from './Countdown';
+import { ChanceMeter } from './ChanceMeter';
 import { WatchlistButton } from './WatchlistButton';
 
 function generateSparklinePath(marketId: string, odds: number): string {
@@ -41,7 +43,9 @@ function MarketCardComponent({
   const isClosingSoon = market.status === 'Closing soon';
   const isLive = market.status === 'Open' || isClosingSoon;
   const isResolved = market.status === 'Resolved';
-  const isPollMarket = Boolean(market.pollOptions && market.pollOptions.length > 2);
+  const displayType = deriveDisplayType(market);
+  const isListLayout = displayType === 'multi_outcome' || displayType === 'date_ladder';
+  const isPulse = displayType === 'pulse_gauge';
   const isOpinion = market.type === 'Opinion';
 
   return (
@@ -76,9 +80,9 @@ function MarketCardComponent({
           </div>
         </div>
 
-        {/* Outcomes layout */}
-        {isPollMarket ? (
-          /* ── Multi-outcome Poll Market: scrollable list without scrollbars ── */
+        {/* Outcomes layout — chosen by displayType */}
+        {isListLayout ? (
+          /* ── Multi-outcome / date-ladder: scrollable list without scrollbars ── */
           <div className="scrollbar-hide my-1 max-h-[58px] space-y-0.5 overflow-y-auto pr-1">
             {market.pollOptions?.map((option, index) => {
               const color = getOutcomeColor(index);
@@ -132,11 +136,18 @@ function MarketCardComponent({
             })}
           </div>
         ) : (
-          /* ── Binary (YES/NO) Prediction or Opinion markets ── */
+          /* ── Binary (YES/NO) / pulse markets — gauge only on pulse ── */
           <div className="my-1.5 flex items-center justify-between gap-2">
-            <span className="text-[10.5px] font-bold text-[#94a3b8]">
-              {isOpinion ? 'Support' : 'YES'} <span className="font-black text-[#cbd5e1]">{yesOdds}%</span>
-            </span>
+            {isPulse ? (
+              <span className="flex items-center gap-1.5">
+                <ChanceMeter percent={yesOdds} />
+                <span className="text-[9px] font-bold text-[#64748b]">chance</span>
+              </span>
+            ) : (
+              <span className="text-[10.5px] font-bold text-[#94a3b8]">
+                {isOpinion ? 'Support' : 'YES'} <span className="font-black text-[#cbd5e1]">{yesOdds}%</span>
+              </span>
+            )}
 
             {isLive ? (
               <div className="flex items-center gap-1 shrink-0 bg-white/[0.02] border border-white/[0.06] rounded-[6px] p-[2px]">
