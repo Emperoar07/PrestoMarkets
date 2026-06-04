@@ -90,7 +90,7 @@ function MarketCardComponent({
       <Link
         href={`/markets/${market.id}`}
         onMouseEnter={() => prefetchMarketDetail(market.id, refreshAccountPortfolio)}
-        className="group flex min-h-[142px] min-w-0 flex-col rounded-[10px] border border-white/[0.05] bg-[#0c121d] p-2.5 transition-all hover:border-white/[0.09] hover:bg-[#101929]"
+        className="group flex min-h-[156px] min-w-0 flex-col rounded-[10px] border border-white/[0.05] bg-[#0c121d] p-2.5 transition-all hover:border-white/[0.09] hover:bg-[#101929]"
       >
         <div className="grid grid-cols-[40px_minmax(0,1fr)_64px] items-start gap-2.5">
           {iconTile}
@@ -114,7 +114,7 @@ function MarketCardComponent({
     <Link
       href={`/markets/${market.id}`}
       onMouseEnter={() => prefetchMarketDetail(market.id, refreshAccountPortfolio)}
-      className="group flex h-[142px] min-w-0 items-stretch gap-2.5 overflow-hidden rounded-[10px] border border-white/[0.05] bg-[#0c121d] p-2.5 transition-all hover:border-white/[0.09] hover:bg-[#101929]"
+      className="group flex h-[156px] min-w-0 items-stretch gap-2.5 overflow-hidden rounded-[10px] border border-white/[0.05] bg-[#0c121d] p-2.5 transition-all hover:border-white/[0.09] hover:bg-[#101929]"
     >
       {/* Left: Icon logo */}
       <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-white/[0.04] bg-[#070e17]">
@@ -145,7 +145,7 @@ function MarketCardComponent({
         {/* Outcomes layout — chosen by displayType */}
         {isListLayout ? (
           /* ── Multi-outcome / date-ladder: scrollable list without scrollbars ── */
-          <div className="scrollbar-hide my-1 max-h-[58px] space-y-0.5 overflow-y-auto pr-1">
+          <div className="scrollbar-hide my-1 max-h-[68px] space-y-0.5 overflow-y-auto pr-1">
             {market.pollOptions?.map((option, index) => {
               const color = getOutcomeColor(index);
               const odds = market.outcomes.find((_, idx) => idx === index)?.odds ?? 0;

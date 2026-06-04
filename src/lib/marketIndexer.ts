@@ -1,24 +1,26 @@
 /**
  * Account-level aggregates for public profiles and leaderboards.
  *
- * Phase 0 scope: this populates the *creator-side* stats that are correct and cheaply
- * derivable from on-chain market metadata — `createdCount`, plus calibration (`accuracy`,
- * `brier`, `resolvedCorrect`) over the markets each address created. Forecaster trade stats
- * (`realizedPnl`, `marketsTraded`) require a per-account ledger built from SharesBought /
- * Claimed events; that is the next Phase 0 slice and these fields stay 0 until then.
+ * Two halves, merged per address:
+ *  - creator stats from market metadata: createdCount + calibration (accuracy/brier/resolvedCorrect).
+ *  - trader stats from an on-chain event ledger: realizedPnl + marketsTraded, built from
+ *    SharesBought (spend), Claimed and Refunded (receipts) across all markets.
  *
- * This is the contract Phase 3 (leaderboards / profiles) integrates against — build the
- * leaderboard cron + UI against `getAllAccountStats`, swapping a stub for it now if needed.
+ * The ledger queries each event once per block-chunk with an address array covering every
+ * market, so cost is ~chunks×3 calls, not per-market.
  */
 
+import { createPublicClient, formatUnits, http, type AbiEvent, type Address } from 'viem';
+import { getArcChainId, getArcConfig } from './arcConfig';
+import { prestoMarketAbi } from './contracts';
 import { fetchOnchainMarkets } from './onchainMarkets';
 import { computeAgentCalibration, type CalibrationMarket } from './marketCalibration';
 
 export type AccountStats = {
   address: string;
-  /** Net settled USDC P&L from trading. 0 until the event ledger lands (Phase 0 slice 2). */
+  /** Net settled USDC P&L from trading (claims + refunds − amount spent). */
   realizedPnl: number;
-  /** Distinct markets this address traded in. 0 until the event ledger lands. */
+  /** Distinct markets this address bought into. */
   marketsTraded: number;
   /** Resolved binary markets this address created where the >50% confidence side won. */
   resolvedCorrect: number;
@@ -29,6 +31,77 @@ export type AccountStats = {
   /** Markets this address created. */
   createdCount: number;
 };
+
+const BLOCK_CHUNK = BigInt(7_200);
+const MAX_CHUNKS = 24; // recent-history window scanned for the ledger
+const sharesBoughtEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'SharesBought') as AbiEvent;
+const claimedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'Claimed') as AbiEvent;
+const refundedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'Refunded') as AbiEvent;
+
+function createClient() {
+  const config = getArcConfig();
+  if (!config.rpcUrl) return null;
+  return createPublicClient({
+    chain: {
+      id: getArcChainId(),
+      name: 'Arc Testnet',
+      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
+      rpcUrls: { default: { http: [config.rpcUrl] } },
+    },
+    transport: http(config.rpcUrl),
+  });
+}
+
+type LedgerEntry = { spent: bigint; received: bigint; markets: Set<string> };
+
+/** Per-account spend/receipts/markets from on-chain events across all markets. */
+async function buildAccountLedger(marketAddresses: Address[]): Promise<Map<string, LedgerEntry>> {
+  const ledger = new Map<string, LedgerEntry>();
+  const client = createClient();
+  if (!client || marketAddresses.length === 0) return ledger;
+
+  const entry = (address: string): LedgerEntry => {
+    const key = address.toLowerCase();
+    let value = ledger.get(key);
+    if (!value) {
+      value = { spent: BigInt(0), received: BigInt(0), markets: new Set<string>() };
+      ledger.set(key, value);
+    }
+    return value;
+  };
+
+  const latest = await client.getBlockNumber().catch(() => null);
+  if (latest === null) return ledger;
+  const span = BLOCK_CHUNK * BigInt(MAX_CHUNKS);
+  const fromBlock = latest > span ? latest - span : BigInt(0);
+
+  for (let start = fromBlock; start <= latest; start += BLOCK_CHUNK) {
+    const toBlock = start + BLOCK_CHUNK - BigInt(1) > latest ? latest : start + BLOCK_CHUNK - BigInt(1);
+    const [bought, claimed, refunded] = await Promise.all([
+      client.getLogs({ address: marketAddresses, event: sharesBoughtEvent, fromBlock: start, toBlock }).catch(() => []),
+      client.getLogs({ address: marketAddresses, event: claimedEvent, fromBlock: start, toBlock }).catch(() => []),
+      client.getLogs({ address: marketAddresses, event: refundedEvent, fromBlock: start, toBlock }).catch(() => []),
+    ]);
+
+    for (const log of bought) {
+      const args = (log as { args?: { buyer?: string; amount?: bigint } }).args ?? {};
+      if (!args.buyer) continue;
+      const e = entry(args.buyer);
+      e.spent += BigInt(args.amount ?? 0);
+      if (log.address) e.markets.add(log.address.toLowerCase());
+    }
+    for (const log of claimed) {
+      const args = (log as { args?: { user?: string; amount?: bigint } }).args ?? {};
+      if (args.user) entry(args.user).received += BigInt(args.amount ?? 0);
+    }
+    for (const log of refunded) {
+      const args = (log as { args?: { user?: string; amount?: bigint } }).args ?? {};
+      if (args.user) entry(args.user).received += BigInt(args.amount ?? 0);
+    }
+  }
+
+  return ledger;
+}
 
 function toCalibrationMarket(market: {
   status: string;
@@ -50,11 +123,18 @@ function toCalibrationMarket(market: {
   };
 }
 
-/** Build creator-side stats for every address that has created at least one market. */
+function usd(value: bigint): number {
+  return Number(formatUnits(value, 6));
+}
+
+/** Creator + trader stats for every address that created or traded a market. */
 export async function getAllAccountStats(): Promise<AccountStats[]> {
   const markets = await fetchOnchainMarkets().catch(() => []);
-  const byCreator = new Map<string, typeof markets>();
+  const marketAddresses = markets
+    .map((market) => market.id)
+    .filter((id): id is Address => typeof id === 'string' && id.startsWith('0x'));
 
+  const byCreator = new Map<string, typeof markets>();
   for (const market of markets) {
     const creator = (market.creatorAddress ?? '').toLowerCase();
     if (!creator) continue;
@@ -63,12 +143,17 @@ export async function getAllAccountStats(): Promise<AccountStats[]> {
     byCreator.set(creator, list);
   }
 
-  return Array.from(byCreator.entries()).map(([address, created]) => {
+  const ledger = await buildAccountLedger(marketAddresses).catch(() => new Map<string, LedgerEntry>());
+
+  const addresses = new Set<string>([...byCreator.keys(), ...ledger.keys()]);
+  return Array.from(addresses).map((address) => {
+    const created = byCreator.get(address) ?? [];
     const calibration = computeAgentCalibration(created.map(toCalibrationMarket));
+    const trade = ledger.get(address);
     return {
       address,
-      realizedPnl: 0,
-      marketsTraded: 0,
+      realizedPnl: trade ? Number((usd(trade.received) - usd(trade.spent)).toFixed(6)) : 0,
+      marketsTraded: trade ? trade.markets.size : 0,
       resolvedCorrect: calibration.accuracy !== null ? Math.round(calibration.accuracy * calibration.scored) : 0,
       accuracy: calibration.accuracy ?? 0,
       brier: calibration.brier ?? 0,

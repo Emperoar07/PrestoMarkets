@@ -1,6 +1,6 @@
 export function SkeletonCard() {
   return (
-    <div className="flex h-[142px] animate-pulse items-stretch gap-2.5 rounded-[10px] border border-white/[0.05] bg-[#0c121d] p-2.5">
+    <div className="flex h-[156px] animate-pulse items-stretch gap-2.5 rounded-[10px] border border-white/[0.05] bg-[#0c121d] p-2.5">
       {/* Left: Icon logo placeholder */}
       <div className="h-10 w-10 shrink-0 rounded-[8px] bg-white/[0.04]" />
 
