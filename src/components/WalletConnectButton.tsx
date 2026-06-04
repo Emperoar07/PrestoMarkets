@@ -344,8 +344,14 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
               <div className="h-px flex-1 bg-white/[0.08]" />
             </div>
 
-            <div className="grid gap-2">
-              <SocialButton provider="google" label="Continue with Google" onClick={() => signInWithSocial('google')} disabled={isPending} />
+            <div className="relative grid gap-2">
+              {/* Google sign-in temporarily disabled: blurred + non-interactive until enabled. */}
+              <div className="pointer-events-none select-none blur-[2px] opacity-50" aria-hidden="true">
+                <SocialButton provider="google" label="Continue with Google" onClick={() => {}} disabled />
+              </div>
+              <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[9px] font-black uppercase tracking-wider text-[#94a3b8]">
+                Coming soon
+              </span>
             </div>
 
             <p className="mt-4 text-[9px] font-semibold leading-4 text-[#94a3b8]">

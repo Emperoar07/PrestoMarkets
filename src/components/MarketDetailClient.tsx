@@ -362,20 +362,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               </div>
             </div>
 
+            {/* Market quality + Resolution rules merged into one tabbed panel */}
             <MarketQualityPanel market={market} />
-
-            {/* Resolution rules */}
-            <div className="mt-6 min-w-0 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
-              <h2 className="text-base font-black text-white">Resolution rules</h2>
-              <p className="mt-2 break-words text-sm leading-7 text-muted [overflow-wrap:anywhere]">{market.rules}</p>
-              {market.resolverVerified ? (
-                <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/[0.06] pt-4">
-                  <span className="rounded-full border border-mint/30 bg-mint/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-mint">
-                    ✓ Verified Presto oracle
-                  </span>
-                </div>
-              ) : null}
-            </div>
 
             {isAgentMarket ? (
               <details className="group mt-6 rounded-[14px] border border-cyan/20 bg-cyan/[0.06]">
@@ -487,9 +475,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               </div>
             ) : null}
 
-            {/* ── Phase 3 mount slot (feature/phase3-social) ──
-                Mount <MarketComments marketId={market.id} /> here — bottom of the left column,
-                so it never collides with <MarketQualityPanel /> at the top. */}
+            {/* Alerts + comments — in the left column so they match the chart's width */}
+            {connectedWallet ? <AlertPrefsControl marketId={marketId} /> : null}
+            <MarketComments marketId={marketId} />
           </section>
 
           {/* ── Right aside — trade panel ── */}
@@ -949,8 +937,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
           </aside>
 
         </div>
-        {connectedWallet ? <AlertPrefsControl marketId={marketId} /> : null}
-        <MarketComments marketId={marketId} />
       </main>
       <SiteFooter />
     </>
