@@ -2,6 +2,7 @@ export type MarketType = 'Prediction' | 'Opinion';
 export type MarketStatus = 'Open' | 'Closing soon' | 'Closed' | 'Resolved' | 'Canceled' | 'Draft';
 export type ResolutionMode = 'Human resolver' | 'Community resolver' | 'Agent assisted';
 export type MarketCreatedByType = 'user' | 'admin' | 'agent';
+export type MarketDisplayType = 'binary' | 'multi_outcome' | 'date_ladder' | 'sports_live' | 'pulse_gauge';
 
 export type MarketOutcome = {
   label: string;
@@ -52,6 +53,8 @@ export type Market = {
   };
   createdBy: string;
   createdByType?: MarketCreatedByType;
+  /** Agent-classified card layout. When unset, the UI derives it from market shape. */
+  displayType?: MarketDisplayType;
   creatorAddress?: string;
   agentName?: string;
   agentSource?: string;

@@ -15,6 +15,7 @@ import { fetchOnchainMarkets } from './onchainMarkets';
 import { sanitizeFeedText } from './feedSanitizer';
 import { fetchPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
 import { resolveSubjectImageUrl } from './marketSubjectImage';
+import { deriveDisplayType } from './marketDisplay';
 import { logger } from './logger';
 import { assessTrendResearchQuality, formatResearchAssessment, getResearchDecision } from './agentResearch';
 import { formatExaEvidence, researchTrendWithExa, summarizeExaEvidence, type ExaEvidence } from './exaResearch';
@@ -1867,6 +1868,12 @@ async function createOnchain(
   const horizon = analyzeMarketHorizon(trend);
   const research = assessTrendResearchQuality(trend);
   const exaSummary = summarizeExaEvidence(trend.exaEvidence);
+  const displayType = deriveDisplayType({
+    pollOptions: draft.outcomeOptions,
+    type: draft.type,
+    category: classification.category,
+    title: draft.title,
+  });
   const input: MarketDraft = {
     type: draft.type,
     title: draft.title,
@@ -1899,6 +1906,7 @@ async function createOnchain(
       trendUrl: trend.exaEvidence?.primaryUrl ?? trend.url,
       momentumScore: Math.round(classification.momentumScore * 100), // stored as 0-100 to match trends route
       safetyScore: Math.round(safety.confidence * 100),              // stored as 0-100 to match trends route
+      displayType,
     },
   };
 

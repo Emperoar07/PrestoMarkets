@@ -1,4 +1,4 @@
-import type { Market } from './markets';
+import type { Market, MarketDisplayType } from './markets';
 
 /**
  * How a market card should render. The agent can set this explicitly in metadata; otherwise
@@ -10,7 +10,7 @@ import type { Market } from './markets';
  * - sports_live   — teams / scores / clock (agent-set; we don't derive it without a live feed).
  * - pulse_gauge   — short-window / directional / live pulse: THIS is the only one with a gauge.
  */
-export type DisplayType = 'binary' | 'multi_outcome' | 'date_ladder' | 'sports_live' | 'pulse_gauge';
+export type DisplayType = MarketDisplayType;
 
 const MONTHS = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)';
 const DATE_LIKE = new RegExp(

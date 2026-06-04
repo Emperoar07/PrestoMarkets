@@ -207,6 +207,7 @@ async function readMarket(
     resolutionURI: isSafeResolutionUri(resolutionURI) ? resolutionURI : undefined,
     createdBy: truncateAddress(creator),
     createdByType: metadata?.createdByType,
+    displayType: metadata?.displayType,
     creatorAddress: creator,
     agentName: metadata?.agentName,
     agentSource: metadata?.agentSource,

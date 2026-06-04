@@ -1,6 +1,10 @@
-import type { MarketType, ResolutionMode } from './markets';
+import type { MarketDisplayType, MarketType, ResolutionMode } from './markets';
 
 export type MarketCreatedByType = 'user' | 'admin' | 'agent';
+
+const DISPLAY_TYPES: ReadonlySet<MarketDisplayType> = new Set([
+  'binary', 'multi_outcome', 'date_ladder', 'sports_live', 'pulse_gauge',
+]);
 
 export type AgentMarketMetadata = {
   createdByType?: MarketCreatedByType;
@@ -13,6 +17,7 @@ export type AgentMarketMetadata = {
   trendUrl?: string;
   momentumScore?: number;
   safetyScore?: number;
+  displayType?: MarketDisplayType;
 };
 
 export type MarketMetadata = AgentMarketMetadata & {
@@ -198,6 +203,7 @@ export function buildMarketMetadata(input: BuildMarketMetadataInput): MarketMeta
     trendUrl: trunc(input.agent?.trendUrl, MAX.trendUrl),
     momentumScore: input.agent?.momentumScore,
     safetyScore: input.agent?.safetyScore,
+    displayType: input.agent?.displayType,
   };
 }
 
@@ -220,6 +226,7 @@ export function parseMarketMetadata(metadataURI: string): Partial<MarketMetadata
   // creation rather than rendering javascript:/data:text/html into the UI.
   if (!isSafeImage(parsed.imageURI)) parsed.imageURI = undefined;
   if (!isSafeUrl(parsed.trendUrl)) parsed.trendUrl = undefined;
+  if (parsed.displayType && !DISPLAY_TYPES.has(parsed.displayType)) parsed.displayType = undefined;
   if (parsed.createdAt && !Number.isFinite(Date.parse(parsed.createdAt))) parsed.createdAt = undefined;
   parsed.collateral = 'USDC';
   if (parsed.rulesSchema) parsed.rulesSchema.settlementAsset = 'USDC';

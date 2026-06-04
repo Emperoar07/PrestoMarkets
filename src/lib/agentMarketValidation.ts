@@ -180,6 +180,7 @@ export async function prepareAgentCreateMarketInput(
       trendUrl: agent.trendUrl,
       momentumScore: agent.momentumScore,
       safetyScore: agent.safetyScore,
+      displayType: agent.displayType,
     },
     agentResolverAddress: resolverAddress,
   };
