@@ -1,4 +1,5 @@
-import type { Market, MarketStatus } from './markets';
+import type { Market, MarketStatus, MarketDisplayType } from './markets';
+import { deriveDisplayType } from './marketDisplay';
 
 export type PublicMarketListQuery = {
   category: string | null;
@@ -14,6 +15,8 @@ export type PublicMarket = {
   category: string;
   categories: string[];
   type: Market['type'];
+  /** Effective card layout (agent-set, else derived from shape). */
+  displayType: MarketDisplayType;
   status: MarketStatus;
   volume: string;
   closeLabel: string;
@@ -24,6 +27,8 @@ export type PublicMarket = {
     odds: number;
     probability: number;
   }>;
+  /** Poll/range labels for non-binary markets (undefined = binary YES/NO). */
+  outcomeOptions?: string[];
   sourceOfTruth: string;
   rules: string;
   createdByType: Market['createdByType'];
@@ -75,6 +80,7 @@ export function serializePublicMarket(market: Market): PublicMarket {
     category: market.category,
     categories: market.categories?.length ? market.categories : [market.category],
     type: market.type,
+    displayType: deriveDisplayType(market),
     status: market.status,
     volume: market.volume,
     closeLabel: market.closeLabel,
@@ -85,6 +91,7 @@ export function serializePublicMarket(market: Market): PublicMarket {
       odds: outcome.odds,
       probability: Number((outcome.odds / 100).toFixed(4)),
     })),
+    outcomeOptions: market.pollOptions,
     sourceOfTruth: market.sourceOfTruth,
     rules: market.rules,
     createdByType: market.createdByType ?? 'user',
