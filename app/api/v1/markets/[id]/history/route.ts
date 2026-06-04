@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
-import { getMarketProbabilityHistory } from '@/lib/marketHistoryStub';
+import { getMarketProbabilityHistory } from '@/lib/marketHistory';
 import { getPublicApiHeaders, publicOptionsResponse } from '@/lib/publicApi';
 import { getPublicMarket } from '@/lib/publicMarketSource';
 
