@@ -14,6 +14,7 @@ import { AGENT_PLATFORM_CONTEXT } from './agentContext';
 import { fetchOnchainMarkets } from './onchainMarkets';
 import { sanitizeFeedText } from './feedSanitizer';
 import { fetchPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
+import { resolveSubjectImageUrl } from './marketSubjectImage';
 import { logger } from './logger';
 import { assessTrendResearchQuality, formatResearchAssessment, getResearchDecision } from './agentResearch';
 import { formatExaEvidence, researchTrendWithExa, summarizeExaEvidence, type ExaEvidence } from './exaResearch';
@@ -993,6 +994,8 @@ async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined>
   const candidates = [
     trend.imageUrl,
     await fetchArticleImageUrl(trend),
+    // Subject-aware fallback: election flag, person photo, company logo, club crest, place.
+    await resolveSubjectImageUrl(trend),
   ].filter((value): value is string => Boolean(value));
 
   for (const candidate of candidates) {
@@ -1000,8 +1003,8 @@ async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined>
     if (image) return image;
   }
 
-  // No real source image: leave imageURI unset so the UI uses its clean built-in
-  // category tile instead of a text-on-color "writeup" image (which read as decoration).
+  // Nothing usable: leave imageURI unset so the UI uses its clean built-in category tile
+  // instead of a text-on-color "writeup" image (which read as decoration).
   return undefined;
 }
 

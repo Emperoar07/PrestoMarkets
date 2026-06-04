@@ -1,6 +1,6 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, type MouseEvent } from 'react';
 import Link from 'next/link';
 import type { Market } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
@@ -47,6 +47,66 @@ function MarketCardComponent({
   const isListLayout = displayType === 'multi_outcome' || displayType === 'date_ladder';
   const isPulse = displayType === 'pulse_gauge';
   const isOpinion = market.type === 'Opinion';
+
+  const handleQuickBuy = (outcome: string) => (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (onQuickBuy) onQuickBuy(market, outcome);
+    else window.location.href = `/markets/${market.id}?buy=${encodeURIComponent(outcome)}`;
+  };
+
+  const iconTile = (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-white/[0.04] bg-[#070e17]">
+      {market.imageURI ? (
+        <img src={market.imageURI} alt={market.title} width={40} height={40} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+      ) : (
+        <span className="text-[10px] font-black text-cyan/70">{market.category.slice(0, 2).toUpperCase()}</span>
+      )}
+    </div>
+  );
+
+  const footer = (
+    <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/[0.04] pt-1.5">
+      <span className="text-[10px] font-semibold text-[#475569]">{market.volume} Vol.</span>
+      <div className="flex items-center gap-2">
+        <WatchlistButton marketId={market.id} />
+        {isLive ? (
+          <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider ${isClosingSoon ? 'text-amber-400 animate-pulse' : 'text-[#475569]'}`}>
+            <span className={`h-1 w-1 rounded-full ${isClosingSoon ? 'bg-amber-400 animate-pulse' : 'bg-red-500'}`} />
+            {market.closeDate ? <Countdown closeDate={market.closeDate} /> : 'LIVE'}
+          </span>
+        ) : (
+          <span className="text-[9px] font-black uppercase tracking-wider text-[#475569]">{isResolved ? 'Resolved' : market.closeLabel || 'Closed'}</span>
+        )}
+      </div>
+    </div>
+  );
+
+  // ── Pulse / directional market: gauge top-right, full-width Yes/No (only card with a gauge) ──
+  if (isPulse) {
+    return (
+      <Link
+        href={`/markets/${market.id}`}
+        onMouseEnter={() => prefetchMarketDetail(market.id, refreshAccountPortfolio)}
+        className="group flex min-h-[142px] min-w-0 flex-col rounded-[10px] border border-white/[0.05] bg-[#0c121d] p-2.5 transition-all hover:border-white/[0.09] hover:bg-[#101929]"
+      >
+        <div className="grid grid-cols-[40px_minmax(0,1fr)_64px] items-start gap-2.5">
+          {iconTile}
+          <h3 className="line-clamp-3 text-[12.5px] font-bold leading-[1.35] text-[#cbd5e1] transition-colors group-hover:text-white">{market.title}</h3>
+          <ChanceMeter percent={yesOdds} />
+        </div>
+        {isLive ? (
+          <div className="mt-2.5 grid grid-cols-2 gap-2">
+            <button type="button" onClick={handleQuickBuy('YES')} className="rounded-[7px] bg-[#132d21] py-2 text-[11px] font-black uppercase text-emerald-400 transition-all hover:bg-[#183929] hover:text-emerald-300 active:scale-95">Yes</button>
+            <button type="button" onClick={handleQuickBuy('NO')} className="rounded-[7px] bg-[#381515] py-2 text-[11px] font-black uppercase text-rose-400 transition-all hover:bg-[#4c1c1c] hover:text-rose-300 active:scale-95">No</button>
+          </div>
+        ) : (
+          <div className="mt-2.5 rounded-[7px] border border-white/[0.06] py-2 text-center text-[10px] font-bold text-[#475569]">Closed</div>
+        )}
+        {footer}
+      </Link>
+    );
+  }
 
   return (
     <Link
@@ -136,18 +196,11 @@ function MarketCardComponent({
             })}
           </div>
         ) : (
-          /* ── Binary (YES/NO) / pulse markets — gauge only on pulse ── */
+          /* ── Binary (YES/NO) Prediction or Opinion markets ── */
           <div className="my-1.5 flex items-center justify-between gap-2">
-            {isPulse ? (
-              <span className="flex items-center gap-1.5">
-                <ChanceMeter percent={yesOdds} />
-                <span className="text-[9px] font-bold text-[#64748b]">chance</span>
-              </span>
-            ) : (
-              <span className="text-[10.5px] font-bold text-[#94a3b8]">
-                {isOpinion ? 'Support' : 'YES'} <span className="font-black text-[#cbd5e1]">{yesOdds}%</span>
-              </span>
-            )}
+            <span className="text-[10.5px] font-bold text-[#94a3b8]">
+              {isOpinion ? 'Support' : 'YES'} <span className="font-black text-[#cbd5e1]">{yesOdds}%</span>
+            </span>
 
             {isLive ? (
               <div className="flex items-center gap-1 shrink-0 bg-white/[0.02] border border-white/[0.06] rounded-[6px] p-[2px]">
