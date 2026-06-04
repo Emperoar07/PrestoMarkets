@@ -26,12 +26,25 @@ const securityHeaders = [
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
 ];
 
+const embedSecurityHeaders = securityHeaders
+  .filter((header) => header.key !== 'X-Frame-Options')
+  .map((header) => header.key === 'Content-Security-Policy'
+    ? {
+        key: header.key,
+        value: header.value.replace("frame-ancestors 'none'", 'frame-ancestors *'),
+      }
+    : header);
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   async headers() {
     return [
       {
-        source: '/:path*',
+        source: '/embed/:path*',
+        headers: embedSecurityHeaders,
+      },
+      {
+        source: '/((?!embed/).*)',
         headers: securityHeaders,
       },
     ];
