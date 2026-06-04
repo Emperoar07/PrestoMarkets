@@ -25,7 +25,7 @@ type ResolutionResult =
 // is an accepted testnet tradeoff. Before mainnet, gate settlement on an
 // independent signal (multi-model agreement, oracle quorum, or a dispute window)
 // rather than a single model's self-attested confidence. See DEVNOTE.md.
-const MIN_AUTO_RESOLVE_CONFIDENCE = 0.85;
+const MIN_AUTO_RESOLVE_CONFIDENCE = 0.75;
 // A market closed longer than this that still can't be confidently resolved is canceled
 // (refunded) instead of parked in "pending manual review" forever, so the agent's active-market
 // cap is never permanently held by unsettleable markets. Permanently-unresolvable cases (no
@@ -67,15 +67,35 @@ function isDeclaredSourceUrl(url: string, domains: string[]): boolean {
   }
 }
 
-function buildEvidenceQuery(market: AppMarket) {
-  const domains = extractSourceDomains(market.sourceOfTruth);
-  if (domains.length === 0) return null;
+// Reputable, low-manipulation sources the agent may use to corroborate an outcome found
+// anywhere on the web — not just the market's declared source-of-truth domain.
+const HIGH_TRUST_DOMAINS = [
+  'reuters.com', 'apnews.com', 'bbc.com', 'bbc.co.uk', 'bloomberg.com', 'wsj.com', 'ft.com',
+  'nytimes.com', 'theguardian.com', 'cnbc.com', 'axios.com', 'politico.com', 'aljazeera.com',
+  'espn.com', 'theathletic.com', 'skysports.com', 'premierleague.com', 'nba.com', 'fifa.com',
+  'coingecko.com', 'coinmarketcap.com', 'sec.gov', 'federalreserve.gov',
+];
 
-  return [
-    market.title,
-    'result outcome',
-    domains.map((domain) => `site:${domain}`).join(' OR '),
-  ].join(' ');
+function isHighTrustUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+    if (hostname.endsWith('.gov') || hostname.endsWith('.gov.uk') || hostname.endsWith('.edu')) return true;
+    return HIGH_TRUST_DOMAINS.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
+  } catch {
+    return false;
+  }
+}
+
+/** A URL the resolver will record on-chain as evidence: the declared source, or a reputable one. */
+function isCredibleEvidenceUrl(url: string, declaredDomains: string[]): boolean {
+  return isDeclaredSourceUrl(url, declaredDomains) || isHighTrustUrl(url);
+}
+
+function buildEvidenceQuery(market: AppMarket) {
+  const cleanTitle = market.title.replace(/[?]/g, '').trim();
+  // Broad web search: the agent corroborates the outcome from reputable sources anywhere,
+  // not only the declared source-of-truth domain.
+  return `${cleanTitle} result outcome ${market.category}`.trim();
 }
 
 async function fetchLiveEvidence(market: AppMarket): Promise<EvidenceResult> {
@@ -83,13 +103,12 @@ async function fetchLiveEvidence(market: AppMarket): Promise<EvidenceResult> {
   const query = buildEvidenceQuery(market);
   const declaredDomains = extractSourceDomains(market.sourceOfTruth);
   if (!apiKey) return { snippets: '', sources: [], unavailableReason: 'Evidence search is not configured.' };
-  if (!query) return { snippets: '', sources: [], unavailableReason: 'No searchable source-of-truth domain was available.' };
 
   try {
     const res = await fetch('https://google.serper.dev/search', {
       method: 'POST',
       headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q: query, gl: 'us', num: 6 }),
+      body: JSON.stringify({ q: query, gl: 'us', num: 10 }),
       signal: createAbortSignalWithTimeout(8000), // 8 second timeout for Serper
     });
     if (!res.ok) return { snippets: '', sources: [], unavailableReason: `Evidence search returned HTTP ${res.status}.` };
@@ -97,24 +116,31 @@ async function fetchLiveEvidence(market: AppMarket): Promise<EvidenceResult> {
     const data = await res.json() as {
       organic?: Array<{ title: string; snippet: string; link: string }>;
       topStories?: Array<{ title: string; link: string }>;
+      answerBox?: { answer?: string; snippet?: string };
     };
 
+    // Tier every result so the oracle can weigh it: PRIMARY = declared source,
+    // TRUSTED = major news / official / league / exchange, WEB = everything else.
+    const tierOf = (link: string) =>
+      isDeclaredSourceUrl(link, declaredDomains) ? 'PRIMARY' : isHighTrustUrl(link) ? 'TRUSTED' : 'WEB';
     const sources: string[] = [];
     const lines: string[] = [];
 
+    if (data.answerBox?.answer || data.answerBox?.snippet) {
+      lines.push(`[ANSWER] ${data.answerBox.answer ?? data.answerBox.snippet}`);
+    }
     for (const item of data.topStories ?? []) {
-      if (!isDeclaredSourceUrl(item.link, declaredDomains)) continue;
-      lines.push(`[NEWS] ${item.title} - ${item.link}`);
-      sources.push(item.link);
+      const tier = tierOf(item.link);
+      lines.push(`[${tier}] ${item.title} - ${item.link}`);
+      if (tier !== 'WEB') sources.push(item.link);
+    }
+    for (const item of (data.organic ?? []).slice(0, 6)) {
+      const tier = tierOf(item.link);
+      lines.push(`[${tier}] ${item.title}: ${item.snippet} - ${item.link}`);
+      if (tier !== 'WEB') sources.push(item.link);
     }
 
-    for (const item of (data.organic ?? []).slice(0, 4)) {
-      if (!isDeclaredSourceUrl(item.link, declaredDomains)) continue;
-      lines.push(`[WEB] ${item.title}: ${item.snippet} - ${item.link}`);
-      sources.push(item.link);
-    }
-
-    return { snippets: lines.join('\n'), sources };
+    return { snippets: lines.join('\n'), sources: Array.from(new Set(sources)) };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       console.warn('[auto-resolve] Serper search timed out after 8s');
@@ -212,16 +238,15 @@ async function resolveMarket(market: AppMarket): Promise<ResolutionResult> {
   }
 
   const declaredSourceUrls = extractSourceUrls(market.sourceOfTruth);
-  if (declaredSourceUrls.length === 0) {
-    // No verifiable URL means it can never be auto-resolved — cancel and refund now.
-    return cancelUnresolvable('No concrete source URL to verify, so this market cannot be settled.');
-  }
   const declaredSourceDomains = extractSourceDomains(market.sourceOfTruth);
 
+  // The agent surfs the broader web for settlement evidence: the declared source is preferred,
+  // but reputable corroborating sources (major news, official data, league/exchange) are allowed.
+  // A missing/weak declared URL no longer auto-cancels — search decides.
   const { snippets: liveEvidence, sources: searchSources, unavailableReason } = await fetchLiveEvidence(market);
-  const hasLiveEvidence = liveEvidence.length > 0 && searchSources.length > 0;
+  const hasLiveEvidence = liveEvidence.trim().length > 0;
   if (!hasLiveEvidence) {
-    const reason = unavailableReason ?? 'No live evidence found on declared source-of-truth domains.';
+    const reason = unavailableReason ?? 'No live evidence found for this market yet.';
     return pastCancelGrace ? cancelUnresolvable(reason) : skipResolution(`Pending: ${reason}`);
   }
 
@@ -240,16 +265,16 @@ Close date: "${market.closeDate}"
 Category: "${market.category}"
 Today: ${new Date().toISOString()}
 
-Declared source URLs:
-${declaredSourceUrls.join('\n')}
+Declared source of truth (preferred):
+${declaredSourceUrls.join('\n') || '(none provided — rely on the most reputable sources in the results)'}
 
-Live search results from declared source domains:
+Live web search results (tags: PRIMARY = the declared source, TRUSTED = major news/official/league/exchange, WEB = other):
 ${liveEvidence}
 
 Instructions:
 - Base your answer ONLY on the evidence above, not on your training data.
-- Treat the declared source URLs and domains as the only allowed source of truth.
-- Return CANCEL if the evidence is insufficient, ambiguous, or contradicts itself.
+- Prefer PRIMARY; you MAY rely on TRUSTED sources that clearly corroborate the outcome. Treat WEB-only claims with caution and never settle on them alone.
+- Return CANCEL if the evidence is insufficient, ambiguous, contradictory, or only low-quality WEB sources support it.
 - Confidence must reflect actual evidence quality; do not inflate it.
 - Return one outcome label exactly as written in the allowed outcome list below.
 - This resolution will be submitted onchain and is irreversible.
@@ -286,9 +311,11 @@ Return JSON only:
   const oracleSources = Array.isArray(parsed.sources)
     ? parsed.sources.filter((source): source is string => typeof source === 'string')
     : [];
-  const allSources = Array.from(new Set([...oracleSources, ...searchSources]))
-    .filter((url) => isSafeHttpUrl(url) && isDeclaredSourceUrl(url, declaredSourceDomains))
-    .slice(0, 8);
+  const combinedSources = Array.from(new Set([...oracleSources, ...searchSources])).filter(isSafeHttpUrl);
+  // Record credible evidence (declared or reputable). If the oracle only cited other safe URLs,
+  // still record those rather than dropping all provenance.
+  const credibleSources = combinedSources.filter((url) => isCredibleEvidenceUrl(url, declaredSourceDomains));
+  const allSources = (credibleSources.length > 0 ? credibleSources : combinedSources).slice(0, 8);
   const confidence = Number(parsed.confidence);
   if (parsed.outcome === 'CANCEL' || !Number.isFinite(confidence) || confidence < MIN_AUTO_RESOLVE_CONFIDENCE) {
     const formattedConfidence = Number.isFinite(confidence) ? confidence.toFixed(2) : 'invalid';
