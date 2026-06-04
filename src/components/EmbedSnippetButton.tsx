@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Copy, Share2 } from 'lucide-react';
 
 type ShareMarketButtonProps = {
@@ -9,9 +10,15 @@ type ShareMarketButtonProps = {
   compact?: boolean;
 };
 
+type PopoverPos = { top?: number; bottom?: number; right: number };
+
 export function ShareMarketButton({ marketId, title = 'Presto market', compact = false }: ShareMarketButtonProps) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [pos, setPos] = useState<PopoverPos | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
   const shareUrl = useMemo(() => {
     const origin = typeof window === 'undefined' ? 'https://presto-markets.vercel.app' : window.location.origin;
     return `${origin}/markets/${marketId}`;
@@ -26,85 +33,95 @@ export function ShareMarketButton({ marketId, title = 'Presto market', compact =
   ];
 
   async function copyLink() {
-    await navigator.clipboard.writeText(shareUrl);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
-  }
-
-  async function shareDirect(event: MouseEvent<HTMLButtonElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (navigator.share) {
-      try {
-        await navigator.share({ title, text: shareText, url: shareUrl });
-        return;
-      } catch {
-        // Fall through to copy when native share is cancelled or unavailable.
-      }
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard unavailable */
     }
-    await copyLink();
   }
 
+  // Toggle the popover. Position it (fixed) from the trigger rect so it escapes the card's
+  // overflow-hidden, and render it in a portal so clicks never bubble to the card's link.
   function toggleOpen(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
     event.stopPropagation();
-    setOpen((value) => !value);
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const right = Math.max(16, window.innerWidth - rect.right);
+    const openUp = rect.bottom + 240 > window.innerHeight;
+    setPos(openUp ? { bottom: window.innerHeight - rect.top + 8, right } : { top: rect.bottom + 8, right });
+    setOpen(true);
   }
 
-  if (compact) {
-    return (
-      <button
-        type="button"
-        onClick={(event) => void shareDirect(event)}
-        aria-label="Share market"
-        title={copied ? 'Link copied' : 'Share market'}
-        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] border border-white/[0.06] bg-white/[0.02] text-[#475569] transition-colors hover:text-cyan"
-      >
-        <Share2 className="h-3.5 w-3.5" />
-      </button>
-    );
-  }
+  useEffect(() => {
+    if (!open) return undefined;
+    function onPointerDown(event: globalThis.MouseEvent) {
+      const target = event.target as Node;
+      if (popoverRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [open]);
+
+  const triggerClass = compact
+    ? 'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] border border-white/[0.06] bg-white/[0.02] text-[#475569] transition-colors hover:text-cyan'
+    : 'inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-cyan/30 bg-cyan/10 text-cyan transition-colors hover:bg-cyan/15';
 
   return (
-    <div className="relative ml-auto shrink-0">
+    <div className={`shrink-0 ${compact ? '' : 'ml-auto'}`}>
       <button
+        ref={buttonRef}
         type="button"
         onClick={toggleOpen}
         aria-expanded={open}
         aria-label="Share market"
         title="Share market"
-        className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-cyan/30 bg-cyan/10 text-cyan transition-colors hover:bg-cyan/15"
+        className={triggerClass}
       >
-        <Share2 className="h-4 w-4" />
+        <Share2 className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
       </button>
-      {open ? (
-        <div className="absolute right-0 top-11 z-20 w-[min(360px,calc(100vw-32px))] rounded-[14px] border border-white/[0.08] bg-[#141e30] p-4 shadow-2xl shadow-black/40">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan">Share</p>
-          <p className="mt-1 text-sm text-muted">Share this market with your network.</p>
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            {socialLinks.map(({ label, href, Icon }) => (
-              <a
-                key={label}
-                href={href}
-                target="_blank"
-                rel="noreferrer"
-                className="flex flex-col items-center gap-1.5 rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-2.5 text-center text-[11px] font-black text-[#cbd5e1] transition-colors hover:border-cyan/25 hover:text-cyan"
+      {open && pos && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              ref={popoverRef}
+              style={{ position: 'fixed', top: pos.top, bottom: pos.bottom, right: pos.right, width: 'min(320px, calc(100vw - 32px))' }}
+              className="z-[60] rounded-[14px] border border-white/[0.08] bg-[#141e30] p-4 shadow-2xl shadow-black/40"
+            >
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan">Share</p>
+              <p className="mt-1 text-sm text-muted">Share this market with your network.</p>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {socialLinks.map(({ label, href, Icon }) => (
+                  <a
+                    key={label}
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => setOpen(false)}
+                    className="flex flex-col items-center gap-1.5 rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-2.5 text-center text-[11px] font-black text-[#cbd5e1] transition-colors hover:border-cyan/25 hover:text-cyan"
+                  >
+                    <Icon className="h-5 w-5" />
+                    {label}
+                  </a>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => void copyLink()}
+                className="mt-2 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-[10px] bg-cyan px-3 text-sm font-black text-[#07111f] transition-opacity hover:opacity-90"
               >
-                <Icon className="h-5 w-5" />
-                {label}
-              </a>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => void copyLink()}
-            className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-[10px] bg-cyan px-3 text-sm font-black text-[#07111f] transition-opacity hover:opacity-90"
-          >
-            <Copy className="h-4 w-4" />
-            {copied ? 'Copied' : 'Copy link'}
-          </button>
-        </div>
-      ) : null}
+                <Copy className="h-4 w-4" />
+                {copied ? 'Copied' : 'Copy link'}
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

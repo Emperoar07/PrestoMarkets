@@ -19,7 +19,9 @@ const DATE_LIKE = new RegExp(
 );
 
 // Directional / short-horizon "pulse" signals — the only place a chance gauge belongs.
-const PULSE_RE = /\b(up or down|higher or lower|\d+\s*(?:m|min|mins|h|hr|hrs)\b|next hour|this hour|hourly|by end of (?:the )?day|by today|intraday)\b/i;
+// Time units require an explicit min/hour word so dollar millions ("$3.8M") aren't read as
+// minutes, and deadline phrasing ("by end of day") is intentionally NOT pulse.
+const PULSE_RE = /\b(up or down|higher or lower|next hour|this hour|hourly|intraday|\d+\s*(?:min|mins|minute|minutes|hour|hours|hr|hrs)\b)\b/i;
 
 type DisplayInput = Pick<Market, 'pollOptions' | 'type' | 'category' | 'title'> & {
   displayType?: DisplayType;

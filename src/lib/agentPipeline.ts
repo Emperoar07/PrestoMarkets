@@ -574,6 +574,21 @@ const sportsDbSports = [
   { sport: 'Basketball', category: 'Basketball', source: 'thesportsdb-basketball' },
 ] as const;
 
+// Only open markets on recognizable top-tier competitions — keeps obscure lower-league
+// fixtures (e.g. Austrian Regionalliga) from crowding out better trends and resolving poorly.
+const MAJOR_SPORTS_LEAGUES = [
+  'english premier league', 'spanish la liga', 'italian serie a', 'german bundesliga',
+  'french ligue 1', 'uefa champions league', 'uefa europa league', 'uefa europa conference',
+  'american major league soccer', 'english football league championship', 'fa cup',
+  'copa del rey', 'dfb pokal', 'coppa italia', 'saudi pro league',
+  'nba', 'euroleague', 'wnba',
+];
+
+function isMajorSportsLeague(league: string | null | undefined): boolean {
+  const value = (league ?? '').toLowerCase();
+  return MAJOR_SPORTS_LEAGUES.some((name) => value.includes(name));
+}
+
 function formatSportsDbDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
@@ -604,16 +619,20 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
           intHomeScore?: string | null;
           intAwayScore?: string | null;
           strStatus?: string | null;
+          strLeague?: string | null;
           dateEvent?: string;
           strTimestamp?: string;
           strThumb?: string | null;
         }>;
       };
 
-      return (data.events ?? []).slice(0, 10).flatMap((event): TrendItem[] => {
+      return (data.events ?? []).slice(0, 20).flatMap((event): TrendItem[] => {
         const home = sanitizeFeedText(event.strHomeTeam || '');
         const away = sanitizeFeedText(event.strAwayTeam || '');
         if (!home || !away) return [];
+
+        // Skip obscure competitions — only top-tier leagues/cups become markets.
+        if (!isMajorSportsLeague(event.strLeague)) return [];
 
         // Only open a market on a match that has NOT started yet. A match with a score, a
         // finished/in-play status, or a kickoff already in the past is decided or underway,
@@ -1524,7 +1543,7 @@ function planTargetShape(trend: TrendItem): string {
   if (/\b(election|winner|win the|who will win|champion|championship|nominee|primary|runoff|next president|mayor|governor|title race|finalist|cup winner|league winner)\b/.test(text)) {
     return '- TARGET SHAPE: multi-outcome winner/race. Return one short label per realistic contender (3 to 12, max 40 chars each), mutually exclusive and covering the field; add a final "Another candidate"/"Other" bucket when the field is open.';
   }
-  if (/\b(up or down|higher or lower|next hour|this hour|hourly|by end of (the )?day|intraday|halts?|halted|resumes?)\b/.test(text)) {
+  if (/\b(up or down|higher or lower|next hour|this hour|hourly|intraday|halts?|halted|resumes?)\b/.test(text)) {
     return '- TARGET SHAPE: pulse (fast-moving directional). Keep it binary YES/NO on the single directional question.';
   }
   return '- TARGET SHAPE: prefer a multi-outcome poll when the topic has more than two natural answers; use binary YES/NO only for a genuinely two-sided single event.';

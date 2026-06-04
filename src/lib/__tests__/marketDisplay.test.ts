@@ -20,6 +20,12 @@ describe('deriveDisplayType', () => {
   it('flags directional/short-window markets as pulse_gauge', () => {
     expect(deriveDisplayType({ ...base, title: 'Bitcoin Up or Down 5m' })).toBe('pulse_gauge');
     expect(deriveDisplayType({ ...base, title: 'Will ETH be higher or lower next hour?' })).toBe('pulse_gauge');
+    expect(deriveDisplayType({ ...base, title: 'Resolve within 15 minutes?' })).toBe('pulse_gauge');
+  });
+
+  it('does not read dollar millions or deadlines as pulse', () => {
+    expect(deriveDisplayType({ ...base, title: 'Will the DOJ confirm the $3.8M freeze by end of June?' })).toBe('binary');
+    expect(deriveDisplayType({ ...base, title: 'Will the company raise $100M this year?' })).toBe('binary');
   });
 
   it('classifies a candidate list as multi_outcome', () => {

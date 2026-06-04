@@ -386,24 +386,26 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                       ))}
                     </div>
                   </div>
-                  <div className="mt-4 grid gap-3 border-t border-white/[0.06] pt-4 md:grid-cols-3">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Source</p>
-                    {groundingHost ? (
-                      <a href={groundingUrl} target="_blank" rel="noopener noreferrer" className="mt-1.5 block break-all text-sm text-cyan hover:opacity-80">{groundingHost} ↗</a>
-                    ) : (
-                      <p className="mt-1.5 text-sm text-white">Source pending</p>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Momentum</p>
-                    <p className="mt-1.5 text-sm text-white">{market.momentumScore ?? 'Not scored'}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Safety</p>
-                    <p className="mt-1.5 text-sm text-white">{market.safetyScore ?? 'Not scored'}</p>
-                  </div>
-                </div>
+                  {isResolver ? (
+                    <div className="mt-4 grid gap-3 border-t border-white/[0.06] pt-4 md:grid-cols-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted">Source</p>
+                        {groundingHost ? (
+                          <a href={groundingUrl} target="_blank" rel="noopener noreferrer" className="mt-1.5 block break-all text-sm text-cyan hover:opacity-80">{groundingHost} ↗</a>
+                        ) : (
+                          <p className="mt-1.5 text-sm text-white">Source pending</p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted">Momentum</p>
+                        <p className="mt-1.5 text-sm text-white">{market.momentumScore ?? 'Not scored'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted">Safety</p>
+                        <p className="mt-1.5 text-sm text-white">{market.safetyScore ?? 'Not scored'}</p>
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="mt-4 grid gap-3 border-t border-white/[0.06] pt-4 md:grid-cols-2">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-muted">Action receipt</p>

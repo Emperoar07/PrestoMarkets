@@ -14,7 +14,7 @@ function firstSentence(text: string | undefined): string | undefined {
  * Resolution rules (the bettor-facing settlement rules + resolver mode).
  */
 export function MarketQualityPanel({ market }: { market: Market }) {
-  const [tab, setTab] = useState<'quality' | 'rules'>('quality');
+  const [tab, setTab] = useState<'quality' | 'rules'>('rules');
   const why = market.createdByType === 'agent' ? firstSentence(market.agentReason) : undefined;
 
   const tabClass = (active: boolean) =>
@@ -34,14 +34,11 @@ export function MarketQualityPanel({ market }: { market: Market }) {
       ) : (
         <div className="mt-4">
           <p className="break-words text-sm leading-7 text-muted [overflow-wrap:anywhere]">{market.rules}</p>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-bold text-cyan">{market.resolutionMode}</span>
-            {market.resolverVerified ? (
-              <span className="rounded-full border border-mint/30 bg-mint/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-mint">
-                ✓ Verified Presto oracle
-              </span>
-            ) : null}
-          </div>
+          {market.resolverVerified ? (
+            <span className="mt-4 inline-flex rounded-full border border-mint/30 bg-mint/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-mint">
+              ✓ Verified Presto oracle
+            </span>
+          ) : null}
         </div>
       )}
     </div>
