@@ -1511,6 +1511,25 @@ type DraftContext = {
   precedents?: MarketPrecedent[];
 };
 
+// Deterministic per-trend shape directive so the drafter stops defaulting to binary and
+// proactively produces multi-outcome elections/winners, date ladders, and pulse markets.
+// Crypto price-range/price-target trends already carry their own structured directive.
+function planTargetShape(trend: TrendItem): string {
+  if (trend.marketStructure === 'price-range' || trend.marketStructure === 'price-target') return '';
+  const text = `${trend.topic} ${trend.query ?? ''}`.toLowerCase();
+
+  if (/\b(by when|by what date|by which date|when will|by end of|deadline|by the end of)\b/.test(text)) {
+    return '- TARGET SHAPE: date ladder. Frame as "by when?" and return 3 to 5 mutually exclusive cumulative date options using concrete calendar dates, ending with a final "After <last date>" bucket (e.g. "By Jun 30", "By Jul 31", "By Aug 31", "After Aug 31").';
+  }
+  if (/\b(election|winner|win the|who will win|champion|championship|nominee|primary|runoff|next president|mayor|governor|title race|finalist|cup winner|league winner)\b/.test(text)) {
+    return '- TARGET SHAPE: multi-outcome winner/race. Return one short label per realistic contender (3 to 12, max 40 chars each), mutually exclusive and covering the field; add a final "Another candidate"/"Other" bucket when the field is open.';
+  }
+  if (/\b(up or down|higher or lower|next hour|this hour|hourly|by end of (the )?day|intraday|halts?|halted|resumes?)\b/.test(text)) {
+    return '- TARGET SHAPE: pulse (fast-moving directional). Keep it binary YES/NO on the single directional question.';
+  }
+  return '- TARGET SHAPE: prefer a multi-outcome poll when the topic has more than two natural answers; use binary YES/NO only for a genuinely two-sided single event.';
+}
+
 async function draftWithGemini(trend: TrendItem, category: string, ctx: DraftContext = {}): Promise<GeminiDraft> {
   // Function name kept for git history; the model is whichever provider in the fallback
   // chain responds first. Direct
@@ -1547,6 +1566,7 @@ async function draftWithGemini(trend: TrendItem, category: string, ctx: DraftCon
     : trend.marketStructure === 'price-target'
     ? `- This is a binary crypto conviction (price-target) market. You MUST use type "Prediction", closeDate "${trend.closeDate}", sourceOfTruth "${trend.url}", and leave outcomeOptions empty (binary YES/NO). Keep the title as the exact reach-by-date question and put the resolution rule from the context into "rules".`
     : '';
+  const shapeDirective = planTargetShape(trend);
   const precedents = formatMarketPrecedents(ctx.precedents ?? []);
 
   const prompt = `${AGENT_PLATFORM_CONTEXT}
@@ -1631,6 +1651,7 @@ Rules for a good market:
 - Description should include the original news topic/headline as context for what sparked the market.
 ${breakingNewsCopyRule}
 ${priceRangeRule}
+${shapeDirective}
 
 Close-date guidance — pick the SHORTEST horizon that still gives the source time to resolve.
 DO NOT default to 7 or 30 days; match the timeframe to the actual event:
@@ -1659,6 +1680,8 @@ Outcome structure — PREFER multi-outcome when the topic is naturally more than
   a price story into a single "above/below threshold" YES/NO when ranges capture it better.
 - Multi-candidate races / "which will happen first" (elections, launches, matchups): return one
   label per realistic option (3 to 12 short labels, max 40 chars each).
+- "By when?" / deadline questions: return 3 to 5 cumulative concrete-date options ending with an
+  "After <last date>" bucket (e.g. "By Jun 30", "By Jul 31", "After Jul 31"), not a single yes/no.
 - Only fall back to binary YES/NO (leave "outcomeOptions" empty) for a genuinely two-sided
   question (a single event that either happens or does not).
 - Outcome labels must be mutually exclusive and collectively cover the outcome space. Do not
@@ -2195,4 +2218,5 @@ export const __agentPipelineTestHooks = {
   deriveFallbackCategory,
   validateDraftQuality,
   sanitizePrecedentGist,
+  planTargetShape,
 };

@@ -1,6 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { __agentPipelineTestHooks } from '../agentPipeline';
 
+describe('agent pipeline target shape planner', () => {
+  const shape = (topic: string, query = '') => __agentPipelineTestHooks.planTargetShape({ topic, query, source: 'news', url: 'https://example.com' });
+
+  it('plans a date ladder for "by when?" questions', () => {
+    expect(shape('Will the DOJ confirm the freeze by end of June?')).toMatch(/date ladder/i);
+  });
+  it('plans a multi-outcome race for elections/winners', () => {
+    expect(shape('Who will win the Peru presidential election?')).toMatch(/multi-outcome/i);
+    expect(shape('2026 World Cup winner')).toMatch(/multi-outcome/i);
+  });
+  it('plans pulse for directional/short-window', () => {
+    expect(shape('Bitcoin up or down next hour?')).toMatch(/pulse/i);
+  });
+  it('defaults to prefer-poll otherwise', () => {
+    expect(shape('Will Apple ship the headset?')).toMatch(/multi-outcome poll|binary/i);
+  });
+});
+
 describe('agent pipeline market quality gates', () => {
   it('rejects already-reported headline actions without a future milestone', () => {
     const issue = __agentPipelineTestHooks.getAlreadyReportedActionIssue({
