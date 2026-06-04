@@ -17,6 +17,7 @@ import { agentResolutionGuardrails, buildAgentResolutionPrompt, buildAgentResolu
 import type { MarketStatus } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
 import { estimateParimutuelPayout } from '@/lib/marketUtils';
+import { ChevronDown } from 'lucide-react';
 
 const statusStyle: Record<MarketStatus, string> = {
   Open: 'border-mint/25 bg-mint/10 text-mint',
@@ -245,6 +246,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   Agent
                 </span>
               ) : null}
+              <EmbedSnippetButton marketId={market.id} />
             </div>
 
             {/* Title */}
@@ -360,14 +362,13 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             <div className="mt-6 min-w-0 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
               <h2 className="text-base font-black text-white">Resolution rules</h2>
               <p className="mt-2 break-words text-sm leading-7 text-muted [overflow-wrap:anywhere]">{market.rules}</p>
-              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/[0.06] pt-4">
-                <p className="text-xs text-cyan">{market.resolutionMode}</p>
-                {market.resolverVerified ? (
+              {market.resolverVerified ? (
+                <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/[0.06] pt-4">
                   <span className="rounded-full border border-mint/30 bg-mint/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-mint">
                     ✓ Verified Presto oracle
                   </span>
-                ) : null}
-              </div>
+                </div>
+              ) : null}
             </div>
 
             {isAgentMarket ? (
@@ -377,22 +378,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     <p className="text-[10px] font-black uppercase tracking-widest text-cyan">Agent-created market</p>
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                       <h2 className="text-base font-black text-white">{market.agentName || 'Presto Market Agent'}</h2>
-                      {groundingHost ? (
-                        <span className="max-w-[220px] truncate text-xs font-bold text-muted">{groundingHost}</span>
-                      ) : null}
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <span className="rounded-full border border-cyan/25 bg-cyan/10 px-3 py-1 text-xs font-black text-cyan">
-                      {market.agentConfidence || 'Confidence logged'}
-                    </span>
-                    <span className="rounded-[8px] border border-white/[0.06] bg-white/[0.03] px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-muted group-open:hidden">
-                      Details
-                    </span>
-                    <span className="hidden rounded-[8px] border border-cyan/20 bg-cyan/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-cyan group-open:inline-flex">
-                      Hide
-                    </span>
-                  </div>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-white/[0.06] bg-white/[0.03] text-muted transition-colors group-open:border-cyan/20 group-open:bg-cyan/10 group-open:text-cyan">
+                    <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                  </span>
                 </summary>
                 <div className="px-5 pb-5">
                   <div className="border-t border-white/[0.06] pt-4">
@@ -454,8 +444,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 ))}
               </div>
             </div>
-            <EmbedSnippetButton marketId={market.id} />
-
             {/* Settlement record */}
             {hasSettlementRecord ? (
               <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">

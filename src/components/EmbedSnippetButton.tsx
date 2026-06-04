@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Code, Copy } from 'lucide-react';
+import { Copy, Share2 } from 'lucide-react';
 
 export function EmbedSnippetButton({ marketId }: { marketId: string }) {
   const [open, setOpen] = useState(false);
@@ -19,28 +19,26 @@ export function EmbedSnippetButton({ marketId }: { marketId: string }) {
   }
 
   return (
-    <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+    <div className="relative ml-auto shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        aria-label="Share market"
+        title="Share market"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-cyan/30 bg-cyan/10 text-cyan transition-colors hover:bg-cyan/15"
+      >
+        <Share2 className="h-4 w-4" />
+      </button>
+      {open ? (
+        <div className="absolute right-0 top-11 z-20 w-[min(360px,calc(100vw-32px))] rounded-[14px] border border-white/[0.08] bg-[#141e30] p-4 shadow-2xl shadow-black/40">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan">Share</p>
           <p className="mt-1 text-sm text-muted">Embed this market on another site.</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          className="inline-flex min-h-11 items-center gap-2 rounded-[10px] border border-cyan/30 bg-cyan/10 px-3 text-sm font-black text-cyan transition-colors hover:bg-cyan/15"
-        >
-          <Code className="h-4 w-4" />
-          Embed
-        </button>
-      </div>
-      {open ? (
-        <div className="mt-3">
           <textarea
             readOnly
             value={snippet}
             rows={3}
-            className="w-full resize-none rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-xs leading-5 text-[#cbd5e1] outline-none"
+            className="mt-3 w-full resize-none rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-xs leading-5 text-[#cbd5e1] outline-none"
           />
           <button
             type="button"
