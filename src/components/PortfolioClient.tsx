@@ -50,7 +50,7 @@ function parsePnlPercent(pnl: string): number {
 }
 
 export function PortfolioClient() {
-  const { positions, connectedWallet, isLoadingAccount, markets, claimMarket } = useAppState();
+  const { positions, connectedWallet, isLoadingAccount, markets, claimMarket, refundMarket } = useAppState();
   const { track } = useTransactions();
   const [filter, setFilter] = useState<FilterType>('all');
   const [sort, setSort] = useState<SortType>('date');
@@ -59,12 +59,21 @@ export function PortfolioClient() {
   const insights = computePortfolioInsights(positions, markets);
 
   async function claimAll() {
-    const ids = Array.from(new Set(positions.filter((p) => p.status === 'Claimable').map((p) => p.marketId)));
-    if (ids.length === 0) return;
+    const claimable = positions.filter((p) => p.status === 'Claimable');
+    const seen = new Set<string>();
+    const targets = claimable.filter((p) => (seen.has(p.marketId) ? false : seen.add(p.marketId)));
+    if (targets.length === 0) return;
     setClaimingAll(true);
-    for (const marketId of ids) {
-      // Wrap each claim in track() so it shows the same progress toast as buying.
-      try { await track({ label: 'Claim winnings' }, () => claimMarket(marketId)); } catch { /* keep claiming the rest */ }
+    for (const position of targets) {
+      // Canceled markets must be settled with refund(), not claim() — calling claim() on a
+      // canceled market reverts (the "succeeds then fails" bug). Detect refunds from the
+      // position's valuation label, falling back to the market's canceled status.
+      const isRefund = /refund/i.test(position.valuationLabel ?? '')
+        || markets.find((m) => m.id === position.marketId)?.status === 'Canceled';
+      const label = isRefund ? 'Refund' : 'Claim winnings';
+      try {
+        await track({ label }, () => (isRefund ? refundMarket(position.marketId) : claimMarket(position.marketId)));
+      } catch { /* keep settling the rest */ }
     }
     setClaimingAll(false);
   }

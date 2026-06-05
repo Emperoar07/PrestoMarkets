@@ -232,9 +232,12 @@ export async function agentSettlePosition(marketAddress: string, action: 'claim'
 // outcome. In a parimutuel market, seeding all sides costs ~fees on net (the agent gets the
 // winning-side pool back), but guarantees the winning outcome has shares so the market can settle.
 // Override with AGENT_SEED_USDC; set AGENT_SEED_LIQUIDITY=false to disable.
+// Hard-capped at 0.1 USDC total per market (split across outcomes). Tiny on purpose: it only
+// needs to put a non-zero share on every outcome so the market can settle, not provide depth.
 const AGENT_SEED_TOTAL_USDC = (() => {
   const v = Number(process.env.AGENT_SEED_USDC);
-  return Number.isFinite(v) && v >= 0 ? v : 2;
+  const chosen = Number.isFinite(v) && v >= 0 ? v : 0.1;
+  return Math.min(chosen, 0.1);
 })();
 
 async function seedMarketLiquidity(marketAddress: string, outcomeCount: number): Promise<void> {
