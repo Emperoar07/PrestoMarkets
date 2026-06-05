@@ -5,6 +5,7 @@ import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
 import { useSocialSession } from '@/lib/socialSessionContext';
 import { useAppState } from '@/lib/appState';
+import { broadcastSocialChanged } from '@/lib/socialSignIn';
 
 function shortAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -111,6 +112,7 @@ export function ProfileClient() {
       }
       notify('Profile saved.');
       void refresh();
+      broadcastSocialChanged(); // update the header avatar immediately
     } catch (error) {
       notify(error instanceof Error ? error.message : 'Profile could not be saved.', true);
     } finally {

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { ChevronDown, LogOut, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from 'wagmi';
 import {
   completePendingCircleSocialLogin,
@@ -32,6 +32,7 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
   const [authMode, setAuthMode] = useState<'signup' | 'login'>('signup');
   const [copied, setCopied] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const isPending = status === 'Connecting...' || status.startsWith('Opening Circle');
 
   useEffect(() => {
@@ -64,6 +65,26 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
     setShowConnectPanel(false);
     setStatus('');
   }, [isRainbowConnected, rainbowAddress]);
+
+  // Show the connected wallet's profile avatar (if set). Refreshes when the profile changes.
+  useEffect(() => {
+    const addr = wallet?.address;
+    if (!addr) { setAvatarUrl(null); return undefined; }
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(`/api/profiles/${addr}`, { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled) setAvatarUrl(data.profile?.avatarUrl?.trim() || null);
+      } catch {
+        if (!cancelled) setAvatarUrl(null);
+      }
+    }
+    void load();
+    function onChange() { void load(); }
+    window.addEventListener('presto:social-changed', onChange);
+    return () => { cancelled = true; window.removeEventListener('presto:social-changed', onChange); };
+  }, [wallet?.address]);
 
   useEffect(() => {
     function closeOnOutsideClick(event: MouseEvent) {
@@ -150,14 +171,20 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
     const avatarStyle = {
       background: `linear-gradient(135deg, ${color1}, ${color2})`,
     };
-    const avatarIcon = (
-      <div 
-        style={avatarStyle} 
-        className="h-7 w-7 rounded-full shrink-0 border border-white/20 shadow-inner drop-shadow-[0_0_3px_rgba(37,192,244,0.4)]" 
+    const avatarIcon = avatarUrl ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={avatarUrl}
+        alt=""
+        className="h-10 w-10 rounded-full shrink-0 border border-white/20 object-cover"
+      />
+    ) : (
+      <div
+        style={avatarStyle}
+        className="h-10 w-10 rounded-full shrink-0 border border-white/20 shadow-inner drop-shadow-[0_0_3px_rgba(37,192,244,0.4)]"
       />
     );
 
-    const arrowActive = hideDropdown ? forceArrowState : isOpen;
     return (
       <div ref={dropdownRef} className="relative">
         <button
@@ -169,11 +196,10 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
               setIsOpen((value) => !value);
             }
           }}
-          className="flex items-center gap-1.5 rounded-full border border-white/10 p-0.5 transition-colors hover:border-cyan/35 bg-[#0b1322]/80"
+          className="flex items-center rounded-full transition-opacity hover:opacity-90"
           title="User profile menu"
         >
           {avatarIcon}
-          <ChevronDown className={`h-3.5 w-3.5 text-[#94a3b8] mr-1.5 transition-transform ${arrowActive ? 'rotate-180' : ''}`} />
         </button>
 
         {isOpen && !hideDropdown ? (
@@ -268,139 +294,162 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
 
   const signInModal = showConnectPanel ? (
     <div
-      className="fixed inset-0 z-[9999] grid place-items-center overflow-hidden bg-[#050b14]/88 px-4 py-8 backdrop-blur-md"
+      className="fixed inset-0 z-[9999] grid place-items-center overflow-y-auto bg-[#050b14]/80 px-4 py-8 backdrop-blur-md"
       role="dialog"
       aria-modal="true"
       aria-label="Sign in to Presto"
     >
-      <div className="relative my-auto w-full max-w-[700px]">
+      <div className="relative my-auto w-full max-w-[680px] rounded-2xl border border-white/[0.08] bg-[#0b1322] p-6 md:p-8 shadow-2xl shadow-black/60">
         <button
           type="button"
           onClick={() => setShowConnectPanel(false)}
-          className="absolute right-3 top-3 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-[#0f172a]/75 text-white shadow-lg shadow-black/20 transition-colors hover:border-cyan/40"
+          className="absolute right-4 top-4 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.02] text-[#94a3b8] transition hover:bg-white/[0.06] hover:text-white"
           aria-label="Close sign in modal"
         >
           <X className="h-4 w-4" />
         </button>
 
-        <div className="relative overflow-hidden rounded-[22px] border border-cyan/15 bg-[radial-gradient(circle_at_82%_20%,rgba(37,192,244,0.24),transparent_22%),linear-gradient(145deg,#0b1322_0%,#111b2d_56%,#132536_100%)] p-4 shadow-2xl shadow-black/45 sm:min-h-[380px] sm:p-6">
-          <div className="absolute -right-5 top-8 hidden h-44 w-44 rounded-full border-[26px] border-cyan/10 bg-[#25c0f4]/14 shadow-xl shadow-cyan/10 sm:block" />
-          <div className="absolute right-16 top-28 hidden h-24 w-32 rotate-[-18deg] rounded-[999px] bg-[#25c0f4]/10 blur-[1px] sm:block" />
-          <div className="absolute right-10 top-48 hidden h-7 w-7 rounded-full bg-[#25c0f4]/45 sm:block" />
-          <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#25c0f4]/10 to-transparent" />
+        <div className="flex flex-col md:flex-row gap-8 items-stretch">
+          {/* Left Column: App-Native Wallet (Circle) */}
+          <div className="flex-1 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <PrestoIcon />
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan">Presto Account</p>
+              </div>
+              
+              <h2 className="mt-5 text-[24px] font-black leading-none text-white">
+                {authMode === 'signup' ? 'Sign Up' : 'Log In'}
+              </h2>
+              
+              <p className="mt-2 text-xs text-[#94a3b8]">
+                {authMode === 'signup' ? 'Already have an account?' : "Don't have an account?"}{' '}
+                <button
+                  type="button"
+                  onClick={() => setAuthMode((mode) => (mode === 'signup' ? 'login' : 'signup'))}
+                  className="font-extrabold text-cyan hover:text-cyan/80 transition-colors"
+                >
+                  {authMode === 'signup' ? 'Log in' : 'Sign up'}
+                </button>
+              </p>
+              <p className="mt-1 text-xs text-[#64748b]">Create or access your app-native wallet.</p>
 
-          <div className="relative w-full max-w-[365px] rounded-[18px] border border-white/[0.08] bg-[#101a2c]/95 p-5 text-[#f8fafc] shadow-2xl shadow-black/20 backdrop-blur">
-            <div className="flex items-center gap-2">
-              <PrestoIcon />
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#f8fafc]">Presto</p>
+              {/* Capsule tab method switcher */}
+              <div className="mt-5 flex gap-1 border border-white/[0.06] bg-[#0c1322] p-1 rounded-xl w-full">
+                {(['email', 'pin'] as const).map((method) => {
+                  const isActive = circleMethod === method;
+                  return (
+                    <button
+                      key={method}
+                      type="button"
+                      onClick={() => setCircleMethod(method)}
+                      className={`flex-1 rounded-lg py-2 text-[10.5px] font-black uppercase tracking-wider transition-all duration-200 ${
+                        isActive
+                          ? 'bg-cyan text-[#07111f] shadow-md shadow-cyan/10'
+                          : 'text-[#94a3b8] hover:bg-white/[0.04] hover:text-[#f1f5f9]'
+                      }`}
+                    >
+                      {method === 'pin' ? 'PIN' : method}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {circleMethod === 'email' ? (
+                <div className="mt-4.5">
+                  <label className="block text-[11.5px] font-black uppercase tracking-wider text-[#64748b]">
+                    Email address
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="name@example.com"
+                    className="mt-2 w-full rounded-xl border border-white/[0.06] bg-[#0d1626]/20 px-3.5 py-2.5 text-[13.5px] font-bold text-white outline-none transition-all placeholder:text-[#475569] focus:border-cyan/40 focus:bg-[#0d1626]/35 focus:ring-1 focus:ring-cyan/40"
+                  />
+                  <p className="mt-2.5 text-xs text-[#64748b] leading-relaxed">
+                    We will send an email with a secure verification code.
+                  </p>
+                </div>
+              ) : null}
+
+              {circleMethod === 'pin' ? (
+                <div className="mt-4.5">
+                  <label className="block text-[11.5px] font-black uppercase tracking-wider text-[#64748b]">
+                    User ID or Email
+                  </label>
+                  <input
+                    type="text"
+                    value={pinUserId}
+                    onChange={(event) => setPinUserId(event.target.value)}
+                    placeholder="Enter your account ID"
+                    className="mt-2 w-full rounded-xl border border-white/[0.06] bg-[#0d1626]/20 px-3.5 py-2.5 text-[13.5px] font-bold text-white outline-none transition-all placeholder:text-[#475569] focus:border-cyan/40 focus:bg-[#0d1626]/35 focus:ring-1 focus:ring-cyan/40"
+                  />
+                  <p className="mt-2.5 text-xs text-[#64748b] leading-relaxed">
+                    Circle will open a secure PIN challenge for your account.
+                  </p>
+                </div>
+              ) : null}
             </div>
-            <h2 className="mt-5 text-[26px] font-black leading-none text-white">
-              {authMode === 'signup' ? 'Sign up' : 'Log in'}
-            </h2>
-            <p className="mt-1 text-[10px] font-semibold text-[#94a3b8]">
-              {authMode === 'signup' ? 'Already have an account?' : "Don't have an account?"}{' '}
+
+            <div className="mt-5 space-y-4">
               <button
                 type="button"
-                onClick={() => setAuthMode((mode) => (mode === 'signup' ? 'login' : 'signup'))}
-                className="font-black text-[#25c0f4] hover:text-[#7ddfff]"
+                onClick={() => continueWithCircleMethod()}
+                disabled={isPending}
+                className="w-full rounded-xl bg-cyan py-3 text-xs font-black uppercase tracking-wider text-[#07111f] transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50 shadow-lg shadow-cyan/10"
               >
-                {authMode === 'signup' ? 'Log in' : 'Sign up'}
+                {circleMethod === 'pin'
+                  ? 'Continue with PIN'
+                  : authMode === 'signup' ? 'Sign up' : 'Log in'}
               </button>
-            </p>
-            <p className="mt-2 text-xs font-semibold text-[#9fb0c8]">Create or access your app wallet.</p>
 
-            <div className="mt-4 grid grid-cols-2 gap-1 rounded-[10px] border border-white/[0.08] bg-[#0b1322] p-1">
-              {(['email', 'pin'] as const).map((method) => (
-                <button
-                  key={method}
-                  type="button"
-                  onClick={() => setCircleMethod(method)}
-                  className={`rounded-[8px] px-2 py-2 text-[10px] font-black uppercase tracking-[0.08em] transition-colors ${
-                    circleMethod === method
-                      ? 'bg-[#25c0f4] text-[#090e1a]'
-                      : 'text-[#94a3b8] hover:text-white'
-                  }`}
-                >
-                  {method === 'pin' ? 'PIN' : method}
-                </button>
-              ))}
-            </div>
-
-            {circleMethod === 'email' ? (
-              <>
-                <label className="mt-4 block text-[11px] font-black text-[#dbeafe]">
-                  Email address
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="Email"
-                  className="mt-2 w-full rounded-[8px] border border-white/[0.08] bg-[#0b1322] px-3 py-2.5 text-xs font-semibold text-white outline-none transition-colors placeholder:text-[#64748b] focus:border-[#25c0f4]"
-                />
-                <p className="mt-3 text-[11px] font-semibold leading-4 text-[#94a3b8]">
-                  We will send an email with a verification code.
-                </p>
-              </>
-            ) : null}
-
-            {circleMethod === 'pin' ? (
-              <>
-                <label className="mt-4 block text-[11px] font-black text-[#dbeafe]">
-                  User ID or email
-                </label>
-                <input
-                  type="text"
-                  value={pinUserId}
-                  onChange={(event) => setPinUserId(event.target.value)}
-                  placeholder="Enter your app ID"
-                  className="mt-2 w-full rounded-[8px] border border-white/[0.08] bg-[#0b1322] px-3 py-2.5 text-xs font-semibold text-white outline-none transition-colors placeholder:text-[#64748b] focus:border-[#25c0f4]"
-                />
-                <p className="mt-3 text-[11px] font-semibold leading-4 text-[#94a3b8]">
-                  Circle will open a secure PIN and recovery challenge for this app wallet.
-                </p>
-              </>
-            ) : null}
-
-            <button
-              type="button"
-              onClick={() => continueWithCircleMethod()}
-              disabled={isPending}
-              className="mt-5 w-full rounded-[999px] bg-[#25c0f4] px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.08em] text-[#090e1a] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {circleMethod === 'pin'
-                ? 'Continue with PIN'
-                : authMode === 'signup' ? 'Sign up' : 'Log in'}
-            </button>
-
-            <div className="my-4 flex items-center gap-3">
-              <div className="h-px flex-1 bg-white/[0.08]" />
-              <span className="text-[11px] font-bold text-[#94a3b8]">or</span>
-              <div className="h-px flex-1 bg-white/[0.08]" />
-            </div>
-
-            <div className="relative grid gap-2">
-              {/* Google sign-in temporarily disabled: blurred + non-interactive until enabled. */}
-              <div className="pointer-events-none select-none blur-[2px] opacity-50" aria-hidden="true">
-                <SocialButton provider="google" label="Continue with Google" onClick={() => {}} disabled />
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-white/[0.06]" />
+                <span className="text-[10px] font-extrabold text-[#64748b] uppercase tracking-wider">or</span>
+                <div className="h-px flex-1 bg-white/[0.06]" />
               </div>
-              <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[9px] font-black uppercase tracking-wider text-[#94a3b8]">
-                Coming soon
-              </span>
-            </div>
 
-            <p className="mt-4 text-[9px] font-semibold leading-4 text-[#94a3b8]">
-              By continuing, you use Circle-powered app-native onboarding.
-            </p>
+              <div className="relative">
+                <div className="pointer-events-none select-none opacity-40">
+                  <SocialButton provider="google" label="Continue with Google" onClick={() => {}} disabled />
+                </div>
+                <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 rounded bg-[#0d1626]/80 border border-white/[0.08] px-2 py-0.5 text-[8.5px] font-black uppercase tracking-wider text-[#64748b]">
+                  Coming soon
+                </span>
+              </div>
+
+              {status && !isPending && (
+                <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3.5 text-xs text-red-300 font-bold leading-normal animate-pulse">
+                  {status}
+                </div>
+              )}
+
+              <p className="text-[10px] text-[#64748b] leading-normal mt-1">
+                Circle-powered secure, non-custodial smart accounts.
+              </p>
+            </div>
           </div>
 
-          {status && !isPending ? (
-            <p className="relative mt-4 rounded-[12px] border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs font-bold text-red-100">
-              {status}
-            </p>
-          ) : null}
+          {/* Vertical Separator */}
+          <div className="hidden md:block w-px bg-white/[0.06] self-stretch" />
 
-          <RainbowExternalWalletRow />
+          {/* Right Column: Web3 Wallet Connectors */}
+          <div className="flex-1 flex flex-col justify-between">
+            <div className="space-y-4">
+              <div>
+                <p className="text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#64748b]">Power Users</p>
+                <h3 className="mt-1.5 text-base font-black text-white leading-none">Connect Web3 Wallet</h3>
+                <p className="mt-2.5 text-xs leading-relaxed text-[#94a3b8]">
+                  Or choose to connect using your browser extension wallet or external hardware keys.
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <RainbowExternalWalletRow />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
