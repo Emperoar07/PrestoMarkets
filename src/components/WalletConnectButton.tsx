@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import Link from 'next/link';
 import { ChevronDown, LogOut, X } from 'lucide-react';
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from 'wagmi';
 import {
@@ -143,21 +144,18 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
   }
 
   if (wallet) {
-    let avatarIcon = null;
-    if (showAvatar) {
-      const hex = wallet.address.slice(-6);
-      const color1 = `#${hex}`;
-      const color2 = '#25c0f4';
-      const avatarStyle = {
-        background: `linear-gradient(135deg, ${color1}, ${color2})`,
-      };
-      avatarIcon = (
-        <div 
-          style={avatarStyle} 
-          className="h-4.5 w-4.5 rounded-full shrink-0 border border-white/20 shadow-inner drop-shadow-[0_0_3px_rgba(37,192,244,0.4)]" 
-        />
-      );
-    }
+    const hex = wallet.address.slice(-6);
+    const color1 = `#${hex}`;
+    const color2 = '#25c0f4';
+    const avatarStyle = {
+      background: `linear-gradient(135deg, ${color1}, ${color2})`,
+    };
+    const avatarIcon = (
+      <div 
+        style={avatarStyle} 
+        className="h-7 w-7 rounded-full shrink-0 border border-white/20 shadow-inner drop-shadow-[0_0_3px_rgba(37,192,244,0.4)]" 
+      />
+    );
 
     const arrowActive = hideDropdown ? forceArrowState : isOpen;
     return (
@@ -171,11 +169,11 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
               setIsOpen((value) => !value);
             }
           }}
-          className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-1 text-[13px] font-bold text-[#f1f5f9] transition-colors hover:border-cyan/35"
+          className="flex items-center gap-1.5 rounded-full border border-white/10 p-0.5 transition-colors hover:border-cyan/35 bg-[#0b1322]/80"
+          title="User profile menu"
         >
           {avatarIcon}
-          {wallet.mode === 'circle-user-controlled' ? 'Circle ' : ''}{shortAddress(wallet.address)}
-          <ChevronDown className={`h-3.5 w-3.5 text-[#94a3b8] transition-transform ${arrowActive ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`h-3.5 w-3.5 text-[#94a3b8] mr-1.5 transition-transform ${arrowActive ? 'rotate-180' : ''}`} />
         </button>
 
         {isOpen && !hideDropdown ? (
@@ -200,28 +198,60 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
               </p>
             </div>
 
-            {/* Footer actions */}
-            <div className="flex items-center justify-between gap-3 border-t border-white/[0.06] px-4 py-3">
-              <a
+            {/* Actions & Navigation Footer */}
+            <div className="flex items-center justify-between gap-2 px-4 py-3.5 bg-[#090e1a] border-t border-white/[0.06]">
+              <Link
                 href="/activity"
-                className="text-[12px] font-bold text-cyan/80 transition-colors hover:text-cyan"
+                onClick={() => setIsOpen(false)}
+                className="flex items-center gap-1.5 text-[11px] font-black text-[#94a3b8] transition-colors hover:text-white"
               >
-                Activity →
-              </a>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-70">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                </svg>
+                Activity
+              </Link>
+              
+              <Link
+                href="/portfolio"
+                onClick={() => setIsOpen(false)}
+                className="flex items-center gap-1.5 text-[11px] font-black text-[#94a3b8] transition-colors hover:text-white"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-70">
+                  <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
+                </svg>
+                Portfolio
+              </Link>
+
+              <Link
+                href="/profile"
+                onClick={() => setIsOpen(false)}
+                className="flex items-center gap-1.5 text-[11px] font-black text-[#94a3b8] transition-colors hover:text-white"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-70">
+                  <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
+                </svg>
+                Profile
+              </Link>
+
               <a
                 href={`https://testnet.arcscan.app/address/${wallet.address}`}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[12px] font-bold text-muted transition-colors hover:text-cyan"
+                className="flex items-center gap-1.5 text-[11px] font-black text-[#94a3b8] transition-colors hover:text-white"
               >
-                Explorer ↗
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-70">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                  <polyline points="15 3 21 3 21 9" />
+                  <line x1="10" y1="14" x2="21" y2="3" />
+                </svg>
+                Explorer
               </a>
+
               <button
                 type="button"
                 onClick={() => void disconnectWallet()}
-                className="flex items-center gap-1.5 text-[12px] font-bold text-red-300/80 transition-colors hover:text-red-300"
+                className="flex items-center gap-1 text-[11.5px] font-black text-[#f87171] hover:text-red-300"
               >
-                <LogOut className="h-3.5 w-3.5" />
                 Disconnect
               </button>
             </div>
