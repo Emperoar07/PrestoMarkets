@@ -1,8 +1,11 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import type { Market } from '@/lib/markets';
-import { getOutcomeColor } from '@/lib/outcomeColors';
 
 type MarketSignalChartMarket = Pick<Market, 'id' | 'outcomes' | 'volume' | 'liquidity'>;
+
+const MULTI_COLORS = ['#25c8ff', '#c8f122', '#8057ff', '#f6e91f', '#ff6978', '#4ade80', '#fb923c', '#f472b6'];
+const BINARY_COLORS = ['#25c8ff', '#ff6978'];
+const DETAIL_TABS = ['1D', '1W', '1M', 'All'];
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -14,34 +17,44 @@ function parseUsd(value: string) {
   return (Number(normalized.replace(/[MK]/g, '')) || 0) * multiplier;
 }
 
+function getChartColor(index: number, count: number) {
+  return count === 2 ? BINARY_COLORS[index % BINARY_COLORS.length] : MULTI_COLORS[index % MULTI_COLORS.length];
+}
+
 function buildSignalPoints(baseOdds: number, volume: number, liquidity: number, phase = 0): number[] {
   const depthBias = liquidity > 0 ? clamp(volume / Math.max(liquidity, 1), 0.1, 1.8) : 0.5;
-  return Array.from({ length: 110 }, (_, i) => {
-    const slow = Math.sin(i * 0.08 + phase) * 4.2;
-    const mid = Math.sin(i * 0.27 + phase * 1.3) * 2.1;
-    const fast = Math.sin(i * 1.05 + phase * 0.7) * 0.75;
-    const drift = (i - 55) * depthBias * 0.035;
-    const spike = i > 78 && i < 92 ? Math.sin((i - 78) * 0.62 + phase) * 6.8 : 0;
-    return clamp(baseOdds + slow + mid + fast + drift + spike, 1, 99);
+  return Array.from({ length: 10 }, (_, i) => {
+    const slow = Math.sin(i * 0.82 + phase) * 2.2;
+    const mid = Math.sin(i * 1.7 + phase * 1.3) * 1.1;
+    const drift = (i - 4.5) * depthBias * 0.16;
+    const spike = i > 3 && i < 6 ? Math.sin((i - 3) * 1.4 + phase) * 2.6 : 0;
+    return clamp(baseOdds + slow + mid + drift + spike, 1, 99);
   });
 }
 
-function chartY(point: number, height: number, paddingY: number) {
-  return paddingY + (1 - point / 100) * (height - paddingY * 2);
+function getAxis(points: number[][], outcomeCount: number) {
+  const maxPoint = Math.max(...points.flat(), 0);
+  if (outcomeCount > 2 && maxPoint <= 20) return { max: 20, ticks: [20, 15, 10, 5, 0] };
+  if (outcomeCount > 2 && maxPoint <= 50) return { max: 50, ticks: [50, 40, 30, 20, 10, 0] };
+  return { max: 100, ticks: [100, 75, 50, 25, 0] };
 }
 
-function buildSmoothPath(points: number[], width: number, height: number, offsetX: number, paddingY: number) {
+function chartY(point: number, height: number, paddingY: number, max: number) {
+  return paddingY + (1 - point / max) * (height - paddingY * 2);
+}
+
+function buildStepPath(points: number[], width: number, height: number, offsetX: number, paddingY: number, max: number) {
   const coords = points.map((p, i) => ({
-    x: offsetX + (i / (points.length - 1)) * width,
-    y: chartY(p, height, paddingY),
+    x: offsetX + (i / Math.max(1, points.length - 1)) * width,
+    y: chartY(p, height, paddingY, max),
   }));
 
   let path = `M ${coords[0].x.toFixed(1)} ${coords[0].y.toFixed(1)}`;
   for (let i = 1; i < coords.length; i++) {
     const prev = coords[i - 1];
     const curr = coords[i];
-    const cp = (curr.x - prev.x) * 0.42;
-    path += ` C ${(prev.x + cp).toFixed(1)} ${prev.y.toFixed(1)}, ${(curr.x - cp).toFixed(1)} ${curr.y.toFixed(1)}, ${curr.x.toFixed(1)} ${curr.y.toFixed(1)}`;
+    const midX = (prev.x + curr.x) / 2;
+    path += ` L ${midX.toFixed(1)} ${prev.y.toFixed(1)} L ${midX.toFixed(1)} ${curr.y.toFixed(1)} L ${curr.x.toFixed(1)} ${curr.y.toFixed(1)}`;
   }
   return path;
 }
@@ -49,10 +62,8 @@ function buildSmoothPath(points: number[], width: number, height: number, offset
 function MarketSignalChartComponent({ market, compact = false, live = false }: { market: MarketSignalChartMarket; compact?: boolean; live?: boolean }) {
   const volume = parseUsd(market.volume);
   const liquidity = parseUsd(market.liquidity);
-
-  // Real pool-ratio history (detail page only). Each entry is a per-outcome 0..100 series.
-  // Falls back to the synthetic signal when there aren't enough trades to plot.
   const [realSeries, setRealSeries] = useState<number[][] | null>(null);
+
   useEffect(() => {
     if (!live || !market.id) return undefined;
     let cancelled = false;
@@ -64,7 +75,9 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
         setRealSeries(market.outcomes.map((_, index) => history.map((point) => (point.probabilities[index] ?? 0) * 100)));
       })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [live, market.id, market.outcomes.length]);
 
   const W = compact ? 460 : 1000;
@@ -74,160 +87,170 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
   const padY = compact ? 14 : 48;
   const chartW = W - padL - padR;
   const endX = padL + chartW;
+  const uid = compact ? 'compact' : 'detail';
 
-  // Memoize outcome series calculation
-  const outcomeSeries = useMemo(() =>
-    market.outcomes.map((outcome, index) => {
-      const real = realSeries?.[index];
-      const useReal = Boolean(real && real.length >= 2);
-      const phase = index * (Math.PI / market.outcomes.length);
-      const points = useReal
-        ? (real as number[])
-        : buildSignalPoints(outcome.odds, index === 0 ? volume : liquidity, index === 0 ? liquidity : volume, phase);
-      const odds = useReal ? Math.round((real as number[])[real!.length - 1]) : outcome.odds;
-      return { label: outcome.label, odds, points, color: getOutcomeColor(index) };
-    }),
+  const outcomeSeries = useMemo(
+    () =>
+      market.outcomes.map((outcome, index) => {
+        const real = realSeries?.[index];
+        const useReal = Boolean(real && real.length >= 2);
+        const phase = index * (Math.PI / Math.max(1, market.outcomes.length));
+        const points = useReal
+          ? (real as number[]).map((point) => clamp(point, 1, 99))
+          : buildSignalPoints(outcome.odds, index === 0 ? volume : liquidity, index === 0 ? liquidity : volume, phase);
+        const odds = useReal ? Math.round(points[points.length - 1]) : outcome.odds;
+        return {
+          label: outcome.label,
+          odds,
+          points,
+          color: getChartColor(index, market.outcomes.length),
+        };
+      }),
     [market.outcomes, volume, liquidity, realSeries]
   );
 
-  // Memoize paths calculation
+  const axis = useMemo(() => getAxis(outcomeSeries.map((series) => series.points), outcomeSeries.length), [outcomeSeries]);
   const paths = useMemo(
-    () => outcomeSeries.map((series) => buildSmoothPath(series.points, chartW, H, padL, padY)),
-    [outcomeSeries, chartW, H, padL, padY]
+    () => outcomeSeries.map((series) => buildStepPath(series.points, chartW, H, padL, padY, axis.max)),
+    [outcomeSeries, chartW, H, padL, padY, axis.max]
   );
 
-  // Memoize primary area path
-  const primaryAreaPath = useMemo(
-    () => paths.length > 0 ? `${paths[0]} L ${endX} ${H - padY} L ${padL} ${H - padY} Z` : '',
-    [paths, endX, H, padY, padL]
-  );
-
-  const gridLines = compact ? [50] : [0, 25, 50, 75, 100];
-  const uid = compact ? 'compact' : 'detail';
+  if (compact) {
+    return (
+      <div className="rounded-[18px] border border-white/[0.06] bg-[#0d1520] p-6">
+        <svg className="w-full overflow-visible" viewBox={`0 0 ${W} ${H}`} style={{ height: H }} role="img" aria-label="Market probability signal chart">
+          <defs>
+            <filter id={`presto-glow-${uid}`} x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="2.4" result="blur" />
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+          </defs>
+          <line x1={padL} x2={endX} y1={chartY(axis.max / 2, H, padY, axis.max)} y2={chartY(axis.max / 2, H, padY, axis.max)} stroke="rgba(255,255,255,0.12)" strokeDasharray="3 8" strokeLinecap="round" />
+          {outcomeSeries.map((series, index) => (
+            <path
+              key={series.label}
+              d={paths[index]}
+              fill="none"
+              stroke={series.color}
+              strokeWidth={index === 0 ? 2 : 1.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={index === 0 ? 1 : 0.76}
+              filter={index === 0 ? `url(#presto-glow-${uid})` : undefined}
+            />
+          ))}
+        </svg>
+      </div>
+    );
+  }
 
   return (
-    <div className={`rounded-[18px] border border-white/[0.06] bg-[#0d1520] ${compact ? 'p-6' : 'px-6 pb-6 pt-7 sm:px-8 sm:pt-8'}`}>
-      {!compact ? (
-        <div className="mb-8 flex items-center justify-start">
-          <div className="flex flex-wrap items-center gap-x-8 gap-y-4 text-xs font-semibold">
-            {outcomeSeries.map((series) => (
-              <span key={series.label} className="flex items-center gap-2">
-                <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: series.color, boxShadow: `0 0 12px ${series.color}66` }} />
-                <span style={{ color: series.color }}>{series.label} {series.odds}%</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      <svg
-        className="w-full overflow-visible"
-        viewBox={`0 0 ${W} ${H}`}
-        style={{ height: compact ? 120 : 420 }}
-        role="img"
-        aria-label="Market probability signal chart"
-      >
-        <defs>
-          <linearGradient id={`yes-fill-${uid}`} x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor={outcomeSeries[0]?.color ?? '#25c0f4'} stopOpacity="0.26" />
-            <stop offset="72%" stopColor={outcomeSeries[0]?.color ?? '#25c0f4'} stopOpacity="0.055" />
-            <stop offset="100%" stopColor={outcomeSeries[0]?.color ?? '#25c0f4'} stopOpacity="0" />
-          </linearGradient>
-          <filter id={`yes-glow-${uid}`} x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="2.4" result="blur" />
-            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-        </defs>
-
-        {!compact ? (
-          <g opacity="0.075" transform={`translate(${W / 2 - 112} ${H / 2 - 18})`}>
-            <circle cx="22" cy="23" r="20" stroke="#f8fafc" strokeWidth="2" fill="#25c0f4" fillOpacity="0.08" />
-            <circle cx="22" cy="23" r="12.5" stroke="#f8fafc" strokeWidth="2" />
-            <circle cx="22" cy="23" r="5.2" fill="#f8fafc" />
-            <text x="55" y="31" fill="#f8fafc" fontSize="28" fontWeight="900" fontFamily="sans-serif">Presto Markets</text>
-          </g>
-        ) : null}
-
-        {gridLines.map((pct) => {
-          const y = chartY(pct, H, padY);
-          const labelY = pct === 100 ? y + 11 : pct === 0 ? y - 3 : y + 4;
-          return (
-            <g key={pct}>
-              <line
-                x1={padL}
-                x2={endX}
-                y1={y}
-                y2={y}
-                stroke={pct === 0 || pct === 100 ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.12)'}
-                strokeWidth={pct === 50 ? 1.2 : 1}
-                strokeDasharray={pct === 0 || pct === 100 ? '0' : '3 8'}
-                strokeLinecap="round"
-              />
-              {!compact ? (
-                <text x={endX + 10} y={labelY} fill="#64748b" fontSize="12" fontWeight="800" fontFamily="sans-serif">
-                  {pct}%
-                </text>
-              ) : null}
-            </g>
-          );
-        })}
-
-        {/* Area fill for primary outcome */}
-        {primaryAreaPath ? <path d={primaryAreaPath} fill={`url(#yes-fill-${uid})`} /> : null}
-
-        {/* Render non-primary traces first (behind), then primary on top */}
-        {outcomeSeries.slice(1).map((series, idx) => (
-          <path
-            key={`line-${series.label}`}
-            d={paths[idx + 1]}
-            fill="none"
-            stroke={series.color}
-            strokeWidth={compact ? 1.5 : 1.85}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            opacity="0.72"
-          />
-        ))}
-        {paths[0] ? (
-          <path
-            d={paths[0]}
-            fill="none"
-            stroke={outcomeSeries[0].color}
-            strokeWidth={compact ? 2 : 2.2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            filter={`url(#yes-glow-${uid})`}
-          />
-        ) : null}
-
-        {/* End dots for non-primary outcomes */}
-        {outcomeSeries.slice(1).map((series) => {
-          const endPoint = series.points[series.points.length - 1];
-          const endY = chartY(endPoint, H, padY);
-          return (
-            <circle key={`dot-${series.label}`} cx={endX} cy={endY} r={compact ? 3.8 : 5} fill="#0d1520" stroke={series.color} strokeWidth="1.5" />
-          );
-        })}
-        {/* Primary outcome end dot */}
-        {outcomeSeries[0] ? (() => {
-          const endPoint = outcomeSeries[0].points[outcomeSeries[0].points.length - 1];
-          const endY = chartY(endPoint, H, padY);
-          return (
-            <>
-              <circle cx={endX} cy={endY} r={compact ? 4 : 6} fill={outcomeSeries[0].color} filter={`url(#yes-glow-${uid})`} />
-              <circle cx={endX} cy={endY} r={compact ? 2.2 : 3} fill="white" />
-            </>
-          );
-        })() : null}
-      </svg>
-
-      {!compact ? (
-        <div className="mt-6 flex justify-between px-6 pr-12">
-          {['30d ago', '20d ago', '10d ago', 'Now'].map((label) => (
-            <span key={label} className="text-[11px] font-bold text-[#334155]">{label}</span>
+    <div className="overflow-hidden rounded-[18px] border border-white/[0.06] bg-[#0d1520] px-6 pb-6 pt-7 sm:px-8 sm:pt-8">
+      <div className="mb-8 flex items-center justify-start">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3 text-sm font-black text-white">
+          {outcomeSeries.map((series) => (
+            <span key={series.label} className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: series.color, boxShadow: `0 0 14px ${series.color}66` }} />
+              <span>{series.label} {series.odds}%</span>
+            </span>
           ))}
         </div>
-      ) : null}
+      </div>
+
+      <div className="relative">
+        <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center gap-4 text-[clamp(28px,4vw,54px)] font-black text-white/[0.07]">
+          <span className="relative h-[58px] w-[58px] rounded-full border-[5px] border-cyan/15 shadow-[inset_0_0_0_11px_rgba(37,200,255,0.04)] after:absolute after:inset-4 after:rounded-full after:bg-cyan/15" />
+          <span>Presto Markets</span>
+        </div>
+
+        <svg
+          className="relative z-10 w-full overflow-visible"
+          viewBox={`0 0 ${W} ${H}`}
+          style={{ height: H }}
+          role="img"
+          aria-label="Market probability signal chart"
+        >
+          <defs>
+            <filter id={`presto-glow-${uid}`} x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="2.4" result="blur" />
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+          </defs>
+
+          {axis.ticks.map((pct) => {
+            const y = chartY(pct, H, padY, axis.max);
+            const labelY = pct === axis.max ? y + 11 : pct === 0 ? y - 3 : y + 4;
+            return (
+              <g key={pct}>
+                <line
+                  x1={padL}
+                  x2={endX}
+                  y1={y}
+                  y2={y}
+                  stroke="rgba(255,255,255,0.12)"
+                  strokeWidth="1"
+                  strokeLinecap="round"
+                />
+                <text x={endX + 10} y={labelY} fill="#7f92ad" fontSize="13" fontWeight="800" fontFamily="sans-serif">
+                  {pct}%
+                </text>
+              </g>
+            );
+          })}
+
+          {outcomeSeries.map((series, index) => (
+            <path
+              key={`line-${series.label}`}
+              d={paths[index]}
+              fill="none"
+              stroke={series.color}
+              strokeWidth={index === 0 ? 2.6 : 2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={index === 0 ? 1 : 0.95}
+              filter={index === 0 ? `url(#presto-glow-${uid})` : undefined}
+            />
+          ))}
+
+          {outcomeSeries.map((series) => {
+            const endPoint = series.points[series.points.length - 1];
+            const endY = chartY(endPoint, H, padY, axis.max);
+            return (
+              <circle
+                key={`dot-${series.label}`}
+                cx={endX}
+                cy={endY}
+                r="4.8"
+                fill={series.color}
+                stroke="#0d1520"
+                strokeWidth="2"
+              />
+            );
+          })}
+
+          {['30d ago', '20d ago', '10d ago', 'Now'].map((label, index, labels) => {
+            const x = padL + (chartW * index) / Math.max(1, labels.length - 1);
+            return (
+              <text key={label} x={x - 10} y={H - 12} fill="#7f92ad" fontSize="13" fontWeight="800" fontFamily="sans-serif">
+                {label}
+              </text>
+            );
+          })}
+        </svg>
+      </div>
+
+      <div className="mt-5 flex flex-wrap gap-2">
+        {DETAIL_TABS.map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            className={`rounded-full px-4 py-2 text-sm font-black ${tab === '1W' ? 'bg-cyan/15 text-cyan' : 'bg-white/[0.06] text-[#d6e2f2]'}`}
+            aria-pressed={tab === '1W'}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
