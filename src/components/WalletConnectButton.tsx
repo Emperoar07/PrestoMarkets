@@ -483,19 +483,22 @@ function RainbowExternalWalletRow() {
   return (
     <div className="relative mt-3 text-white">
       {needsArcSwitch ? (
-        <div className="mb-3 flex justify-end">
-          <button
-            type="button"
-            onClick={() => switchChain({ chainId: arcTestnetChain.id })}
-            disabled={isSwitching}
-            className="rounded-[10px] bg-[#25c0f4] px-4 py-2 text-xs font-black text-[#090e1a] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Switch to Arc
-          </button>
+        <div className="mb-4 rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-3.5 text-xs text-yellow-200 font-bold leading-normal">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <span>Switch your connected wallet's network to Arc Testnet.</span>
+            <button
+              type="button"
+              onClick={() => switchChain({ chainId: arcTestnetChain.id })}
+              disabled={isSwitching}
+              className="shrink-0 rounded-lg bg-cyan px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-[#07111f] transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isSwitching ? 'Switching...' : 'Switch Network'}
+            </button>
+          </div>
         </div>
       ) : null}
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-2 grid-cols-2">
         {uniqueConnectors.map((connector) => {
           const walletConnector = connector as typeof connector & { icon?: string };
           const pendingConnector = isPending && variables?.connector?.name === connector.name;
@@ -505,7 +508,7 @@ function RainbowExternalWalletRow() {
               type="button"
               onClick={() => connect({ connector, chainId: arcTestnetChain.id })}
               disabled={isPending}
-              className="flex min-h-[46px] items-center gap-2 rounded-[10px] border border-cyan/15 bg-cyan/5 px-3 py-2 text-left text-xs font-black text-[#e2e8f0] transition-colors hover:border-cyan/45 hover:bg-cyan/10 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex min-h-[46px] items-center gap-2.5 rounded-xl border border-white/[0.06] bg-[#0d1626]/20 px-3.5 py-2.5 text-left text-xs font-bold text-white transition-all hover:border-cyan/35 hover:bg-white/[0.02] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {walletConnector.icon ? (
                 <img src={walletConnector.icon} alt="" loading="lazy" decoding="async" className="h-5 w-5 rounded-full" />
@@ -519,19 +522,19 @@ function RainbowExternalWalletRow() {
       </div>
 
       {isConnected && address ? (
-        <p className="mt-2 text-[10px] font-bold leading-4 text-[#94a3b8]">
-          Connected external wallet: {shortAddress(address)}
+        <p className="mt-4 text-[10px] font-bold leading-4 text-[#94a3b8]">
+          Connected external wallet: <span className="font-extrabold text-white">{shortAddress(address)}</span>
         </p>
       ) : null}
 
       {error ? (
-        <p className="mt-2 text-[10px] font-bold leading-4 text-red-200">
+        <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/5 p-3.5 text-xs text-red-300 font-bold leading-normal">
           {error.message}
-        </p>
+        </div>
       ) : null}
 
       {!walletConnectProjectId ? (
-        <p className="mt-2 text-[10px] font-bold leading-4 text-[#94a3b8]">
+        <p className="mt-4 text-[10px] font-bold leading-4 text-[#64748b]">
           WalletConnect QR needs `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`.
         </p>
       ) : null}
