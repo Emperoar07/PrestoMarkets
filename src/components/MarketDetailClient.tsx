@@ -312,11 +312,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             ) : null}
 
             {market.pollOptions && market.pollOptions.length > 2 ? (
-              <div className="mt-6 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-base font-black text-white">Poll options</h2>
-                </div>
-                <div className="mt-4 grid gap-2 md:grid-cols-2">
+              <div className="mt-8">
+                <h2 className="text-base font-black text-white">Poll options</h2>
+                <div className="mt-4 grid gap-2 border-t border-white/[0.06] pt-4 md:grid-cols-2">
                   {market.pollOptions.map((option, index) => {
                     const color = getOutcomeColor(index);
                     return (
