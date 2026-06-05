@@ -199,13 +199,13 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
             </div>
 
             {/* Actions & Navigation Footer */}
-            <div className="flex items-center justify-between gap-2 px-4 py-3.5 bg-[#090e1a] border-t border-white/[0.06]">
+            <div className="flex flex-col gap-1 p-2 bg-[#090e1a] border-t border-white/[0.06]">
               <Link
                 href="/activity"
                 onClick={() => setIsOpen(false)}
-                className="flex items-center gap-1.5 text-[11px] font-black text-[#94a3b8] transition-colors hover:text-white"
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-70">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
                   <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                 </svg>
                 Activity
@@ -214,9 +214,9 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
               <Link
                 href="/portfolio"
                 onClick={() => setIsOpen(false)}
-                className="flex items-center gap-1.5 text-[11px] font-black text-[#94a3b8] transition-colors hover:text-white"
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-70">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
                   <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
                 </svg>
                 Portfolio
@@ -225,9 +225,9 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
               <Link
                 href="/profile"
                 onClick={() => setIsOpen(false)}
-                className="flex items-center gap-1.5 text-[11px] font-black text-[#94a3b8] transition-colors hover:text-white"
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-70">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
                   <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
                 </svg>
                 Profile
@@ -237,9 +237,9 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
                 href={`https://testnet.arcscan.app/address/${wallet.address}`}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-1.5 text-[11px] font-black text-[#94a3b8] transition-colors hover:text-white"
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-70">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
                   <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                   <polyline points="15 3 21 3 21 9" />
                   <line x1="10" y1="14" x2="21" y2="3" />
@@ -250,8 +250,13 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
               <button
                 type="button"
                 onClick={() => void disconnectWallet()}
-                className="flex items-center gap-1 text-[11.5px] font-black text-[#f87171] hover:text-red-300"
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#f87171] transition-colors hover:text-red-300 hover:bg-red-500/[0.06] rounded-lg"
               >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
                 Disconnect
               </button>
             </div>

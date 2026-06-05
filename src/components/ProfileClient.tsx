@@ -115,7 +115,7 @@ export function ProfileClient() {
         {!ready ? (
           <p className="mt-10 text-sm text-muted">Loading…</p>
         ) : !isSignedIn ? (
-          <div className="mt-8 rounded-[14px] border border-white/[0.06] bg-[#111b2b] p-6">
+          <div className="mt-8">
             <p className="text-sm text-[#e2e8f0]">Sign in with your wallet to edit your profile.</p>
             <button
               type="button"
@@ -126,7 +126,7 @@ export function ProfileClient() {
             </button>
           </div>
         ) : (
-          <div className="mt-8 flex flex-col gap-6 rounded-[14px] border border-white/[0.06] bg-[#111b2b] p-6">
+          <div className="mt-8 flex flex-col gap-6">
             {/* Avatar preview + URL */}
             <div className="flex items-center gap-4">
               {avatarUrl.trim() ? (
@@ -202,13 +202,13 @@ export function ProfileClient() {
             </div>
 
             {/* Leaderboard opt-in */}
-            <label className="flex items-center justify-between gap-3 rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-3 text-sm font-bold text-[#cbd5e1]">
+            <label className="flex items-center justify-between gap-3 text-sm font-bold text-[#cbd5e1] py-1">
               <span>Show my username on the public leaderboard</span>
               <input
                 type="checkbox"
                 checked={optInLeaderboard}
                 onChange={(e) => setOptInLeaderboard(e.target.checked)}
-                className="accent-cyan"
+                className="accent-cyan h-4 w-4"
               />
             </label>
 

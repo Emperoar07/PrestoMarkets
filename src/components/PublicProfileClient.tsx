@@ -45,7 +45,7 @@ export function PublicProfileClient({ address }: { address: string }) {
   if (!profile) return null;
 
   return (
-    <section className="mt-10 rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
+    <section className="mt-10">
       <div className="flex flex-col gap-5 md:flex-row md:items-center">
         <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#0d1520]">
           {profile.avatarUrl ? (
