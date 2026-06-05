@@ -69,7 +69,7 @@ export function AgentProfileClient() {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-3xl px-5 pb-20 pt-36 md:px-6 md:pt-44">
+      <main className="mx-auto max-w-3xl px-5 pb-20 pt-28 md:px-6 md:pt-28">
         {/* Title Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex-1">

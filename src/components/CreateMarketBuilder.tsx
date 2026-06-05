@@ -267,7 +267,7 @@ export function CreateMarketBuilder() {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-3xl px-5 pb-20 pt-36 md:px-6 md:pt-44">
+      <main className="mx-auto max-w-3xl px-5 pb-20 pt-28 md:px-6 md:pt-28">
         {/* Header Title */}
         <div className="flex flex-col gap-2">
           <h1 className="text-[clamp(28px,3.5vw,40px)] font-black tracking-tight text-white">Create Market</h1>

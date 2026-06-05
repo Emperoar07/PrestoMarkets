@@ -13,6 +13,28 @@ function formatAmount(amount: number): string {
   return `$${amount.toFixed(2)}`;
 }
 
+// Stale-while-revalidate cache so the header shows the last known balance instantly on reload
+// instead of flashing "--" while the RPC round-trips.
+const BALANCE_CACHE_PREFIX = 'presto:usdc:';
+
+export function readCachedUsdcBalance(address: string): string | null {
+  if (typeof window === 'undefined' || !address) return null;
+  try {
+    return window.localStorage.getItem(BALANCE_CACHE_PREFIX + address.toLowerCase());
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedUsdcBalance(address: string, value: string) {
+  if (typeof window === 'undefined' || !address) return;
+  try {
+    window.localStorage.setItem(BALANCE_CACHE_PREFIX + address.toLowerCase(), value);
+  } catch {
+    /* storage unavailable — non-fatal */
+  }
+}
+
 async function fetchErc20Balance(address: string, token: Address): Promise<string | null> {
   const config = getArcConfig();
   if (!config.rpcUrl || !isAddress(address) || !isAddress(token)) return null;
@@ -41,7 +63,10 @@ export async function fetchArcUsdcBalance(address: string): Promise<string | nul
   const config = getArcConfig();
   if (!config.usdcAddress) return null;
   const raw = await fetchErc20Balance(address, config.usdcAddress as Address);
-  return raw === null ? null : formatAmount(Number(raw));
+  if (raw === null) return null;
+  const formatted = formatAmount(Number(raw));
+  writeCachedUsdcBalance(address, formatted);
+  return formatted;
 }
 
 export async function fetchArcStableBalances(address: string): Promise<Record<StableSymbol, string | null>> {

@@ -9,6 +9,7 @@ import { ToastStack } from '@/components/ToastStack';
 import { RainbowKitProviders } from '@/components/RainbowKitProviders';
 import { CircleConfirmModal } from '@/components/CircleConfirmModal';
 import { SignInModal } from '@/components/SignInModal';
+import { AutoSocialSignIn } from '@/components/AutoSocialSignIn';
 import { BrandLoadingOverlay } from '@/components/BrandLoader';
 import { NavigationLoader } from '@/components/NavigationLoader';
 import { Suspense } from 'react';
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <ToastStack />
               </TransactionProvider>
               <SignInModal />
+              <AutoSocialSignIn />
             </AppStateProvider>
           </SocialSessionProvider>
           <CircleConfirmModal />

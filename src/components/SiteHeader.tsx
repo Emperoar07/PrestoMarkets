@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { BrandMark } from './BrandMark';
 import { WalletConnectButton } from './WalletConnectButton';
-import { fetchArcStableBalances, type StableSymbol } from '@/lib/walletBalance';
+import { fetchArcStableBalances, readCachedUsdcBalance, type StableSymbol } from '@/lib/walletBalance';
 import { getStoredConnectedWallet, subscribeConnectedWallet, disconnectExternalWallet, type ConnectedWallet } from '@/lib/walletProvider';
 import { extractMarketCategories, mergeTopicNavCategories, primaryViewCategories } from '@/lib/categories';
 import { useAppState } from '@/lib/appState';
@@ -94,11 +94,15 @@ export function SiteHeader() {
         return;
       }
 
+      // Show the last known balance immediately, then revalidate from chain.
+      const cached = readCachedUsdcBalance(connectedWallet.address);
+      if (cached) setBalances({ USDC: cached });
+
       try {
         const nextBalances = await fetchArcStableBalances(connectedWallet.address);
         if (!cancelled) setBalances(nextBalances);
       } catch {
-        if (!cancelled) setBalances({ USDC: null });
+        if (!cancelled && !cached) setBalances({ USDC: null });
       }
     }
 
