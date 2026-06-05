@@ -7,7 +7,7 @@ import {
   createSessionToken,
   getSessionSecret,
   normalizeSocialAddress,
-  parseNonceFromSiweMessage,
+  validateSiweMessageFields,
   verifySiweSignature,
 } from '@/lib/socialAuth';
 import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
@@ -39,13 +39,19 @@ export async function POST(request: NextRequest) {
 
   const origin = request.headers.get('origin') || `https://${request.headers.get('host') ?? 'presto-markets.vercel.app'}`;
   const message = body.message || (body.nonce ? buildSiweMessage({ address, nonce: body.nonce, origin }) : '');
-  const nonce = parseNonceFromSiweMessage(message);
-  if (!nonce || (body.nonce && body.nonce !== nonce)) {
-    return NextResponse.json({ error: 'Valid SIWE nonce is required.' }, { status: 400 });
+  const expectedNonce = body.nonce ?? '';
+  const messageCheck = validateSiweMessageFields({
+    address,
+    message,
+    expectedNonce,
+    expectedOrigin: origin,
+  });
+  if (!messageCheck.ok) {
+    return NextResponse.json({ error: messageCheck.error }, { status: 400 });
   }
 
   const validSignature = await verifySiweSignature({ address, message, signature: body.signature });
-  const nonceConsumed = validSignature ? await consumeNonce(address, nonce) : false;
+  const nonceConsumed = validSignature ? await consumeNonce(address, messageCheck.nonce) : false;
   if (!validSignature || !nonceConsumed) {
     return NextResponse.json({ error: 'Signature verification failed.' }, { status: 401 });
   }

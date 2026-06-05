@@ -121,16 +121,11 @@ export async function fetchPublicHttpUrl(value: string, init: PublicFetchInit = 
     }, (incoming) => {
       const chunks: Buffer[] = [];
       let total = 0;
+      let settled = false;
 
-      incoming.on('data', (chunk: Buffer) => {
-        if (total < maxBytes) {
-          const remaining = maxBytes - total;
-          chunks.push(chunk.length > remaining ? chunk.subarray(0, remaining) : chunk);
-        }
-        total += chunk.length;
-      });
-
-      incoming.on('end', () => {
+      function finish() {
+        if (settled) return;
+        settled = true;
         const responseHeaders = new Headers();
         for (const [key, headerValue] of Object.entries(incoming.headers)) {
           if (Array.isArray(headerValue)) {
@@ -145,6 +140,23 @@ export async function fetchPublicHttpUrl(value: string, init: PublicFetchInit = 
           statusText: incoming.statusMessage,
           headers: responseHeaders,
         }));
+      }
+
+      incoming.on('data', (chunk: Buffer) => {
+        if (total < maxBytes) {
+          const remaining = maxBytes - total;
+          chunks.push(chunk.length > remaining ? chunk.subarray(0, remaining) : chunk);
+        }
+        total += chunk.length;
+        if (total >= maxBytes) {
+          finish();
+          incoming.destroy();
+          request.destroy();
+        }
+      });
+
+      incoming.on('end', () => {
+        finish();
       });
     });
 

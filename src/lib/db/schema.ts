@@ -18,6 +18,13 @@ export const siweNonces = pgTable('siwe_nonces', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 });
 
+export const cronLeases = pgTable('cron_leases', {
+  key: text('key').primaryKey(),
+  owner: text('owner').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const commentKindEnum = pgEnum('comment_kind', ['comment', 'source_update']);
 export const alertChannelEnum = pgEnum('alert_channel', ['inapp', 'email']);
 export const leaderboardPeriodEnum = pgEnum('leaderboard_period', ['all', '30d']);

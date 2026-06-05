@@ -1,10 +1,8 @@
-import { markets as staticMarkets } from './markets';
 import { fetchOnchainMarkets } from './onchainMarkets';
 import type { Market } from './markets';
 
 export async function getPublicMarkets(): Promise<Market[]> {
-  const liveMarkets = await fetchOnchainMarkets().catch(() => []);
-  return liveMarkets.length > 0 ? liveMarkets : staticMarkets;
+  return fetchOnchainMarkets().catch(() => []);
 }
 
 export async function getPublicMarket(id: string): Promise<Market | null> {

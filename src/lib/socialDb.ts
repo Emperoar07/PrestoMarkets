@@ -42,6 +42,21 @@ export async function createComment(input: {
   parentId?: number | null;
   kind?: 'comment' | 'source_update';
 }) {
+  if (input.parentId !== null && input.parentId !== undefined) {
+    const [parent] = await getDb()
+      .select({ id: comments.id })
+      .from(comments)
+      .where(and(
+        eq(comments.id, input.parentId),
+        eq(comments.marketId, input.marketId),
+        eq(comments.hidden, false),
+      ))
+      .limit(1);
+    if (!parent) {
+      throw new Error('Reply parent must exist in this market.');
+    }
+  }
+
   const [row] = await getDb()
     .insert(comments)
     .values({

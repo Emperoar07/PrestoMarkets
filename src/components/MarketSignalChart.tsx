@@ -10,27 +10,8 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function parseUsd(value: string) {
-  const normalized = value.replace(/[$,\s]/g, '').toUpperCase();
-  const multiplier = normalized.endsWith('M') ? 1_000_000 : normalized.endsWith('K') ? 1_000 : 1;
-  return (Number(normalized.replace(/[MK]/g, '')) || 0) * multiplier;
-}
-
 function getChartColor(index: number, count: number) {
   return getOutcomeColor(index);
-}
-
-function buildSignalPoints(baseOdds: number, volume: number, liquidity: number, rangeDays: number, phase = 0): number[] {
-  const depthBias = liquidity > 0 ? clamp(volume / Math.max(liquidity, 1), 0.1, 1.8) : 0.5;
-  const length = rangeDays === 1 ? 12 : rangeDays === 7 ? 20 : rangeDays === 30 ? 30 : 45;
-  return Array.from({ length }, (_, i) => {
-    const x = (i / (length - 1)) * 10;
-    const slow = Math.sin(x * 0.82 + phase) * 2.2;
-    const mid = Math.sin(x * 1.7 + phase * 1.3) * 1.1;
-    const drift = (x - 5) * depthBias * 0.16;
-    const spike = x > 3 && x < 6 ? Math.sin((x - 3) * 1.4 + phase) * 2.6 : 0;
-    return clamp(baseOdds + slow + mid + drift + spike, 1, 99);
-  });
 }
 
 function getAxis(points: number[][], outcomeCount: number) {
@@ -58,8 +39,6 @@ function buildStepPath(points: number[], width: number, height: number, offsetX:
 }
 
 function MarketSignalChartComponent({ market, compact = false, live = false }: { market: MarketSignalChartMarket; compact?: boolean; live?: boolean }) {
-  const volume = parseUsd(market.volume);
-  const liquidity = parseUsd(market.liquidity);
   const [activeTab, setActiveTab] = useState<string>('1D');
   const [rawHistory, setRawHistory] = useState<Array<{ t: number; probabilities: number[] }> | null>(null);
 
@@ -123,11 +102,9 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
       market.outcomes.map((outcome, index) => {
         const real = realSeries?.[index];
         const useReal = Boolean(real && real.length >= 2);
-        const phase = index * (Math.PI / Math.max(1, market.outcomes.length));
-        const rangeDays = activeTab === '1D' ? 1 : activeTab === '1W' ? 7 : activeTab === '1M' ? 30 : 60;
         const points = useReal
           ? (real as number[]).map((point) => clamp(point, 1, 99))
-          : buildSignalPoints(outcome.odds, index === 0 ? volume : liquidity, index === 0 ? liquidity : volume, rangeDays, phase);
+          : [outcome.odds, outcome.odds].map((point) => clamp(point, 1, 99));
         const odds = useReal ? Math.round(points[points.length - 1]) : outcome.odds;
         return {
           label: outcome.label,
@@ -136,8 +113,9 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
           color: getChartColor(index, market.outcomes.length),
         };
       }),
-    [market.outcomes, volume, liquidity, realSeries, activeTab]
+    [market.outcomes, realSeries]
   );
+  const hasRealHistory = Boolean(realSeries);
 
   const axis = useMemo(() => getAxis(outcomeSeries.map((series) => series.points), outcomeSeries.length), [outcomeSeries]);
   const paths = useMemo(
@@ -194,6 +172,11 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
         ))}
       </div>
       <div className="relative">
+        {!compact && live && !hasRealHistory ? (
+          <p className="absolute right-0 top-0 z-20 text-[11px] font-black uppercase tracking-[0.14em] text-muted">
+            Current odds only
+          </p>
+        ) : null}
         <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center gap-4 text-[clamp(28px,4vw,54px)] font-black text-white/[0.07]">
           <span className="relative h-[58px] w-[58px] rounded-full border-[5px] border-cyan/15 shadow-[inset_0_0_0_11px_rgba(37,200,255,0.04)] after:absolute after:inset-4 after:rounded-full after:bg-cyan/15" />
           <span>Presto Markets</span>

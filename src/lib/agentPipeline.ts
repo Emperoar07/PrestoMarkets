@@ -2036,7 +2036,17 @@ function weightedRandomPick<T>(items: { item: T; weight: number }[]): T | null {
 
 export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Promise<PipelineResult[]> {
   const trends = input.trends?.length ? input.trends : await fetchTrends();
-  const existingMarkets = await fetchOnchainMarkets().catch(() => []);
+  let existingMarkets: AppMarket[];
+  try {
+    existingMarkets = await fetchOnchainMarkets();
+  } catch (error) {
+    return [{
+      ok: false,
+      topic: '(pipeline)',
+      stage: 'chain-state',
+      reason: `Could not read existing Arc markets; refusing to create until chain state is available. ${error instanceof Error ? error.message : String(error)}`,
+    }];
+  }
   const results: PipelineResult[] = [];
 
   const activeAgentMarkets = countActiveAgentMarkets(existingMarkets);

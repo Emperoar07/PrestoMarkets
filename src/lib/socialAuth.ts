@@ -7,6 +7,7 @@ import { siweNonces } from './db/schema';
 export const PRESTO_SESSION_COOKIE = 'presto_session';
 export const SIWE_NONCE_TTL_MS = 10 * 60 * 1000;
 export const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+export const ARC_SIGN_IN_CHAIN_ID = 5042002;
 
 type StoredNonce = {
   nonce: string;
@@ -94,7 +95,7 @@ export function buildSiweMessage(input: {
     '',
     `URI: ${origin}`,
     'Version: 1',
-    'Chain ID: 1',
+    `Chain ID: ${ARC_SIGN_IN_CHAIN_ID}`,
     `Nonce: ${input.nonce}`,
     `Issued At: ${issuedAt}`,
   ].join('\n');
@@ -103,6 +104,63 @@ export function buildSiweMessage(input: {
 export function parseNonceFromSiweMessage(message: string): string | null {
   const match = message.match(/^Nonce:\s*(\S+)\s*$/mi);
   return match?.[1] ?? null;
+}
+
+function normalizeOrigin(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.host}`.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function parseSiweField(message: string, label: string): string | null {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = message.match(new RegExp(`^${escaped}:\\s*(.+?)\\s*$`, 'mi'));
+  return match?.[1]?.trim() ?? null;
+}
+
+export function validateSiweMessageFields(input: {
+  address: string;
+  message: string;
+  expectedNonce: string;
+  expectedOrigin: string;
+  now?: number;
+  maxAgeMs?: number;
+}): { ok: true; nonce: string } | { ok: false; error: string } {
+  const address = normalizeSocialAddress(input.address);
+  if (!address) return { ok: false, error: 'Address is invalid.' };
+
+  const lines = input.message.split(/\r?\n/);
+  const messageOrigin = lines[0]?.match(/^(.*?) wants you to sign in with your Ethereum account:$/)?.[1]?.trim();
+  const messageAddress = normalizeSocialAddress(lines[1]);
+  const uri = parseSiweField(input.message, 'URI');
+  const version = parseSiweField(input.message, 'Version');
+  const chainId = parseSiweField(input.message, 'Chain ID');
+  const nonce = parseNonceFromSiweMessage(input.message);
+  const issuedAt = parseSiweField(input.message, 'Issued At');
+  const expectedOrigin = normalizeOrigin(input.expectedOrigin);
+  const normalizedMessageOrigin = messageOrigin ? normalizeOrigin(messageOrigin) : null;
+  const normalizedUriOrigin = uri ? normalizeOrigin(uri) : null;
+
+  if (messageAddress !== address) return { ok: false, error: 'Message address does not match.' };
+  if (!expectedOrigin || normalizedMessageOrigin !== expectedOrigin || normalizedUriOrigin !== expectedOrigin) {
+    return { ok: false, error: 'Message origin does not match.' };
+  }
+  if (version !== '1') return { ok: false, error: 'Unsupported SIWE version.' };
+  if (chainId !== String(ARC_SIGN_IN_CHAIN_ID)) return { ok: false, error: 'Message chain id does not match Arc.' };
+  if (!nonce || nonce !== input.expectedNonce) return { ok: false, error: 'Message nonce does not match.' };
+  if (!issuedAt) return { ok: false, error: 'Issued At is required.' };
+
+  const issuedAtMs = Date.parse(issuedAt);
+  if (!Number.isFinite(issuedAtMs)) return { ok: false, error: 'Issued At is invalid.' };
+  const now = input.now ?? Date.now();
+  const maxAgeMs = input.maxAgeMs ?? SIWE_NONCE_TTL_MS;
+  if (issuedAtMs > now + 60_000) return { ok: false, error: 'Issued At is in the future.' };
+  if (now - issuedAtMs > maxAgeMs) return { ok: false, error: 'SIWE message expired.' };
+
+  return { ok: true, nonce };
 }
 
 export async function verifySiweSignature(input: {

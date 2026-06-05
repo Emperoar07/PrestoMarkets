@@ -29,5 +29,8 @@ jobs:
       - name: Build application
         run: npm run build
 
+      - name: Unit tests
+        run: npm test -- --run
+
       - name: Test contracts
         run: npm run test:contracts

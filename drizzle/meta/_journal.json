@@ -8,6 +8,13 @@
       "when": 1780632423449,
       "tag": "0000_sour_stellaris",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1780670000000,
+      "tag": "0003_cron_leases",
+      "breakpoints": true
     }
   ]
 }

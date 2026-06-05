@@ -1,11 +1,13 @@
 import { privateKeyToAccount } from 'viem/accounts';
 import { describe, expect, it } from 'vitest';
 import {
+  ARC_SIGN_IN_CHAIN_ID,
   buildSiweMessage,
   consumeNonce,
   createNonce,
   createSessionToken,
   normalizeSocialAddress,
+  validateSiweMessageFields,
   verifySessionToken,
   verifySiweSignature,
 } from '../socialAuth';
@@ -33,6 +35,33 @@ describe('socialAuth', () => {
       message,
       signature,
     })).resolves.toBe(false);
+  });
+
+  it('builds and validates Arc-bound sign-in messages', () => {
+    const address = '0x0000000000000000000000000000000000000001';
+    const message = buildSiweMessage({
+      address,
+      nonce: 'nonce-123',
+      origin: 'https://presto-markets.vercel.app',
+      issuedAt: new Date('2026-06-03T00:00:00.000Z'),
+    });
+
+    expect(message).toContain(`Chain ID: ${ARC_SIGN_IN_CHAIN_ID}`);
+    expect(validateSiweMessageFields({
+      address,
+      message,
+      expectedNonce: 'nonce-123',
+      expectedOrigin: 'https://presto-markets.vercel.app',
+      now: new Date('2026-06-03T00:01:00.000Z').getTime(),
+    })).toEqual({ ok: true, nonce: 'nonce-123' });
+
+    expect(validateSiweMessageFields({
+      address,
+      message: message.replace(`Chain ID: ${ARC_SIGN_IN_CHAIN_ID}`, 'Chain ID: 1'),
+      expectedNonce: 'nonce-123',
+      expectedOrigin: 'https://presto-markets.vercel.app',
+      now: new Date('2026-06-03T00:01:00.000Z').getTime(),
+    }).ok).toBe(false);
   });
 
   it('issues a single-use nonce and rejects replay', async () => {

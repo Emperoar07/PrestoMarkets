@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runAgentPipeline } from '@/lib/agentPipeline';
 import { verifyBearer } from '@/lib/authCompare';
+import { runWithCronLease } from '@/lib/cronLease';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -23,7 +24,17 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const results = await runAgentPipeline();
+    const leasedRun = await runWithCronLease('market-factory', 10 * 60 * 1000, () => runAgentPipeline());
+    if (!leasedRun.acquired) {
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        reason: 'Another market-factory run already holds the lease.',
+        ran: new Date().toISOString(),
+      });
+    }
+
+    const results = leasedRun.value;
 
     const created = results.filter((r) => r.ok);
     const rejected = results.filter((r) => !r.ok);
