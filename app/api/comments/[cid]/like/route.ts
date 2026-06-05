@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
 import { getSocialSession } from '@/lib/socialSession';
-import { likeComment, unlikeComment } from '@/lib/socialDb';
+import { likeComment, unlikeComment, getCommentById } from '@/lib/socialDb';
+import { notifyUser } from '@/lib/notifications';
 
 const commentLikeRateLimitStore = new Map<string, { count: number; resetAt: number }>();
 
@@ -25,6 +26,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     await likeComment(session.address, id);
+
+    // Notify the comment author of a like (not for self-likes). Best-effort.
+    const comment = await getCommentById(id).catch(() => null);
+    if (comment && comment.authorAddress.toLowerCase() !== session.address.toLowerCase()) {
+      void notifyUser({
+        address: comment.authorAddress,
+        type: 'comment_like',
+        title: 'Someone liked your comment',
+        marketId: comment.marketId,
+      });
+    }
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json(

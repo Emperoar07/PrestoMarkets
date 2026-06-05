@@ -18,6 +18,17 @@ export const SOCIAL_CHANGED_EVENT = 'presto:social-changed';
 // session; the global SignInModal listens and opens.
 export const REQUIRE_SIGNIN_EVENT = 'presto:require-signin';
 
+export type NotificationItem = {
+  id: number;
+  type: string;
+  title: string;
+  body: string;
+  marketId: string | null;
+  link: string | null;
+  read: boolean;
+  createdAt: string;
+};
+
 type SocialSessionValue = {
   address: string | null;
   isSignedIn: boolean;
@@ -28,6 +39,10 @@ type SocialSessionValue = {
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
   requireSignIn: () => void;
+  notifications: NotificationItem[];
+  unreadCount: number;
+  refreshNotifications: () => Promise<void>;
+  markNotificationsRead: (ids?: number[]) => Promise<void>;
 };
 
 const socialSessionContext = createContext<SocialSessionValue | null>(null);
@@ -41,6 +56,8 @@ export function SocialSessionProvider({ children }: { children: ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
   const [watchlist, setWatchlist] = useState<Set<string>>(new Set());
   const [ready, setReady] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const refresh = useCallback(async () => {
     try {
@@ -113,6 +130,50 @@ export function SocialSessionProvider({ children }: { children: ReactNode }) {
     window.dispatchEvent(new CustomEvent(REQUIRE_SIGNIN_EVENT));
   }, []);
 
+  const refreshNotifications = useCallback(async () => {
+    if (!address) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+    try {
+      const res = await fetch('/api/notifications', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({ notifications: [], unreadCount: 0 }));
+      setNotifications(data.notifications ?? []);
+      setUnreadCount(data.unreadCount ?? 0);
+    } catch {
+      /* best-effort */
+    }
+  }, [address]);
+
+  const markNotificationsRead = useCallback(async (ids?: number[]) => {
+    // Optimistic: clear the badge immediately.
+    setNotifications((prev) => prev.map((n) => (!ids || ids.includes(n.id) ? { ...n, read: true } : n)));
+    setUnreadCount((prev) => (ids ? Math.max(0, prev - ids.length) : 0));
+    try {
+      await fetch('/api/notifications/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ids ? { ids } : {}),
+      });
+    } catch {
+      /* best-effort */
+    }
+  }, []);
+
+  // Poll notifications while signed in (every 45s), and refresh on sign-in changes.
+  useEffect(() => {
+    if (!address) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return undefined;
+    }
+    void refreshNotifications();
+    const interval = window.setInterval(() => void refreshNotifications(), 45_000);
+    return () => window.clearInterval(interval);
+  }, [address, refreshNotifications]);
+
   const value = useMemo<SocialSessionValue>(() => ({
     address,
     isSignedIn: Boolean(address),
@@ -123,7 +184,11 @@ export function SocialSessionProvider({ children }: { children: ReactNode }) {
     refresh,
     signOut,
     requireSignIn,
-  }), [address, ready, watchlist, isWatching, setWatching, refresh, signOut, requireSignIn]);
+    notifications,
+    unreadCount,
+    refreshNotifications,
+    markNotificationsRead,
+  }), [address, ready, watchlist, isWatching, setWatching, refresh, signOut, requireSignIn, notifications, unreadCount, refreshNotifications, markNotificationsRead]);
 
   return (
     <socialSessionContext.Provider value={value}>

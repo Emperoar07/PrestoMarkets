@@ -8,6 +8,8 @@ import { getAgentIdentityStatus, recordResolutionReputation } from '@/lib/agentI
 import { assertNonEmptyString } from '@/lib/typeGuards';
 import { createAbortSignalWithTimeout } from '@/lib/timeoutUtils';
 import { tryDeterministicPriceResolution } from '@/lib/priceResolution';
+import { listMarketWatchers } from '@/lib/socialDb';
+import { notifyMany } from '@/lib/notifications';
 import type { AppMarket } from '@/lib/appState';
 
 export const runtime = 'nodejs';
@@ -427,6 +429,22 @@ export async function GET(req: NextRequest) {
       try {
         const result = await resolveMarket(market);
         results.push(result);
+
+        // Notify users watching this market that it settled. Best-effort, never blocks.
+        if (result.ok && (result.action === 'resolved' || result.action === 'canceled')) {
+          const resolved = result.action === 'resolved';
+          try {
+            const watchers = await listMarketWatchers(market.id);
+            if (watchers.length > 0) {
+              await notifyMany(watchers, () => ({
+                type: resolved ? 'market_resolved' : 'market_canceled',
+                title: resolved ? `Market resolved: ${market.title}` : `Market canceled & refunded: ${market.title}`,
+                body: resolved ? `Outcome: ${result.outcome}. Claim your winnings if you held the winning side.` : 'All participants can claim a refund.',
+                marketId: market.id,
+              }));
+            }
+          } catch { /* notifications are best-effort */ }
+        }
 
         if (agentErc8004Id && result.ok && result.action === 'resolved') {
           const score = result.confidence >= 0.95 ? 95 : result.confidence >= 0.85 ? 85 : 75;

@@ -1,6 +1,6 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { getDb } from './db/client';
-import { alertPrefs, comments, leaderboardCache, profiles, watchlist, commentLikes } from './db/schema';
+import { alertPrefs, comments, leaderboardCache, profiles, watchlist, commentLikes, notifications } from './db/schema';
 import type { AccountStats } from './accountStatsStub';
 import type { AlertTypes, LeaderboardMetric, LeaderboardPeriod } from './socialValidation';
 
@@ -122,6 +122,23 @@ export async function unlikeComment(address: string, commentId: number) {
     ));
 }
 
+export async function getCommentById(id: number) {
+  const [row] = await getDb()
+    .select({ id: comments.id, authorAddress: comments.authorAddress, marketId: comments.marketId })
+    .from(comments)
+    .where(eq(comments.id, id))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function listMarketWatchers(marketId: string): Promise<string[]> {
+  const rows = await getDb()
+    .select({ address: watchlist.address })
+    .from(watchlist)
+    .where(eq(watchlist.marketId, marketId));
+  return rows.map((r) => r.address);
+}
+
 export async function getProfile(address: string) {
   const [row] = await getDb()
     .select()
@@ -129,6 +146,64 @@ export async function getProfile(address: string) {
     .where(eq(profiles.address, address))
     .limit(1);
   return row ?? null;
+}
+
+// ---- Notifications ----
+
+export type NotificationType =
+  | 'comment_reply'
+  | 'comment_like'
+  | 'market_resolved'
+  | 'market_canceled'
+  | 'system';
+
+export async function createNotification(input: {
+  address: string;
+  type: NotificationType;
+  title: string;
+  body?: string;
+  marketId?: string | null;
+  link?: string | null;
+}) {
+  const [row] = await getDb()
+    .insert(notifications)
+    .values({
+      address: input.address.toLowerCase(),
+      type: input.type,
+      title: input.title,
+      body: input.body ?? '',
+      marketId: input.marketId ?? null,
+      link: input.link ?? null,
+    })
+    .returning();
+  return row;
+}
+
+export async function listNotifications(address: string, limit = 30) {
+  return getDb()
+    .select()
+    .from(notifications)
+    .where(eq(notifications.address, address.toLowerCase()))
+    .orderBy(desc(notifications.createdAt))
+    .limit(limit);
+}
+
+export async function countUnreadNotifications(address: string): Promise<number> {
+  const [row] = await getDb()
+    .select({ count: sql<number>`cast(count(*) as integer)` })
+    .from(notifications)
+    .where(and(eq(notifications.address, address.toLowerCase()), eq(notifications.read, false)));
+  return row?.count ?? 0;
+}
+
+export async function markNotificationsRead(address: string, ids?: number[]) {
+  const addr = address.toLowerCase();
+  const base = getDb().update(notifications).set({ read: true });
+  if (ids && ids.length > 0) {
+    await base.where(and(eq(notifications.address, addr), inArray(notifications.id, ids)));
+  } else {
+    await base.where(and(eq(notifications.address, addr), eq(notifications.read, false)));
+  }
 }
 
 // Handles are stored lowercased (see sanitizeHandle), so an exact-match lookup against the
@@ -149,6 +224,8 @@ export async function upsertProfile(input: {
   bio?: string;
   avatarUrl?: string;
   optInLeaderboard?: boolean;
+  email?: string | null;
+  emailNotifications?: boolean;
 }) {
   const [row] = await getDb()
     .insert(profiles)
@@ -158,6 +235,8 @@ export async function upsertProfile(input: {
       bio: input.bio ?? '',
       avatarUrl: input.avatarUrl ?? '',
       optInLeaderboard: input.optInLeaderboard ?? false,
+      email: input.email ?? null,
+      emailNotifications: input.emailNotifications ?? false,
     })
     .onConflictDoUpdate({
       target: profiles.address,
@@ -166,6 +245,8 @@ export async function upsertProfile(input: {
         bio: input.bio ?? '',
         avatarUrl: input.avatarUrl ?? '',
         optInLeaderboard: input.optInLeaderboard ?? false,
+        email: input.email ?? null,
+        emailNotifications: input.emailNotifications ?? false,
       },
     })
     .returning();

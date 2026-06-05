@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
-import { createComment, listComments, editComment, hideComment } from '@/lib/socialDb';
+import { createComment, listComments, editComment, hideComment, getCommentById } from '@/lib/socialDb';
 import { getSocialSession } from '@/lib/socialSession';
+import { notifyUser } from '@/lib/notifications';
 import { normalizeMarketId, sanitizeCommentBody } from '@/lib/socialValidation';
 
 const commentWriteRateLimitStore = new Map<string, { count: number; resetAt: number }>();
@@ -56,12 +57,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   try {
+    const parentId = typeof body.parentId === 'number' ? body.parentId : null;
     const comment = await createComment({
       marketId,
       authorAddress: session.address,
       body: commentBody,
-      parentId: typeof body.parentId === 'number' ? body.parentId : null,
+      parentId,
     });
+
+    // Notify the parent comment's author of a reply (not for self-replies). Best-effort.
+    if (parentId) {
+      const parent = await getCommentById(parentId).catch(() => null);
+      if (parent && parent.authorAddress.toLowerCase() !== session.address.toLowerCase()) {
+        void notifyUser({
+          address: parent.authorAddress,
+          type: 'comment_reply',
+          title: 'New reply to your comment',
+          body: commentBody.slice(0, 140),
+          marketId,
+        });
+      }
+    }
+
     return NextResponse.json({ comment }, { status: 201 });
   } catch (error) {
     return NextResponse.json(

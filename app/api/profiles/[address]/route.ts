@@ -11,13 +11,14 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
   try {
     const profile = await getProfile(address);
+    // Public endpoint — never expose PII (email / email opt-in).
     return NextResponse.json({
-      profile: profile ?? {
+      profile: {
         address,
-        handle: null,
-        bio: '',
-        avatarUrl: '',
-        optInLeaderboard: false,
+        handle: profile?.handle ?? null,
+        bio: profile?.bio ?? '',
+        avatarUrl: profile?.avatarUrl ?? '',
+        optInLeaderboard: profile?.optInLeaderboard ?? false,
       },
     });
   } catch (error) {

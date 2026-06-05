@@ -1,5 +1,6 @@
 import {
   boolean,
+  index,
   integer,
   jsonb,
   numeric,
@@ -35,9 +36,34 @@ export const profiles = pgTable('profiles', {
   bio: text('bio').notNull().default(''),
   avatarUrl: text('avatar_url').notNull().default(''),
   optInLeaderboard: boolean('opt_in_leaderboard').notNull().default(false),
+  // Optional email + global opt-in for off-app (email) notification delivery.
+  email: text('email'),
+  emailNotifications: boolean('email_notifications').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   handleUnique: uniqueIndex('profiles_handle_unique').on(table.handle),
+}));
+
+export const notificationTypeEnum = pgEnum('notification_type', [
+  'comment_reply',
+  'comment_like',
+  'market_resolved',
+  'market_canceled',
+  'system',
+]);
+
+export const notifications = pgTable('notifications', {
+  id: serial('id').primaryKey(),
+  address: text('address').notNull(), // recipient, lowercased
+  type: notificationTypeEnum('type').notNull(),
+  title: text('title').notNull(),
+  body: text('body').notNull().default(''),
+  marketId: text('market_id'),
+  link: text('link'),
+  read: boolean('read').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  byRecipient: index('notifications_address_read_created').on(table.address, table.read, table.createdAt),
 }));
 
 export const comments = pgTable('comments', {

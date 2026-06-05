@@ -17,6 +17,7 @@ import {
   type ConnectedWallet,
 } from '@/lib/walletProvider';
 import { arcTestnetChain, walletConnectProjectId } from '@/lib/rainbowConfig';
+import { useSocialSession } from '@/lib/socialSessionContext';
 
 export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceArrowState }: { showAvatar?: boolean; hideDropdown?: boolean; onClick?: () => void; forceArrowState?: boolean }) {
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -33,6 +34,7 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
   const [copied, setCopied] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const { unreadCount } = useSocialSession();
   const isPending = status === 'Connecting...' || status.startsWith('Opening Circle');
 
   useEffect(() => {
@@ -196,10 +198,15 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
               setIsOpen((value) => !value);
             }
           }}
-          className="flex items-center rounded-full transition-opacity hover:opacity-90"
+          className="relative flex items-center rounded-full transition-opacity hover:opacity-90"
           title="User profile menu"
         >
           {avatarIcon}
+          {unreadCount > 0 ? (
+            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-cyan px-1 text-[10px] font-black text-[#07111f] ring-2 ring-[#0b1322]">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          ) : null}
         </button>
 
         {isOpen && !hideDropdown ? (

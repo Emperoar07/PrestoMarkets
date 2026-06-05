@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { BrandMark } from './BrandMark';
 import { WalletConnectButton } from './WalletConnectButton';
+import { NotificationBell } from './NotificationBell';
 import { fetchArcStableBalances, readCachedUsdcBalance, type StableSymbol } from '@/lib/walletBalance';
 import { getStoredConnectedWallet, subscribeConnectedWallet, disconnectExternalWallet, type ConnectedWallet } from '@/lib/walletProvider';
 import { extractMarketCategories, mergeTopicNavCategories, primaryViewCategories } from '@/lib/categories';
@@ -189,6 +190,7 @@ export function SiteHeader() {
               Faucet
             </a>
           ) : null}
+          {showWallet ? <NotificationBell /> : null}
           {showWallet ? <WalletConnectButton /> : null}
           <button
             type="button"
@@ -290,6 +292,7 @@ export function SiteHeader() {
               Faucet
             </a>
           ) : null}
+          {showWallet ? <NotificationBell /> : null}
           {showWallet && connectedWallet ? (
             <div ref={menuRef} className="relative flex items-center gap-2">
               {/* Balance pill (standalone, sized to match the header actions) */}

@@ -26,6 +26,8 @@ export function ProfileClient() {
   const [bio, setBio] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [optInLeaderboard, setOptInLeaderboard] = useState(false);
+  const [email, setEmail] = useState('');
+  const [emailNotifications, setEmailNotifications] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -64,14 +66,17 @@ export function ProfileClient() {
   // Load the connected wallet's profile, and reload when the wallet changes.
   useEffect(() => {
     if (!walletAddress) {
-      setHandle(''); setBio(''); setAvatarUrl(''); setOptInLeaderboard(false);
+      setHandle(''); setBio(''); setAvatarUrl(''); setOptInLeaderboard(false); setEmail(''); setEmailNotifications(false);
       return;
     }
     let cancelled = false;
     setLoading(true);
     // Clear stale fields immediately so switching wallets never shows the previous profile.
-    setHandle(''); setBio(''); setAvatarUrl(''); setOptInLeaderboard(false);
-    fetch(`/api/profiles/${walletAddress}`, { cache: 'no-store' })
+    setHandle(''); setBio(''); setAvatarUrl(''); setOptInLeaderboard(false); setEmail(''); setEmailNotifications(false);
+    // When editing your own profile, use the authed endpoint so private fields (email) load;
+    // otherwise the public endpoint (no PII).
+    const endpoint = canEdit ? '/api/profiles/me' : `/api/profiles/${walletAddress}`;
+    fetch(endpoint, { cache: 'no-store' })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (cancelled || !data.profile) return;
@@ -79,11 +84,13 @@ export function ProfileClient() {
         setBio(data.profile.bio ?? '');
         setAvatarUrl(data.profile.avatarUrl ?? '');
         setOptInLeaderboard(Boolean(data.profile.optInLeaderboard));
+        setEmail(data.profile.email ?? '');
+        setEmailNotifications(Boolean(data.profile.emailNotifications));
       })
       .catch(() => undefined)
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [walletAddress]);
+  }, [walletAddress, canEdit]);
 
   async function save() {
     if (!canEdit) {
@@ -96,7 +103,7 @@ export function ProfileClient() {
       const res = await fetch('/api/profiles/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ handle, bio, avatarUrl, optInLeaderboard }),
+        body: JSON.stringify({ handle, bio, avatarUrl, optInLeaderboard, email, emailNotifications }),
       });
       if (res.status === 401) {
         requireSignIn();
@@ -109,6 +116,8 @@ export function ProfileClient() {
         setBio(data.profile.bio ?? '');
         setAvatarUrl(data.profile.avatarUrl ?? '');
         setOptInLeaderboard(Boolean(data.profile.optInLeaderboard));
+        setEmail(data.profile.email ?? '');
+        setEmailNotifications(Boolean(data.profile.emailNotifications));
       }
       notify('Profile saved.');
       void refresh();
@@ -233,6 +242,28 @@ export function ProfileClient() {
                 className="accent-cyan h-4 w-4"
               />
             </label>
+
+            {/* Email notifications */}
+            <div>
+              <label className="text-xs font-black uppercase tracking-[0.16em] text-muted">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@email.com"
+                className="mt-1 w-full rounded-[10px] border border-white/[0.08] bg-[#0d1520] px-3 py-2 text-sm text-[#e2e8f0] placeholder:text-muted outline-none focus:border-cyan/50"
+              />
+              <label className="mt-2 flex items-center justify-between gap-3 text-sm font-bold text-[#cbd5e1] py-1">
+                <span>Email me notifications when I&apos;m offline</span>
+                <input
+                  type="checkbox"
+                  checked={emailNotifications}
+                  onChange={(e) => setEmailNotifications(e.target.checked)}
+                  className="accent-cyan h-4 w-4"
+                />
+              </label>
+              <p className="text-[11px] text-muted">In-app notifications always work. Email needs a verified address.</p>
+            </div>
 
             <div className="flex items-center gap-3">
               <button
