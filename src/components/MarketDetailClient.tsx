@@ -320,9 +320,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               <div className="mt-6 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-base font-black text-white">Poll options</h2>
-                  <span className="rounded-full border border-cyan/25 bg-cyan/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-cyan">
-                    Metadata
-                  </span>
                 </div>
                 <div className="mt-4 grid gap-2 md:grid-cols-2">
                   {market.pollOptions.map((option, index) => {
