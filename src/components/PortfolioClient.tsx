@@ -1,21 +1,36 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
 import { useAppState } from '@/lib/appState';
 import { computePortfolioInsights } from '@/lib/portfolioInsights';
+import { 
+  Wallet, 
+  TrendingUp, 
+  Coins, 
+  CreditCard, 
+  Trophy, 
+  Clock, 
+  Lock, 
+  Eye,
+  TrendingDown
+} from 'lucide-react';
 
-const statusStyle = {
-  Open: 'border-cyan/25 bg-cyan/10 text-cyan',
-  Claimable: 'border-mint/25 bg-mint/10 text-mint',
-  Realized: 'border-white/10 bg-white/[0.04] text-[#dbeafe]',
-  Watching: 'border-line bg-ink text-muted',
-  Pending: 'border-yellow-400/25 bg-yellow-400/10 text-yellow-200',
-  Confirmed: 'border-mint/25 bg-mint/10 text-mint',
-  Failed: 'border-red-400/25 bg-red-400/10 text-red-200',
+const statusBadgeStyles = {
+  Open: 'text-cyan bg-cyan/10 border-cyan/20',
+  Claimable: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+  Realized: 'text-[#cbd5e1] bg-white/[0.04] border-white/[0.06]',
+  Watching: 'text-[#64748b] bg-white/[0.02] border-white/[0.04]',
 };
+
+function statusIconFor(status: string) {
+  if (status === 'Open') return Clock;
+  if (status === 'Claimable') return Trophy;
+  if (status === 'Realized') return Lock;
+  return Eye;
+}
 
 type FilterType = 'all' | 'open' | 'winning' | 'losing' | 'claimable';
 type SortType = 'pnl' | 'size' | 'name' | 'date';
@@ -66,81 +81,197 @@ export function PortfolioClient() {
     return 0;
   });
 
+  const counts = useMemo(() => {
+    return {
+      all: positions.length,
+      open: positions.filter((p) => p.status === 'Open').length,
+      winning: positions.filter((p) => parsePnlPercent(p.pnl) > 0).length,
+      losing: positions.filter((p) => parsePnlPercent(p.pnl) < 0).length,
+      claimable: positions.filter((p) => p.status === 'Claimable').length,
+    };
+  }, [positions]);
+
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-36 md:px-7 md:pt-40">
-        <h1 className="text-[clamp(44px,6vw,68px)] font-black tracking-tight text-white">Portfolio</h1>
+      <main className="mx-auto max-w-5xl px-5 pb-20 pt-36 md:px-6 md:pt-44">
+        {/* Header Section */}
+        <div className="flex flex-col gap-2">
+          <h1 className="text-[clamp(28px,3.5vw,40px)] font-black tracking-tight text-white">Portfolio</h1>
+          <p className="text-[15px] leading-relaxed text-[#94a3b8]">
+            Manage your active positions, view performance metrics, and claim reward payouts.
+          </p>
+        </div>
 
-        <section className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="py-4">
-            <p className="text-sm text-muted">Position value</p>
-            <p className="mt-2 text-3xl font-black text-white">{formatUsd(insights.totalValue)}</p>
-            <p className="mt-1 text-sm font-bold text-mint">{isLoadingAccount ? 'Loading account reads' : `${positions.length} positions`}</p>
-          </div>
-          <div className="py-4">
-            <p className="text-sm text-muted">Unrealized P&L</p>
-            <p className={`mt-2 text-3xl font-black ${insights.unrealizedPnl < 0 ? 'text-red-200' : 'text-mint'}`}>
-              {insights.unrealizedPnl >= 0 ? '+' : ''}{formatUsd(insights.unrealizedPnl)}
-            </p>
-            <p className="mt-1 text-sm font-bold text-muted">Open: value − cost</p>
-          </div>
-          <div className="py-4">
-            <p className="text-sm text-muted">Realized P&L</p>
-            <p className={`mt-2 text-3xl font-black ${insights.realizedPnl < 0 ? 'text-red-200' : 'text-mint'}`}>
-              {insights.realizedPnl >= 0 ? '+' : ''}{formatUsd(insights.realizedPnl)}
-            </p>
-            <p className="mt-1 text-sm font-bold text-muted">Settled + claimable</p>
-          </div>
-          <div className="py-4">
-            <p className="text-sm text-muted">Cost basis</p>
-            <p className="mt-2 text-3xl font-black text-white">{formatUsd(insights.totalCost)}</p>
-            <p className="mt-1 text-sm font-bold text-muted">Total invested</p>
-          </div>
-          <div className="py-4">
-            <p className="text-sm text-muted">Claimable</p>
-            <p className="mt-2 text-3xl font-black text-white">{formatUsd(insights.claimableValue)}</p>
-            <p className="mt-1 text-sm font-bold text-muted">{insights.claimableCount} to claim</p>
-          </div>
-        </section>
+        {/* Cockpit Stats Cards */}
+        {connectedWallet && (
+          <section className="mt-8 grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+            {/* Position Value */}
+            <div className="rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-5 transition-all duration-200 hover:border-white/[0.08] hover:bg-white/[0.02]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-extrabold text-[#64748b] uppercase tracking-wider">Position Value</span>
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-cyan/10 text-cyan">
+                  <Wallet className="h-4.5 w-4.5" />
+                </span>
+              </div>
+              <p className="mt-4 text-2xl font-black text-white">{formatUsd(insights.totalValue)}</p>
+              <p className="mt-1.5 text-[11px] font-bold tracking-wide text-cyan">
+                {isLoadingAccount ? 'Syncing...' : `${positions.length} active position${positions.length === 1 ? '' : 's'}`}
+              </p>
+            </div>
 
-        {(insights.claimableCount > 0 || insights.closingSoonCount > 0) ? (
-          <section className="mt-4 flex flex-wrap gap-3">
-            {insights.claimableCount > 0 ? (
-              <button
-                type="button"
-                onClick={() => setFilter('claimable')}
-                className="rounded-full border border-mint/30 bg-mint/10 px-4 py-2 text-sm font-black text-mint transition-colors hover:bg-mint/15"
-              >
-                {insights.claimableCount} claimable — {formatUsd(insights.claimableValue)}
-              </button>
-            ) : null}
-            {insights.claimableCount > 0 ? (
-              <button
-                type="button"
-                onClick={() => void claimAll()}
-                disabled={claimingAll}
-                className="rounded-full bg-mint px-4 py-2 text-sm font-black text-[#07111f] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {claimingAll ? 'Claiming…' : `Claim all (${insights.claimableCount})`}
-              </button>
-            ) : null}
-            {insights.closingSoonCount > 0 ? (
-              <span className="rounded-full border border-yellow-400/25 bg-yellow-400/10 px-4 py-2 text-sm font-black text-yellow-200">
-                ⏳ {insights.closingSoonCount} position{insights.closingSoonCount > 1 ? 's' : ''} closing soon
-              </span>
-            ) : null}
+            {/* Unrealized P&L */}
+            <div className="rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-5 transition-all duration-200 hover:border-white/[0.08] hover:bg-white/[0.02]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-extrabold text-[#64748b] uppercase tracking-wider">Unrealized P&L</span>
+                <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${
+                  insights.unrealizedPnl >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
+                }`}>
+                  {insights.unrealizedPnl >= 0 ? (
+                    <TrendingUp className="h-4.5 w-4.5" />
+                  ) : (
+                    <TrendingDown className="h-4.5 w-4.5" />
+                  )}
+                </span>
+              </div>
+              <p className={`mt-4 text-2xl font-black ${insights.unrealizedPnl < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                {insights.unrealizedPnl >= 0 ? '+' : ''}{formatUsd(insights.unrealizedPnl)}
+              </p>
+              <p className="mt-1.5 text-[11px] font-bold text-[#64748b] tracking-wide">Current valuation − cost</p>
+            </div>
+
+            {/* Realized P&L */}
+            <div className="rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-5 transition-all duration-200 hover:border-white/[0.08] hover:bg-white/[0.02]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-extrabold text-[#64748b] uppercase tracking-wider">Realized P&L</span>
+                <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${
+                  insights.realizedPnl >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
+                }`}>
+                  {insights.realizedPnl >= 0 ? (
+                    <TrendingUp className="h-4.5 w-4.5" />
+                  ) : (
+                    <TrendingDown className="h-4.5 w-4.5" />
+                  )}
+                </span>
+              </div>
+              <p className={`mt-4 text-2xl font-black ${insights.realizedPnl < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                {insights.realizedPnl >= 0 ? '+' : ''}{formatUsd(insights.realizedPnl)}
+              </p>
+              <p className="mt-1.5 text-[11px] font-bold text-[#64748b] tracking-wide">Settled + claimable rewards</p>
+            </div>
+
+            {/* Cost Basis */}
+            <div className="rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-5 transition-all duration-200 hover:border-white/[0.08] hover:bg-white/[0.02]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-extrabold text-[#64748b] uppercase tracking-wider">Cost Basis</span>
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/10 text-purple-400">
+                  <CreditCard className="h-4.5 w-4.5" />
+                </span>
+              </div>
+              <p className="mt-4 text-2xl font-black text-white">{formatUsd(insights.totalCost)}</p>
+              <p className="mt-1.5 text-[11px] font-bold text-[#64748b] tracking-wide">Total capital invested</p>
+            </div>
+
+            {/* Claimable */}
+            <div className="rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-5 transition-all duration-200 hover:border-white/[0.08] hover:bg-white/[0.02]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-extrabold text-[#64748b] uppercase tracking-wider">Claimable</span>
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400">
+                  <Trophy className="h-4.5 w-4.5" />
+                </span>
+              </div>
+              <p className="mt-4 text-2xl font-black text-white">{formatUsd(insights.claimableValue)}</p>
+              <p className="mt-1.5 text-[11px] font-extrabold text-emerald-400 tracking-wide uppercase">
+                {insights.claimableCount} reward{insights.claimableCount === 1 ? '' : 's'} ready
+              </p>
+            </div>
           </section>
+        )}
+
+        {/* Claimable / Closing Alerts Banner */}
+        {connectedWallet && (insights.claimableCount > 0 || insights.closingSoonCount > 0) ? (
+          <div className="mt-6 flex flex-col gap-4 rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              {insights.claimableCount > 0 && (
+                <div className="flex items-center gap-2.5 text-[13.5px] font-bold text-emerald-400">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+                  </span>
+                  <span>{insights.claimableCount} position{insights.claimableCount === 1 ? '' : 's'} claimable ({formatUsd(insights.claimableValue)})</span>
+                </div>
+              )}
+              {insights.closingSoonCount > 0 && (
+                <div className="flex items-center gap-2.5 text-[13.5px] font-bold text-amber-400">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"></span>
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500"></span>
+                  </span>
+                  <span>{insights.closingSoonCount} position{insights.closingSoonCount === 1 ? '' : 's'} closing soon</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {insights.claimableCount > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setFilter('claimable')}
+                    className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3.5 py-1.5 text-xs font-bold text-[#94a3b8] transition hover:border-white/[0.12] hover:bg-white/[0.04] hover:text-white"
+                  >
+                    View claimable
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void claimAll()}
+                    disabled={claimingAll}
+                    className="rounded-lg bg-emerald-400 px-3.5 py-1.5 text-xs font-extrabold text-[#07111f] transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {claimingAll ? 'Claiming...' : `Claim All (${insights.claimableCount})`}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         ) : null}
 
-        <section className="mt-8">
-          <div className="border-b border-white/[0.06] pb-5">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <h2 className="text-xl font-black text-white">Share positions</h2>
+        {/* Filter and sorting control row */}
+        {connectedWallet && (
+          <div className="mt-10 flex flex-col gap-4 border-b border-white/[0.06] pb-5 md:flex-row md:items-center md:justify-between">
+            {/* Filter Tabs */}
+            <div className="flex flex-wrap gap-2">
+              {(['all', 'open', 'winning', 'losing', 'claimable'] as const).map((f) => {
+                const isActive = filter === f;
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setFilter(f)}
+                    className={`flex items-center gap-2 rounded-lg px-4 py-2 text-[12.5px] font-bold transition-all duration-200 ${
+                      isActive
+                        ? 'bg-cyan text-[#07111f] shadow-lg shadow-cyan/10'
+                        : 'text-[#94a3b8] hover:bg-white/[0.04] hover:text-[#f1f5f9]'
+                    }`}
+                  >
+                    <span className="capitalize">{f}</span>
+                    <span className={`inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[9px] font-extrabold ${
+                      isActive ? 'bg-[#07111f]/20 text-[#07111f]' : 'bg-white/[0.06] text-[#64748b]'
+                    }`}>
+                      {counts[f]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Sort Control */}
+            <div className="flex items-center gap-2">
+              <span className="text-[12.5px] font-bold text-[#64748b] uppercase tracking-wide">Sort by</span>
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortType)}
-                className="rounded-lg border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-sm font-bold text-[#94a3b8] transition-colors hover:border-cyan/30 focus:border-cyan/50 outline-none"
+                className="rounded-lg border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-[12.5px] font-bold text-[#cbd5e1] transition-colors hover:border-cyan/30 focus:border-cyan/50 outline-none cursor-pointer"
               >
                 <option value="date">Newest first</option>
                 <option value="pnl">Best P&L first</option>
@@ -149,91 +280,107 @@ export function PortfolioClient() {
               </select>
             </div>
           </div>
+        )}
 
-          <div className="flex flex-wrap gap-2 border-b border-white/[0.06] py-4">
-            {(['all', 'open', 'winning', 'losing', 'claimable'] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`rounded-lg px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition-all ${
-                  filter === f
-                    ? 'border-cyan/30 bg-cyan/10 text-cyan'
-                    : 'border-transparent text-[#94a3b8] hover:text-white'
-                }`}
-              >
-                {f === 'all' && 'All'}
-                {f === 'open' && 'Open'}
-                {f === 'winning' && 'Winning'}
-                {f === 'losing' && 'Losing'}
-                {f === 'claimable' && 'Claimable'}
-              </button>
-            ))}
-          </div>
-
-          <div className="divide-y divide-white/[0.06]">
-            {sortedPositions.length > 0 ? sortedPositions.map((position) => (
-              <Link
-                key={`${position.marketId}-${position.outcome}-${position.shares}`}
-                href={`/markets/${position.marketId}#trade-panel`}
-                className="grid gap-4 py-5 px-4 transition-all hover:bg-white/[0.02] md:grid-cols-[1.5fr_repeat(5,1fr)_auto] md:items-center"
-              >
-                <div>
-                  <p className="font-black text-white">{position.title}</p>
-                  <p className="mt-1 text-sm text-muted">{position.outcome} shares</p>
-                  <p className="mt-2 text-xs font-black uppercase tracking-[0.16em] text-cyan">Open trade panel</p>
-                </div>
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Shares</p>
-                  <p className="mt-1 font-black text-white">{position.shares}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Average</p>
-                  <p className="mt-1 font-black text-white">{position.averagePrice}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Current</p>
-                  <p className="mt-1 font-black text-cyan">{position.currentPrice}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">Value</p>
-                  <p className="mt-1 font-black text-white">{position.value}</p>
-                  <p className="mt-1 text-xs font-bold text-muted">{position.valuationLabel}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-muted">P/L</p>
-                  <p className={`mt-1 font-black ${position.pnl.startsWith('-') ? 'text-red-200' : 'text-mint'}`}>
-                    {position.pnl}
-                  </p>
-                  <p className="mt-1 text-xs font-bold text-muted">{position.costBasis} cost</p>
-                </div>
-                <span className={`w-fit rounded-full border px-3 py-1 text-xs font-black ${statusStyle[position.status]}`}>
-                  {position.status}
-                </span>
-              </Link>
-            )) : (
-              <div className="flex flex-col items-center justify-center gap-4 py-12 px-6 text-center">
-                <div>
-                  <p className="text-sm font-bold text-white">
-                    {connectedWallet ? 'No positions yet' : 'Connect a wallet to get started'}
-                  </p>
-                  <p className="mt-2 text-sm text-muted leading-6">
-                    {connectedWallet
-                      ? 'You do not hold any shares in the live markets. Browse markets and buy shares to track your positions here.'
-                      : 'Connect your wallet to view your positions and portfolio performance across all markets.'}
-                  </p>
-                </div>
-                {connectedWallet && (
+        {/* Positions cards list */}
+        {connectedWallet && (
+          <div className="mt-6 flex flex-col gap-3.5">
+            {sortedPositions.length > 0 ? (
+              sortedPositions.map((position) => {
+                const isLoss = position.pnl.startsWith('-');
+                const StatusIcon = statusIconFor(position.status);
+                
+                return (
                   <Link
-                    href="/markets"
-                    className="mt-2 inline-block rounded-lg border border-cyan/30 bg-cyan/10 px-4 py-2 text-sm font-black text-cyan transition-colors hover:bg-cyan/15"
+                    key={`${position.marketId}-${position.outcome}-${position.shares}`}
+                    href={`/markets/${position.marketId}#trade-panel`}
+                    className="group flex flex-col justify-between gap-4 rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-5 transition-all duration-200 hover:border-white/[0.08] hover:bg-white/[0.02] md:flex-row md:items-center"
                   >
-                    Browse Markets
+                    {/* Left: Metadata */}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[14.5px] font-black text-white transition-colors group-hover:text-cyan leading-snug break-words">
+                        {position.title}
+                      </p>
+                      
+                      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                        <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[9px] font-extrabold tracking-wide uppercase ${statusBadgeStyles[position.status]}`}>
+                          <StatusIcon className="h-2.5 w-2.5" />
+                          <span>{position.status}</span>
+                        </span>
+                        
+                        <span className="text-[12px] font-bold text-[#cbd5e1]">
+                          Outcome: <span className="text-white font-extrabold">{position.outcome}</span>
+                        </span>
+                        
+                        <span className="text-[11px] text-[#64748b]">•</span>
+                        
+                        <span className="text-[12px] font-bold text-[#cbd5e1]">
+                          Shares: <span className="text-white font-extrabold">{position.shares}</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Right: Valuation metrics grid */}
+                    <div className="grid grid-cols-2 gap-4 border-t border-white/[0.04] pt-4 sm:grid-cols-4 md:flex md:items-center md:justify-end md:gap-8 md:border-t-0 md:pt-0">
+                      <div className="md:min-w-[80px]">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748b]">Avg Price</p>
+                        <p className="mt-1 text-[13.5px] font-extrabold text-white">{position.averagePrice}</p>
+                      </div>
+                      
+                      <div className="md:min-w-[80px]">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748b]">Current</p>
+                        <p className="mt-1 text-[13.5px] font-extrabold text-cyan">{position.currentPrice}</p>
+                      </div>
+                      
+                      <div className="md:min-w-[100px]">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748b]">Valuation</p>
+                        <p className="mt-1 text-[13.5px] font-extrabold text-white">{position.value}</p>
+                        <p className="text-[9.5px] font-bold text-[#64748b] uppercase tracking-wide mt-0.5">{position.valuationLabel}</p>
+                      </div>
+                      
+                      <div className="md:min-w-[100px]">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748b]">P/L</p>
+                        <p className={`mt-1 text-[13.5px] font-extrabold ${isLoss ? 'text-rose-400' : 'text-emerald-400'}`}>
+                          {position.pnl}
+                        </p>
+                        <p className="text-[9.5px] font-bold text-[#64748b] uppercase tracking-wide mt-0.5">{position.costBasis} cost</p>
+                      </div>
+                    </div>
                   </Link>
-                )}
+                );
+              })
+            ) : (
+              <div className="flex flex-col items-center justify-center rounded-xl border border-white/[0.06] bg-[#0b1322]/80 px-6 py-14 text-center">
+                <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-cyan/10 text-cyan mb-4">
+                  <TrendingUp className="h-6 w-6" />
+                </div>
+                <h3 className="text-base font-bold text-white">No active positions</h3>
+                <p className="mt-2 text-sm text-[#94a3b8] max-w-sm leading-relaxed">
+                  You do not hold any shares in the live markets. Browse active markets to buy shares and track your positions.
+                </p>
+                <Link
+                  href="/markets"
+                  className="mt-5 inline-block rounded-lg bg-cyan px-4 py-2.5 text-xs font-black text-[#07111f] transition-opacity hover:opacity-90 shadow-lg shadow-cyan/10"
+                >
+                  Browse Markets
+                </Link>
               </div>
             )}
           </div>
-        </section>
+        )}
+
+        {/* Wallet disconnect fallback */}
+        {!connectedWallet && (
+          <div className="mt-10 flex flex-col items-center justify-center rounded-xl border border-white/[0.06] bg-[#0b1322]/80 px-6 py-14 text-center">
+            <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-cyan/10 text-cyan mb-4">
+              <Wallet className="h-6 w-6" />
+            </div>
+            <h3 className="text-base font-bold text-white">Connect wallet</h3>
+            <p className="mt-2 text-sm text-[#94a3b8] max-w-sm leading-relaxed">
+              Connect a wallet to view your current positions, performance statistics, and claim rewards.
+            </p>
+          </div>
+        )}
       </main>
       <SiteFooter />
     </>
