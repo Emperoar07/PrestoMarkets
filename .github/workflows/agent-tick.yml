@@ -35,3 +35,11 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -w "\nHTTP %{http_code}\n" \
             --fail-with-body
+
+      - name: Refresh forecaster leaderboard
+        if: ${{ always() }}
+        run: |
+          curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/leaderboard" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n" \
+            --fail-with-body
