@@ -18,11 +18,15 @@ export function MarketQualityPanel({ market }: { market: Market }) {
   const why = market.createdByType === 'agent' ? firstSentence(market.agentReason) : undefined;
 
   const tabClass = (active: boolean) =>
-    `rounded-[7px] px-3 py-1.5 text-xs font-black transition-colors ${active ? 'bg-white/[0.07] text-white' : 'text-muted hover:text-white'}`;
+    `pb-2 text-xs font-black transition-all border-b-2 -mb-px ${
+      active
+        ? 'border-cyan text-cyan'
+        : 'border-transparent text-[#64748b] hover:text-white'
+    }`;
 
   return (
     <div className="mt-8 min-w-0">
-      <div className="inline-flex rounded-[10px] border border-white/[0.06] bg-[#0d1520] p-1">
+      <div className="flex gap-6 border-b border-white/[0.06]">
         <button type="button" onClick={() => setTab('rules')} className={tabClass(tab === 'rules')}>Resolution rules</button>
         <button type="button" onClick={() => setTab('quality')} className={tabClass(tab === 'quality')}>Market quality</button>
       </div>
