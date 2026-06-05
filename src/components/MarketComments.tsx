@@ -13,6 +13,9 @@ type CommentRow = {
   editedAt?: string | null;
   authorHandle?: string | null;
   authorAvatarUrl?: string | null;
+  parentId?: number | null;
+  likesCount: number;
+  likedByMe?: boolean;
 };
 
 const COMMENT_MAX_LENGTH = 1_000;
@@ -55,6 +58,11 @@ export function MarketComments({ marketId }: { marketId: string }) {
   const [editDraft, setEditDraft] = useState('');
   const [savingEditId, setSavingEditId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  // Replying state
+  const [replyToId, setReplyToId] = useState<number | null>(null);
+  const [replyDraft, setReplyDraft] = useState('');
+  const [postingReply, setPostingReply] = useState(false);
 
   async function loadComments() {
     setLoading(true);
@@ -106,16 +114,91 @@ export function MarketComments({ marketId }: { marketId: string }) {
     }
   }
 
+  async function submitReply(parentId: number) {
+    const body = replyDraft.trim();
+    if (!body || postingReply) return;
+
+    setPostingReply(true);
+    try {
+      const res = await fetch(`/api/markets/${marketId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body, parentId }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 401) {
+        setNeedsSignIn(true);
+        alert('Sign in with your wallet to reply.');
+        return;
+      }
+      if (!res.ok) throw new Error(data.error ?? 'Reply could not be saved.');
+
+      setReplyDraft('');
+      setReplyToId(null);
+      await loadComments();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Reply could not be saved.');
+    } finally {
+      setPostingReply(false);
+    }
+  }
+
+  async function toggleLike(commentId: number, currentlyLiked: boolean) {
+    if (!isConnected) {
+      alert('Connect a wallet to like comments.');
+      return;
+    }
+
+    // Optimistic UI updates
+    setComments((prev) =>
+      prev.map((c) => {
+        if (c.id === commentId) {
+          return {
+            ...c,
+            likedByMe: !currentlyLiked,
+            likesCount: currentlyLiked ? Math.max(0, c.likesCount - 1) : c.likesCount + 1,
+          };
+        }
+        return c;
+      })
+    );
+
+    try {
+      const method = currentlyLiked ? 'DELETE' : 'POST';
+      const res = await fetch(`/api/comments/${commentId}/like`, { method });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error ?? 'Failed to update like.');
+      }
+    } catch (error) {
+      // Revert optimistic updates on error
+      setComments((prev) =>
+        prev.map((c) => {
+          if (c.id === commentId) {
+            return {
+              ...c,
+              likedByMe: currentlyLiked,
+              likesCount: currentlyLiked ? c.likesCount + 1 : Math.max(0, c.likesCount - 1),
+            };
+          }
+          return c;
+        })
+      );
+      alert(error instanceof Error ? error.message : 'Could not update like.');
+    }
+  }
+
   async function handleSaveEdit(commentId: number) {
     const body = editDraft.trim();
     if (!body || savingEditId !== null) return;
 
     setSavingEditId(commentId);
     try {
-      const res = await fetch(`/api/markets/${marketId}/comments`, {
-        method: 'PUT',
+      const res = await fetch(`/api/comments/${commentId}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ commentId, body }),
+        body: JSON.stringify({ body }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? 'Comment could not be edited.');
@@ -134,10 +217,8 @@ export function MarketComments({ marketId }: { marketId: string }) {
 
     setDeletingId(commentId);
     try {
-      const res = await fetch(`/api/markets/${marketId}/comments`, {
+      const res = await fetch(`/api/comments/${commentId}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ commentId }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? 'Comment could not be deleted.');
@@ -148,6 +229,26 @@ export function MarketComments({ marketId }: { marketId: string }) {
       setDeletingId(null);
     }
   }
+
+  // Filter top-level parents and group replies
+  const parentComments = comments.filter((c) => !c.parentId);
+  const repliesByParentId: Record<number, CommentRow[]> = {};
+  comments.forEach((c) => {
+    if (c.parentId) {
+      if (!repliesByParentId[c.parentId]) {
+        repliesByParentId[c.parentId] = [];
+      }
+      repliesByParentId[c.parentId].push(c);
+    }
+  });
+
+  // Sort replies oldest-first so they read as a conversational thread
+  Object.keys(repliesByParentId).forEach((key) => {
+    const pId = Number(key);
+    repliesByParentId[pId].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+  });
 
   return (
     <section className="mt-8">
@@ -195,77 +296,237 @@ export function MarketComments({ marketId }: { marketId: string }) {
       <div className="mt-5 max-h-[400px] overflow-y-auto scrollbar-hide divide-y divide-white/[0.06]">
         {loading ? (
           <p className="py-6 text-sm text-muted">Loading comments...</p>
-        ) : comments.length === 0 ? (
+        ) : parentComments.length === 0 ? (
           <p className="py-6 text-sm text-muted">No comments yet.</p>
-        ) : comments.map((comment) => {
-          const isAuthor = address && comment.authorAddress.toLowerCase() === address.toLowerCase();
-          const isEditing = editingCommentId === comment.id;
+        ) : parentComments.map((parent) => {
+          const isParentAuthor = address && parent.authorAddress.toLowerCase() === address.toLowerCase();
+          const isParentEditing = editingCommentId === parent.id;
+          const parentReplies = repliesByParentId[parent.id] ?? [];
 
           return (
-            <article key={comment.id} className="py-4">
-              <div className="flex items-center justify-between gap-2 text-xs text-muted">
-                <div className="flex flex-wrap items-center gap-2">
-                  <CommentAvatar comment={comment} />
-                  <span className="font-black text-cyan">{displayName(comment)}</span>
-                  <span>{new Date(comment.createdAt).toLocaleString()}</span>
-                  {comment.editedAt ? <span className="text-muted/60">· edited</span> : null}
-                </div>
-                {isAuthor && !isEditing && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingCommentId(comment.id);
-                        setEditDraft(comment.body);
-                      }}
-                      className="rounded-[6px] p-1 text-[#8fa0b4] hover:bg-white/[0.04] hover:text-cyan transition-all"
-                      title="Edit comment"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleDelete(comment.id)}
-                      disabled={deletingId === comment.id}
-                      className="rounded-[6px] p-1 text-[#8fa0b4] hover:bg-white/[0.04] hover:text-red-400 transition-all disabled:opacity-50"
-                      title="Delete comment"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+            <div key={parent.id} className="py-4">
+              {/* Parent Comment */}
+              <article>
+                <div className="flex items-center justify-between gap-2 text-xs text-muted">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <CommentAvatar comment={parent} />
+                    <span className="font-black text-cyan">{displayName(parent)}</span>
+                    <span>{new Date(parent.createdAt).toLocaleString()}</span>
+                    {parent.editedAt ? <span className="text-muted/60">· edited</span> : null}
                   </div>
-                )}
-              </div>
+                  {isParentAuthor && !isParentEditing && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingCommentId(parent.id);
+                          setEditDraft(parent.body);
+                        }}
+                        className="rounded-[6px] p-1 text-[#8fa0b4] hover:bg-white/[0.04] hover:text-cyan transition-all"
+                        title="Edit comment"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDelete(parent.id)}
+                        disabled={deletingId === parent.id}
+                        className="rounded-[6px] p-1 text-[#8fa0b4] hover:bg-white/[0.04] hover:text-red-400 transition-all disabled:opacity-50"
+                        title="Delete comment"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
 
-              {isEditing ? (
-                <div className="mt-2 flex flex-col gap-2">
+                {isParentEditing ? (
+                  <div className="mt-2 flex flex-col gap-2">
+                    <textarea
+                      value={editDraft}
+                      onChange={(e) => setEditDraft(e.target.value.slice(0, COMMENT_MAX_LENGTH))}
+                      rows={2}
+                      className="w-full resize-y rounded-[10px] border border-white/[0.08] bg-[#0d1520] px-3 py-2 text-sm text-[#e2e8f0] outline-none transition-colors focus:border-cyan/50"
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setEditingCommentId(null)}
+                        className="rounded-[6px] border border-white/[0.08] px-3 py-1.5 text-xs font-black text-muted hover:text-white transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={savingEditId !== null || editDraft.trim().length === 0}
+                        onClick={() => void handleSaveEdit(parent.id)}
+                        className="rounded-[6px] bg-cyan px-3 py-1.5 text-xs font-black text-[#07111f] transition-opacity hover:opacity-90 disabled:opacity-50"
+                      >
+                        {savingEditId === parent.id ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-[#cbd5e1]">{parent.body}</p>
+
+                    {/* Action buttons (Like & Reply) */}
+                    <div className="mt-2.5 flex items-center gap-4 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => void toggleLike(parent.id, !!parent.likedByMe)}
+                        className={`flex items-center gap-1.5 font-bold transition-colors ${
+                          parent.likedByMe ? 'text-cyan' : 'text-[#8fa0b4] hover:text-white'
+                        }`}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill={parent.likedByMe ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2.5" className="opacity-85">
+                          <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
+                        </svg>
+                        <span>{parent.likesCount}</span>
+                      </button>
+
+                      {isConnected && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReplyToId(parent.id);
+                            setReplyDraft('');
+                          }}
+                          className="text-[#8fa0b4] hover:text-white font-bold transition-colors"
+                        >
+                          Reply
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </article>
+
+              {/* Inline Reply Composer */}
+              {replyToId === parent.id && (
+                <div className="ml-6 mt-3 pl-3 border-l border-white/[0.06] flex flex-col gap-2">
                   <textarea
-                    value={editDraft}
-                    onChange={(e) => setEditDraft(e.target.value.slice(0, COMMENT_MAX_LENGTH))}
+                    value={replyDraft}
+                    onChange={(e) => setReplyDraft(e.target.value.slice(0, COMMENT_MAX_LENGTH))}
+                    placeholder={`Reply to ${displayName(parent)}...`}
                     rows={2}
                     className="w-full resize-y rounded-[10px] border border-white/[0.08] bg-[#0d1520] px-3 py-2 text-sm text-[#e2e8f0] outline-none transition-colors focus:border-cyan/50"
                   />
                   <div className="flex gap-2 justify-end">
                     <button
                       type="button"
-                      onClick={() => setEditingCommentId(null)}
-                      className="rounded-[6px] border border-white/[0.08] px-3 py-1.5 text-xs font-black text-muted hover:text-white transition-colors"
+                      onClick={() => setReplyToId(null)}
+                      className="rounded-[6px] border border-white/[0.08] px-3 py-1 text-xs font-black text-muted hover:text-white transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
-                      disabled={savingEditId !== null || editDraft.trim().length === 0}
-                      onClick={() => void handleSaveEdit(comment.id)}
-                      className="rounded-[6px] bg-cyan px-3 py-1.5 text-xs font-black text-[#07111f] transition-opacity hover:opacity-90 disabled:opacity-50"
+                      disabled={postingReply || replyDraft.trim().length === 0}
+                      onClick={() => void submitReply(parent.id)}
+                      className="rounded-[6px] bg-cyan px-3 py-1 text-xs font-black text-[#07111f] transition-opacity hover:opacity-90 disabled:opacity-50"
                     >
-                      {savingEditId === comment.id ? 'Saving...' : 'Save'}
+                      {postingReply ? 'Replying...' : 'Reply'}
                     </button>
                   </div>
                 </div>
-              ) : (
-                <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-[#cbd5e1]">{comment.body}</p>
               )}
-            </article>
+
+              {/* Replies list */}
+              {parentReplies.length > 0 && (
+                <div className="ml-6 mt-3 pl-3 border-l border-white/[0.06] flex flex-col gap-3.5">
+                  {parentReplies.map((reply) => {
+                    const isReplyAuthor = address && reply.authorAddress.toLowerCase() === address.toLowerCase();
+                    const isReplyEditing = editingCommentId === reply.id;
+
+                    return (
+                      <article key={reply.id} className="text-sm">
+                        <div className="flex items-center justify-between gap-2 text-xs text-muted">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <CommentAvatar comment={reply} />
+                            <span className="font-black text-cyan">{displayName(reply)}</span>
+                            <span>{new Date(reply.createdAt).toLocaleString()}</span>
+                            {reply.editedAt ? <span className="text-muted/60">· edited</span> : null}
+                          </div>
+                          {isReplyAuthor && !isReplyEditing && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingCommentId(reply.id);
+                                  setEditDraft(reply.body);
+                                }}
+                                className="rounded-[6px] p-1 text-[#8fa0b4] hover:bg-white/[0.04] hover:text-cyan transition-all"
+                                title="Edit reply"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDelete(reply.id)}
+                                disabled={deletingId === reply.id}
+                                className="rounded-[6px] p-1 text-[#8fa0b4] hover:bg-white/[0.04] hover:text-red-400 transition-all disabled:opacity-50"
+                                title="Delete reply"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {isReplyEditing ? (
+                          <div className="mt-2 flex flex-col gap-2">
+                            <textarea
+                              value={editDraft}
+                              onChange={(e) => setEditDraft(e.target.value.slice(0, COMMENT_MAX_LENGTH))}
+                              rows={2}
+                              className="w-full resize-y rounded-[10px] border border-white/[0.08] bg-[#0d1520] px-3 py-2 text-sm text-[#e2e8f0] outline-none transition-colors focus:border-cyan/50"
+                            />
+                            <div className="flex gap-2 justify-end">
+                              <button
+                                type="button"
+                                onClick={() => setEditingCommentId(null)}
+                                className="rounded-[6px] border border-white/[0.08] px-3 py-1.5 text-xs font-black text-muted hover:text-white transition-colors"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                disabled={savingEditId !== null || editDraft.trim().length === 0}
+                                onClick={() => void handleSaveEdit(reply.id)}
+                                className="rounded-[6px] bg-cyan px-3 py-1.5 text-xs font-black text-[#07111f] transition-opacity hover:opacity-90 disabled:opacity-50"
+                              >
+                                {savingEditId === reply.id ? 'Saving...' : 'Save'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-[#cbd5e1]">{reply.body}</p>
+
+                            {/* Reply Like Action */}
+                            <div className="mt-2 flex items-center gap-4 text-xs">
+                              <button
+                                type="button"
+                                onClick={() => void toggleLike(reply.id, !!reply.likedByMe)}
+                                className={`flex items-center gap-1.5 font-bold transition-colors ${
+                                  reply.likedByMe ? 'text-cyan' : 'text-[#8fa0b4] hover:text-white'
+                                }`}
+                              >
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill={reply.likedByMe ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2.5" className="opacity-85">
+                                  <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
+                                </svg>
+                                <span>{reply.likesCount}</span>
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           );
         })}
       </div>

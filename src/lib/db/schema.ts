@@ -45,6 +45,14 @@ export const comments = pgTable('comments', {
   editedAt: timestamp('edited_at', { withTimezone: true }),
 });
 
+export const commentLikes = pgTable('comment_likes', {
+  address: text('address').notNull(),
+  commentId: integer('comment_id').references(() => comments.id, { onDelete: 'cascade' }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.address, table.commentId] }),
+}));
+
 export const watchlist = pgTable('watchlist', {
   address: text('address').notNull(),
   marketId: text('market_id').notNull(),

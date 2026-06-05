@@ -1,23 +1,36 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { getDb } from './db/client';
-import { alertPrefs, comments, leaderboardCache, profiles, watchlist } from './db/schema';
+import { alertPrefs, comments, leaderboardCache, profiles, watchlist, commentLikes } from './db/schema';
 import type { AccountStats } from './accountStatsStub';
 import type { AlertTypes, LeaderboardMetric, LeaderboardPeriod } from './socialValidation';
 
-export async function listComments(marketId: string) {
+export async function listComments(marketId: string, viewerAddress?: string) {
+  const viewer = viewerAddress?.toLowerCase();
   return getDb()
     .select({
       id: comments.id,
       authorAddress: comments.authorAddress,
+      parentId: comments.parentId,
       body: comments.body,
       createdAt: comments.createdAt,
       editedAt: comments.editedAt,
       authorHandle: profiles.handle,
       authorAvatarUrl: profiles.avatarUrl,
+      likesCount: sql<number>`cast(count(${commentLikes.address}) as integer)`,
+      likedByMe: viewer
+        ? sql<boolean>`max(case when lower(${commentLikes.address}) = ${viewer} then 1 else 0 end) = 1`
+        : sql<boolean>`false`,
     })
     .from(comments)
     .leftJoin(profiles, eq(profiles.address, comments.authorAddress))
+    .leftJoin(commentLikes, eq(comments.id, commentLikes.commentId))
     .where(and(eq(comments.marketId, marketId), eq(comments.hidden, false)))
+    .groupBy(
+      comments.id,
+      profiles.address,
+      profiles.handle,
+      profiles.avatarUrl
+    )
     .orderBy(desc(comments.createdAt))
     .limit(100);
 }
@@ -73,6 +86,25 @@ export async function hideComment(input: {
     ))
     .returning();
   return row ?? null;
+}
+
+export async function likeComment(address: string, commentId: number) {
+  await getDb()
+    .insert(commentLikes)
+    .values({
+      address: address.toLowerCase(),
+      commentId,
+    })
+    .onConflictDoNothing();
+}
+
+export async function unlikeComment(address: string, commentId: number) {
+  await getDb()
+    .delete(commentLikes)
+    .where(and(
+      eq(sql`lower(${commentLikes.address})`, address.toLowerCase()),
+      eq(commentLikes.commentId, commentId)
+    ));
 }
 
 export async function getProfile(address: string) {

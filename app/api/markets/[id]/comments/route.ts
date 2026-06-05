@@ -6,7 +6,7 @@ import { normalizeMarketId, sanitizeCommentBody } from '@/lib/socialValidation';
 
 const commentWriteRateLimitStore = new Map<string, { count: number; resetAt: number }>();
 
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const marketId = normalizeMarketId(id);
   if (!marketId) {
@@ -14,7 +14,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   }
 
   try {
-    const comments = await listComments(marketId);
+    const session = getSocialSession(request);
+    const viewerAddress = session?.address;
+    const comments = await listComments(marketId, viewerAddress);
     return NextResponse.json({ comments });
   } catch (error) {
     return NextResponse.json(
