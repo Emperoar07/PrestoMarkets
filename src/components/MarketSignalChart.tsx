@@ -34,9 +34,6 @@ function buildSignalPoints(baseOdds: number, volume: number, liquidity: number, 
 }
 
 function getAxis(points: number[][], outcomeCount: number) {
-  const maxPoint = Math.max(...points.flat(), 0);
-  if (outcomeCount > 2 && maxPoint <= 20) return { max: 20, ticks: [20, 15, 10, 5, 0] };
-  if (outcomeCount > 2 && maxPoint <= 50) return { max: 50, ticks: [50, 40, 30, 20, 10, 0] };
   return { max: 100, ticks: [100, 75, 50, 25, 0] };
 }
 
@@ -113,7 +110,7 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
   }, [activeTab]);
 
   const W = compact ? 460 : 1000;
-  const H = compact ? 120 : 420;
+  const H = compact ? 120 : 546;
   const padL = compact ? 0 : 32;
   const padR = compact ? 0 : 68;
   const padY = compact ? 14 : 48;
