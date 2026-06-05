@@ -112,7 +112,7 @@ export function PortfolioClient() {
                 onClick={() => setFilter('claimable')}
                 className="rounded-full border border-mint/30 bg-mint/10 px-4 py-2 text-sm font-black text-mint transition-colors hover:bg-mint/15"
               >
-                ⚡ {insights.claimableCount} claimable — {formatUsd(insights.claimableValue)}
+                {insights.claimableCount} claimable — {formatUsd(insights.claimableValue)}
               </button>
             ) : null}
             {insights.claimableCount > 0 ? (
@@ -130,19 +130,6 @@ export function PortfolioClient() {
                 ⏳ {insights.closingSoonCount} position{insights.closingSoonCount > 1 ? 's' : ''} closing soon
               </span>
             ) : null}
-          </section>
-        ) : null}
-
-        {insights.exposure.length > 0 ? (
-          <section className="mt-4 rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
-            <p className="text-sm text-muted">Exposure by category</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {insights.exposure.map((entry) => (
-                <span key={entry.category} className="rounded-full border border-white/[0.08] bg-[#0d1520] px-3 py-1.5 text-sm text-white">
-                  {entry.category} <span className="font-black text-cyan">{Math.round(entry.pct * 100)}%</span>
-                </span>
-              ))}
-            </div>
           </section>
         ) : null}
 
