@@ -311,32 +311,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               </div>
             ) : null}
 
-            {market.pollOptions && market.pollOptions.length > 2 ? (
-              <div className="mt-8">
-                <h2 className="text-base font-black text-white">Poll options</h2>
-                <div className="mt-4 grid gap-2 border-t border-white/[0.06] pt-4 md:grid-cols-2">
-                  {market.pollOptions.map((option, index) => {
-                    const color = getOutcomeColor(index);
-                    return (
-                      <div
-                        key={`${option}-${index}`}
-                        className="flex items-center justify-between rounded-[12px] border px-4 py-3"
-                        style={{ borderColor: `${color}24`, backgroundColor: `${color}0D` }}
-                      >
-                        <span className="flex min-w-0 items-center gap-2 font-bold text-white">
-                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-                          <span className="break-words">{option}</span>
-                        </span>
-                        <span className="ml-3 shrink-0 text-sm font-black" style={{ color }}>
-                          {market.outcomes[index]?.odds ?? 0}%
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
             {/* Signal chart */}
             <div className="mt-8">
               <MarketSignalChart market={market} live />
