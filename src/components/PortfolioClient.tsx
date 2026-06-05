@@ -72,32 +72,32 @@ export function PortfolioClient() {
       <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-36 md:px-7 md:pt-40">
         <h1 className="text-[clamp(44px,6vw,68px)] font-black tracking-tight text-white">Portfolio</h1>
 
-        <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
+        <section className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="py-4">
             <p className="text-sm text-muted">Position value</p>
             <p className="mt-2 text-3xl font-black text-white">{formatUsd(insights.totalValue)}</p>
             <p className="mt-1 text-sm font-bold text-mint">{isLoadingAccount ? 'Loading account reads' : `${positions.length} positions`}</p>
           </div>
-          <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
+          <div className="py-4">
             <p className="text-sm text-muted">Unrealized P&L</p>
             <p className={`mt-2 text-3xl font-black ${insights.unrealizedPnl < 0 ? 'text-red-200' : 'text-mint'}`}>
               {insights.unrealizedPnl >= 0 ? '+' : ''}{formatUsd(insights.unrealizedPnl)}
             </p>
             <p className="mt-1 text-sm font-bold text-muted">Open: value − cost</p>
           </div>
-          <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
+          <div className="py-4">
             <p className="text-sm text-muted">Realized P&L</p>
             <p className={`mt-2 text-3xl font-black ${insights.realizedPnl < 0 ? 'text-red-200' : 'text-mint'}`}>
               {insights.realizedPnl >= 0 ? '+' : ''}{formatUsd(insights.realizedPnl)}
             </p>
             <p className="mt-1 text-sm font-bold text-muted">Settled + claimable</p>
           </div>
-          <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
+          <div className="py-4">
             <p className="text-sm text-muted">Cost basis</p>
             <p className="mt-2 text-3xl font-black text-white">{formatUsd(insights.totalCost)}</p>
             <p className="mt-1 text-sm font-bold text-muted">Total invested</p>
           </div>
-          <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
+          <div className="py-4">
             <p className="text-sm text-muted">Claimable</p>
             <p className="mt-2 text-3xl font-black text-white">{formatUsd(insights.claimableValue)}</p>
             <p className="mt-1 text-sm font-bold text-muted">{insights.claimableCount} to claim</p>
@@ -133,8 +133,8 @@ export function PortfolioClient() {
           </section>
         ) : null}
 
-        <section className="mt-8 rounded-[16px] border border-white/[0.06] bg-[#141e30]">
-          <div className="border-b border-line p-6">
+        <section className="mt-8">
+          <div className="border-b border-white/[0.06] pb-5">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <h2 className="text-xl font-black text-white">Share positions</h2>
               <select
@@ -150,7 +150,7 @@ export function PortfolioClient() {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2 border-b border-line px-6 pt-4 pb-0">
+          <div className="flex flex-wrap gap-2 border-b border-white/[0.06] py-4">
             {(['all', 'open', 'winning', 'losing', 'claimable'] as const).map((f) => (
               <button
                 key={f}
@@ -170,12 +170,12 @@ export function PortfolioClient() {
             ))}
           </div>
 
-          <div className="divide-y divide-line">
+          <div className="divide-y divide-white/[0.06]">
             {sortedPositions.length > 0 ? sortedPositions.map((position) => (
               <Link
                 key={`${position.marketId}-${position.outcome}-${position.shares}`}
                 href={`/markets/${position.marketId}#trade-panel`}
-                className="grid gap-4 p-6 transition-colors hover:bg-white/[0.025] md:grid-cols-[1.5fr_repeat(5,1fr)_auto] md:items-center"
+                className="grid gap-4 py-5 px-4 transition-all hover:bg-white/[0.02] md:grid-cols-[1.5fr_repeat(5,1fr)_auto] md:items-center"
               >
                 <div>
                   <p className="font-black text-white">{position.title}</p>
