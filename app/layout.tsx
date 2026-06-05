@@ -36,8 +36,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 {children}
                 <ToastStack />
               </TransactionProvider>
+              <SignInModal />
             </AppStateProvider>
-            <SignInModal />
           </SocialSessionProvider>
           <CircleConfirmModal />
         </RainbowKitProviders>

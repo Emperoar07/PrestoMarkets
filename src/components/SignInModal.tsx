@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useAccount } from 'wagmi';
 import { REQUIRE_SIGNIN_EVENT, useSocialSession } from '@/lib/socialSessionContext';
+import { useAppState } from '@/lib/appState';
 import { SocialSignInButton } from './SocialSignInButton';
 
 export function SignInModal() {
   const [open, setOpen] = useState(false);
-  const { isConnected } = useAccount();
+  const { connectedWallet } = useAppState();
+  const isConnected = Boolean(connectedWallet);
   const { isSignedIn, refresh } = useSocialSession();
 
   useEffect(() => {
@@ -63,7 +64,7 @@ export function SignInModal() {
             <SocialSignInButton onSignedIn={() => { void refresh(); setOpen(false); }} />
           ) : (
             <p className="rounded-[10px] border border-white/[0.08] bg-[#0d1520] px-3 py-2.5 text-sm text-muted">
-              Connect an external wallet first, then sign in.
+              Connect a wallet first, then sign in.
             </p>
           )}
         </div>

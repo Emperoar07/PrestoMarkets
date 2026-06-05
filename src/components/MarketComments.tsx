@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAccount } from 'wagmi';
 import { Pencil, Trash2 } from 'lucide-react';
 import { SocialSignInButton } from './SocialSignInButton';
+import { useAppState } from '@/lib/appState';
+import { useSocialSession } from '@/lib/socialSessionContext';
 
 type CommentRow = {
   id: number;
@@ -43,7 +44,12 @@ function CommentAvatar({ comment }: { comment: CommentRow }) {
 }
 
 export function MarketComments({ marketId }: { marketId: string }) {
-  const { address, isConnected } = useAccount();
+  // Connected wallet covers BOTH external (wagmi) and Circle user-controlled wallets;
+  // identity for edit/delete is the signed-in session address.
+  const { connectedWallet } = useAppState();
+  const { address: sessionAddress, isSignedIn, requireSignIn } = useSocialSession();
+  const address = sessionAddress;
+  const isConnected = Boolean(connectedWallet);
   const [comments, setComments] = useState<CommentRow[]>([]);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -145,8 +151,8 @@ export function MarketComments({ marketId }: { marketId: string }) {
   }
 
   async function toggleLike(commentId: number, currentlyLiked: boolean) {
-    if (!isConnected) {
-      alert('Connect a wallet to like comments.');
+    if (!isSignedIn) {
+      requireSignIn();
       return;
     }
 
@@ -167,6 +173,10 @@ export function MarketComments({ marketId }: { marketId: string }) {
     try {
       const method = currentlyLiked ? 'DELETE' : 'POST';
       const res = await fetch(`/api/comments/${commentId}/like`, { method });
+      if (res.status === 401) {
+        requireSignIn();
+        throw new Error('Sign in to like comments.');
+      }
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error ?? 'Failed to update like.');

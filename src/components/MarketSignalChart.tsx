@@ -176,6 +176,23 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
 
   return (
     <div className="min-w-0">
+      <div className="mb-4 flex flex-wrap gap-2">
+        {DETAIL_TABS.map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setActiveTab(tab)}
+            className={`rounded-full px-4 py-2 text-sm font-black transition-all ${
+              tab === activeTab
+                ? 'bg-cyan/15 text-cyan'
+                : 'bg-white/[0.06] text-[#d6e2f2] hover:bg-white/[0.1]'
+            }`}
+            aria-pressed={tab === activeTab}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
       <div className="relative">
         <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center gap-4 text-[clamp(28px,4vw,54px)] font-black text-white/[0.07]">
           <span className="relative h-[58px] w-[58px] rounded-full border-[5px] border-cyan/15 shadow-[inset_0_0_0_11px_rgba(37,200,255,0.04)] after:absolute after:inset-4 after:rounded-full after:bg-cyan/15" />
@@ -256,24 +273,6 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
             );
           })}
         </svg>
-      </div>
-
-      <div className="mt-5 flex flex-wrap gap-2">
-        {DETAIL_TABS.map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => setActiveTab(tab)}
-            className={`rounded-full px-4 py-2 text-sm font-black transition-all ${
-              tab === activeTab
-                ? 'bg-cyan/15 text-cyan'
-                : 'bg-white/[0.06] text-[#d6e2f2] hover:bg-white/[0.1]'
-            }`}
-            aria-pressed={tab === activeTab}
-          >
-            {tab}
-          </button>
-        ))}
       </div>
     </div>
   );
