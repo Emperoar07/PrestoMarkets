@@ -110,7 +110,7 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
   }, [activeTab]);
 
   const W = compact ? 460 : 1000;
-  const H = compact ? 120 : 546;
+  const H = compact ? 120 : 336;
   const padL = compact ? 0 : 32;
   const padR = compact ? 0 : 68;
   const padY = compact ? 14 : 48;

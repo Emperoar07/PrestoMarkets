@@ -314,7 +314,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             ) : null}
 
             {/* Signal chart */}
-            <div className="mt-8">
+            <div className="mt-4">
               <MarketSignalChart market={market} live />
             </div>
 
