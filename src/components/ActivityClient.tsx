@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAppState } from '@/lib/appState';
 import type { PortfolioActivity } from '@/lib/portfolio';
+import { ArrowDownLeft, Award, Coins, ExternalLink, Plus, RefreshCw } from 'lucide-react';
 
 type Filter = 'all' | 'create' | 'out' | 'win' | 'refund' | 'in';
 
@@ -27,11 +28,11 @@ type ActivityResponse = {
 };
 
 function iconFor(kind: PortfolioActivity['kind']) {
-  if (kind === 'create') return { glyph: '+', tone: 'text-cyan', bg: 'bg-cyan/10' };
-  if (kind === 'win') return { glyph: '^', tone: 'text-mint', bg: 'bg-mint/10' };
-  if (kind === 'refund') return { glyph: '~', tone: 'text-cyan', bg: 'bg-cyan/10' };
-  if (kind === 'in') return { glyph: 'v', tone: 'text-cyan', bg: 'bg-cyan/10' };
-  return { glyph: '^', tone: 'text-red-300', bg: 'bg-red-400/10' };
+  if (kind === 'create') return { icon: Plus, tone: 'text-cyan bg-cyan/10' };
+  if (kind === 'win') return { icon: Award, tone: 'text-emerald-400 bg-emerald-500/10' };
+  if (kind === 'refund') return { icon: RefreshCw, tone: 'text-amber-400 bg-amber-500/10' };
+  if (kind === 'in') return { icon: ArrowDownLeft, tone: 'text-cyan bg-cyan/10' };
+  return { icon: Coins, tone: 'text-rose-400 bg-rose-500/10' };
 }
 
 function headlineFor(item: PortfolioActivity): string {
@@ -40,6 +41,17 @@ function headlineFor(item: PortfolioActivity): string {
   if (item.kind === 'refund') return `Refunded ${item.detail}`;
   if (item.kind === 'in') return `Received ${item.detail}`;
   return `${item.label} - ${item.detail}`;
+}
+
+function statusBadgeFor(status: string) {
+  const normalized = status.toLowerCase();
+  if (normalized.includes('confirm') || normalized.includes('success')) {
+    return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
+  }
+  if (normalized.includes('pend')) {
+    return 'text-amber-400 bg-amber-500/10 border-amber-500/20';
+  }
+  return 'text-muted/80 bg-white/[0.04] border-white/[0.06]';
 }
 
 export function ActivityClient() {
@@ -111,33 +123,46 @@ export function ActivityClient() {
 
   return (
     <main className="mx-auto max-w-3xl px-5 pb-20 pt-36 md:px-6 md:pt-44">
-      <h1 className="text-[clamp(28px,3.5vw,40px)] font-black tracking-tight text-white">Activity.</h1>
+      <h1 className="text-[clamp(28px,3.5vw,40px)] font-black tracking-tight text-white">Activity</h1>
       <p className="mt-3 text-[15px] leading-7 text-muted">
         Every trade, win, and refund tied to this wallet. Pulled live from Arc Testnet logs.
       </p>
 
       {!connectedWallet ? (
-        <p className="mt-16 rounded-[10px] border border-white/[0.06] bg-[#0b1322] px-5 py-8 text-center text-[14px] text-muted">
-          Connect a wallet to see your activity.
-        </p>
+        <div className="mt-12 flex flex-col items-center justify-center rounded-xl border border-white/[0.06] bg-[#0b1322]/80 px-6 py-12 text-center">
+          <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-cyan/10 text-cyan mb-4">
+            <Coins className="h-6 w-6" />
+          </div>
+          <h3 className="text-base font-bold text-white">Connect wallet</h3>
+          <p className="mt-2 text-sm text-[#94a3b8] max-w-sm leading-relaxed">
+            Connect a wallet to view your portfolio transaction, trade, and reward logs.
+          </p>
+        </div>
       ) : (
         <>
-          <div className="mt-10 flex flex-wrap gap-2 border-b border-white/[0.06] pb-4">
-            {filters.map(({ id, label }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setFilter(id)}
-                className={`flex items-baseline gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] font-black transition-colors ${
-                  filter === id
-                    ? 'border-cyan/50 bg-cyan/10 text-cyan'
-                    : 'border-white/[0.08] text-muted hover:border-white/20 hover:text-white/80'
-                }`}
-              >
-                <span>{label}</span>
-                <span className="text-[10px] opacity-60">{counts[id]}</span>
-              </button>
-            ))}
+          <div className="mt-8 flex flex-wrap gap-2 border-b border-white/[0.06] pb-5">
+            {filters.map(({ id, label }) => {
+              const isActive = filter === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setFilter(id)}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-[12.5px] font-bold transition-all duration-200 ${
+                    isActive
+                      ? 'bg-cyan text-[#07111f] shadow-lg shadow-cyan/10'
+                      : 'text-[#94a3b8] hover:bg-white/[0.04] hover:text-[#f1f5f9]'
+                  }`}
+                >
+                  <span>{label}</span>
+                  <span className={`inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[9px] font-extrabold ${
+                    isActive ? 'bg-[#07111f]/20 text-[#07111f]' : 'bg-white/[0.06] text-[#64748b]'
+                  }`}>
+                    {counts[id]}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {isLoading && activity.length === 0 ? (
@@ -153,39 +178,49 @@ export function ActivityClient() {
                 : `No ${filters.find((f) => f.id === filter)?.label.toLowerCase()} activity yet.`}
             </p>
           ) : (
-            <ul className="mt-2 divide-y divide-white/[0.04]">
+            <div className="mt-6 flex flex-col gap-3">
               {visible.map((item, idx) => {
-                const icon = iconFor(item.kind);
+                const { icon: Icon, tone } = iconFor(item.kind);
                 const headline = headlineFor(item);
                 return (
-                  <li key={`${item.txHash ?? idx}-${idx}`} className="py-4">
-                    <div className="flex items-start gap-4">
-                      <span className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[14px] font-black ${icon.tone} ${icon.bg}`}>
-                        {icon.glyph}
+                  <div
+                    key={`${item.txHash ?? idx}-${idx}`}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-4 transition-all duration-200 hover:border-white/[0.08] hover:bg-white/[0.02]"
+                  >
+                    <div className="flex items-start gap-3.5 min-w-0">
+                      <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] ${tone}`}>
+                        <Icon className="h-4.5 w-4.5" />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[14px] font-black text-white">{headline}</p>
-                        <p className="mt-1 truncate text-[13px] text-muted">{item.market}</p>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-                        <span className="text-[11px] uppercase tracking-widest text-muted/70">{item.status}</span>
-                        <span className="text-[11px] text-muted/60">{item.time}</span>
-                        {item.txHash ? (
-                          <a
-                            href={`${ARC_EXPLORER_BASE}${item.txHash}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[11px] font-bold text-cyan/80 transition-colors hover:text-cyan"
-                          >
-                            explorer
-                          </a>
-                        ) : null}
+                        <p className="text-[13.5px] font-bold text-white leading-normal break-words">{headline}</p>
+                        <p className="mt-1 truncate text-[12.5px] text-[#94a3b8]">{item.market}</p>
                       </div>
                     </div>
-                  </li>
+
+                    <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2.5 pt-3 sm:pt-0 border-t border-white/[0.04] sm:border-none">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-extrabold tracking-wide uppercase ${statusBadgeFor(item.status)}`}>
+                          {item.status}
+                        </span>
+                        <span className="text-[11px] text-[#64748b]">{item.time}</span>
+                      </div>
+
+                      {item.txHash ? (
+                        <a
+                          href={`${ARC_EXPLORER_BASE}${item.txHash}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-[11px] font-bold text-cyan transition-colors hover:opacity-80"
+                        >
+                          <span>Explorer</span>
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
                 );
               })}
-            </ul>
+            </div>
           )}
 
           {activity.length > 0 ? (
