@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
-import { agentBuyShares, agentReadTotalShares, getAgentAddress } from '@/lib/agentWallet';
+import { agentBuyShares, agentReadTotalShares, ensureAgentFunded, getAgentAddress } from '@/lib/agentWallet';
 import { verifyBearer } from '@/lib/authCompare';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-// Total USDC seeded per market, split across its outcomes. Capped at 0.1 to match creation-time
-// seeding — just enough to put a non-zero share on every outcome so the market can settle.
-const SEED_TOTAL_USDC = 0.1;
+// Total USDC seeded per market, split across its outcomes (capped at 1 USDC) — just enough to
+// put a non-zero share on every outcome so the market can settle.
+const SEED_TOTAL_USDC = 1;
 
 // One-off / periodic backfill: markets created before liquidity seeding was added have outcomes
 // with zero shares, so the resolver is forced to cancel them. This seeds any open agent market
@@ -27,6 +27,9 @@ export async function GET(req: NextRequest) {
     if (!agentAddress) {
       return NextResponse.json({ ok: false, error: 'AGENT_PRIVATE_KEY not set' }, { status: 500 });
     }
+
+    // Top up the agent from the faucet if it's low before spending on seeds.
+    await ensureAgentFunded().catch(() => undefined);
 
     const allMarkets = await fetchOnchainMarkets();
     const open = allMarkets.filter((market) =>

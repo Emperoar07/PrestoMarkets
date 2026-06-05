@@ -1658,9 +1658,7 @@ Copy rules for readable market writeups:
 - For football or basketball markets, draft ONE of these shapes (never a fixture status like
   "not started"):
   - Match result (binary): "Will <Home> beat <Away>?" — YES if the home side wins, NO on a
-    draw or away win. Name the real teams.
-  - Match result (multi-outcome) when a draw is meaningful: outcomes ["<Home> win", "Draw",
-    "<Away> win"].
+    draw or away win. Name the real teams. Never use a separate "Draw" outcome for any sport.
   - League/competition winner (multi-outcome): "Who will win <league/competition>?" with one
     short label per realistic contending team (3 to 12 team names).
   - Total goals (multi-outcome): "How many total goals in <Home> vs <Away>?" with exhaustive
@@ -1843,16 +1841,11 @@ function fallbackTemplateFromTrend(trend: TrendItem, suggestedType?: string): Ge
       const home = cleanHeadline(fixture[1], 36);
       const away = cleanHeadline(fixture[2], 36);
       if (!home || !away) return null;
-      const isFootball = !/basketball|nba/i.test(`${trend.source} ${trend.topic} ${trend.query}`);
-      if (isFootball) {
-        title = `Who will win ${home} vs ${away}?`;
-        description = cleanDraftText(`${home} face ${away}. The market forecasts the official match result, including a draw as its own outcome.`, trend);
-        rules = `${home} win wins if ${home} win the match per the listed source by close. Draw wins if the official result is a draw. ${away} win wins if ${away} win. Cancel only if the fixture is postponed or cannot be evaluated.`;
-      } else {
-        title = `Will ${home} beat ${away}?`;
-        description = cleanDraftText(`${home} face ${away}. YES wins if ${home} win the match; otherwise NO.`, trend);
-        rules = `YES wins if ${home} win the match per the official result at the listed source by close. NO wins if ${away} win. Cancel only if the fixture is postponed or cannot be evaluated.`;
-      }
+      // Binary match result for all sports — no separate "Draw" outcome. A draw counts as NO,
+      // so the market is always resolvable with two backed sides.
+      title = `Will ${home} beat ${away}?`;
+      description = cleanDraftText(`${home} face ${away}. YES wins if ${home} win the match; otherwise NO (including a draw).`, trend);
+      rules = `YES wins if ${home} win the match per the official result at the listed source by close. NO wins otherwise, including a draw or an ${away} win. Cancel only if the fixture is postponed or cannot be evaluated.`;
       type = 'Prediction';
       return {
         title,
@@ -1861,7 +1854,7 @@ function fallbackTemplateFromTrend(trend: TrendItem, suggestedType?: string): Ge
         sourceOfTruth: trend.url ?? trend.source ?? 'Public sources',
         closeDate: trend.closeDate ?? horizon.closeDate,
         type,
-        outcomeOptions: isFootball ? [`${home} win`, 'Draw', `${away} win`] : undefined,
+        outcomeOptions: undefined,
       };
     } else {
       return null;

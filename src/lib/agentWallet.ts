@@ -232,17 +232,59 @@ export async function agentSettlePosition(marketAddress: string, action: 'claim'
 // outcome. In a parimutuel market, seeding all sides costs ~fees on net (the agent gets the
 // winning-side pool back), but guarantees the winning outcome has shares so the market can settle.
 // Override with AGENT_SEED_USDC; set AGENT_SEED_LIQUIDITY=false to disable.
-// Hard-capped at 0.1 USDC total per market (split across outcomes). Tiny on purpose: it only
-// needs to put a non-zero share on every outcome so the market can settle, not provide depth.
+// Total USDC seeded per market (split across outcomes), hard-capped at 1 USDC. Enough to put a
+// non-zero share on every outcome so the market can always settle.
 const AGENT_SEED_TOTAL_USDC = (() => {
   const v = Number(process.env.AGENT_SEED_USDC);
-  const chosen = Number.isFinite(v) && v >= 0 ? v : 0.1;
-  return Math.min(chosen, 0.1);
+  const chosen = Number.isFinite(v) && v >= 0 ? v : 1;
+  return Math.min(chosen, 1);
 })();
+
+// If the agent's USDC drops below this, request a Circle faucet top-up before seeding so the
+// autonomous agent never runs dry. Best-effort + cooldown-throttled.
+const AGENT_MIN_USDC_BALANCE = 1;
+const FAUCET_COOLDOWN_MS = 10 * 60 * 1000;
+let lastFaucetDripAt = 0;
+
+export async function ensureAgentFunded(): Promise<{ ok: boolean; balance?: number; dripped?: boolean; error?: string }> {
+  try {
+    const { account, publicClient } = getClients();
+    const config = getArcConfig();
+    if (!config.usdcAddress || !isAddress(config.usdcAddress)) return { ok: false, error: 'USDC not configured' };
+    const raw = await publicClient.readContract({
+      address: config.usdcAddress as Address,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [account.address],
+    }) as bigint;
+    const balance = Number(raw) / 1e6;
+    if (balance >= AGENT_MIN_USDC_BALANCE) return { ok: true, balance, dripped: false };
+
+    // Low balance — request a Circle faucet drip (throttled so we never spam the faucet).
+    if (Date.now() - lastFaucetDripAt < FAUCET_COOLDOWN_MS) return { ok: true, balance, dripped: false };
+    const apiKey = process.env.CIRCLE_API_KEY;
+    const blockchain = process.env.CIRCLE_WALLET_BLOCKCHAIN;
+    const base = process.env.CIRCLE_BASE_URL || 'https://api.circle.com';
+    if (!apiKey || !blockchain) return { ok: true, balance, dripped: false };
+    lastFaucetDripAt = Date.now();
+    const res = await fetch(`${base.replace(/\/$/, '')}/v1/faucet/drips`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: account.address, blockchain, usdc: true, native: true }),
+    });
+    const dripped = res.ok || res.status === 201;
+    logger.info('agent-wallet', 'Faucet top-up requested (agent low on USDC)', { balance, blockchain, status: res.status, dripped });
+    return { ok: true, balance, dripped };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'fund check failed' };
+  }
+}
 
 async function seedMarketLiquidity(marketAddress: string, outcomeCount: number): Promise<void> {
   if (process.env.AGENT_SEED_LIQUIDITY === 'false') return;
   if (!Number.isInteger(outcomeCount) || outcomeCount < 2) return;
+  // Top up from the faucet first if the agent is running low.
+  await ensureAgentFunded().catch(() => undefined);
   const perOutcome = AGENT_SEED_TOTAL_USDC / outcomeCount;
   if (!(perOutcome > 0)) return;
   const amountStr = perOutcome.toFixed(6);
