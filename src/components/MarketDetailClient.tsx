@@ -155,12 +155,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     try { return new URL(groundingUrl).hostname.replace(/^www\./, ''); } catch { return null; }
   })();
   const accountPreview = new Map(Object.entries(accountPreviews)).get(market.id);
-  const displayedPositionShares = accountPreview?.outcomeShares?.length
-    ? accountPreview.outcomeShares
-    : [
-      { label: 'YES', shares: accountPreview?.yesShares ?? '0.00' },
-      { label: 'NO', shares: accountPreview?.noShares ?? '0.00' },
-    ];
+
   const claimableAmount = Number(accountPreview?.claimable.replace(/[$,]/g, '') || 0);
   const refundableAmount = Number(accountPreview?.refundable.replace(/[$,]/g, '') || 0);
   const canClaim = claimableAmount > 0 && !accountPreview?.hasClaimed;
@@ -689,34 +684,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   : `Buy ${selectedOutcome} · ${unit}${amountValue}`}
               </button>
 
-              {/* Your position */}
-              <div className="mt-5 border-t border-white/[0.06] pt-5">
-                <p className="text-[10px] font-black uppercase tracking-widest text-muted">Your position</p>
-                {connectedWallet ? (
-                  <div className="mt-3 space-y-2">
-                    {displayedPositionShares.map((position) => (
-                      <div key={position.label} className="flex items-center justify-between gap-3 text-sm">
-                        <span className="truncate text-muted">{position.label} shares</span>
-                        <span className="shrink-0 font-black text-white">{position.shares}</span>
-                      </div>
-                    ))}
-                    {claimableAmount > 0 ? (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted">Claimable</span>
-                        <span className="font-black text-mint">{accountPreview?.claimable}</span>
-                      </div>
-                    ) : null}
-                    {refundableAmount > 0 ? (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted">Refundable</span>
-                        <span className="font-black text-cyan">{accountPreview?.refundable}</span>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <p className="mt-2 text-sm text-muted">Connect a wallet to see your shares.</p>
-                )}
-              </div>
+
 
               {/* Claim / Refund — user-facing settlement */}
               {(canClaim || canRefund) ? (
