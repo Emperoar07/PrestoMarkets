@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
 import { useAppState } from '@/lib/appState';
+import { useTransactions } from '@/lib/transactions';
 import { computePortfolioInsights } from '@/lib/portfolioInsights';
 import { 
   Wallet, 
@@ -50,6 +51,7 @@ function parsePnlPercent(pnl: string): number {
 
 export function PortfolioClient() {
   const { positions, connectedWallet, isLoadingAccount, markets, claimMarket } = useAppState();
+  const { track } = useTransactions();
   const [filter, setFilter] = useState<FilterType>('all');
   const [sort, setSort] = useState<SortType>('date');
   const [claimingAll, setClaimingAll] = useState(false);
@@ -61,7 +63,8 @@ export function PortfolioClient() {
     if (ids.length === 0) return;
     setClaimingAll(true);
     for (const marketId of ids) {
-      try { await claimMarket(marketId); } catch { /* keep claiming the rest */ }
+      // Wrap each claim in track() so it shows the same progress toast as buying.
+      try { await track({ label: 'Claim winnings' }, () => claimMarket(marketId)); } catch { /* keep claiming the rest */ }
     }
     setClaimingAll(false);
   }

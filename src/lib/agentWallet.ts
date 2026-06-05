@@ -149,6 +149,19 @@ export async function agentCreateMarket(input: CreateLiveMarketInput & { agentRe
       ? created.args.market
       : undefined;
 
+    // Seed balanced initial liquidity so EVERY outcome has shares. Without this, a market the
+    // resolver settles to an un-backed outcome must cancel (the contract reverts NoWinningShares),
+    // which is why agent markets were canceling instead of paying out. Non-fatal: a failed seed
+    // never blocks market creation.
+    if (marketAddress) {
+      await seedMarketLiquidity(marketAddress, outcomeOptions.length).catch((err) =>
+        logger.warn('agent-wallet', 'Initial liquidity seed failed (non-fatal)', {
+          marketAddress,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+
     return { ok: true, txHash: hash, marketAddress, resolverAddress: resolver };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Agent market creation failed.' };
@@ -212,6 +225,31 @@ export async function agentSettlePosition(marketAddress: string, action: 'claim'
     return { ok: true, txHash: hash };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : `Agent ${action} failed.` };
+  }
+}
+
+// Total USDC the agent seeds across all outcomes when it creates a market. Split evenly per
+// outcome. In a parimutuel market, seeding all sides costs ~fees on net (the agent gets the
+// winning-side pool back), but guarantees the winning outcome has shares so the market can settle.
+// Override with AGENT_SEED_USDC; set AGENT_SEED_LIQUIDITY=false to disable.
+const AGENT_SEED_TOTAL_USDC = (() => {
+  const v = Number(process.env.AGENT_SEED_USDC);
+  return Number.isFinite(v) && v >= 0 ? v : 2;
+})();
+
+async function seedMarketLiquidity(marketAddress: string, outcomeCount: number): Promise<void> {
+  if (process.env.AGENT_SEED_LIQUIDITY === 'false') return;
+  if (!Number.isInteger(outcomeCount) || outcomeCount < 2) return;
+  const perOutcome = AGENT_SEED_TOTAL_USDC / outcomeCount;
+  if (!(perOutcome > 0)) return;
+  const amountStr = perOutcome.toFixed(6);
+  for (let i = 0; i < outcomeCount; i++) {
+    const result = await agentBuyShares(marketAddress, i, amountStr);
+    if (!result.ok) {
+      logger.warn('agent-wallet', 'Seed buy failed for outcome (continuing)', {
+        marketAddress, outcome: i, error: result.error,
+      });
+    }
   }
 }
 
