@@ -313,9 +313,11 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
           {/* Left Column: App-Native Wallet (Circle) */}
           <div className="flex-1 flex flex-col justify-between">
             <div>
-              <div className="flex items-center gap-2">
-                <PrestoIcon />
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan">Presto Account</p>
+              <div className="flex items-center gap-2.5">
+                <PrestoIcon size={24} />
+                <span className="text-[15px] font-extrabold tracking-tight text-[#f1f5f9]">
+                  Presto <span className="text-[#25c0f4]">Markets</span>
+                </span>
               </div>
               
               <h2 className="mt-5 text-[24px] font-black leading-none text-white">
@@ -438,10 +440,9 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
           <div className="flex-1 flex flex-col justify-between">
             <div className="space-y-4">
               <div>
-                <p className="text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#64748b]">Power Users</p>
-                <h3 className="mt-1.5 text-base font-black text-white leading-none">Connect Web3 Wallet</h3>
+                <h3 className="text-base font-black text-white leading-none">Connect Web3 Wallet</h3>
                 <p className="mt-2.5 text-xs leading-relaxed text-[#94a3b8]">
-                  Or choose to connect using your browser extension wallet or external hardware keys.
+                  Or choose to connect using your browser extension wallet.
                 </p>
               </div>
 
@@ -607,9 +608,9 @@ function WalletFallbackIcon({ name }: { name: string }) {
   );
 }
 
-function PrestoIcon() {
+function PrestoIcon({ size = 18 }: { size?: number }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
       <circle cx="16" cy="16" r="15" stroke="#25c0f4" strokeWidth="1.8" strokeOpacity="0.55" fill="#25c0f4" fillOpacity="0.08" />
       <circle cx="16" cy="16" r="10" stroke="#f8fafc" strokeWidth="1.8" strokeOpacity="0.92" fill="none" />
       <circle cx="16" cy="16" r="4.5" fill="#25c0f4" />
