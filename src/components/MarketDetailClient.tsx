@@ -217,10 +217,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     <>
       <SiteHeader />
       <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-28 md:px-7 md:pt-28">
-        <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
+        <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[1fr_380px]">
 
-          {/* ── Left column ── */}
-          <section className="min-w-0">
+          {/* ── Left column, top: header + chart ── */}
+          <section className="min-w-0 order-1 lg:order-none lg:col-start-1 lg:row-start-1">
 
             {/* Pills */}
             <div className="flex flex-wrap items-center gap-2">
@@ -317,9 +317,13 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             <div className="mt-4">
               <MarketSignalChart market={market} live />
             </div>
+          </section>
+
+          {/* ── Left column, bottom: activity + details (below the trade panel on mobile) ── */}
+          <section className="min-w-0 order-3 lg:order-none lg:col-start-1 lg:row-start-2">
 
             {/* Market activity */}
-            <div className="mt-8">
+            <div>
               <h2 className="text-base font-black text-white">Market activity</h2>
               <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-3">
                 {market.activity.map((item) => (
@@ -455,7 +459,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
           </section>
 
           {/* ── Right aside — trade panel ── */}
-          <aside id="trade-panel" className="min-w-0 h-fit scroll-mt-28 lg:sticky lg:top-24">
+          <aside id="trade-panel" className="min-w-0 h-fit scroll-mt-28 order-2 lg:order-none lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:sticky lg:top-24">
             <div className="min-w-0 overflow-hidden rounded-[18px] border border-white/[0.06] bg-[#141e30] p-4 sm:p-5">
 
               <div className="mb-4 grid grid-cols-2 rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-1">
