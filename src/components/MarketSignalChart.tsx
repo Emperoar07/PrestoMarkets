@@ -1,10 +1,9 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import type { Market } from '@/lib/markets';
+import { getOutcomeColor } from '@/lib/outcomeColors';
 
 type MarketSignalChartMarket = Pick<Market, 'id' | 'outcomes' | 'volume' | 'liquidity'>;
 
-const MULTI_COLORS = ['#25c8ff', '#c8f122', '#8057ff', '#f6e91f', '#ff6978', '#4ade80', '#fb923c', '#f472b6'];
-const BINARY_COLORS = ['#25c8ff', '#ff6978'];
 const DETAIL_TABS = ['1D', '1W', '1M', 'All'];
 
 function clamp(value: number, min: number, max: number) {
@@ -18,7 +17,7 @@ function parseUsd(value: string) {
 }
 
 function getChartColor(index: number, count: number) {
-  return count === 2 ? BINARY_COLORS[index % BINARY_COLORS.length] : MULTI_COLORS[index % MULTI_COLORS.length];
+  return getOutcomeColor(index);
 }
 
 function buildSignalPoints(baseOdds: number, volume: number, liquidity: number, rangeDays: number, phase = 0): number[] {
