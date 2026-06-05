@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
 import { useSocialSession } from '@/lib/socialSessionContext';
+import { useAppState } from '@/lib/appState';
 
 function shortAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -13,7 +14,12 @@ const HANDLE_MAX = 32;
 const BIO_MAX = 280;
 
 export function ProfileClient() {
-  const { address, isSignedIn, ready, requireSignIn, refresh } = useSocialSession();
+  // The profile reflects the CONNECTED wallet (external or Circle), so it mounts and updates
+  // per-wallet. Signing in is only required to save (the PATCH is gated on a session).
+  const { connectedWallet } = useAppState();
+  const { address: sessionAddress, isSignedIn, ready, requireSignIn, refresh } = useSocialSession();
+  const walletAddress = connectedWallet?.address ?? null;
+  const canEdit = isSignedIn && !!walletAddress && sessionAddress?.toLowerCase() === walletAddress.toLowerCase();
 
   const [handle, setHandle] = useState('');
   const [bio, setBio] = useState('');
@@ -54,12 +60,17 @@ export function ProfileClient() {
     }
   }
 
-  // Load the current profile once signed in.
+  // Load the connected wallet's profile, and reload when the wallet changes.
   useEffect(() => {
-    if (!address) return;
+    if (!walletAddress) {
+      setHandle(''); setBio(''); setAvatarUrl(''); setOptInLeaderboard(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
-    fetch(`/api/profiles/${address}`, { cache: 'no-store' })
+    // Clear stale fields immediately so switching wallets never shows the previous profile.
+    setHandle(''); setBio(''); setAvatarUrl(''); setOptInLeaderboard(false);
+    fetch(`/api/profiles/${walletAddress}`, { cache: 'no-store' })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (cancelled || !data.profile) return;
@@ -71,9 +82,13 @@ export function ProfileClient() {
       .catch(() => undefined)
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [address]);
+  }, [walletAddress]);
 
   async function save() {
+    if (!canEdit) {
+      requireSignIn();
+      return;
+    }
     setSaving(true);
     setMessage('');
     try {
@@ -106,7 +121,7 @@ export function ProfileClient() {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-[640px] px-4 pb-16 pt-36 md:px-7 md:pt-40">
+      <main className="mx-auto max-w-[640px] px-4 pb-16 pt-28 md:px-7 md:pt-28">
         <h1 className="text-[clamp(40px,6vw,60px)] font-black tracking-tight text-white">Profile</h1>
         <p className="mt-2 text-sm text-muted">
           Set a username and avatar so your comments and leaderboard entry show your identity instead of your address.
@@ -114,19 +129,24 @@ export function ProfileClient() {
 
         {!ready ? (
           <p className="mt-10 text-sm text-muted">Loading…</p>
-        ) : !isSignedIn ? (
+        ) : !walletAddress ? (
           <div className="mt-8">
-            <p className="text-sm text-[#e2e8f0]">Sign in with your wallet to edit your profile.</p>
-            <button
-              type="button"
-              onClick={() => requireSignIn()}
-              className="mt-4 rounded-[8px] bg-cyan px-4 py-2 text-xs font-black text-[#07111f] transition-opacity hover:opacity-90"
-            >
-              Sign in
-            </button>
+            <p className="text-sm text-[#e2e8f0]">Connect a wallet to view and edit your profile.</p>
           </div>
         ) : (
           <div className="mt-8 flex flex-col gap-6">
+            {!canEdit ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-cyan/20 bg-cyan/[0.06] px-4 py-3">
+                <span className="text-sm text-[#cbd5e1]">Sign in with this wallet to edit your profile.</span>
+                <button
+                  type="button"
+                  onClick={() => requireSignIn()}
+                  className="rounded-[8px] bg-cyan px-4 py-2 text-xs font-black text-[#07111f] transition-opacity hover:opacity-90"
+                >
+                  Sign in
+                </button>
+              </div>
+            ) : null}
             {/* Avatar preview + URL */}
             <div className="flex items-center gap-4">
               {avatarUrl.trim() ? (
@@ -134,7 +154,7 @@ export function ProfileClient() {
                 <img src={avatarUrl} alt="" className="h-16 w-16 rounded-full object-cover ring-1 ring-white/10" />
               ) : (
                 <span className="flex h-16 w-16 items-center justify-center rounded-full bg-cyan/15 text-lg font-black text-cyan">
-                  {(handle || address || '0x').slice(-2).toUpperCase()}
+                  {(handle || walletAddress || '0x').slice(-2).toUpperCase()}
                 </span>
               )}
               <div className="min-w-0 flex-1">
@@ -221,7 +241,7 @@ export function ProfileClient() {
               >
                 {saving ? 'Saving…' : 'Save profile'}
               </button>
-              {address ? <span className="text-[11px] text-muted">{shortAddress(address)}</span> : null}
+              {walletAddress ? <span className="text-[11px] text-muted">{shortAddress(walletAddress)}</span> : null}
               {message ? <span className={`text-xs font-bold ${isError ? 'text-yellow-200' : 'text-mint'}`}>{message}</span> : null}
             </div>
           </div>

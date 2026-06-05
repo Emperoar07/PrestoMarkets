@@ -113,7 +113,7 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
   const H = compact ? 120 : 336;
   const padL = compact ? 0 : 32;
   const padR = compact ? 0 : 68;
-  const padY = compact ? 14 : 48;
+  const padY = compact ? 14 : 32;
   const chartW = W - padL - padR;
   const endX = padL + chartW;
   const uid = compact ? 'compact' : 'detail';
@@ -176,7 +176,7 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
 
   return (
     <div className="min-w-0">
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-1 flex flex-wrap gap-2">
         {DETAIL_TABS.map((tab) => (
           <button
             key={tab}
