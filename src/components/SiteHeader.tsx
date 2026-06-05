@@ -174,6 +174,11 @@ export function SiteHeader() {
           <BrandMark />
         </div>
         <div className="ml-auto flex items-center gap-1.5">
+          {showWallet && connectedWallet ? (
+            <div className="flex items-center gap-1 rounded-lg bg-[#25c0f4]/10 border border-[#25c0f4]/15 px-2 py-1 text-[11px] font-black text-cyan">
+              USDC <span>{balances.USDC ?? '--'}</span>
+            </div>
+          ) : null}
           {showWallet ? (
             <a
               href="https://faucet.circle.com"
@@ -238,37 +243,6 @@ export function SiteHeader() {
             </svg>
             DEX
           </a>
-
-          {/* Balance and menu for mobile */}
-          {showWallet && connectedWallet ? (
-            <div className="mt-3 space-y-2">
-              <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-[#0d1520] px-3.5 py-2.5">
-                <div className="flex items-center gap-1.5 rounded-lg bg-cyan/10 px-2 py-1 text-[12px] font-black text-cyan">
-                  USDC <span>{balances.USDC ?? '--'}</span>
-                </div>
-              </div>
-              <div className="flex flex-col gap-1">
-                <Link href="/activity" className={mobileNavLinkClass(pathname === '/activity')} onClick={() => setMobileMenuOpen(false)}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
-                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                  </svg>
-                  Activity
-                </Link>
-                <Link href="/portfolio" className={mobileNavLinkClass(pathname === '/portfolio')} onClick={() => setMobileMenuOpen(false)}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
-                    <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
-                  </svg>
-                  Portfolio
-                </Link>
-                <Link href="/profile" className={mobileNavLinkClass(pathname === '/profile')} onClick={() => setMobileMenuOpen(false)}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
-                    <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
-                  </svg>
-                  Profile
-                </Link>
-              </div>
-            </div>
-          ) : null}
         </div>
       </div>
 
