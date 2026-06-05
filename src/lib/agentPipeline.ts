@@ -1549,6 +1549,28 @@ function planTargetShape(trend: TrendItem): string {
   return '- TARGET SHAPE: prefer a multi-outcome poll when the topic has more than two natural answers; use binary YES/NO only for a genuinely two-sided single event.';
 }
 
+function isDateLadderTrend(trend: TrendItem): boolean {
+  if (trend.marketStructure === 'price-range' || trend.marketStructure === 'price-target') return false;
+  const text = `${trend.topic} ${trend.query ?? ''}`.toLowerCase();
+  return /\b(by when|by what date|by which date|when will|by end of|by the end of|deadline)\b/.test(text);
+}
+
+// Deterministic, resolver-friendly cumulative date buckets ("By Jun 30", … , "After <last>").
+// Close at the last bucket so every "By <date>" option is decidable and the resolver can pick
+// the earliest bucket on/after the event date (see auto-resolve date-ladder instruction).
+function generateDateLadderOptions(now = new Date()): { options: string[]; closeDate: string } {
+  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const endOfMonth = (offset: number) =>
+    new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset + 1, 0, 23, 59, 0));
+  const m1 = endOfMonth(0);
+  const m2 = endOfMonth(1);
+  const m3 = endOfMonth(2);
+  return {
+    options: [`By ${fmt(m1)}`, `By ${fmt(m2)}`, `By ${fmt(m3)}`, `After ${fmt(m3)}`],
+    closeDate: m3.toISOString(),
+  };
+}
+
 async function draftWithGemini(trend: TrendItem, category: string, ctx: DraftContext = {}): Promise<GeminiDraft> {
   // Function name kept for git history; the model is whichever provider in the fallback
   // chain responds first. Direct
@@ -1753,13 +1775,20 @@ Return JSON only:
 
   const parsedType = parsed.type === 'Opinion' ? 'Opinion' : 'Prediction';
 
+  // Deterministic date-ladder: when the trend is a "by when?" question and nothing structured
+  // is already set, replace whatever the LLM guessed with clean cumulative date buckets and
+  // close at the final bucket so the resolver can settle it.
+  const dateLadder = !isStructuredPrice && !outcomeOptions && isDateLadderTrend(trend)
+    ? generateDateLadderOptions()
+    : null;
+
   return {
     title: cleanDraftText(isStructuredPrice ? trend.topic : parsed.title, trend),
     description: cleanDraftText(parsed.description, trend, parsed.title),
     rules: cleanDraftText(parsed.rules, trend),
     sourceOfTruth,
-    closeDate: normalizeDraftCloseDate(parsed.closeDate, trend, horizon),
-    outcomeOptions,
+    closeDate: dateLadder ? dateLadder.closeDate : normalizeDraftCloseDate(parsed.closeDate, trend, horizon),
+    outcomeOptions: dateLadder ? dateLadder.options : outcomeOptions,
     type: isStructuredPrice ? 'Prediction' : parsedType,
   };
 }
@@ -2238,4 +2267,6 @@ export const __agentPipelineTestHooks = {
   validateDraftQuality,
   sanitizePrecedentGist,
   planTargetShape,
+  isDateLadderTrend,
+  generateDateLadderOptions,
 };

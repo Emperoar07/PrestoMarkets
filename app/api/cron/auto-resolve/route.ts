@@ -276,6 +276,7 @@ Instructions:
 - Prefer PRIMARY; you MAY rely on TRUSTED sources that clearly corroborate the outcome. Treat WEB-only claims with caution and never settle on them alone.
 - Return CANCEL if the evidence is insufficient, ambiguous, contradictory, or only low-quality WEB sources support it.
 - Confidence must reflect actual evidence quality; do not inflate it.
+- If the allowed outcomes are a "By <date>" ladder, pick the EARLIEST "By <date>" option whose date is on or after when the event actually occurred (per the evidence); if it has not occurred by the latest date, choose the final "After <date>" option.
 - Return one outcome label exactly as written in the allowed outcome list below.
 - This resolution will be submitted onchain and is irreversible.
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyBearer } from '@/lib/authCompare';
-import { getAllAccountStats } from '@/lib/accountStatsStub';
+import { getAllAccountStats } from '@/lib/marketIndexer';
 import { refreshLeaderboardCache } from '@/lib/socialDb';
 
 export const runtime = 'nodejs';

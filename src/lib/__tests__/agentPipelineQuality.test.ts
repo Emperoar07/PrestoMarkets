@@ -19,6 +19,19 @@ describe('agent pipeline target shape planner', () => {
   });
 });
 
+describe('deterministic date-ladder', () => {
+  it('detects "by when?" trends and skips price-structured ones', () => {
+    expect(__agentPipelineTestHooks.isDateLadderTrend({ topic: 'Trump declassifies UFO files by when?', query: '', source: 'news', url: 'https://x.com' })).toBe(true);
+    expect(__agentPipelineTestHooks.isDateLadderTrend({ topic: 'BTC price', query: '', source: 'cg', url: 'https://x.com', marketStructure: 'price-range' })).toBe(false);
+  });
+
+  it('generates cumulative By/After buckets closing at the last date', () => {
+    const ladder = __agentPipelineTestHooks.generateDateLadderOptions(new Date('2026-06-05T00:00:00Z'));
+    expect(ladder.options).toEqual(['By Jun 30', 'By Jul 31', 'By Aug 31', 'After Aug 31']);
+    expect(ladder.closeDate.startsWith('2026-08-31')).toBe(true);
+  });
+});
+
 describe('agent pipeline market quality gates', () => {
   it('rejects already-reported headline actions without a future milestone', () => {
     const issue = __agentPipelineTestHooks.getAlreadyReportedActionIssue({
