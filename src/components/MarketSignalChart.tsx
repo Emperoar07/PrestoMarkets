@@ -178,18 +178,7 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
   }
 
   return (
-    <div className="overflow-hidden rounded-[18px] border border-white/[0.06] bg-[#0d1520] px-6 pb-6 pt-7 sm:px-8 sm:pt-8">
-      <div className="mb-8 flex items-center justify-start">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-3 text-sm font-black text-white">
-          {outcomeSeries.map((series) => (
-            <span key={series.label} className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: series.color, boxShadow: `0 0 14px ${series.color}66` }} />
-              <span>{series.label} {series.odds}%</span>
-            </span>
-          ))}
-        </div>
-      </div>
-
+    <div className="min-w-0">
       <div className="relative">
         <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center gap-4 text-[clamp(28px,4vw,54px)] font-black text-white/[0.07]">
           <span className="relative h-[58px] w-[58px] rounded-full border-[5px] border-cyan/15 shadow-[inset_0_0_0_11px_rgba(37,200,255,0.04)] after:absolute after:inset-4 after:rounded-full after:bg-cyan/15" />
