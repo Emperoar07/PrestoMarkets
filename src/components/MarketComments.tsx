@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
+import { Pencil, Trash2 } from 'lucide-react';
 import { SocialSignInButton } from './SocialSignInButton';
 
 type CommentRow = {
@@ -202,34 +203,36 @@ export function MarketComments({ marketId }: { marketId: string }) {
 
           return (
             <article key={comment.id} className="py-4">
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-                <CommentAvatar comment={comment} />
-                <span className="font-black text-cyan">{displayName(comment)}</span>
-                <span>{new Date(comment.createdAt).toLocaleString()}</span>
-                {comment.editedAt ? <span className="text-muted/60">· edited</span> : null}
+              <div className="flex items-center justify-between gap-2 text-xs text-muted">
+                <div className="flex flex-wrap items-center gap-2">
+                  <CommentAvatar comment={comment} />
+                  <span className="font-black text-cyan">{displayName(comment)}</span>
+                  <span>{new Date(comment.createdAt).toLocaleString()}</span>
+                  {comment.editedAt ? <span className="text-muted/60">· edited</span> : null}
+                </div>
                 {isAuthor && !isEditing && (
-                  <>
-                    <span className="text-muted/40">·</span>
+                  <div className="flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => {
                         setEditingCommentId(comment.id);
                         setEditDraft(comment.body);
                       }}
-                      className="font-bold text-cyan hover:underline"
+                      className="rounded-[6px] p-1 text-[#8fa0b4] hover:bg-white/[0.04] hover:text-cyan transition-all"
+                      title="Edit comment"
                     >
-                      Edit
+                      <Pencil className="h-3.5 w-3.5" />
                     </button>
-                    <span className="text-muted/40">·</span>
                     <button
                       type="button"
                       onClick={() => void handleDelete(comment.id)}
                       disabled={deletingId === comment.id}
-                      className="font-bold text-red-400 hover:underline disabled:opacity-50"
+                      className="rounded-[6px] p-1 text-[#8fa0b4] hover:bg-white/[0.04] hover:text-red-400 transition-all disabled:opacity-50"
+                      title="Delete comment"
                     >
-                      {deletingId === comment.id ? 'Deleting...' : 'Delete'}
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
-                  </>
+                  </div>
                 )}
               </div>
 
