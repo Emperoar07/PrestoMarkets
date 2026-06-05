@@ -63,7 +63,7 @@ function buildStepPath(points: number[], width: number, height: number, offsetX:
 function MarketSignalChartComponent({ market, compact = false, live = false }: { market: MarketSignalChartMarket; compact?: boolean; live?: boolean }) {
   const volume = parseUsd(market.volume);
   const liquidity = parseUsd(market.liquidity);
-  const [activeTab, setActiveTab] = useState<string>('1W');
+  const [activeTab, setActiveTab] = useState<string>('1D');
   const [rawHistory, setRawHistory] = useState<Array<{ t: number; probabilities: number[] }> | null>(null);
 
   useEffect(() => {
