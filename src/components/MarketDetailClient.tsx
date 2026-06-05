@@ -140,10 +140,13 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const activeOutcomeColor = getOutcomeColor(activeOutcomeIndex);
   const isBinaryMarket = market.outcomes.length <= 2;
   const amountValue = Number(amount) || 0;
+  const isLimitOrder = tradeMode === 'buy' && orderMode === 'limit';
   // Fixed-share parimutuel: 1 USDC = 1 share. Payout if this outcome wins is an
   // estimate derived from current implied odds, not a priced-share quote.
   const estimatedShares = amountValue > 0 ? amountValue : 0;
-  const potentialReturn = estimateParimutuelPayout(amountValue, Number(activeOutcome.odds));
+  const potentialReturn = isLimitOrder
+    ? estimateParimutuelPayout(amountValue, Number(limitPrice))
+    : estimateParimutuelPayout(amountValue, Number(activeOutcome.odds));
   const liquiditySideAmount = amountValue > 0 ? amountValue / market.outcomes.length : 0;
   const canTrade = market.status === 'Open' || market.status === 'Closing soon';
   // Real grounded-source state for agent markets (replaces the old "Source is private" copy
@@ -170,7 +173,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const resolverChecksPassed = confirmSource && confirmRules && confirmHuman;
   const canSubmitResolution = canUseResolverActions && resolverChecksPassed && Boolean(resolutionURI.trim());
   const isAgentMarket = market.createdByType === 'agent';
-  const isLimitOrder = tradeMode === 'buy' && orderMode === 'limit';
 
   async function runAction(
     action: () => Promise<{ ok: boolean; message: string; txHash?: string; pending?: boolean }>,
@@ -465,8 +467,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                       key={mode}
                       type="button"
                       onClick={() => setOrderMode(mode)}
-                      className={`rounded-[9px] py-2 text-sm font-black transition-colors ${
-                        orderMode === mode ? 'bg-[#1a2540] text-white' : 'text-muted hover:text-white'
+                      className={`rounded-[9px] py-2 text-sm font-black transition-all border ${
+                        orderMode === mode
+                          ? 'border-white/80 text-white bg-transparent shadow-sm'
+                          : 'border-transparent text-muted hover:text-white bg-transparent'
                       }`}
                     >
                       {label}

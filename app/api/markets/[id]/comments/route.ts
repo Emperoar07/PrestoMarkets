@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
-import { createComment, listComments } from '@/lib/socialDb';
+import { createComment, listComments, editComment, hideComment } from '@/lib/socialDb';
 import { getSocialSession } from '@/lib/socialSession';
 import { normalizeMarketId, sanitizeCommentBody } from '@/lib/socialValidation';
 
@@ -65,6 +65,82 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Comment could not be saved.' },
       { status: 503 },
+    );
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  const session = getSocialSession(request);
+  if (!session) {
+    return NextResponse.json({ error: 'Sign in is required.' }, { status: 401 });
+  }
+
+  let body: { commentId?: number; body?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+  }
+
+  const commentId = Number(body.commentId);
+  if (isNaN(commentId)) {
+    return NextResponse.json({ error: 'Valid comment id is required.' }, { status: 400 });
+  }
+
+  const commentBody = sanitizeCommentBody(body.body);
+  if (!commentBody) {
+    return NextResponse.json({ error: 'Comment body is required.' }, { status: 400 });
+  }
+
+  try {
+    const updated = await editComment({
+      id: commentId,
+      authorAddress: session.address,
+      body: commentBody,
+    });
+    if (!updated) {
+      return NextResponse.json({ error: 'Comment not found or unauthorized.' }, { status: 404 });
+    }
+    return NextResponse.json({ comment: updated });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Comment could not be edited.' },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const session = getSocialSession(request);
+  if (!session) {
+    return NextResponse.json({ error: 'Sign in is required.' }, { status: 401 });
+  }
+
+  let body: { commentId?: number };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+  }
+
+  const commentId = Number(body.commentId);
+  if (isNaN(commentId)) {
+    return NextResponse.json({ error: 'Valid comment id is required.' }, { status: 400 });
+  }
+
+  try {
+    const deleted = await hideComment({
+      id: commentId,
+      authorAddress: session.address,
+    });
+    if (!deleted) {
+      return NextResponse.json({ error: 'Comment not found or unauthorized.' }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Comment could not be deleted.' },
+      { status: 500 },
     );
   }
 }

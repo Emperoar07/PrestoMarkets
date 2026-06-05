@@ -22,7 +22,37 @@ export function ProfileClient() {
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
+  const [isError, setIsError] = useState(false);
+
+  function notify(text: string, error = false) {
+    setMessage(text);
+    setIsError(error);
+    if (!error) window.setTimeout(() => setMessage(''), 2000);
+  }
+
+  async function uploadAvatar(file: File) {
+    setUploading(true);
+    setMessage('');
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/profiles/avatar', { method: 'POST', body: form });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        requireSignIn();
+        throw new Error('Sign in to upload an avatar.');
+      }
+      if (!res.ok) throw new Error(data.error ?? 'Avatar upload failed.');
+      setAvatarUrl(data.url);
+      notify('Image uploaded — remember to Save.');
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Avatar upload failed.', true);
+    } finally {
+      setUploading(false);
+    }
+  }
 
   // Load the current profile once signed in.
   useEffect(() => {
@@ -64,11 +94,10 @@ export function ProfileClient() {
         setAvatarUrl(data.profile.avatarUrl ?? '');
         setOptInLeaderboard(Boolean(data.profile.optInLeaderboard));
       }
-      setMessage('Profile saved.');
+      notify('Profile saved.');
       void refresh();
-      window.setTimeout(() => setMessage(''), 2000);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Profile could not be saved.');
+      notify(error instanceof Error ? error.message : 'Profile could not be saved.', true);
     } finally {
       setSaving(false);
     }
@@ -109,14 +138,38 @@ export function ProfileClient() {
                 </span>
               )}
               <div className="min-w-0 flex-1">
-                <label className="text-xs font-black uppercase tracking-[0.16em] text-muted">Avatar image URL</label>
+                <label className="text-xs font-black uppercase tracking-[0.16em] text-muted">Avatar</label>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <label className={`cursor-pointer rounded-[8px] border border-cyan/30 bg-cyan/10 px-3 py-2 text-xs font-black text-cyan transition-colors hover:bg-cyan/15 ${uploading ? 'pointer-events-none opacity-60' : ''}`}>
+                    {uploading ? 'Uploading…' : 'Upload image'}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void uploadAvatar(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                  {avatarUrl.trim() ? (
+                    <button
+                      type="button"
+                      onClick={() => setAvatarUrl('')}
+                      className="rounded-[8px] border border-white/[0.08] px-3 py-2 text-xs font-black text-muted transition-colors hover:text-white"
+                    >
+                      Remove
+                    </button>
+                  ) : null}
+                </div>
                 <input
                   value={avatarUrl}
                   onChange={(e) => setAvatarUrl(e.target.value)}
-                  placeholder="https://…/avatar.png"
-                  className="mt-1 w-full rounded-[10px] border border-white/[0.08] bg-[#0d1520] px-3 py-2 text-sm text-[#e2e8f0] placeholder:text-muted outline-none focus:border-cyan/50"
+                  placeholder="…or paste an image URL"
+                  className="mt-2 w-full rounded-[10px] border border-white/[0.08] bg-[#0d1520] px-3 py-2 text-sm text-[#e2e8f0] placeholder:text-muted outline-none focus:border-cyan/50"
                 />
-                <p className="mt-1 text-[11px] text-muted">Paste a link to a square image (e.g. from your socials or an image host).</p>
+                <p className="mt-1 text-[11px] text-muted">Square images look best. PNG/JPG/WEBP/GIF, up to 3MB.</p>
               </div>
             </div>
 
@@ -169,7 +222,7 @@ export function ProfileClient() {
                 {saving ? 'Saving…' : 'Save profile'}
               </button>
               {address ? <span className="text-[11px] text-muted">{shortAddress(address)}</span> : null}
-              {message ? <span className="text-xs font-bold text-mint">{message}</span> : null}
+              {message ? <span className={`text-xs font-bold ${isError ? 'text-yellow-200' : 'text-mint'}`}>{message}</span> : null}
             </div>
           </div>
         )}

@@ -84,6 +84,18 @@ export async function getProfile(address: string) {
   return row ?? null;
 }
 
+// Handles are stored lowercased (see sanitizeHandle), so an exact-match lookup against the
+// unique index gives case-insensitive uniqueness. Returns true if another address holds it.
+export async function isHandleTaken(handle: string, exceptAddress: string) {
+  if (!handle) return false;
+  const [row] = await getDb()
+    .select({ address: profiles.address })
+    .from(profiles)
+    .where(eq(profiles.handle, handle))
+    .limit(1);
+  return Boolean(row && row.address !== exceptAddress);
+}
+
 export async function upsertProfile(input: {
   address: string;
   handle?: string | null;

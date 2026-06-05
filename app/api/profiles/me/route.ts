@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
-import { upsertProfile } from '@/lib/socialDb';
+import { isHandleTaken, upsertProfile } from '@/lib/socialDb';
 import { getSocialSession } from '@/lib/socialSession';
 import { sanitizeHandle, sanitizeProfileText } from '@/lib/socialValidation';
+
+function isUniqueViolation(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /profiles_handle_unique|duplicate key|unique constraint/i.test(message);
+}
 
 const profileRateLimitStore = new Map<string, { count: number; resetAt: number }>();
 
@@ -23,6 +28,10 @@ export async function PATCH(request: NextRequest) {
   }
 
   const handle = sanitizeHandle(body.handle);
+  if (handle && (await isHandleTaken(handle, session.address))) {
+    return NextResponse.json({ error: 'That username is taken.' }, { status: 409 });
+  }
+
   try {
     const profile = await upsertProfile({
       address: session.address,
@@ -33,6 +42,10 @@ export async function PATCH(request: NextRequest) {
     });
     return NextResponse.json({ profile });
   } catch (error) {
+    // Fallback if two requests raced past the pre-check into the unique index.
+    if (isUniqueViolation(error)) {
+      return NextResponse.json({ error: 'That username is taken.' }, { status: 409 });
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Profile could not be saved.' },
       { status: 503 },
