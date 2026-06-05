@@ -112,7 +112,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     return (
       <>
         <SiteHeader />
-        <main className="mx-auto max-w-[1100px] px-4 pb-16 pt-36 md:px-7 md:pt-40">
+        <main className="mx-auto max-w-[1100px] px-4 pb-16 pt-28 md:px-7 md:pt-28">
           <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-8 text-center">
             {stillLoading ? (
               <>
@@ -216,7 +216,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-36 md:px-7 md:pt-40">
+      <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-28 md:px-7 md:pt-28">
         <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
 
           {/* ── Left column ── */}
