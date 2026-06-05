@@ -336,7 +336,7 @@ export function CreateMarketBuilder() {
                         key={value}
                         type="button"
                         onClick={() => setOutcomeStyle(value)}
-                        className={`rounded-xl border p-4.5 text-left transition-all duration-200 outline-none ${
+                        className={`rounded-xl border p-5 text-left transition-all duration-200 outline-none ${
                           isActive 
                             ? 'border-cyan/35 bg-cyan/[0.05] text-white ring-1 ring-cyan/30' 
                             : 'border-white/[0.06] bg-white/[0.01] text-[#94a3b8] hover:border-white/15 hover:bg-white/[0.02]'
@@ -350,7 +350,7 @@ export function CreateMarketBuilder() {
                 </div>
 
                 {outcomeStyle === 'poll' ? (
-                  <div className="mt-4 rounded-xl border border-white/[0.06] bg-[#0d1520] p-4.5">
+                  <div className="mt-4 rounded-xl border border-white/[0.06] bg-[#0d1520] p-5">
                     <div className="flex items-center justify-between gap-3 border-b border-white/[0.04] pb-3 mb-3">
                       <p className="text-[11px] font-black uppercase tracking-wider text-[#64748b]">Outcome Options</p>
                       <button
@@ -612,7 +612,7 @@ export function CreateMarketBuilder() {
               <X className="h-4.5 w-4.5" />
             </button>
 
-            <div className="border-b border-white/[0.06] pb-4.5">
+            <div className="border-b border-white/[0.06] pb-5">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan">Launch Review</p>
               <h2 className="mt-2.5 text-lg font-black text-white leading-snug">{title || 'Untitled market'}</h2>
               <p className="mt-2 text-sm text-[#94a3b8] leading-relaxed whitespace-pre-wrap">{description || 'No description provided.'}</p>
@@ -635,7 +635,7 @@ export function CreateMarketBuilder() {
               </div>
             ) : null}
 
-            <div className="mt-5 rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-4.5 space-y-3">
+            <div className="mt-5 rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-5 space-y-3">
               <div className="flex justify-between items-center gap-4 text-xs">
                 <span className="text-[#64748b] font-bold uppercase tracking-wider">Close Time</span>
                 <span className="text-white font-extrabold text-right">{getCloseDateLabel()}</span>
