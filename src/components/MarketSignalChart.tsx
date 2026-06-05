@@ -21,13 +21,15 @@ function getChartColor(index: number, count: number) {
   return count === 2 ? BINARY_COLORS[index % BINARY_COLORS.length] : MULTI_COLORS[index % MULTI_COLORS.length];
 }
 
-function buildSignalPoints(baseOdds: number, volume: number, liquidity: number, phase = 0): number[] {
+function buildSignalPoints(baseOdds: number, volume: number, liquidity: number, rangeDays: number, phase = 0): number[] {
   const depthBias = liquidity > 0 ? clamp(volume / Math.max(liquidity, 1), 0.1, 1.8) : 0.5;
-  return Array.from({ length: 10 }, (_, i) => {
-    const slow = Math.sin(i * 0.82 + phase) * 2.2;
-    const mid = Math.sin(i * 1.7 + phase * 1.3) * 1.1;
-    const drift = (i - 4.5) * depthBias * 0.16;
-    const spike = i > 3 && i < 6 ? Math.sin((i - 3) * 1.4 + phase) * 2.6 : 0;
+  const length = rangeDays === 1 ? 12 : rangeDays === 7 ? 20 : rangeDays === 30 ? 30 : 45;
+  return Array.from({ length }, (_, i) => {
+    const x = (i / (length - 1)) * 10;
+    const slow = Math.sin(x * 0.82 + phase) * 2.2;
+    const mid = Math.sin(x * 1.7 + phase * 1.3) * 1.1;
+    const drift = (x - 5) * depthBias * 0.16;
+    const spike = x > 3 && x < 6 ? Math.sin((x - 3) * 1.4 + phase) * 2.6 : 0;
     return clamp(baseOdds + slow + mid + drift + spike, 1, 99);
   });
 }
@@ -62,7 +64,8 @@ function buildStepPath(points: number[], width: number, height: number, offsetX:
 function MarketSignalChartComponent({ market, compact = false, live = false }: { market: MarketSignalChartMarket; compact?: boolean; live?: boolean }) {
   const volume = parseUsd(market.volume);
   const liquidity = parseUsd(market.liquidity);
-  const [realSeries, setRealSeries] = useState<number[][] | null>(null);
+  const [activeTab, setActiveTab] = useState<string>('1W');
+  const [rawHistory, setRawHistory] = useState<Array<{ t: number; probabilities: number[] }> | null>(null);
 
   useEffect(() => {
     if (!live || !market.id) return undefined;
@@ -70,15 +73,45 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
     fetch(`/api/markets/${market.id}/history`, { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        const history: Array<{ probabilities: number[] }> = data?.history ?? [];
-        if (cancelled || history.length < 2) return;
-        setRealSeries(market.outcomes.map((_, index) => history.map((point) => (point.probabilities[index] ?? 0) * 100)));
+        const history: Array<{ t: number; probabilities: number[] }> = data?.history ?? [];
+        if (cancelled) return;
+        setRawHistory(history);
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [live, market.id, market.outcomes.length]);
+  }, [live, market.id]);
+
+  const filteredHistory = useMemo(() => {
+    if (!rawHistory || rawHistory.length === 0) return null;
+    const now = Date.now();
+    const rangeMs =
+      activeTab === '1D'
+        ? 24 * 60 * 60 * 1000
+        : activeTab === '1W'
+        ? 7 * 24 * 60 * 60 * 1000
+        : activeTab === '1M'
+        ? 30 * 24 * 60 * 60 * 1000
+        : Infinity;
+
+    const filtered = rawHistory.filter((point) => now - point.t <= rangeMs);
+    if (filtered.length < 2) return null;
+    return filtered;
+  }, [rawHistory, activeTab]);
+
+  const realSeries = useMemo(() => {
+    if (!filteredHistory) return null;
+    return market.outcomes.map((_, index) =>
+      filteredHistory.map((point) => (point.probabilities[index] ?? 0) * 100)
+    );
+  }, [filteredHistory, market.outcomes.length]);
+
+  const timeLabels = useMemo(() => {
+    if (activeTab === '1D') return ['24h ago', '16h ago', '8h ago', 'Now'];
+    if (activeTab === '1W') return ['7d ago', '5d ago', '3d ago', 'Now'];
+    return ['30d ago', '20d ago', '10d ago', 'Now'];
+  }, [activeTab]);
 
   const W = compact ? 460 : 1000;
   const H = compact ? 120 : 420;
@@ -95,9 +128,10 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
         const real = realSeries?.[index];
         const useReal = Boolean(real && real.length >= 2);
         const phase = index * (Math.PI / Math.max(1, market.outcomes.length));
+        const rangeDays = activeTab === '1D' ? 1 : activeTab === '1W' ? 7 : activeTab === '1M' ? 30 : 60;
         const points = useReal
           ? (real as number[]).map((point) => clamp(point, 1, 99))
-          : buildSignalPoints(outcome.odds, index === 0 ? volume : liquidity, index === 0 ? liquidity : volume, phase);
+          : buildSignalPoints(outcome.odds, index === 0 ? volume : liquidity, index === 0 ? liquidity : volume, rangeDays, phase);
         const odds = useReal ? Math.round(points[points.length - 1]) : outcome.odds;
         return {
           label: outcome.label,
@@ -106,7 +140,7 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
           color: getChartColor(index, market.outcomes.length),
         };
       }),
-    [market.outcomes, volume, liquidity, realSeries]
+    [market.outcomes, volume, liquidity, realSeries, activeTab]
   );
 
   const axis = useMemo(() => getAxis(outcomeSeries.map((series) => series.points), outcomeSeries.length), [outcomeSeries]);
@@ -228,7 +262,7 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
             );
           })}
 
-          {['30d ago', '20d ago', '10d ago', 'Now'].map((label, index, labels) => {
+          {timeLabels.map((label, index, labels) => {
             const x = padL + (chartW * index) / Math.max(1, labels.length - 1);
             return (
               <text key={label} x={x - 10} y={H - 12} fill="#7f92ad" fontSize="13" fontWeight="800" fontFamily="sans-serif">
@@ -244,8 +278,13 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
           <button
             key={tab}
             type="button"
-            className={`rounded-full px-4 py-2 text-sm font-black ${tab === '1W' ? 'bg-cyan/15 text-cyan' : 'bg-white/[0.06] text-[#d6e2f2]'}`}
-            aria-pressed={tab === '1W'}
+            onClick={() => setActiveTab(tab)}
+            className={`rounded-full px-4 py-2 text-sm font-black transition-all ${
+              tab === activeTab
+                ? 'bg-cyan/15 text-cyan'
+                : 'bg-white/[0.06] text-[#d6e2f2] hover:bg-white/[0.1]'
+            }`}
+            aria-pressed={tab === activeTab}
           >
             {tab}
           </button>
