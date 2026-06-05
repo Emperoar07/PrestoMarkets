@@ -1,6 +1,18 @@
 // Off-app email delivery via Resend. Returns false (no-op) when RESEND_API_KEY is not set, so
 // the app runs fully without email until a provider is provisioned. Swap the provider here
 // without touching callers.
+// Escape user-supplied text before interpolating into the default HTML body. Notification
+// content can include arbitrary user input (e.g. comment bodies), so this prevents HTML/script
+// injection into emails.
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export async function sendEmail(input: {
   to: string;
   subject: string;
@@ -19,7 +31,7 @@ export async function sendEmail(input: {
         to: input.to,
         subject: input.subject,
         text: input.text,
-        html: input.html ?? `<p>${input.text.replace(/\n/g, '<br/>')}</p>`,
+        html: input.html ?? `<p>${escapeHtml(input.text).replace(/\n/g, '<br/>')}</p>`,
       }),
     });
     return res.ok;
