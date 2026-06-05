@@ -21,7 +21,7 @@ export function MarketQualityPanel({ market }: { market: Market }) {
     `rounded-[7px] px-3 py-1.5 text-xs font-black transition-colors ${active ? 'bg-white/[0.07] text-white' : 'text-muted hover:text-white'}`;
 
   return (
-    <div className="mt-6 min-w-0 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
+    <div className="mt-8 min-w-0">
       <div className="inline-flex rounded-[10px] border border-white/[0.06] bg-[#0d1520] p-1">
         <button type="button" onClick={() => setTab('rules')} className={tabClass(tab === 'rules')}>Resolution rules</button>
         <button type="button" onClick={() => setTab('quality')} className={tabClass(tab === 'quality')}>Market quality</button>
