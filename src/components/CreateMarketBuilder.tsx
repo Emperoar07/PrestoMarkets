@@ -10,19 +10,36 @@ import { useAppState } from '@/lib/appState';
 import { createMarketCategories } from '@/lib/categories';
 import { CloseDatePicker } from './CloseDatePicker';
 import { getResolveFeeUsdc } from '@/lib/resolveFee';
+import { 
+  MessageSquare, 
+  Scale, 
+  Sliders, 
+  Image as ImageIcon, 
+  Info, 
+  AlertTriangle, 
+  CheckCircle2, 
+  X, 
+  Plus, 
+  Trash2,
+  Calendar,
+  HelpCircle,
+  ExternalLink
+} from 'lucide-react';
 
 const resolutionModes: ResolutionMode[] = ['Human resolver', 'Community resolver', 'Agent assisted'];
 const maxInlineImageBytes = 300_000;
 
 export function CreateMarketBuilder() {
   const router = useRouter();
-  const { connectedWallet, createMarket, addLiquidity } = useAppState();
-  // Markets are created as Prediction by default (the type selector was removed).
+  const { connectedWallet, createMarket } = useAppState();
+  
+  // Markets are created as Prediction by default.
   const selectedType: MarketType = 'Prediction';
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
   const category = categories[0] ?? '';
+  
   function toggleCategory(value: string) {
     setCategories((prev) => {
       if (prev.includes(value)) return prev.filter((c) => c !== value);
@@ -30,6 +47,7 @@ export function CreateMarketBuilder() {
       return [...prev, value];
     });
   }
+  
   const [rules, setRules] = useState('');
   const [sourceOfTruth, setSourceOfTruth] = useState('');
   const [closeDate, setCloseDate] = useState('');
@@ -38,7 +56,6 @@ export function CreateMarketBuilder() {
   const [imageURI, setImageURI] = useState('');
   const [outcomeStyle, setOutcomeStyle] = useState<'binary' | 'poll'>('binary');
   const [outcomeOptions, setOutcomeOptions] = useState(['YES', 'NO']);
-  const [initialLiquidity, setInitialLiquidity] = useState('');
   const [agentAddress, setAgentAddress] = useState<string | null>(null);
   const [showReview, setShowReview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -222,9 +239,9 @@ export function CreateMarketBuilder() {
     }
   }
 
-  const inputBase = 'w-full bg-transparent text-white placeholder:text-[#3d4a63] outline-none transition-colors text-[15px] py-3 border-b';
-  const inputClass = (err?: string) => `${inputBase} ${err ? 'border-red-400/50' : 'border-white/[0.08] focus:border-cyan/60'}`;
-  const textareaClass = (err?: string) => `${inputBase} resize-none leading-7 ${err ? 'border-red-400/50' : 'border-white/[0.08] focus:border-cyan/60'}`;
+  const inputBase = 'w-full rounded-xl border bg-[#0d1626]/20 px-4 py-3 text-white placeholder:text-[#475569] outline-none transition-all text-[14.5px]';
+  const inputClass = (err?: string) => `${inputBase} ${err ? 'border-red-400/35 bg-red-400/[0.02] focus:border-red-400/50 focus:ring-1 focus:ring-red-400/50' : 'border-white/[0.06] hover:border-white/[0.1] hover:bg-white/[0.01] focus:border-cyan/40 focus:bg-[#0d1626]/35 focus:ring-1 focus:ring-cyan/40'}`;
+  const textareaClass = (err?: string) => `${inputClass(err)} resize-none leading-relaxed min-h-[105px]`;
 
   function handleReview() {
     const checks: [string, string][] = [
@@ -250,375 +267,436 @@ export function CreateMarketBuilder() {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-3xl px-5 pb-20 pt-28 md:px-6 md:pt-32">
-        <h1 className="text-[clamp(28px,3.5vw,40px)] font-black tracking-tight text-white">
-          New market.
-        </h1>
-        <p className="mt-4 max-w-xl text-[15px] leading-7 text-muted">
-          Write a question the world can answer. Pick how it resolves. Launch it onchain in one transaction.
-        </p>
+      <main className="mx-auto max-w-3xl px-5 pb-20 pt-36 md:px-6 md:pt-44">
+        {/* Header Title */}
+        <div className="flex flex-col gap-2">
+          <h1 className="text-[clamp(28px,3.5vw,40px)] font-black tracking-tight text-white">Create Market</h1>
+          <p className="text-[15px] leading-relaxed text-[#94a3b8]">
+            Write a question the world can answer. Pick how it resolves and launch it onchain instantly.
+          </p>
+        </div>
 
-        {/* Section: The question */}
-        <section className="mt-12">
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">Question</p>
-          <div className="mt-5 space-y-7">
-            <div>
-              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">What's the question?</label>
-              <input
-                value={title}
-                onChange={(e) => setField('title', e.target.value, setTitle)}
-                onBlur={(e) => blurField('title', e.target.value)}
-                className={`mt-1 ${inputClass(fieldErrors.title)}`}
-                placeholder="Will ETH break $5k before end of 2026?"
-              />
-              {fieldErrors.title ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.title}</p> : null}
+        <div className="mt-10 space-y-6">
+          {/* Section: Question and Context */}
+          <section className="rounded-2xl border border-white/[0.04] bg-[#0d1626]/20 p-6 md:p-8 space-y-6">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-cyan/10 text-cyan">
+                <MessageSquare className="h-4.5 w-4.5" />
+              </span>
+              <h2 className="text-sm font-black text-white uppercase tracking-wider">Question & Context</h2>
             </div>
-            <div>
-              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Add context</label>
-              <textarea
-                value={description}
-                onChange={(e) => setField('description', e.target.value, setDescription)}
-                onBlur={(e) => blurField('description', e.target.value)}
-                rows={3}
-                className={`mt-1 ${textareaClass(fieldErrors.description)}`}
-                placeholder="What background should traders know?"
-              />
-              {fieldErrors.description ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.description}</p> : null}
+            
+            <div className="space-y-5">
+              <div>
+                <label className="text-[12px] font-bold uppercase tracking-wider text-[#94a3b8]">What is the market question?</label>
+                <input
+                  value={title}
+                  onChange={(e) => setField('title', e.target.value, setTitle)}
+                  onBlur={(e) => blurField('title', e.target.value)}
+                  className={`mt-2 ${inputClass(fieldErrors.title)}`}
+                  placeholder="e.g., Will ETH break $5k before the end of 2026?"
+                />
+                {fieldErrors.title ? <p className="mt-2 text-[11px] font-bold text-red-400">{fieldErrors.title}</p> : null}
+              </div>
+              
+              <div>
+                <label className="text-[12px] font-bold uppercase tracking-wider text-[#94a3b8]">Add background context</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setField('description', e.target.value, setDescription)}
+                  onBlur={(e) => blurField('description', e.target.value)}
+                  className={`mt-2 ${textareaClass(fieldErrors.description)}`}
+                  placeholder="Provide any background context, links, or facts traders should know before participating..."
+                />
+                {fieldErrors.description ? <p className="mt-2 text-[11px] font-bold text-red-400">{fieldErrors.description}</p> : null}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        {/* Section: How it resolves */}
-        <section className="mt-16">
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">Resolution</p>
-          <div className="mt-5 space-y-7">
-            <div>
-              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Outcome style</label>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                {([
-                  ['binary', 'Binary', 'Tradable YES / NO market on the current Arc factory.'],
-                  ['poll', 'Poll', 'Create multiple outcome options when the V2 factory is configured.'],
-                ] as const).map(([value, label, copy]) => {
-                  const isActive = outcomeStyle === value;
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setOutcomeStyle(value)}
-                      className={`rounded-[12px] border p-4 text-left transition-colors ${
-                        isActive ? 'border-cyan/40 bg-cyan/[0.06] text-white' : 'border-white/[0.06] text-muted hover:border-white/15'
-                      }`}
-                    >
-                      <span className="block text-sm font-black">{label}</span>
-                      <span className="mt-1.5 block text-xs leading-5 text-muted/80">{copy}</span>
-                    </button>
-                  );
-                })}
+          {/* Section: How it resolves */}
+          <section className="rounded-2xl border border-white/[0.04] bg-[#0d1626]/20 p-6 md:p-8 space-y-6">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-cyan/10 text-cyan">
+                <Scale className="h-4.5 w-4.5" />
+              </span>
+              <h2 className="text-sm font-black text-white uppercase tracking-wider">Resolution Rules</h2>
+            </div>
+            
+            <div className="space-y-5">
+              <div>
+                <label className="text-[12px] font-bold uppercase tracking-wider text-[#94a3b8]">Outcome style</label>
+                <div className="mt-2.5 grid gap-3 sm:grid-cols-2">
+                  {([
+                    ['binary', 'Binary Market', 'Tradable YES / NO outcomes deployed on the prediction contract.'],
+                    ['poll', 'Multi-Outcome Poll', 'Create custom options. Deploys using the V2 multi-outcome factory.'],
+                  ] as const).map(([value, label, copy]) => {
+                    const isActive = outcomeStyle === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setOutcomeStyle(value)}
+                        className={`rounded-xl border p-4.5 text-left transition-all duration-200 outline-none ${
+                          isActive 
+                            ? 'border-cyan/35 bg-cyan/[0.05] text-white ring-1 ring-cyan/30' 
+                            : 'border-white/[0.06] bg-white/[0.01] text-[#94a3b8] hover:border-white/15 hover:bg-white/[0.02]'
+                        }`}
+                      >
+                        <span className="block text-[13.5px] font-black text-white">{label}</span>
+                        <span className="mt-2 block text-xs leading-relaxed text-[#94a3b8]">{copy}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {outcomeStyle === 'poll' ? (
+                  <div className="mt-4 rounded-xl border border-white/[0.06] bg-[#0d1520] p-4.5">
+                    <div className="flex items-center justify-between gap-3 border-b border-white/[0.04] pb-3 mb-3">
+                      <p className="text-[11px] font-black uppercase tracking-wider text-[#64748b]">Outcome Options</p>
+                      <button
+                        type="button"
+                        onClick={addOutcomeOption}
+                        className="rounded-lg border border-cyan/25 px-3 py-1 text-[11px] font-black text-cyan transition-colors hover:bg-cyan/10"
+                      >
+                        Add Option
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {outcomeOptions.map((option, index) => (
+                        <div key={`${index}-${option}`} className="flex items-center gap-2">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-[11px] font-black text-[#64748b]">
+                            {index + 1}
+                          </span>
+                          <input
+                            value={option}
+                            onChange={(event) => updateOutcomeOption(index, event.target.value)}
+                            className="flex-1 rounded-lg border border-white/[0.06] bg-[#0a1120] px-3.5 py-2 text-sm text-white outline-none transition-colors placeholder:text-[#3d4a63] focus:border-cyan/40"
+                            placeholder={`Option ${index + 1}`}
+                          />
+                          {outcomeOptions.length > 2 ? (
+                            <button
+                              type="button"
+                              onClick={() => removeOutcomeOption(index)}
+                              className="rounded-lg border border-white/[0.06] p-2 text-muted hover:border-rose-500/30 hover:text-rose-400 transition"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
-              {outcomeStyle === 'poll' ? (
-                <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#0d1520] p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-[11px] font-black uppercase tracking-widest text-muted">Poll options</p>
+              <div>
+                <label className="text-[12px] font-bold uppercase tracking-wider text-[#94a3b8]">How will this resolve?</label>
+                <textarea
+                  value={rules}
+                  onChange={(e) => setField('rules', e.target.value, setRules)}
+                  onBlur={(e) => blurField('rules', e.target.value)}
+                  className={`mt-2 ${textareaClass(fieldErrors.rules)}`}
+                  placeholder="Define clear resolution parameters. e.g., YES wins if ETH records a trade at or above $5,000 on Coinbase before December 31, 2026 UTC. Otherwise, NO wins."
+                />
+                {fieldErrors.rules ? <p className="mt-2 text-[11px] font-bold text-red-400">{fieldErrors.rules}</p> : null}
+              </div>
+
+              <div>
+                <label className="text-[12px] font-bold uppercase tracking-wider text-[#94a3b8]">Where will you verify? (Source of Truth)</label>
+                <textarea
+                  value={sourceOfTruth}
+                  onChange={(e) => setField('sourceOfTruth', e.target.value, setSourceOfTruth)}
+                  onBlur={(e) => blurField('sourceOfTruth', e.target.value)}
+                  className={`mt-2 ${textareaClass(fieldErrors.sourceOfTruth)}`}
+                  placeholder="Specify the exact verification link or dashboard (e.g., Coinbase trade history link, SEC official site filings...)"
+                />
+                {fieldErrors.sourceOfTruth ? <p className="mt-2 text-[11px] font-bold text-red-400">{fieldErrors.sourceOfTruth}</p> : null}
+              </div>
+
+              <div>
+                <label className="text-[12px] font-bold uppercase tracking-wider text-[#94a3b8]">Resolution Mode</label>
+                <div className="mt-2.5 flex flex-wrap gap-1 border border-white/[0.06] bg-[#0c1322] p-1 rounded-xl w-fit">
+                  {resolutionModes.map((mode) => (
                     <button
+                      key={mode}
                       type="button"
-                      onClick={addOutcomeOption}
-                      className="rounded-full border border-cyan/25 px-3 py-1 text-[11px] font-black text-cyan transition-colors hover:bg-cyan/10"
+                      onClick={() => {
+                        setResolutionMode(mode);
+                        if (mode === 'Agent assisted' && agentAddress) {
+                          setResolver(agentAddress);
+                          setFieldErrors((prev) => ({ ...prev, resolver: '' }));
+                        }
+                      }}
+                      className={`rounded-lg px-4 py-2 text-[12.5px] font-bold transition-all duration-200 ${
+                        resolutionMode === mode
+                          ? 'bg-cyan text-[#07111f] shadow-lg shadow-cyan/10'
+                          : 'text-[#94a3b8] hover:bg-white/[0.04] hover:text-[#f1f5f9]'
+                      }`}
                     >
-                      Add option
+                      {mode}
                     </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[12px] font-bold uppercase tracking-wider text-[#94a3b8]">Who resolves this market?</label>
+                <input
+                  value={resolver}
+                  onChange={(e) => setField('resolver', e.target.value, setResolver)}
+                  onBlur={(e) => blurField('resolver', e.target.value)}
+                  readOnly={isAgentAssisted}
+                  placeholder="0x… (EVM wallet address authorized to settle this market)"
+                  className={`mt-2 font-mono text-[13px] ${inputClass(fieldErrors.resolver)} ${isAgentAssisted ? 'cursor-not-allowed opacity-75' : ''}`}
+                />
+                {fieldErrors.resolver ? <p className="mt-2 text-[11px] font-bold text-red-400">{fieldErrors.resolver}</p> : null}
+                
+                {isAgentAssisted && (
+                  <div className={`mt-3 flex items-start gap-2.5 rounded-xl border p-4 text-xs leading-relaxed ${
+                    agentAddress 
+                      ? 'border-cyan/20 bg-cyan/5 text-cyan' 
+                      : 'border-red-500/20 bg-red-500/5 text-red-400'
+                  }`}>
+                    {agentAddress ? (
+                      <>
+                        <Info className="h-4.5 w-4.5 shrink-0 mt-0.5" />
+                        <p>
+                          Locked to the Presto agent wallet. After creation, a <span className="font-extrabold text-white">${getResolveFeeUsdc()} USDC</span> funding step enables automatic evidence-based settlement after close.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="h-4.5 w-4.5 shrink-0 mt-0.5" />
+                        <p>
+                          The Presto agent wallet is unavailable, so this mode cannot be launched yet. Please choose another resolution mode.
+                        </p>
+                      </>
+                    )}
                   </div>
-                  <div className="mt-3 space-y-2">
-                    {outcomeOptions.map((option, index) => (
-                      <div key={`${index}-${option}`} className="flex items-center gap-2">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/[0.04] text-[11px] font-black text-muted">
-                          {index + 1}
-                        </span>
-                        <input
-                          value={option}
-                          onChange={(event) => updateOutcomeOption(index, event.target.value)}
-                          className="flex-1 rounded-[10px] border border-white/[0.06] bg-[#0a1120] px-3 py-2 text-sm text-white outline-none transition-colors placeholder:text-[#3d4a63] focus:border-cyan/40"
-                          placeholder={`Option ${index + 1}`}
-                        />
-                        {outcomeOptions.length > 2 ? (
-                          <button
-                            type="button"
-                            onClick={() => removeOutcomeOption(index)}
-                            className="rounded-[10px] border border-white/[0.06] px-3 py-2 text-xs font-black text-muted hover:border-red-400/30 hover:text-red-300"
-                          >
-                            Remove
-                          </button>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                  <p className="mt-3 text-xs leading-5 text-muted">
-                    Poll markets route to the multi-outcome factory when `NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS` is configured.
+                )}
+              </div>
+            </div>
+          </section>
+
+          {/* Section: Settings */}
+          <section className="rounded-2xl border border-white/[0.04] bg-[#0d1626]/20 p-6 md:p-8 space-y-6">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-cyan/10 text-cyan">
+                <Sliders className="h-4.5 w-4.5" />
+              </span>
+              <h2 className="text-sm font-black text-white uppercase tracking-wider">Market Settings</h2>
+            </div>
+            
+            <div className="space-y-5">
+              <div>
+                <div className="flex items-baseline justify-between border-b border-white/[0.04] pb-2">
+                  <label className="text-[12px] font-bold uppercase tracking-wider text-[#94a3b8]">
+                    Categories <span className="text-[#64748b] normal-case">(select up to 4 tags)</span>
+                  </label>
+                  <span className="text-xs font-bold text-cyan">{categories.length}/4</span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {createMarketCategories.map((item) => {
+                    const isActive = categories.includes(item);
+                    const atCap = !isActive && categories.length >= 4;
+                    return (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => toggleCategory(item)}
+                        disabled={atCap}
+                        className={`rounded-full border px-3.5 py-1.5 text-[12.5px] font-bold transition-all ${
+                          isActive
+                            ? 'border-cyan/40 bg-cyan/10 text-cyan shadow-md shadow-cyan/5'
+                            : atCap
+                              ? 'cursor-not-allowed border-white/[0.04] text-muted/30'
+                              : 'border-white/[0.06] bg-white/[0.01] text-[#cbd5e1] hover:border-white/20 hover:text-white'
+                        }`}
+                      >
+                        {item}
+                      </button>
+                    );
+                  })}
+                </div>
+                {categories.length > 0 ? (
+                  <p className="mt-3 text-xs text-[#64748b]">
+                    Primary Category Tag: <span className="font-extrabold text-white">{categories[0]}</span>
                   </p>
+                ) : null}
+              </div>
+
+              <div>
+                <label className="text-[12px] font-bold uppercase tracking-wider text-[#94a3b8]">When does the market close?</label>
+                <CloseDatePicker
+                  value={closeDate}
+                  onChange={(v) => setField('closeDate', v, setCloseDate)}
+                  onBlur={() => blurField('closeDate', closeDate)}
+                  placeholder="Select market end date & time"
+                  className="mt-2"
+                  errored={Boolean(fieldErrors.closeDate)}
+                />
+                {fieldErrors.closeDate ? <p className="mt-2 text-[11px] font-bold text-red-400">{fieldErrors.closeDate}</p> : null}
+              </div>
+            </div>
+          </section>
+
+          {/* Section: Picture */}
+          <section className="rounded-2xl border border-white/[0.04] bg-[#0d1626]/20 p-6 md:p-8 space-y-6">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-cyan/10 text-cyan">
+                <ImageIcon className="h-4.5 w-4.5" />
+              </span>
+              <h2 className="text-sm font-black text-white uppercase tracking-wider">Visual Identity</h2>
+            </div>
+            
+            <div>
+              <label className="text-[12px] font-bold uppercase tracking-wider text-[#94a3b8]">Market Image Link <span className="text-[#64748b] normal-case">(optional)</span></label>
+              <div className="mt-2.5 flex items-center gap-3">
+                <input
+                  value={imageURI}
+                  onChange={(event) => setImageURI(event.target.value)}
+                  placeholder="Paste cover image hosted URL (HTTPS)"
+                  className={`flex-1 ${inputClass()}`}
+                />
+                <label className="shrink-0 cursor-pointer rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-xs font-black text-cyan hover:bg-white/[0.04] hover:border-white/[0.1] transition-all">
+                  Upload file
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={(event) => handleImageFile(event.target.files?.[0])}
+                  />
+                </label>
+              </div>
+              
+              {imageURI ? (
+                <div className="mt-4 overflow-hidden rounded-xl border border-white/[0.06]">
+                  <img src={imageURI} alt="Market preview" loading="lazy" decoding="async" className="h-44 w-full object-cover" />
                 </div>
               ) : null}
             </div>
-            <div>
-              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">How will this resolve?</label>
-              <textarea
-                value={rules}
-                onChange={(e) => setField('rules', e.target.value, setRules)}
-                onBlur={(e) => blurField('rules', e.target.value)}
-                rows={3}
-                className={`mt-1 ${textareaClass(fieldErrors.rules)}`}
-                placeholder="YES wins if… Otherwise NO wins."
-              />
-              {fieldErrors.rules ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.rules}</p> : null}
-            </div>
-            <div>
-              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Where will you verify?</label>
-              <textarea
-                value={sourceOfTruth}
-                onChange={(e) => setField('sourceOfTruth', e.target.value, setSourceOfTruth)}
-                onBlur={(e) => blurField('sourceOfTruth', e.target.value)}
-                rows={2}
-                className={`mt-1 ${textareaClass(fieldErrors.sourceOfTruth)}`}
-                placeholder="A specific public source. CoinGecko price, SEC filing, official announcement…"
-              />
-              {fieldErrors.sourceOfTruth ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.sourceOfTruth}</p> : null}
-            </div>
-            <div>
-              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Mode</label>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {resolutionModes.map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => {
-                      setResolutionMode(mode);
-                      if (mode === 'Agent assisted' && agentAddress) {
-                        setResolver(agentAddress);
-                        setFieldErrors((prev) => ({ ...prev, resolver: '' }));
-                      }
-                    }}
-                    className={`rounded-full border px-3.5 py-1.5 text-[12px] font-black transition-colors ${
-                      resolutionMode === mode
-                        ? 'border-cyan/50 bg-cyan/10 text-cyan'
-                        : 'border-white/[0.08] text-muted hover:border-white/20 hover:text-white/80'
-                    }`}
-                  >
-                    {mode}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">Who resolves it?</label>
-              <input
-                value={resolver}
-                onChange={(e) => setField('resolver', e.target.value, setResolver)}
-                onBlur={(e) => blurField('resolver', e.target.value)}
-                readOnly={isAgentAssisted}
-                placeholder="0x… (wallet that will sign the resolution)"
-                className={`mt-1 font-mono text-[13px] ${inputClass(fieldErrors.resolver)} ${isAgentAssisted ? 'cursor-not-allowed opacity-75' : ''}`}
-              />
-              {fieldErrors.resolver ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.resolver}</p> : null}
-              {isAgentAssisted && agentAddress ? (
-                <p className="mt-1.5 text-[11px] text-cyan/80">
-                  Locked to the Presto agent wallet. After creation, a <span className="font-black">${getResolveFeeUsdc()} USDC</span> funding step enables automatic evidence-based settlement after close.
-                </p>
-              ) : isAgentAssisted ? (
-                <p className="mt-1.5 text-[11px] text-red-300">The Presto agent wallet is unavailable, so this mode cannot be launched yet.</p>
-              ) : null}
-            </div>
-          </div>
-        </section>
+          </section>
+        </div>
 
-        {/* Section: Settings */}
-        <section className="mt-16">
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">Settings</p>
-          <div className="mt-5 space-y-7">
-            <div>
-              <div className="flex items-baseline justify-between">
-                <label className="text-[12px] font-bold uppercase tracking-wider text-muted">
-                  Categories <span className="text-muted/60">(pick up to 4)</span>
-                </label>
-                <span className="text-[11px] font-bold text-muted/70">{categories.length}/4</span>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {createMarketCategories.map((item) => {
-                  const isActive = categories.includes(item);
-                  const atCap = !isActive && categories.length >= 4;
-                  return (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => toggleCategory(item)}
-                      disabled={atCap}
-                      className={`rounded-full border px-3 py-1.5 text-[12px] font-black transition-colors ${
-                        isActive
-                          ? 'border-cyan/50 bg-cyan/10 text-cyan'
-                          : atCap
-                            ? 'cursor-not-allowed border-white/[0.05] text-muted/40'
-                            : 'border-white/[0.08] text-muted hover:border-white/20 hover:text-white/80'
-                      }`}
-                    >
-                      {item}
-                    </button>
-                  );
-                })}
-              </div>
-              {categories.length > 0 ? (
-                <p className="mt-2 text-[11px] text-muted/70">
-                  Primary tag: <span className="font-black text-white">{categories[0]}</span>
-                </p>
-              ) : null}
-            </div>
-            <div>
-              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">When does it close?</label>
-              <CloseDatePicker
-                value={closeDate}
-                onChange={(v) => setField('closeDate', v, setCloseDate)}
-                onBlur={() => blurField('closeDate', closeDate)}
-                placeholder="Pick a date and time"
-                className="mt-1"
-                errored={Boolean(fieldErrors.closeDate)}
-              />
-              {fieldErrors.closeDate ? <p className="mt-1.5 text-[11px] font-bold text-red-400">{fieldErrors.closeDate}</p> : null}
-            </div>
-          </div>
-        </section>
-
-        {/* Section: Picture */}
-        <section className="mt-16">
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan/70">Picture <span className="font-medium normal-case tracking-normal text-muted/60">(optional)</span></p>
-          <div className="mt-5">
-            <div className="flex items-end gap-3">
-              <input
-                value={imageURI}
-                onChange={(event) => setImageURI(event.target.value)}
-                placeholder="Paste an image URL"
-                className={`flex-1 ${inputClass()}`}
-              />
-              <label className="shrink-0 cursor-pointer pb-3 text-[12px] font-bold text-cyan/80 transition-colors hover:text-cyan">
-                or upload
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="sr-only"
-                  onChange={(event) => handleImageFile(event.target.files?.[0])}
-                />
-              </label>
-            </div>
-            {imageURI ? (
-              <div className="mt-4 overflow-hidden rounded-[10px] border border-white/[0.06]">
-                <img src={imageURI} alt="Market preview" loading="lazy" decoding="async" className="h-40 w-full object-cover" />
-              </div>
-            ) : null}
-          </div>
-        </section>
-
-        {/* Launch — inline at the end of the form */}
-        <div className="mt-14 flex flex-col gap-3 border-t border-white/[0.06] pt-6 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[12px] text-muted">
-            {category ? <><span className="font-black text-white">{selectedType}</span> · {category}</> : <span className="text-muted/60">Pick a category to continue</span>}
+        {/* Action Bottom Row */}
+        <div className="mt-10 flex flex-col gap-4 border-t border-white/[0.06] pt-6 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-[#64748b]">
+            {category ? (
+              <>
+                Selected Type: <span className="font-extrabold text-white">{selectedType}</span> · Primary Tag: <span className="font-extrabold text-cyan">{category}</span>
+              </>
+            ) : (
+              <span className="text-rose-400 font-bold">Please select at least one category tag above.</span>
+            )}
           </p>
           <button
             type="button"
             onClick={handleReview}
-            className="rounded-full bg-cyan px-10 py-3 text-[14px] font-black text-ink transition-opacity hover:opacity-90"
+            className="rounded-xl bg-cyan px-10 py-3 text-sm font-black text-[#07111f] transition-opacity hover:opacity-90 shadow-lg shadow-cyan/10"
           >
-            Review
+            Review & Launch
           </button>
         </div>
       </main>
+
+      {/* Review Modal */}
       {showReview ? (
-        <div className="fixed inset-0 z-[9999] grid place-items-center overflow-y-auto bg-[#050b14]/88 px-4 py-8 backdrop-blur-md">
-          <section className="relative w-full max-w-[520px] rounded-[16px] border border-white/[0.08] bg-[#141e30] p-6 shadow-2xl shadow-black/45">
+        <div className="fixed inset-0 z-[9999] grid place-items-center overflow-y-auto bg-[#050b14]/80 px-4 py-8 backdrop-blur-md">
+          <section className="relative w-full max-w-[560px] rounded-2xl border border-white/[0.08] bg-[#0b1322] p-6 md:p-8 shadow-2xl shadow-black/60">
             <button
               type="button"
               onClick={() => setShowReview(false)}
-              className="absolute right-3 top-3 rounded-full p-1.5 text-muted transition-colors hover:bg-white/[0.06] hover:text-white"
+              className="absolute right-4 top-4 rounded-full p-2 text-[#64748b] transition hover:bg-white/[0.04] hover:text-white"
               aria-label="Close"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              <X className="h-4.5 w-4.5" />
             </button>
 
-            <p className="text-[10.5px] font-bold uppercase tracking-[0.18em] text-cyan">Review</p>
-            <h2 className="mt-2 text-xl font-black text-white">{title || 'Untitled market'}</h2>
-            <p className="mt-2 text-[14px] leading-6 text-muted">{description || 'Add a description before launching.'}</p>
+            <div className="border-b border-white/[0.06] pb-4.5">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan">Launch Review</p>
+              <h2 className="mt-2.5 text-lg font-black text-white leading-snug">{title || 'Untitled market'}</h2>
+              <p className="mt-2 text-sm text-[#94a3b8] leading-relaxed whitespace-pre-wrap">{description || 'No description provided.'}</p>
+            </div>
 
             {imageURI ? (
-              <img src={imageURI} alt={title || 'Market picture'} loading="lazy" decoding="async" className="mt-4 h-40 w-full rounded-[10px] object-cover" />
+              <img src={imageURI} alt={title || 'Market picture'} loading="lazy" decoding="async" className="mt-4 h-40 w-full rounded-xl object-cover border border-white/[0.04]" />
             ) : null}
 
             {outcomeStyle === 'poll' ? (
-              <div className="mt-5 rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-4">
-                <p className="text-[11px] font-bold uppercase tracking-widest text-muted">Poll options</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <div className="mt-5 rounded-xl border border-white/[0.06] bg-[#0d1520] p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-[#64748b] mb-3">Poll Options</p>
+                <div className="grid gap-2 sm:grid-cols-2">
                   {outcomeOptions.map((option, index) => (
-                    <div key={`${index}-${option}`} className="rounded-[10px] border border-white/[0.06] px-3 py-2 text-sm font-bold text-white">
+                    <div key={`${index}-${option}`} className="rounded-lg border border-white/[0.06] px-3.5 py-2 text-sm font-bold text-white bg-white/[0.01]">
                       {option || `Option ${index + 1}`}
                     </div>
                   ))}
                 </div>
-                <p className="mt-3 text-xs leading-5 text-muted">Routes through the V2 factory supporting up to 12 dynamically resolvable outcomes.</p>
               </div>
             ) : null}
 
-            <dl className="mt-5 space-y-2.5 border-t border-white/[0.06] pt-5 text-[13px]">
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted">Close</dt>
-                <dd className="text-right font-bold text-white">{getCloseDateLabel()}</dd>
+            <div className="mt-5 rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-4.5 space-y-3">
+              <div className="flex justify-between items-center gap-4 text-xs">
+                <span className="text-[#64748b] font-bold uppercase tracking-wider">Close Time</span>
+                <span className="text-white font-extrabold text-right">{getCloseDateLabel()}</span>
               </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted">Collateral</dt>
-                <dd className="text-right font-bold text-cyan">USDC</dd>
+              <div className="h-px bg-white/[0.04]" />
+              <div className="flex justify-between items-center gap-4 text-xs">
+                <span className="text-[#64748b] font-bold uppercase tracking-wider">Collateral</span>
+                <span className="text-cyan font-black">USDC</span>
               </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted">Resolver</dt>
-                <dd className="text-right font-mono text-[12px] text-white">{resolver ? `${resolver.slice(0, 6)}…${resolver.slice(-4)}` : '—'}</dd>
+              <div className="h-px bg-white/[0.04]" />
+              <div className="flex justify-between items-center gap-4 text-xs">
+                <span className="text-[#64748b] font-bold uppercase tracking-wider">Resolver Address</span>
+                <span className="font-mono text-white text-[11px] text-right">{resolver ? `${resolver.slice(0, 8)}…${resolver.slice(-6)}` : '—'}</span>
               </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted">Mode</dt>
-                <dd className="text-right font-bold text-white">{resolutionMode}</dd>
+              <div className="h-px bg-white/[0.04]" />
+              <div className="flex justify-between items-center gap-4 text-xs">
+                <span className="text-[#64748b] font-bold uppercase tracking-wider">Resolution Mode</span>
+                <span className="text-white font-extrabold text-right">{resolutionMode}</span>
               </div>
-              {resolutionMode === 'Agent assisted' ? (
-                <div className="flex justify-between gap-4">
-                  <dt className="text-muted">Agent resolve fee</dt>
-                  <dd className="text-right font-bold text-cyan">${getResolveFeeUsdc()} USDC</dd>
-                </div>
-              ) : null}
-            </dl>
+              {resolutionMode === 'Agent assisted' && (
+                <>
+                  <div className="h-px bg-white/[0.04]" />
+                  <div className="flex justify-between items-center gap-4 text-xs">
+                    <span className="text-[#64748b] font-bold uppercase tracking-wider">Agent Resolve Fee</span>
+                    <span className="text-cyan font-black text-right">${getResolveFeeUsdc()} USDC</span>
+                  </div>
+                </>
+              )}
+            </div>
 
-            <div className="mt-5 space-y-3 border-t border-white/[0.06] pt-5 text-[13px]">
+            <div className="mt-5 space-y-4 border-t border-white/[0.06] pt-5">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-widest text-muted">Rules</p>
-                <p className="mt-1.5 leading-6 text-white/90">{rules || '—'}</p>
+                <p className="text-[10px] font-black uppercase tracking-wider text-[#64748b]">Resolution Rules</p>
+                <p className="mt-1.5 text-xs text-white/90 leading-relaxed whitespace-pre-wrap">{rules || '—'}</p>
               </div>
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-widest text-muted">Source of truth</p>
-                <p className="mt-1.5 leading-6 text-white/90">{sourceOfTruth || '—'}</p>
+                <p className="text-[10px] font-black uppercase tracking-wider text-[#64748b]">Verification Source</p>
+                <p className="mt-1.5 text-xs text-white/90 leading-relaxed whitespace-pre-wrap">{sourceOfTruth || '—'}</p>
               </div>
             </div>
 
-            <div className="mt-6 flex gap-2">
+            <div className="mt-6 flex gap-3">
               <button
                 type="button"
                 onClick={() => void launchMarket()}
                 disabled={isSubmitting}
-                className="flex-1 rounded-[10px] bg-cyan px-4 py-3 text-[14px] font-black text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex-1 rounded-xl bg-cyan py-3 text-sm font-black text-[#07111f] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 shadow-lg shadow-cyan/10"
               >
-                {isSubmitting ? 'Launching…' : 'Launch market'}
+                {isSubmitting ? 'Launching…' : 'Launch Market'}
               </button>
               <button
                 type="button"
                 onClick={() => setShowReview(false)}
-                className="rounded-[10px] border border-white/[0.08] px-4 py-3 text-[14px] font-black text-white transition-colors hover:border-white/20"
+                className="rounded-xl border border-white/[0.08] px-5 py-3 text-sm font-black text-white transition-colors hover:border-white/20 hover:bg-white/[0.02]"
               >
-                Edit
+                Cancel
               </button>
             </div>
+            
             {statusMessage ? (
-              <p className={`mt-3 rounded-[8px] px-3 py-2 text-[12px] font-bold ${statusMessage.includes('failed') || statusMessage.includes('valid') || statusMessage.includes('required') || statusMessage.includes('Insufficient') ? 'bg-red-400/10 text-red-200' : 'bg-cyan/10 text-cyan'}`}>
+              <p className={`mt-3 rounded-lg px-3 py-2 text-xs font-bold ${statusMessage.toLowerCase().includes('failed') || statusMessage.toLowerCase().includes('error') || statusMessage.toLowerCase().includes('unavailable') ? 'bg-red-500/10 text-red-300 border border-red-500/20' : 'bg-cyan/10 text-cyan border border-cyan/20'}`}>
                 {statusMessage}
               </p>
             ) : null}
@@ -626,32 +704,38 @@ export function CreateMarketBuilder() {
         </div>
       ) : null}
 
+      {/* Launch Success/Failure Overlay Modal */}
       {result ? (
-        <div className="fixed inset-0 z-[9999] grid place-items-center bg-[#050b14]/88 px-4 py-8 backdrop-blur-md">
-          <section className="relative w-full max-w-[460px] overflow-hidden rounded-[16px] border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/50">
-            <div className={`px-6 pb-5 pt-7 text-center ${result.ok ? 'bg-mint/[0.04]' : 'bg-red-400/[0.04]'}`}>
-              <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full text-[22px] font-black ${result.ok ? 'bg-mint/15 text-mint' : 'bg-red-400/15 text-red-300'}`}>
+        <div className="fixed inset-0 z-[9999] grid place-items-center bg-[#050b14]/80 px-4 py-8 backdrop-blur-md">
+          <section className="relative w-full max-w-[460px] overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/60">
+            <div className={`px-6 pb-6 pt-8 text-center ${result.ok ? 'bg-emerald-500/[0.02]' : 'bg-rose-500/[0.02]'}`}>
+              <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full text-lg font-black border ${
+                result.ok 
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                  : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+              }`}>
                 {result.ok ? '✓' : '!'}
               </div>
-              <h2 className="mt-4 text-[20px] font-black text-white">
+              <h2 className="mt-4 text-lg font-black text-white">
                 {result.ok ? 'Market is live.' : 'Could not launch.'}
               </h2>
-              <p className="mx-auto mt-2 max-w-[340px] text-[13px] leading-6 text-muted">
+              <p className="mx-auto mt-2 max-w-[340px] text-xs leading-relaxed text-[#94a3b8]">
                 {result.ok
-                  ? `"${title}" is now on Arc. Trades open immediately and stay open until ${getCloseDateLabel()}.`
+                  ? `"${title}" is now deployed to Arc. Trading starts immediately and stays open until ${getCloseDateLabel()}.`
                   : result.message}
               </p>
             </div>
 
             {result.ok && result.txHash ? (
-              <div className="border-t border-white/[0.06] px-6 py-4 text-center">
+              <div className="border-t border-white/[0.06] px-6 py-4 text-center bg-white/[0.01]">
                 <a
                   href={`https://testnet.arcscan.app/tx/${result.txHash}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="font-mono text-[12px] text-cyan/80 transition-colors hover:text-cyan"
+                  className="inline-flex items-center gap-1.5 font-mono text-[12px] text-cyan transition-colors hover:opacity-80"
                 >
-                  {result.txHash.slice(0, 10)}…{result.txHash.slice(-8)} ↗
+                  <span>Tx: {result.txHash.slice(0, 12)}…{result.txHash.slice(-10)}</span>
+                  <ExternalLink className="h-3 w-3" />
                 </a>
               </div>
             ) : null}
@@ -662,16 +746,16 @@ export function CreateMarketBuilder() {
                   <button
                     type="button"
                     onClick={() => { setResult(null); }}
-                    className="flex-1 py-4 text-[13px] font-black text-muted transition-colors hover:bg-white/[0.03] hover:text-white"
+                    className="flex-1 py-4 text-xs font-black text-[#cbd5e1] transition-colors hover:bg-white/[0.03] hover:text-white"
                   >
                     Stay here
                   </button>
                   <button
                     type="button"
                     onClick={dismissResult}
-                    className="flex-1 border-l border-white/[0.06] bg-cyan py-4 text-[13px] font-black text-ink transition-opacity hover:opacity-90"
+                    className="flex-1 border-l border-white/[0.06] bg-cyan py-4 text-xs font-black text-[#07111f] transition-opacity hover:opacity-90"
                   >
-                    View markets →
+                    View Markets →
                   </button>
                 </>
               ) : (
@@ -679,14 +763,14 @@ export function CreateMarketBuilder() {
                   <button
                     type="button"
                     onClick={() => setResult(null)}
-                    className="flex-1 py-4 text-[13px] font-black text-muted transition-colors hover:bg-white/[0.03] hover:text-white"
+                    className="flex-1 py-4 text-xs font-black text-[#cbd5e1] transition-colors hover:bg-white/[0.03] hover:text-white"
                   >
                     Dismiss
                   </button>
                   <button
                     type="button"
                     onClick={() => { setResult(null); setShowReview(true); }}
-                    className="flex-1 border-l border-white/[0.06] bg-cyan py-4 text-[13px] font-black text-ink transition-opacity hover:opacity-90"
+                    className="flex-1 border-l border-white/[0.06] bg-cyan py-4 text-xs font-black text-[#07111f] transition-opacity hover:opacity-90"
                   >
                     Try again
                   </button>

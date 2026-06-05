@@ -184,14 +184,16 @@ export function CloseDatePicker({ value, onChange, onBlur, placeholder, classNam
         type="button"
         onClick={() => setOpen((v) => !v)}
         onBlur={() => { if (!open) onBlur?.(); }}
-        className={`flex w-full items-center justify-between bg-transparent py-3 text-[15px] outline-none transition-colors border-b ${
-          errored ? 'border-red-400/50 text-red-200' : 'border-white/[0.08] text-white focus:border-cyan/60'
+        className={`flex w-full items-center justify-between rounded-xl border bg-[#0d1626]/20 px-4 py-3 text-[14.5px] outline-none transition-all ${
+          errored 
+            ? 'border-red-400/35 bg-red-400/[0.02] text-red-200 focus:border-red-400/50 focus:ring-1 focus:ring-red-400/50' 
+            : 'border-white/[0.06] hover:border-white/[0.1] hover:bg-white/[0.01] text-white focus:border-cyan/40 focus:bg-[#0d1626]/35 focus:ring-1 focus:ring-cyan/40'
         }`}
         aria-expanded={open}
         aria-haspopup="dialog"
       >
-        <span className={display ? '' : 'text-[#3d4a63]'}>{display || placeholder || 'Pick a date and time'}</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted/70">
+        <span className={display ? 'font-bold' : 'text-[#475569]'}>{display || placeholder || 'Pick a date and time'}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-[#64748b]">
           <rect x="3" y="4" width="18" height="18" rx="2" />
           <line x1="16" y1="2" x2="16" y2="6" />
           <line x1="8" y1="2" x2="8" y2="6" />
