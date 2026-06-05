@@ -246,7 +246,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   Agent
                 </span>
               ) : null}
-              <ShareMarketButton marketId={market.id} title={market.title} />
+              <div className="ml-auto flex items-center gap-2 shrink-0">
+                {connectedWallet ? <AlertPrefsControl marketId={market.id} /> : null}
+                <ShareMarketButton marketId={market.id} title={market.title} />
+              </div>
             </div>
 
             {/* Title */}
@@ -482,7 +485,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             ) : null}
 
             {/* Alerts + comments — in the left column so they match the chart's width */}
-            {connectedWallet ? <AlertPrefsControl marketId={marketId} /> : null}
             <MarketComments marketId={marketId} />
           </section>
 
