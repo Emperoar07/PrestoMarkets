@@ -3,10 +3,12 @@ import { Inter } from 'next/font/google';
 import '@rainbow-me/rainbowkit/styles.css';
 import './globals.css';
 import { AppStateProvider } from '@/lib/appState';
+import { SocialSessionProvider } from '@/lib/socialSessionContext';
 import { TransactionProvider } from '@/lib/transactions';
 import { ToastStack } from '@/components/ToastStack';
 import { RainbowKitProviders } from '@/components/RainbowKitProviders';
 import { CircleConfirmModal } from '@/components/CircleConfirmModal';
+import { SignInModal } from '@/components/SignInModal';
 import { BrandLoadingOverlay } from '@/components/BrandLoader';
 import { NavigationLoader } from '@/components/NavigationLoader';
 import { Suspense } from 'react';
@@ -28,12 +30,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Suspense fallback={<BrandLoadingOverlay />}>
             <NavigationLoader />
           </Suspense>
-          <AppStateProvider>
-            <TransactionProvider>
-              {children}
-              <ToastStack />
-            </TransactionProvider>
-          </AppStateProvider>
+          <SocialSessionProvider>
+            <AppStateProvider>
+              <TransactionProvider>
+                {children}
+                <ToastStack />
+              </TransactionProvider>
+            </AppStateProvider>
+            <SignInModal />
+          </SocialSessionProvider>
           <CircleConfirmModal />
         </RainbowKitProviders>
       </body>

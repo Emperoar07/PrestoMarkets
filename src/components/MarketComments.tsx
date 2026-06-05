@@ -10,12 +10,32 @@ type CommentRow = {
   body: string;
   createdAt: string;
   editedAt?: string | null;
+  authorHandle?: string | null;
+  authorAvatarUrl?: string | null;
 };
 
 const COMMENT_MAX_LENGTH = 1_000;
 
 function shortAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function displayName(comment: CommentRow) {
+  return comment.authorHandle?.trim() ? `@${comment.authorHandle.trim()}` : shortAddress(comment.authorAddress);
+}
+
+function CommentAvatar({ comment }: { comment: CommentRow }) {
+  const url = comment.authorAvatarUrl?.trim();
+  if (url) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={url} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />;
+  }
+  const seed = (comment.authorHandle?.trim() || comment.authorAddress).slice(-2).toUpperCase();
+  return (
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-cyan/15 text-[10px] font-black text-cyan">
+      {seed}
+    </span>
+  );
 }
 
 export function MarketComments({ marketId }: { marketId: string }) {
@@ -131,7 +151,8 @@ export function MarketComments({ marketId }: { marketId: string }) {
         ) : comments.map((comment) => (
           <article key={comment.id} className="py-4">
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-              <span className="font-black text-cyan">{shortAddress(comment.authorAddress)}</span>
+              <CommentAvatar comment={comment} />
+              <span className="font-black text-cyan">{displayName(comment)}</span>
               <span>{new Date(comment.createdAt).toLocaleString()}</span>
               {comment.editedAt ? <span>edited</span> : null}
             </div>

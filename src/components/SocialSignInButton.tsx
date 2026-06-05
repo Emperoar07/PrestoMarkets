@@ -42,6 +42,8 @@ export function SocialSignInButton({ onSignedIn }: { onSignedIn?: () => void }) 
       if (!verifyRes.ok) throw new Error(verifyBody.error ?? 'Sign-in failed.');
 
       setMessage('Signed in.');
+      // Let any mounted session consumer (watchlist, alerts, header) re-read the session.
+      window.dispatchEvent(new CustomEvent('presto:social-changed'));
       onSignedIn?.();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Sign-in failed.');

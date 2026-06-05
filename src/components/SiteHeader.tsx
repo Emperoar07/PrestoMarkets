@@ -256,6 +256,12 @@ export function SiteHeader() {
                   </svg>
                   Portfolio
                 </Link>
+                <Link href="/profile" className={mobileNavLinkClass(pathname === '/profile')} onClick={() => setMobileMenuOpen(false)}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
+                    <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
+                  </svg>
+                  Profile
+                </Link>
               </div>
             </div>
           ) : null}
@@ -376,6 +382,17 @@ export function SiteHeader() {
                         <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
                       </svg>
                       Portfolio
+                    </Link>
+
+                    <Link
+                      href="/profile"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-1.5 text-[11px] font-black text-[#94a3b8] transition-colors hover:text-white"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-70">
+                        <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
+                      </svg>
+                      Profile
                     </Link>
 
                     <a

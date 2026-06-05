@@ -6,8 +6,17 @@ import type { AlertTypes, LeaderboardMetric, LeaderboardPeriod } from './socialV
 
 export async function listComments(marketId: string) {
   return getDb()
-    .select()
+    .select({
+      id: comments.id,
+      authorAddress: comments.authorAddress,
+      body: comments.body,
+      createdAt: comments.createdAt,
+      editedAt: comments.editedAt,
+      authorHandle: profiles.handle,
+      authorAvatarUrl: profiles.avatarUrl,
+    })
     .from(comments)
+    .leftJoin(profiles, eq(profiles.address, comments.authorAddress))
     .where(and(eq(comments.marketId, marketId), eq(comments.hidden, false)))
     .orderBy(desc(comments.createdAt))
     .limit(100);
