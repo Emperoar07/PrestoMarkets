@@ -26,7 +26,8 @@ describe('computePortfolioInsights', () => {
     const insights = computePortfolioInsights(positions, markets);
     expect(insights.totalValue).toBeCloseTo(180);
     expect(insights.totalCost).toBeCloseTo(150);
-    expect(insights.unrealizedPnl).toBeCloseTo(30);
+    expect(insights.unrealizedPnl).toBeCloseTo(10); // open only: (+20) + (-10)
+    expect(insights.realizedPnl).toBeCloseTo(20); // claimable: 30 − 10
     expect(insights.claimableValue).toBeCloseTo(30);
     expect(insights.claimableCount).toBe(1);
     expect(insights.closingSoonCount).toBe(1); // the 0xbbb market is closing soon

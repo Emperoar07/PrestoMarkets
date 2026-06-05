@@ -34,11 +34,22 @@ function parsePnlPercent(pnl: string): number {
 }
 
 export function PortfolioClient() {
-  const { positions, connectedWallet, isLoadingAccount, markets } = useAppState();
+  const { positions, connectedWallet, isLoadingAccount, markets, claimMarket } = useAppState();
   const [filter, setFilter] = useState<FilterType>('all');
   const [sort, setSort] = useState<SortType>('date');
+  const [claimingAll, setClaimingAll] = useState(false);
 
   const insights = computePortfolioInsights(positions, markets);
+
+  async function claimAll() {
+    const ids = Array.from(new Set(positions.filter((p) => p.status === 'Claimable').map((p) => p.marketId)));
+    if (ids.length === 0) return;
+    setClaimingAll(true);
+    for (const marketId of ids) {
+      try { await claimMarket(marketId); } catch { /* keep claiming the rest */ }
+    }
+    setClaimingAll(false);
+  }
 
   const filteredPositions = positions.filter((position) => {
     if (filter === 'open') return position.status === 'Open';
@@ -61,7 +72,7 @@ export function PortfolioClient() {
       <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-36 md:px-7 md:pt-40">
         <h1 className="text-[clamp(44px,6vw,68px)] font-black tracking-tight text-white">Portfolio</h1>
 
-        <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
             <p className="text-sm text-muted">Position value</p>
             <p className="mt-2 text-3xl font-black text-white">{formatUsd(insights.totalValue)}</p>
@@ -72,7 +83,14 @@ export function PortfolioClient() {
             <p className={`mt-2 text-3xl font-black ${insights.unrealizedPnl < 0 ? 'text-red-200' : 'text-mint'}`}>
               {insights.unrealizedPnl >= 0 ? '+' : ''}{formatUsd(insights.unrealizedPnl)}
             </p>
-            <p className="mt-1 text-sm font-bold text-muted">Value − cost basis</p>
+            <p className="mt-1 text-sm font-bold text-muted">Open: value − cost</p>
+          </div>
+          <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
+            <p className="text-sm text-muted">Realized P&L</p>
+            <p className={`mt-2 text-3xl font-black ${insights.realizedPnl < 0 ? 'text-red-200' : 'text-mint'}`}>
+              {insights.realizedPnl >= 0 ? '+' : ''}{formatUsd(insights.realizedPnl)}
+            </p>
+            <p className="mt-1 text-sm font-bold text-muted">Settled + claimable</p>
           </div>
           <div className="rounded-[16px] border border-white/[0.06] bg-[#141e30] p-6">
             <p className="text-sm text-muted">Cost basis</p>
@@ -95,6 +113,16 @@ export function PortfolioClient() {
                 className="rounded-full border border-mint/30 bg-mint/10 px-4 py-2 text-sm font-black text-mint transition-colors hover:bg-mint/15"
               >
                 ⚡ {insights.claimableCount} claimable — {formatUsd(insights.claimableValue)}
+              </button>
+            ) : null}
+            {insights.claimableCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => void claimAll()}
+                disabled={claimingAll}
+                className="rounded-full bg-mint px-4 py-2 text-sm font-black text-[#07111f] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {claimingAll ? 'Claiming…' : `Claim all (${insights.claimableCount})`}
               </button>
             ) : null}
             {insights.closingSoonCount > 0 ? (

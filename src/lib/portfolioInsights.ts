@@ -20,7 +20,10 @@ export type MarketLike = {
 export type PortfolioInsights = {
   totalValue: number;
   totalCost: number;
+  /** Open positions only: current pool-implied value − cost basis. */
   unrealizedPnl: number;
+  /** Settled positions (claimable + already realized): payout − cost basis. */
+  realizedPnl: number;
   claimableValue: number;
   claimableCount: number;
   closingSoonCount: number;
@@ -38,6 +41,8 @@ export function computePortfolioInsights(positions: PositionLike[], markets: Mar
   const marketById = new Map(markets.map((m) => [m.id.toLowerCase(), m]));
   let totalValue = 0;
   let totalCost = 0;
+  let openPnl = 0;
+  let realizedPnl = 0;
   let claimableValue = 0;
   let claimableCount = 0;
   let closingSoonCount = 0;
@@ -45,12 +50,18 @@ export function computePortfolioInsights(positions: PositionLike[], markets: Mar
 
   for (const position of positions) {
     const value = parseUsdAmount(position.value);
+    const cost = parseUsdAmount(position.costBasis);
     totalValue += value;
-    totalCost += parseUsdAmount(position.costBasis);
+    totalCost += cost;
 
-    if (position.status === 'Claimable') {
-      claimableValue += value;
-      claimableCount += 1;
+    if (position.status === 'Claimable' || position.status === 'Realized') {
+      realizedPnl += value - cost;
+      if (position.status === 'Claimable') {
+        claimableValue += value;
+        claimableCount += 1;
+      }
+    } else {
+      openPnl += value - cost;
     }
 
     const market = marketById.get(position.marketId.toLowerCase());
@@ -66,7 +77,8 @@ export function computePortfolioInsights(positions: PositionLike[], markets: Mar
   return {
     totalValue,
     totalCost,
-    unrealizedPnl: totalValue - totalCost,
+    unrealizedPnl: openPnl,
+    realizedPnl,
     claimableValue,
     claimableCount,
     closingSoonCount,
