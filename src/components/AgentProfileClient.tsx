@@ -223,15 +223,7 @@ export function AgentProfileClient() {
               <h2 className="text-sm font-black text-white uppercase tracking-wider">Rules of Engagement</h2>
             </div>
             
-            <div className="mt-5 grid gap-4 grid-cols-2 sm:grid-cols-5">
-              <div className="rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-4 transition-all hover:border-white/[0.08] hover:bg-white/[0.02]">
-                <p className="text-[10px] font-bold text-[#64748b] uppercase tracking-wider">Active Cap</p>
-                <p className="mt-2 text-base font-black text-white">{profile.limits.activeMarketCap} pools</p>
-              </div>
-              <div className="rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-4 transition-all hover:border-white/[0.08] hover:bg-white/[0.02]">
-                <p className="text-[10px] font-bold text-[#64748b] uppercase tracking-wider">Per-Run Cap</p>
-                <p className="mt-2 text-base font-black text-white">{profile.limits.perRunCap} pool</p>
-              </div>
+            <div className="mt-5 grid gap-4 grid-cols-1 sm:grid-cols-3">
               <div className="rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-4 transition-all hover:border-white/[0.08] hover:bg-white/[0.02]">
                 <p className="text-[10px] font-bold text-[#64748b] uppercase tracking-wider">Min Safety</p>
                 <p className="mt-2 text-base font-black text-cyan">{profile.limits.minSafetyScore}%</p>
