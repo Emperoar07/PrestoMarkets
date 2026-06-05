@@ -201,16 +201,16 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
             {/* Actions & Navigation Footer */}
             <div className="flex flex-col gap-1 p-2 bg-[#090e1a] border-t border-white/[0.06]">
               <Link
-                href="/activity"
+                href="/profile"
                 onClick={() => setIsOpen(false)}
                 className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
-                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                  <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
                 </svg>
-                Activity
+                Profile
               </Link>
-              
+
               <Link
                 href="/portfolio"
                 onClick={() => setIsOpen(false)}
@@ -223,14 +223,14 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
               </Link>
 
               <Link
-                href="/profile"
+                href="/activity"
                 onClick={() => setIsOpen(false)}
                 className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
-                  <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                 </svg>
-                Profile
+                Activity
               </Link>
 
               <a
