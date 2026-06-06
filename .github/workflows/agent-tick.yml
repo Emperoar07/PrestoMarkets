@@ -36,6 +36,14 @@ jobs:
             -w "\nHTTP %{http_code}\n" \
             --fail-with-body
 
+      - name: Backfill seed any unseeded open markets
+        if: ${{ always() }}
+        run: |
+          curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/seed-open-markets" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n" \
+            --fail-with-body
+
       - name: Refresh forecaster leaderboard
         if: ${{ always() }}
         run: |
