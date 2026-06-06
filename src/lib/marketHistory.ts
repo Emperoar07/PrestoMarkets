@@ -9,7 +9,7 @@
 
 import { createPublicClient, getAddress, http, isAddress, type AbiEvent, type Address } from 'viem';
 import { getArcChainId, getArcConfig } from './arcConfig';
-import { prestoMarketAbi } from './contracts';
+import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { parseMarketMetadata } from './marketMetadata';
 
 export type ProbabilityPoint = {
@@ -59,8 +59,39 @@ export async function getMarketProbabilityHistory(marketAddress: string): Promis
 
   const latest = await client.getBlockNumber().catch(() => null);
   if (latest === null) return [];
-  const span = BLOCK_CHUNK * BigInt(MAX_CHUNKS);
-  const fromBlock = latest > span ? latest - span : BigInt(0);
+
+  // Query factory events to find the exact creation block of this market for deep history tracking
+  const config = getArcConfig();
+  const factories = [
+    config.factoryAddress ? { address: config.factoryAddress as Address, abi: prestoMarketFactoryAbi } : null,
+    config.multiOutcomeFactoryAddress ? { address: config.multiOutcomeFactoryAddress as Address, abi: prestoMultiOutcomeMarketFactoryAbi } : null,
+  ].filter(Boolean) as { address: Address; abi: any }[];
+
+  let creationBlock = BigInt(0);
+  for (const factory of factories) {
+    try {
+      const logs = await client.getContractEvents({
+        address: factory.address,
+        abi: factory.abi,
+        eventName: 'MarketCreated',
+        args: { market: address },
+        fromBlock: BigInt(0),
+        toBlock: 'latest',
+      });
+      if (logs.length > 0 && logs[0].blockNumber !== null) {
+        creationBlock = logs[0].blockNumber;
+        break;
+      }
+    } catch {
+      // ignore and try next
+    }
+  }
+
+  let fromBlock = creationBlock;
+  if (fromBlock === BigInt(0)) {
+    const span = BLOCK_CHUNK * BigInt(MAX_CHUNKS);
+    fromBlock = latest > span ? latest - span : BigInt(0);
+  }
 
   const logs: TradeLog[] = [];
   for (let start = fromBlock; start <= latest; start += BLOCK_CHUNK) {
