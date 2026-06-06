@@ -246,7 +246,7 @@ const AGENT_MIN_USDC_BALANCE = 1;
 const FAUCET_COOLDOWN_MS = 10 * 60 * 1000;
 let lastFaucetDripAt = 0;
 
-export async function ensureAgentFunded(): Promise<{ ok: boolean; balance?: number; dripped?: boolean; error?: string }> {
+export async function ensureAgentFunded(opts: { force?: boolean } = {}): Promise<{ ok: boolean; balance?: number; dripped?: boolean; faucetStatus?: number; faucetError?: string; blockchain?: string; error?: string }> {
   try {
     const { account, publicClient } = getClients();
     const config = getArcConfig();
@@ -258,26 +258,42 @@ export async function ensureAgentFunded(): Promise<{ ok: boolean; balance?: numb
       args: [account.address],
     }) as bigint;
     const balance = Number(raw) / 1e6;
-    if (balance >= AGENT_MIN_USDC_BALANCE) return { ok: true, balance, dripped: false };
+    if (!opts.force && balance >= AGENT_MIN_USDC_BALANCE) return { ok: true, balance, dripped: false };
 
     // Low balance — request a Circle faucet drip (throttled so we never spam the faucet).
-    if (Date.now() - lastFaucetDripAt < FAUCET_COOLDOWN_MS) return { ok: true, balance, dripped: false };
+    if (!opts.force && Date.now() - lastFaucetDripAt < FAUCET_COOLDOWN_MS) return { ok: true, balance, dripped: false };
     const apiKey = process.env.CIRCLE_API_KEY;
     const blockchain = process.env.CIRCLE_WALLET_BLOCKCHAIN;
     const base = process.env.CIRCLE_BASE_URL || 'https://api.circle.com';
-    if (!apiKey || !blockchain) return { ok: true, balance, dripped: false };
+    if (!apiKey) return { ok: false, balance, dripped: false, error: 'CIRCLE_API_KEY not set' };
+    if (!blockchain) return { ok: false, balance, dripped: false, error: 'CIRCLE_WALLET_BLOCKCHAIN not set' };
     lastFaucetDripAt = Date.now();
     const res = await fetch(`${base.replace(/\/$/, '')}/v1/faucet/drips`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ address: account.address, blockchain, usdc: true, native: true }),
     });
+    const bodyText = await res.text().catch(() => '');
     const dripped = res.ok || res.status === 201;
     logger.info('agent-wallet', 'Faucet top-up requested (agent low on USDC)', { balance, blockchain, status: res.status, dripped });
-    return { ok: true, balance, dripped };
+    return { ok: true, balance, dripped, faucetStatus: res.status, blockchain, faucetError: dripped ? undefined : bodyText.slice(0, 300) };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'fund check failed' };
   }
+}
+
+// Random, unequal seed amounts per outcome so opening odds look organic (not a flat 50/50 or
+// 33/33/33). Each outcome still gets a non-zero floor so every side is backed and the market is
+// always resolvable. The per-market total is also randomized within the cap.
+function randomSeedAmounts(count: number): string[] {
+  const cap = AGENT_SEED_TOTAL_USDC;
+  if (!(cap > 0) || count < 2) return [];
+  const total = cap * (0.4 + Math.random() * 0.6); // 40%–100% of the cap, varies per market
+  const floor = Math.min(0.02, total / count); // guarantees a non-zero share on every outcome
+  const remaining = Math.max(0, total - floor * count);
+  const weights = Array.from({ length: count }, () => Math.random());
+  const wsum = weights.reduce((a, b) => a + b, 0) || 1;
+  return weights.map((w) => Math.max(0.000001, floor + (w / wsum) * remaining).toFixed(6));
 }
 
 async function seedMarketLiquidity(marketAddress: string, outcomeCount: number): Promise<void> {
@@ -285,14 +301,13 @@ async function seedMarketLiquidity(marketAddress: string, outcomeCount: number):
   if (!Number.isInteger(outcomeCount) || outcomeCount < 2) return;
   // Top up from the faucet first if the agent is running low.
   await ensureAgentFunded().catch(() => undefined);
-  const perOutcome = AGENT_SEED_TOTAL_USDC / outcomeCount;
-  if (!(perOutcome > 0)) return;
-  const amountStr = perOutcome.toFixed(6);
+  const amounts = randomSeedAmounts(outcomeCount);
+  if (amounts.length === 0) return;
   for (let i = 0; i < outcomeCount; i++) {
-    const result = await agentBuyShares(marketAddress, i, amountStr);
+    const result = await agentBuyShares(marketAddress, i, amounts[i]);
     if (!result.ok) {
       logger.warn('agent-wallet', 'Seed buy failed for outcome (continuing)', {
-        marketAddress, outcome: i, error: result.error,
+        marketAddress, outcome: i, amount: amounts[i], error: result.error,
       });
     }
   }

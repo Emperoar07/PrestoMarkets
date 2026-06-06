@@ -5,12 +5,12 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { BrandMark } from './BrandMark';
 import { WalletConnectButton } from './WalletConnectButton';
-import { NotificationBell } from './NotificationBell';
 import { fetchArcStableBalances, readCachedUsdcBalance, type StableSymbol } from '@/lib/walletBalance';
 import { getStoredConnectedWallet, subscribeConnectedWallet, disconnectExternalWallet, type ConnectedWallet } from '@/lib/walletProvider';
 import { extractMarketCategories, mergeTopicNavCategories, primaryViewCategories } from '@/lib/categories';
 import { useAppState } from '@/lib/appState';
 import { useDisconnect } from 'wagmi';
+import { useSocialSession } from '@/lib/socialSessionContext';
 
 const dexUrl = process.env.NEXT_PUBLIC_PRESTO_DEX_URL?.trim() || 'https://prestodex-arc.vercel.app';
 
@@ -50,7 +50,15 @@ export function SiteHeader() {
   const [balances, setBalances] = useState<Record<StableSymbol, string | null>>({ USDC: null });
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const { unreadCount, notifications, markNotificationsRead } = useSocialSession();
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      setShowNotifications(false);
+    }
+  }, [menuOpen]);
   const [copied, setCopied] = useState(false);
   const { disconnect } = useDisconnect();
   const { markets } = useAppState();
@@ -190,7 +198,6 @@ export function SiteHeader() {
               Faucet
             </a>
           ) : null}
-          {showWallet ? <NotificationBell /> : null}
           {showWallet ? <WalletConnectButton /> : null}
           <button
             type="button"
@@ -292,18 +299,15 @@ export function SiteHeader() {
               Faucet
             </a>
           ) : null}
-          {showWallet ? <NotificationBell /> : null}
           {showWallet && connectedWallet ? (
             <div ref={menuRef} className="relative flex items-center gap-2">
               {/* Balance pill (standalone, sized to match the header actions) */}
-              <button
-                type="button"
-                onClick={() => setMenuOpen((open) => !open)}
-                className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#0b1322]/80 px-3 py-1 text-[12px] font-black text-[#dbeafe] transition-colors hover:border-cyan/35"
+              <div
+                className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#0b1322]/80 px-3 py-1 text-[12px] font-black text-[#dbeafe]"
               >
                 <span className="text-[#4a5568]">USDC</span>
                 <span className="text-cyan font-black">{balances.USDC ?? '--'}</span>
-              </button>
+              </div>
 
               {/* Wallet pill */}
               <WalletConnectButton
@@ -316,98 +320,187 @@ export function SiteHeader() {
               {/* Merged Single Dropdown Box */}
               {menuOpen ? (
                 <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-[350px] overflow-hidden rounded-[16px] border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/55 backdrop-blur-md">
-                  {/* Identity Header */}
-                  <div className="px-4 pb-3.5 pt-4 bg-[#0d1627]/30">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan/70">
-                        {connectedWallet.mode === 'circle-user-controlled' ? 'App Wallet' : 'External Wallet'}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void navigator.clipboard.writeText(connectedWallet.address);
-                          setCopied(true);
-                          setTimeout(() => setCopied(false), 1400);
-                        }}
-                        className="text-[10px] font-black uppercase tracking-[0.18em] text-[#94a3b8] transition-colors hover:text-cyan"
-                      >
-                        {copied ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-                    <p className="mt-2 text-[12px] font-mono leading-relaxed text-[#cbd5e1] break-all">
-                      {connectedWallet.address}
-                    </p>
-                  </div>
+                  {showNotifications ? (
+                    <>
+                      {/* Notifications Sub-view Header */}
+                      <div className="px-4 pb-3.5 pt-4 bg-[#0d1627]/30 flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={() => setShowNotifications(false)}
+                          className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.14em] text-[#94a3b8] hover:text-white transition-colors"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
+                          </svg>
+                          Back
+                        </button>
+                        <p className="text-xs font-black text-white">Notifications</p>
+                        {unreadCount > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => void markNotificationsRead()}
+                            className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan hover:opacity-85"
+                          >
+                            Mark all read
+                          </button>
+                        ) : null}
+                      </div>
 
-                  <div className="h-px bg-white/[0.06]" />
+                      <div className="h-px bg-white/[0.06]" />
 
-                  {/* Actions & Navigation Footer */}
-                  <div className="flex flex-col gap-1 p-2 bg-[#090e1a]">
-                    <Link
-                      href="/profile"
-                      onClick={() => setMenuOpen(false)}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
-                        <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
-                      </svg>
-                      Profile
-                    </Link>
+                      {/* Notifications Scrollable Feed */}
+                      <div className="max-h-[300px] overflow-y-auto divide-y divide-white/[0.05] bg-[#090e1a] custom-scroll font-sans">
+                        {notifications.length === 0 ? (
+                          <p className="px-4 py-10 text-center text-xs text-[#64748b]">No notifications yet.</p>
+                        ) : (
+                          notifications.map((n) => (
+                            <button
+                              key={n.id}
+                              type="button"
+                              onClick={() => {
+                                void markNotificationsRead([n.id]);
+                                setMenuOpen(false);
+                                setShowNotifications(false);
+                                if (n.link) router.push(n.link);
+                                else if (n.marketId) router.push(`/markets/${n.marketId}`);
+                              }}
+                              className={`block w-full px-4 py-3 text-left transition-colors hover:bg-white/[0.02] ${n.read ? '' : 'bg-cyan/[0.03]'}`}
+                            >
+                              <div className="flex items-start gap-2">
+                                {!n.read ? (
+                                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan" />
+                                ) : (
+                                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0" />
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-[12px] font-bold text-[#e2e8f0] leading-snug">{n.title}</p>
+                                  {n.body ? (
+                                    <p className="mt-0.5 text-[11px] text-[#64748b] leading-snug line-clamp-2">{n.body}</p>
+                                  ) : null}
+                                  <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.12em] text-[#475569]">
+                                    {timeAgo(n.createdAt)}
+                                  </p>
+                                </div>
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* Identity Header */}
+                      <div className="px-4 pb-3.5 pt-4 bg-[#0d1627]/30">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan/70">
+                            {connectedWallet.mode === 'circle-user-controlled' ? 'App Wallet' : 'External Wallet'}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void navigator.clipboard.writeText(connectedWallet.address);
+                              setCopied(true);
+                              setTimeout(() => setCopied(false), 1400);
+                            }}
+                            className="text-[10px] font-black uppercase tracking-[0.18em] text-[#94a3b8] transition-colors hover:text-cyan"
+                          >
+                            {copied ? 'Copied' : 'Copy'}
+                          </button>
+                        </div>
+                        <p className="mt-2 text-[12px] font-mono leading-relaxed text-[#cbd5e1] break-all">
+                          {connectedWallet.address}
+                        </p>
+                      </div>
 
-                    <Link
-                      href="/portfolio"
-                      onClick={() => setMenuOpen(false)}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
-                        <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
-                      </svg>
-                      Portfolio
-                    </Link>
+                      <div className="h-px bg-white/[0.06]" />
 
-                    <Link
-                      href="/activity"
-                      onClick={() => setMenuOpen(false)}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
-                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                      </svg>
-                      Activity
-                    </Link>
+                      {/* Actions & Navigation Footer */}
+                      <div className="flex flex-col gap-1 p-2 bg-[#090e1a]">
+                        <Link
+                          href="/profile"
+                          onClick={() => setMenuOpen(false)}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
+                            <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
+                          </svg>
+                          Profile
+                        </Link>
 
-                    <a
-                      href={`https://testnet.arcscan.app/address/${connectedWallet.address}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
-                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                        <polyline points="15 3 21 3 21 9" />
-                        <line x1="10" y1="14" x2="21" y2="3" />
-                      </svg>
-                      Explorer
-                    </a>
+                        <Link
+                          href="/portfolio"
+                          onClick={() => setMenuOpen(false)}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
+                            <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
+                          </svg>
+                          Portfolio
+                        </Link>
 
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        disconnect();
-                        await disconnectExternalWallet();
-                        setConnectedWallet(null);
-                        setMenuOpen(false);
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#f87171] transition-colors hover:text-red-300 hover:bg-red-500/[0.06] rounded-lg"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
-                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                        <polyline points="16 17 21 12 16 7" />
-                        <line x1="21" y1="12" x2="9" y2="12" />
-                      </svg>
-                      Disconnect
-                    </button>
-                  </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowNotifications(true)}
+                          className="w-full flex items-center justify-between px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg text-left"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
+                              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                            </svg>
+                            Notifications
+                          </div>
+                          {unreadCount > 0 ? (
+                            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-cyan px-1 text-[9px] font-black text-[#07111f]">
+                              {unreadCount}
+                            </span>
+                          ) : null}
+                        </button>
+
+                        <Link
+                          href="/activity"
+                          onClick={() => setMenuOpen(false)}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                          </svg>
+                          Activity
+                        </Link>
+
+                        <a
+                          href={`https://testnet.arcscan.app/address/${connectedWallet.address}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                          </svg>
+                          Explorer
+                        </a>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            disconnect();
+                            await disconnectExternalWallet();
+                            setConnectedWallet(null);
+                            setMenuOpen(false);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#f87171] transition-colors hover:text-red-300 hover:bg-red-500/[0.06] rounded-lg"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                            <polyline points="16 17 21 12 16 7" />
+                            <line x1="21" y1="12" x2="9" y2="12" />
+                          </svg>
+                          Disconnect
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ) : null}
             </div>
@@ -480,5 +573,15 @@ export function SiteHeader() {
       ) : null}
     </header>
   );
+}
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
