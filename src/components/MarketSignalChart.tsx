@@ -71,16 +71,20 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
         : Infinity;
 
     const filtered = rawHistory.filter((point) => now - point.t <= rangeMs);
-    if (filtered.length < 2) return null;
+    // One real point is enough — we append the live current odds as the final point below,
+    // so a single recorded trade still draws a real trend ending at "Now".
+    if (filtered.length < 1) return null;
     return filtered;
   }, [rawHistory, activeTab]);
 
   const realSeries = useMemo(() => {
     if (!filteredHistory) return null;
-    return market.outcomes.map((_, index) =>
-      filteredHistory.map((point) => (point.probabilities[index] ?? 0) * 100)
-    );
-  }, [filteredHistory, market.outcomes.length]);
+    return market.outcomes.map((outcome, index) => [
+      ...filteredHistory.map((point) => (point.probabilities[index] ?? 0) * 100),
+      // Always end the line at the true current odds ("Now").
+      outcome.odds,
+    ]);
+  }, [filteredHistory, market.outcomes]);
 
   const timeLabels = useMemo(() => {
     if (activeTab === '1D') return ['24h ago', '16h ago', '8h ago', 'Now'];
