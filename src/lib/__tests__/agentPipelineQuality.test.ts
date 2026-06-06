@@ -68,6 +68,21 @@ describe('agent pipeline market quality gates', () => {
     expect(draft?.outcomeOptions).toBeUndefined();
     expect(draft?.rules).not.toMatch(/Draw wins/);
   });
+
+  it('generates a first-party market image when no source image is available', async () => {
+    const image = await (__agentPipelineTestHooks as unknown as {
+      fetchTrendImageURI: (trend: { topic: string; query: string; source: string; url: string; imageUrl?: string }) => Promise<string | undefined>;
+    }).fetchTrendImageURI({
+      topic: 'will local test pass',
+      query: '',
+      source: 'test',
+      url: 'notaurl',
+      imageUrl: undefined,
+    });
+
+    expect(image).toMatch(/^https:\/\/presto-markets\.vercel\.app\/api\/market-image\?/);
+    expect(image).toContain('title=will+local+test+pass');
+  });
 });
 
 describe('agent pipeline dynamic categories', () => {

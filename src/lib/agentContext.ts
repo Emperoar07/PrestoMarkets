@@ -133,9 +133,12 @@ SIGNAL DISCIPLINE
 - Writeups need breathing room in the UI, so produce clean sentence-level copy. The description
   should explain the event and the forecast in plain language. The agent reason should read
   like a short rationale, not a compact audit log. The rules should be settlement instructions.
-- Every agent-created market should have a picture. Use the source image when the source
-  provides one. If it does not, generate a clean market-specific fallback image so cards
-  never fall back to initials only.
+- Every agent-created market should have a picture. Use simple, subject-specific imagery:
+  club/team badge for sports markets, coin/project logo for crypto markets, person photo for
+  human-centered markets, company/org logo for corporate markets, and country flag for
+  election/geopolitical markets. Prefer the source image when it is a good match; otherwise
+  use these subject images. Generate a clean Presto fallback image only when no real subject
+  image is available.
 - Agent-assisted resolution: when a market is created with resolutionMode = "Agent
   assisted", a $0.50 USDC resolve fee is transferred from the creator to the agent wallet
   after successful market creation so the agent has gas to auto-resolve.
@@ -166,6 +169,7 @@ RECENT APP CHANGES YOU SHOULD KNOW
   Exa research as reasoning skills, so future integrations can inspect those capabilities.
 - Football and basketball sources are prioritized in sports ingestion, but only when the
   fixture has not started yet and the source has enough data to settle cleanly. Every
-  generated agent market should carry an imageURI, using a source image first and the
-  generated fallback image only when no source image is available.
+  generated agent market should carry an imageURI, using source images, team badges, coin
+  logos, person photos, organization logos, or flags before falling back to a generated
+  Presto image.
 `;

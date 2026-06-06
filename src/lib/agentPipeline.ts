@@ -15,6 +15,7 @@ import { fetchOnchainMarkets } from './onchainMarkets';
 import { sanitizeFeedText } from './feedSanitizer';
 import { fetchPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
 import { resolveSubjectImageUrl } from './marketSubjectImage';
+import { buildGeneratedMarketImageUrl } from './generatedMarketImage';
 import { deriveDisplayType } from './marketDisplay';
 import { logger } from './logger';
 import { assessTrendResearchQuality, formatResearchAssessment, getResearchDecision } from './agentResearch';
@@ -1023,9 +1024,11 @@ async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined>
     if (image) return image;
   }
 
-  // Nothing usable: leave imageURI unset so the UI uses its clean built-in category tile
-  // instead of a text-on-color "writeup" image (which read as decoration).
-  return undefined;
+  return buildGeneratedMarketImageUrl({
+    title: trend.topic,
+    category: deriveFallbackCategory(trend),
+    source: trend.source,
+  });
 }
 
 async function validateImageUrl(imageUrl: string, topic: string): Promise<string | undefined> {
@@ -2272,4 +2275,5 @@ export const __agentPipelineTestHooks = {
   planTargetShape,
   isDateLadderTrend,
   generateDateLadderOptions,
+  fetchTrendImageURI,
 };

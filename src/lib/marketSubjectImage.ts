@@ -22,6 +22,21 @@ const COUNTRY_ISO: Record<string, string> = {
   vietnam: 'vn', thailand: 'th', greece: 'gr', portugal: 'pt', sweden: 'se', norway: 'no',
 };
 
+const CRYPTO_LOGOS: Array<{ aliases: string[]; url: string }> = [
+  { aliases: ['bitcoin', 'btc'], url: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png' },
+  { aliases: ['ethereum', 'ether', 'eth'], url: 'https://assets.coingecko.com/coins/images/279/large/ethereum.png' },
+  { aliases: ['solana', 'sol'], url: 'https://assets.coingecko.com/coins/images/4128/large/solana.png' },
+  { aliases: ['xrp', 'ripple'], url: 'https://assets.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png' },
+  { aliases: ['dogecoin', 'doge'], url: 'https://assets.coingecko.com/coins/images/5/large/dogecoin.png' },
+  { aliases: ['cardano', 'ada'], url: 'https://assets.coingecko.com/coins/images/975/large/cardano.png' },
+  { aliases: ['binance coin', 'bnb'], url: 'https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png' },
+  { aliases: ['usd coin', 'usdc'], url: 'https://assets.coingecko.com/coins/images/6319/large/usdc.png' },
+  { aliases: ['tether', 'usdt'], url: 'https://assets.coingecko.com/coins/images/325/large/Tether.png' },
+  { aliases: ['avalanche', 'avax'], url: 'https://assets.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png' },
+  { aliases: ['chainlink', 'link'], url: 'https://assets.coingecko.com/coins/images/877/large/chainlink-new-logo.png' },
+  { aliases: ['toncoin', 'ton'], url: 'https://assets.coingecko.com/coins/images/17980/large/ton_symbol.png' },
+];
+
 const STOP = new Set([
   'will', 'the', 'a', 'an', 'by', 'in', 'on', 'of', 'to', 'vs', 'and', 'or', 'for', 'is', 'are',
   'be', 'new', 'market', 'price', 'election', 'winner', 'president', 'presidential', 'governor',
@@ -47,6 +62,23 @@ export function extractSubject(topic: string): string {
   return phrase.join(' ');
 }
 
+function hasWord(text: string, value: string) {
+  return new RegExp(`\\b${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text);
+}
+
+export function detectCryptoLogoUrl(text: string): string | undefined {
+  let best: { index: number; url: string } | null = null;
+  for (const asset of CRYPTO_LOGOS) {
+    for (const alias of asset.aliases) {
+      if (!hasWord(text, alias)) continue;
+      const match = new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').exec(text);
+      const index = match?.index ?? Number.POSITIVE_INFINITY;
+      if (!best || index < best.index) best = { index, url: asset.url };
+    }
+  }
+  return best?.url;
+}
+
 export function detectCountryFlagUrl(text: string): string | undefined {
   const lower = text.toLowerCase();
   const entries = Object.entries(COUNTRY_ISO).sort((a, b) => b[0].length - a[0].length);
@@ -54,6 +86,41 @@ export function detectCountryFlagUrl(text: string): string | undefined {
     if (new RegExp(`\\b${name}\\b`).test(lower)) return `https://flagcdn.com/w320/${iso}.png`;
   }
   return undefined;
+}
+
+export function detectSportsTeamSearchName(text: string): string | undefined {
+  const cleaned = text
+    .replace(/[?".,:;!]/g, ' ')
+    .replace(/^Will\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const vsMatch = /\b([A-Z][A-Za-z.&'-]*(?:\s+[A-Z][A-Za-z.&'-]*){0,3})\s+(?:vs|v|versus)\s+([A-Z][A-Za-z.&'-]*(?:\s+[A-Z][A-Za-z.&'-]*){0,3})\b/.exec(cleaned);
+  if (vsMatch?.[1]) return vsMatch[1].trim();
+
+  const actionMatch = /\b([A-Z][A-Za-z.&'-]*(?:\s+[A-Z][A-Za-z.&'-]*){0,3})\s+(?:beat|defeat|play|face|host|visit)\s+([A-Z][A-Za-z.&'-]*(?:\s+[A-Z][A-Za-z.&'-]*){0,3})\b/.exec(cleaned);
+  if (!actionMatch?.[1]) return undefined;
+
+  const candidate = actionMatch[1].trim();
+  const looksLikeKnownTeam =
+    /\b(?:FC|United|City|Arsenal|Chelsea|Lakers|Celtics|Knicks|Spurs|Thunder|Warriors|Heat|Bulls)\b/.test(candidate);
+  const looksLikePerson = /\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/.test(candidate) && !looksLikeKnownTeam;
+  return looksLikePerson ? undefined : candidate;
+}
+
+async function fetchSportsTeamBadge(teamName: string): Promise<string | undefined> {
+  if (!teamName) return undefined;
+  try {
+    const res = await fetchPublicHttpUrl(
+      `https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${encodeURIComponent(teamName)}`,
+      { headers: { 'User-Agent': 'PrestoMarketsAgent/1.0', Accept: 'application/json' }, maxBytes: 300_000, timeoutMs: 8_000 },
+    );
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as { teams?: Array<{ strBadge?: string; strLogo?: string }> | null };
+    return data.teams?.[0]?.strBadge || data.teams?.[0]?.strLogo || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function fetchWikipediaThumbnail(subject: string): Promise<string | undefined> {
@@ -73,6 +140,15 @@ async function fetchWikipediaThumbnail(subject: string): Promise<string | undefi
 
 export async function resolveSubjectImageUrl(trend: { topic: string; query?: string }): Promise<string | undefined> {
   const text = `${trend.topic} ${trend.query ?? ''}`;
+  const cryptoLogo = detectCryptoLogoUrl(text);
+  if (cryptoLogo) return cryptoLogo;
+
+  const sportsTeam = detectSportsTeamSearchName(text);
+  if (sportsTeam) {
+    const badge = await fetchSportsTeamBadge(sportsTeam);
+    if (badge) return badge;
+  }
+
   // Elections/votes → the country flag (matches how the leading venues show these).
   if (/\b(election|presidential|governor|mayor|parliament|referendum|vote)\b/i.test(text)) {
     const flag = detectCountryFlagUrl(text);
