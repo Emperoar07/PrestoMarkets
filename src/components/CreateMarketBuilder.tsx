@@ -26,7 +26,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 
-const resolutionModes: ResolutionMode[] = ['Human resolver', 'Community resolver', 'Agent assisted'];
+const resolutionModes: ResolutionMode[] = ['Human resolver', 'Agent assisted'];
 const maxInlineImageBytes = 300_000;
 
 export function CreateMarketBuilder() {
