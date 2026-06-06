@@ -1,18 +1,10 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import type { Market } from '@/lib/markets';
-import { getOutcomeColor } from '@/lib/outcomeColors';
+import { buildChartOutcomeSeries } from '@/lib/chartSeries';
 
 type MarketSignalChartMarket = Pick<Market, 'id' | 'outcomes' | 'volume' | 'liquidity'>;
 
 const DETAIL_TABS = ['1D', '1W', '1M', 'All'];
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function getChartColor(index: number, count: number) {
-  return getOutcomeColor(index);
-}
 
 function getAxis(points: number[][], outcomeCount: number) {
   return { max: 100, ticks: [100, 75, 50, 25, 0] };
@@ -77,15 +69,6 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
     return filtered;
   }, [rawHistory, activeTab]);
 
-  const realSeries = useMemo(() => {
-    if (!filteredHistory) return null;
-    return market.outcomes.map((outcome, index) => [
-      ...filteredHistory.map((point) => (point.probabilities[index] ?? 0) * 100),
-      // Always end the line at the true current odds ("Now").
-      outcome.odds,
-    ]);
-  }, [filteredHistory, market.outcomes]);
-
   const timeLabels = useMemo(() => {
     if (activeTab === '1D') return ['24h ago', '16h ago', '8h ago', 'Now'];
     if (activeTab === '1W') return ['7d ago', '5d ago', '3d ago', 'Now'];
@@ -101,29 +84,14 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
   const endX = padL + chartW;
   const uid = compact ? 'compact' : 'detail';
 
-  const outcomeSeries = useMemo(
-    () =>
-      market.outcomes.map((outcome, index) => {
-        const real = realSeries?.[index];
-        const useReal = Boolean(real && real.length >= 2);
-        const points = useReal
-          ? (real as number[]).map((point) => clamp(point, 1, 99))
-          : [outcome.odds, outcome.odds].map((point) => clamp(point, 1, 99));
-        const odds = useReal ? Math.round(points[points.length - 1]) : outcome.odds;
-        return {
-          label: outcome.label,
-          odds,
-          points,
-          color: getChartColor(index, market.outcomes.length),
-        };
-      }),
-    [market.outcomes, realSeries]
+  const { series: outcomeSeries, hasCredibleHistory } = useMemo(
+    () => buildChartOutcomeSeries({ outcomes: market.outcomes, history: filteredHistory }),
+    [market.outcomes, filteredHistory],
   );
-  const hasRealHistory = Boolean(realSeries);
 
-  const axis = useMemo(() => getAxis(outcomeSeries.map((series) => series.points), outcomeSeries.length), [outcomeSeries]);
+  const axis = useMemo(() => getAxis(outcomeSeries.map((series) => series.drawPoints), outcomeSeries.length), [outcomeSeries]);
   const paths = useMemo(
-    () => outcomeSeries.map((series) => buildStepPath(series.points, chartW, H, padL, padY, axis.max)),
+    () => outcomeSeries.map((series) => buildStepPath(series.drawPoints, chartW, H, padL, padY, axis.max)),
     [outcomeSeries, chartW, H, padL, padY, axis.max]
   );
 
@@ -176,7 +144,7 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
         ))}
       </div>
       <div className="relative">
-        {!compact && live && !hasRealHistory ? (
+        {!compact && live && !hasCredibleHistory ? (
           <p className="absolute right-0 top-0 z-20 text-[11px] font-black uppercase tracking-[0.14em] text-muted">
             Current odds only
           </p>
@@ -236,7 +204,7 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
           ))}
 
           {outcomeSeries.map((series) => {
-            const endPoint = series.points[series.points.length - 1];
+            const endPoint = series.drawPoints[series.drawPoints.length - 1];
             const endY = chartY(endPoint, H, padY, axis.max);
             return (
               <circle

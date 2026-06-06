@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Pencil, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { MessageCircle, Pencil, Trash2 } from 'lucide-react';
 import { SocialSignInButton } from './SocialSignInButton';
 import { useAppState } from '@/lib/appState';
+import { buildCommentTree, getVisibleReplies, type CommentThreadNode } from '@/lib/commentThread';
 import { useSocialSession } from '@/lib/socialSessionContext';
 
 type CommentRow = {
@@ -20,6 +21,7 @@ type CommentRow = {
 };
 
 const COMMENT_MAX_LENGTH = 1_000;
+const REPLY_PREVIEW_LIMIT = 2;
 
 function shortAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -43,9 +45,11 @@ function CommentAvatar({ comment }: { comment: CommentRow }) {
   );
 }
 
+function formatReplyCount(count: number) {
+  return count === 1 ? '1 more reply' : `${count} more replies`;
+}
+
 export function MarketComments({ marketId }: { marketId: string }) {
-  // Connected wallet covers BOTH external (wagmi) and Circle user-controlled wallets;
-  // identity for edit/delete is the signed-in session address.
   const { connectedWallet } = useAppState();
   const { address: sessionAddress, isSignedIn, requireSignIn } = useSocialSession();
   const address = sessionAddress;
@@ -59,16 +63,15 @@ export function MarketComments({ marketId }: { marketId: string }) {
   const [postError, setPostError] = useState('');
   const [needsSignIn, setNeedsSignIn] = useState(false);
 
-  // Editing state
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [savingEditId, setSavingEditId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  // Replying state
   const [replyToId, setReplyToId] = useState<number | null>(null);
   const [replyDraft, setReplyDraft] = useState('');
   const [postingReply, setPostingReply] = useState(false);
+  const [expandedReplyIds, setExpandedReplyIds] = useState<Set<number>>(new Set());
 
   async function loadComments() {
     setLoading(true);
@@ -89,9 +92,39 @@ export function MarketComments({ marketId }: { marketId: string }) {
     void loadComments();
   }, [marketId]);
 
+  const commentTree = useMemo(() => buildCommentTree(comments), [comments]);
+
+  function toggleExpandedReplies(commentId: number) {
+    setExpandedReplyIds((current) => {
+      const next = new Set(current);
+      if (next.has(commentId)) {
+        next.delete(commentId);
+      } else {
+        next.add(commentId);
+      }
+      return next;
+    });
+  }
+
+  function startReply(comment: CommentRow) {
+    if (!isSignedIn) {
+      setNeedsSignIn(true);
+      requireSignIn();
+      return;
+    }
+    setReplyToId(comment.id);
+    setReplyDraft('');
+  }
+
   async function submitComment() {
     const body = draft.trim();
     if (!body || posting) return;
+
+    if (!isSignedIn) {
+      setNeedsSignIn(true);
+      requireSignIn();
+      return;
+    }
 
     setPosting(true);
     setPostError('');
@@ -124,6 +157,12 @@ export function MarketComments({ marketId }: { marketId: string }) {
     const body = replyDraft.trim();
     if (!body || postingReply) return;
 
+    if (!isSignedIn) {
+      setNeedsSignIn(true);
+      requireSignIn();
+      return;
+    }
+
     setPostingReply(true);
     try {
       const res = await fetch(`/api/markets/${marketId}/comments`, {
@@ -135,11 +174,12 @@ export function MarketComments({ marketId }: { marketId: string }) {
 
       if (res.status === 401) {
         setNeedsSignIn(true);
-        alert('Sign in with your wallet to reply.');
+        requireSignIn();
         return;
       }
       if (!res.ok) throw new Error(data.error ?? 'Reply could not be saved.');
 
+      setExpandedReplyIds((current) => new Set(current).add(parentId));
       setReplyDraft('');
       setReplyToId(null);
       await loadComments();
@@ -156,18 +196,16 @@ export function MarketComments({ marketId }: { marketId: string }) {
       return;
     }
 
-    // Optimistic UI updates
     setComments((prev) =>
-      prev.map((c) => {
-        if (c.id === commentId) {
-          return {
-            ...c,
-            likedByMe: !currentlyLiked,
-            likesCount: currentlyLiked ? Math.max(0, c.likesCount - 1) : c.likesCount + 1,
-          };
-        }
-        return c;
-      })
+      prev.map((comment) =>
+        comment.id === commentId
+          ? {
+              ...comment,
+              likedByMe: !currentlyLiked,
+              likesCount: currentlyLiked ? Math.max(0, comment.likesCount - 1) : comment.likesCount + 1,
+            }
+          : comment,
+      ),
     );
 
     try {
@@ -182,18 +220,16 @@ export function MarketComments({ marketId }: { marketId: string }) {
         throw new Error(errData.error ?? 'Failed to update like.');
       }
     } catch (error) {
-      // Revert optimistic updates on error
       setComments((prev) =>
-        prev.map((c) => {
-          if (c.id === commentId) {
-            return {
-              ...c,
-              likedByMe: currentlyLiked,
-              likesCount: currentlyLiked ? c.likesCount + 1 : Math.max(0, c.likesCount - 1),
-            };
-          }
-          return c;
-        })
+        prev.map((comment) =>
+          comment.id === commentId
+            ? {
+                ...comment,
+                likedByMe: currentlyLiked,
+                likesCount: currentlyLiked ? comment.likesCount + 1 : Math.max(0, comment.likesCount - 1),
+              }
+            : comment,
+        ),
       );
       alert(error instanceof Error ? error.message : 'Could not update like.');
     }
@@ -227,9 +263,7 @@ export function MarketComments({ marketId }: { marketId: string }) {
 
     setDeletingId(commentId);
     try {
-      const res = await fetch(`/api/comments/${commentId}`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(`/api/comments/${commentId}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? 'Comment could not be deleted.');
       await loadComments();
@@ -240,61 +274,215 @@ export function MarketComments({ marketId }: { marketId: string }) {
     }
   }
 
-  // Filter top-level parents and group replies
-  const parentComments = comments.filter((c) => !c.parentId);
-  const repliesByParentId: Record<number, CommentRow[]> = {};
-  comments.forEach((c) => {
-    if (c.parentId) {
-      if (!repliesByParentId[c.parentId]) {
-        repliesByParentId[c.parentId] = [];
-      }
-      repliesByParentId[c.parentId].push(c);
-    }
-  });
-
-  // Sort replies oldest-first so they read as a conversational thread
-  Object.keys(repliesByParentId).forEach((key) => {
-    const pId = Number(key);
-    repliesByParentId[pId].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  function renderReplyComposer(comment: CommentRow) {
+    if (replyToId !== comment.id) return null;
+    return (
+      <div className="mt-3 flex flex-col gap-2 rounded-[10px] border border-white/[0.06] bg-[#0d1520]/70 p-3">
+        <p className="text-[11px] font-black uppercase tracking-[0.12em] text-cyan">
+          Replying to {displayName(comment)}
+        </p>
+        <textarea
+          value={replyDraft}
+          onChange={(event) => setReplyDraft(event.target.value.slice(0, COMMENT_MAX_LENGTH))}
+          placeholder="Write a reply..."
+          rows={2}
+          className="w-full resize-y rounded-[10px] border border-white/[0.08] bg-[#09111d] px-3 py-2 text-sm text-[#e2e8f0] outline-none transition-colors placeholder:text-muted focus:border-cyan/50"
+        />
+        <div className="flex gap-2 justify-end">
+          <button
+            type="button"
+            onClick={() => setReplyToId(null)}
+            className="rounded-[6px] border border-white/[0.08] px-3 py-1 text-xs font-black text-muted transition-colors hover:text-white"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={postingReply || replyDraft.trim().length === 0}
+            onClick={() => void submitReply(comment.id)}
+            className="rounded-[6px] bg-cyan px-3 py-1 text-xs font-black text-[#07111f] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {postingReply && replyToId === comment.id ? 'Replying...' : 'Reply'}
+          </button>
+        </div>
+      </div>
     );
-  });
+  }
+
+  function renderCommentActions(comment: CommentRow) {
+    const isAuthor = address && comment.authorAddress.toLowerCase() === address.toLowerCase();
+    const isEditing = editingCommentId === comment.id;
+    if (!isAuthor || isEditing) return null;
+
+    return (
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => {
+            setEditingCommentId(comment.id);
+            setEditDraft(comment.body);
+          }}
+          className="rounded-[6px] p-1 text-[#8fa0b4] transition-all hover:bg-white/[0.04] hover:text-cyan"
+          title="Edit comment"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleDelete(comment.id)}
+          disabled={deletingId === comment.id}
+          className="rounded-[6px] p-1 text-[#8fa0b4] transition-all hover:bg-white/[0.04] hover:text-red-400 disabled:opacity-50"
+          title="Delete comment"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  function renderCommentBody(comment: CommentRow) {
+    if (editingCommentId !== comment.id) {
+      return <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-[#cbd5e1]">{comment.body}</p>;
+    }
+
+    return (
+      <div className="mt-2 flex flex-col gap-2">
+        <textarea
+          value={editDraft}
+          onChange={(event) => setEditDraft(event.target.value.slice(0, COMMENT_MAX_LENGTH))}
+          rows={2}
+          className="w-full resize-y rounded-[10px] border border-white/[0.08] bg-[#0d1520] px-3 py-2 text-sm text-[#e2e8f0] outline-none transition-colors focus:border-cyan/50"
+        />
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setEditingCommentId(null)}
+            className="rounded-[6px] border border-white/[0.08] px-3 py-1.5 text-xs font-black text-muted transition-colors hover:text-white"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={savingEditId !== null || editDraft.trim().length === 0}
+            onClick={() => void handleSaveEdit(comment.id)}
+            className="rounded-[6px] bg-cyan px-3 py-1.5 text-xs font-black text-[#07111f] transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {savingEditId === comment.id ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderComment(node: CommentThreadNode<CommentRow>, depth = 0) {
+    const { visible, hiddenCount } = getVisibleReplies(node, expandedReplyIds, REPLY_PREVIEW_LIMIT);
+    const hasChildren = node.children.length > 0;
+    const inset = depth === 0 ? 0 : Math.min(depth, 3) * 18;
+
+    return (
+      <div key={node.id} style={{ marginLeft: inset }} className={depth === 0 ? 'py-4' : 'pt-3'}>
+        <article className={depth > 0 ? 'border-l border-white/[0.07] pl-3' : ''}>
+          <div className="flex items-center justify-between gap-2 text-xs text-muted">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <CommentAvatar comment={node} />
+              <span className="font-black text-cyan">{displayName(node)}</span>
+              <span>{new Date(node.createdAt).toLocaleString()}</span>
+              {node.editedAt ? <span className="text-muted/60">· edited</span> : null}
+            </div>
+            {renderCommentActions(node)}
+          </div>
+
+          {renderCommentBody(node)}
+
+          {editingCommentId !== node.id ? (
+            <div className="mt-2.5 flex items-center gap-4 text-xs">
+              <button
+                type="button"
+                onClick={() => void toggleLike(node.id, !!node.likedByMe)}
+                className={`flex items-center gap-1.5 font-bold transition-colors ${
+                  node.likedByMe ? 'text-cyan' : 'text-[#8fa0b4] hover:text-white'
+                }`}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill={node.likedByMe ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2.5" className="opacity-85">
+                  <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
+                </svg>
+                <span>{node.likesCount}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => startReply(node)}
+                className="flex items-center gap-1.5 font-bold text-[#8fa0b4] transition-colors hover:text-white"
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                Reply
+              </button>
+            </div>
+          ) : null}
+
+          {renderReplyComposer(node)}
+        </article>
+
+        {hasChildren ? (
+          <div className="mt-1">
+            {visible.map((child) => renderComment(child, depth + 1))}
+            {hiddenCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => toggleExpandedReplies(node.id)}
+                className="mt-3 border-l border-white/[0.07] pl-3 text-xs font-black text-cyan transition-colors hover:text-white"
+                style={{ marginLeft: Math.min(depth + 1, 3) * 18 }}
+              >
+                See {formatReplyCount(hiddenCount)}
+              </button>
+            ) : node.children.length > REPLY_PREVIEW_LIMIT ? (
+              <button
+                type="button"
+                onClick={() => toggleExpandedReplies(node.id)}
+                className="mt-3 border-l border-white/[0.07] pl-3 text-xs font-black text-[#8fa0b4] transition-colors hover:text-white"
+                style={{ marginLeft: Math.min(depth + 1, 3) * 18 }}
+              >
+                Hide replies
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <section className="mt-8">
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h2 className="text-xl font-black text-white">Comments</h2>
-        </div>
+        <h2 className="text-xl font-black text-white">Comments</h2>
       </div>
 
-      {/* Composer */}
       <div className="mt-4">
-        {isConnected ? (
+        {isSignedIn ? (
           <div className="flex flex-col gap-2">
             <textarea
               value={draft}
-              onChange={(e) => setDraft(e.target.value.slice(0, COMMENT_MAX_LENGTH))}
+              onChange={(event) => setDraft(event.target.value.slice(0, COMMENT_MAX_LENGTH))}
               placeholder="Share your take on this market..."
               rows={3}
-              className="w-full resize-y rounded-[10px] border border-white/[0.08] bg-[#0d1520] px-3 py-2 text-sm text-[#e2e8f0] placeholder:text-muted outline-none transition-colors focus:border-cyan/50"
+              className="w-full resize-y rounded-[10px] border border-white/[0.08] bg-[#0d1520] px-3 py-2 text-sm text-[#e2e8f0] outline-none transition-colors placeholder:text-muted focus:border-cyan/50"
             />
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-xs text-muted">{draft.length}/{COMMENT_MAX_LENGTH}</span>
-              {needsSignIn ? (
-                <SocialSignInButton onSignedIn={() => { setNeedsSignIn(false); void submitComment(); }} />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => void submitComment()}
-                  disabled={posting || draft.trim().length === 0}
-                  className="rounded-[8px] bg-cyan px-4 py-2 text-xs font-black text-[#07111f] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {posting ? 'Posting...' : 'Post comment'}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => void submitComment()}
+                disabled={posting || draft.trim().length === 0}
+                className="rounded-[8px] bg-cyan px-4 py-2 text-xs font-black text-[#07111f] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {posting ? 'Posting...' : 'Post comment'}
+              </button>
             </div>
             {postError ? <p className="text-xs text-yellow-200">{postError}</p> : null}
+          </div>
+        ) : isConnected || needsSignIn ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-3">
+            <p className="text-sm text-muted">Sign in with your wallet to join the discussion.</p>
+            <SocialSignInButton onSignedIn={() => setNeedsSignIn(false)} />
           </div>
         ) : (
           <p className="text-sm text-muted">Connect a wallet to join the discussion.</p>
@@ -306,239 +494,11 @@ export function MarketComments({ marketId }: { marketId: string }) {
       <div className="mt-5 max-h-[400px] overflow-y-auto scrollbar-hide divide-y divide-white/[0.06]">
         {loading ? (
           <p className="py-6 text-sm text-muted">Loading comments...</p>
-        ) : parentComments.length === 0 ? (
+        ) : commentTree.length === 0 ? (
           <p className="py-6 text-sm text-muted">No comments yet.</p>
-        ) : parentComments.map((parent) => {
-          const isParentAuthor = address && parent.authorAddress.toLowerCase() === address.toLowerCase();
-          const isParentEditing = editingCommentId === parent.id;
-          const parentReplies = repliesByParentId[parent.id] ?? [];
-
-          return (
-            <div key={parent.id} className="py-4">
-              {/* Parent Comment */}
-              <article>
-                <div className="flex items-center justify-between gap-2 text-xs text-muted">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <CommentAvatar comment={parent} />
-                    <span className="font-black text-cyan">{displayName(parent)}</span>
-                    <span>{new Date(parent.createdAt).toLocaleString()}</span>
-                    {parent.editedAt ? <span className="text-muted/60">· edited</span> : null}
-                  </div>
-                  {isParentAuthor && !isParentEditing && (
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingCommentId(parent.id);
-                          setEditDraft(parent.body);
-                        }}
-                        className="rounded-[6px] p-1 text-[#8fa0b4] hover:bg-white/[0.04] hover:text-cyan transition-all"
-                        title="Edit comment"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDelete(parent.id)}
-                        disabled={deletingId === parent.id}
-                        className="rounded-[6px] p-1 text-[#8fa0b4] hover:bg-white/[0.04] hover:text-red-400 transition-all disabled:opacity-50"
-                        title="Delete comment"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {isParentEditing ? (
-                  <div className="mt-2 flex flex-col gap-2">
-                    <textarea
-                      value={editDraft}
-                      onChange={(e) => setEditDraft(e.target.value.slice(0, COMMENT_MAX_LENGTH))}
-                      rows={2}
-                      className="w-full resize-y rounded-[10px] border border-white/[0.08] bg-[#0d1520] px-3 py-2 text-sm text-[#e2e8f0] outline-none transition-colors focus:border-cyan/50"
-                    />
-                    <div className="flex gap-2 justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setEditingCommentId(null)}
-                        className="rounded-[6px] border border-white/[0.08] px-3 py-1.5 text-xs font-black text-muted hover:text-white transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        disabled={savingEditId !== null || editDraft.trim().length === 0}
-                        onClick={() => void handleSaveEdit(parent.id)}
-                        className="rounded-[6px] bg-cyan px-3 py-1.5 text-xs font-black text-[#07111f] transition-opacity hover:opacity-90 disabled:opacity-50"
-                      >
-                        {savingEditId === parent.id ? 'Saving...' : 'Save'}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-[#cbd5e1]">{parent.body}</p>
-
-                    {/* Action buttons (Like & Reply) */}
-                    <div className="mt-2.5 flex items-center gap-4 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => void toggleLike(parent.id, !!parent.likedByMe)}
-                        className={`flex items-center gap-1.5 font-bold transition-colors ${
-                          parent.likedByMe ? 'text-cyan' : 'text-[#8fa0b4] hover:text-white'
-                        }`}
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill={parent.likedByMe ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2.5" className="opacity-85">
-                          <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
-                        </svg>
-                        <span>{parent.likesCount}</span>
-                      </button>
-
-                      {isConnected && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setReplyToId(parent.id);
-                            setReplyDraft('');
-                          }}
-                          className="text-[#8fa0b4] hover:text-white font-bold transition-colors"
-                        >
-                          Reply
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
-              </article>
-
-              {/* Inline Reply Composer */}
-              {replyToId === parent.id && (
-                <div className="ml-6 mt-3 pl-3 border-l border-white/[0.06] flex flex-col gap-2">
-                  <textarea
-                    value={replyDraft}
-                    onChange={(e) => setReplyDraft(e.target.value.slice(0, COMMENT_MAX_LENGTH))}
-                    placeholder={`Reply to ${displayName(parent)}...`}
-                    rows={2}
-                    className="w-full resize-y rounded-[10px] border border-white/[0.08] bg-[#0d1520] px-3 py-2 text-sm text-[#e2e8f0] outline-none transition-colors focus:border-cyan/50"
-                  />
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setReplyToId(null)}
-                      className="rounded-[6px] border border-white/[0.08] px-3 py-1 text-xs font-black text-muted hover:text-white transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      disabled={postingReply || replyDraft.trim().length === 0}
-                      onClick={() => void submitReply(parent.id)}
-                      className="rounded-[6px] bg-cyan px-3 py-1 text-xs font-black text-[#07111f] transition-opacity hover:opacity-90 disabled:opacity-50"
-                    >
-                      {postingReply ? 'Replying...' : 'Reply'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Replies list */}
-              {parentReplies.length > 0 && (
-                <div className="ml-6 mt-3 pl-3 border-l border-white/[0.06] flex flex-col gap-3.5">
-                  {parentReplies.map((reply) => {
-                    const isReplyAuthor = address && reply.authorAddress.toLowerCase() === address.toLowerCase();
-                    const isReplyEditing = editingCommentId === reply.id;
-
-                    return (
-                      <article key={reply.id} className="text-sm">
-                        <div className="flex items-center justify-between gap-2 text-xs text-muted">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <CommentAvatar comment={reply} />
-                            <span className="font-black text-cyan">{displayName(reply)}</span>
-                            <span>{new Date(reply.createdAt).toLocaleString()}</span>
-                            {reply.editedAt ? <span className="text-muted/60">· edited</span> : null}
-                          </div>
-                          {isReplyAuthor && !isReplyEditing && (
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingCommentId(reply.id);
-                                  setEditDraft(reply.body);
-                                }}
-                                className="rounded-[6px] p-1 text-[#8fa0b4] hover:bg-white/[0.04] hover:text-cyan transition-all"
-                                title="Edit reply"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleDelete(reply.id)}
-                                disabled={deletingId === reply.id}
-                                className="rounded-[6px] p-1 text-[#8fa0b4] hover:bg-white/[0.04] hover:text-red-400 transition-all disabled:opacity-50"
-                                title="Delete reply"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        {isReplyEditing ? (
-                          <div className="mt-2 flex flex-col gap-2">
-                            <textarea
-                              value={editDraft}
-                              onChange={(e) => setEditDraft(e.target.value.slice(0, COMMENT_MAX_LENGTH))}
-                              rows={2}
-                              className="w-full resize-y rounded-[10px] border border-white/[0.08] bg-[#0d1520] px-3 py-2 text-sm text-[#e2e8f0] outline-none transition-colors focus:border-cyan/50"
-                            />
-                            <div className="flex gap-2 justify-end">
-                              <button
-                                type="button"
-                                onClick={() => setEditingCommentId(null)}
-                                className="rounded-[6px] border border-white/[0.08] px-3 py-1.5 text-xs font-black text-muted hover:text-white transition-colors"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                disabled={savingEditId !== null || editDraft.trim().length === 0}
-                                onClick={() => void handleSaveEdit(reply.id)}
-                                className="rounded-[6px] bg-cyan px-3 py-1.5 text-xs font-black text-[#07111f] transition-opacity hover:opacity-90 disabled:opacity-50"
-                              >
-                                {savingEditId === reply.id ? 'Saving...' : 'Save'}
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-[#cbd5e1]">{reply.body}</p>
-
-                            {/* Reply Like Action */}
-                            <div className="mt-2 flex items-center gap-4 text-xs">
-                              <button
-                                type="button"
-                                onClick={() => void toggleLike(reply.id, !!reply.likedByMe)}
-                                className={`flex items-center gap-1.5 font-bold transition-colors ${
-                                  reply.likedByMe ? 'text-cyan' : 'text-[#8fa0b4] hover:text-white'
-                                }`}
-                              >
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill={reply.likedByMe ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2.5" className="opacity-85">
-                                  <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
-                                </svg>
-                                <span>{reply.likesCount}</span>
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        ) : (
+          commentTree.map((comment) => renderComment(comment))
+        )}
       </div>
     </section>
   );
