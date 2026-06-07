@@ -122,3 +122,9 @@ export const leaderboardCache = pgTable('leaderboard_cache', {
 }, (table) => ({
   pk: primaryKey({ columns: [table.address, table.period] }),
 }));
+
+export const marketMetadataOverrides = pgTable('market_metadata_overrides', {
+  marketId: text('market_id').primaryKey(),
+  imageUri: text('image_uri').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

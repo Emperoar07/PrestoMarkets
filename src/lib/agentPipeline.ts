@@ -1029,7 +1029,7 @@ async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined>
   return undefined;
 }
 
-async function validateImageUrl(imageUrl: string, topic: string): Promise<string | undefined> {
+export async function validateImageUrl(imageUrl: string, topic: string): Promise<string | undefined> {
   // SSRF protection: validate URL before fetching
   if (!isSafeHttpUrl(imageUrl)) {
     logger.warn('agent-pipeline', `Rejected unsafe image URL for ${topic}`);

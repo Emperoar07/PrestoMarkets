@@ -6,6 +6,9 @@ import { isSafeResolutionUri, parseMarketMetadata } from './marketMetadata';
 import { stripSourceFromDescription } from './sourcePrivacy';
 import type { AppMarket } from './appState';
 import type { MarketStatus, MarketType, ResolutionMode } from './markets';
+import { getDb, hasDatabaseUrl } from './db/client';
+import { marketMetadataOverrides } from './db/schema';
+import { logger } from './logger';
 const MARKET_ADDRESS_BATCH_SIZE = 50;
 const MARKET_HYDRATION_BATCH_SIZE = 32; // Increased from 8 for faster parallel hydration
 const MAX_MARKETS = 500;
@@ -366,6 +369,23 @@ async function readOnchainMarkets() {
       ))),
     );
     markets.push(...batchMarkets);
+  }
+
+  // Load and apply local metadata overrides (like updated market images) from the database
+  if (hasDatabaseUrl()) {
+    try {
+      const db = getDb();
+      const overrides = await db.select().from(marketMetadataOverrides);
+      const overridesMap = new Map(overrides.map((row) => [row.marketId.toLowerCase(), row.imageUri]));
+      for (const m of markets) {
+        const overrideImage = overridesMap.get(m.id.toLowerCase());
+        if (overrideImage) {
+          m.imageURI = overrideImage;
+        }
+      }
+    } catch (err) {
+      logger.warn('onchain-markets', 'Failed to load metadata overrides from database', { error: String(err) });
+    }
   }
 
   return markets;

@@ -15,6 +15,13 @@
       "when": 1780670000000,
       "tag": "0003_cron_leases",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780821961952,
+      "tag": "0005_market_metadata_overrides",
+      "breakpoints": true
     }
   ]
 }
