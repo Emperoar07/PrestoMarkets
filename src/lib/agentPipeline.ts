@@ -15,7 +15,6 @@ import { fetchOnchainMarkets } from './onchainMarkets';
 import { sanitizeFeedText } from './feedSanitizer';
 import { fetchPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
 import { resolveSubjectImageUrl } from './marketSubjectImage';
-import { buildGeneratedMarketImageUrl } from './generatedMarketImage';
 import { deriveDisplayType } from './marketDisplay';
 import { logger } from './logger';
 import { assessTrendResearchQuality, formatResearchAssessment, getResearchDecision } from './agentResearch';
@@ -1014,6 +1013,7 @@ function absolutizeUrl(value: string, base: string): string | undefined {
 async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined> {
   const candidates = [
     trend.imageUrl,
+    trend.exaEvidence?.imageUrl,
     await fetchArticleImageUrl(trend),
     // Subject-aware fallback: election flag, person photo, company logo, club crest, place.
     await resolveSubjectImageUrl(trend),
@@ -1024,11 +1024,9 @@ async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined>
     if (image) return image;
   }
 
-  return buildGeneratedMarketImageUrl({
-    title: trend.topic,
-    category: deriveFallbackCategory(trend),
-    source: trend.source,
-  });
+  // Nothing usable: leave imageURI unset so the UI uses its clean built-in category tile
+  // instead of a text-on-color "writeup" image (which read as decoration).
+  return undefined;
 }
 
 async function validateImageUrl(imageUrl: string, topic: string): Promise<string | undefined> {

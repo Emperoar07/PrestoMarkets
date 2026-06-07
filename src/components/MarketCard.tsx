@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, type MouseEvent } from 'react';
+import { memo, useState, type MouseEvent } from 'react';
 import Link from 'next/link';
 import type { Market } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
@@ -38,6 +38,7 @@ function MarketCardComponent({
   market: MarketCardMarket;
   onQuickBuy?: (market: MarketCardMarket, outcome: string) => void;
 }) {
+  const [imageError, setImageError] = useState(false);
   const { refreshAccountPortfolio } = useAppState();
   const yes = market.outcomes.find((o) => o.label === 'YES') ?? market.outcomes[0];
   const yesOdds = yes?.odds ?? 50;
@@ -58,8 +59,17 @@ function MarketCardComponent({
 
   const iconTile = (
     <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-white/[0.04] bg-[#070e17]">
-      {market.imageURI ? (
-        <img src={market.imageURI} alt={market.title} width={40} height={40} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+      {market.imageURI && !imageError ? (
+        <img
+          src={market.imageURI}
+          alt={market.title}
+          width={40}
+          height={40}
+          loading="lazy"
+          decoding="async"
+          className="h-full w-full object-cover"
+          onError={() => setImageError(true)}
+        />
       ) : (
         <span className="text-[10px] font-black text-cyan/70">{market.category.slice(0, 2).toUpperCase()}</span>
       )}
@@ -118,8 +128,17 @@ function MarketCardComponent({
     >
       {/* Left: Icon logo */}
       <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-white/[0.04] bg-[#070e17]">
-        {market.imageURI ? (
-          <img src={market.imageURI} alt={market.title} width={40} height={40} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+        {market.imageURI && !imageError ? (
+          <img
+            src={market.imageURI}
+            alt={market.title}
+            width={40}
+            height={40}
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover"
+            onError={() => setImageError(true)}
+          />
         ) : (
           <span className="text-[10px] font-black text-cyan/70">{market.category.slice(0, 2).toUpperCase()}</span>
         )}

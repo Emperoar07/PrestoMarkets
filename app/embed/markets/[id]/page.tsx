@@ -22,7 +22,14 @@ export default async function EmbeddedMarketPage({ params }: { params: Promise<{
     <main className="min-h-screen bg-[#080d15] p-4 text-white">
       <article className="mx-auto max-w-[480px] overflow-hidden rounded-[14px] border border-white/[0.08] bg-[#101929]">
         {market.imageURI ? (
-          <img src={market.imageURI} alt="" className="h-32 w-full object-cover" />
+          <img
+            src={market.imageURI}
+            alt=""
+            className="h-32 w-full object-cover"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+          />
         ) : null}
         <div className="p-5">
           <div className="flex flex-wrap gap-2">
