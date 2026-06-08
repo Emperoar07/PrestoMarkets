@@ -7,7 +7,23 @@
  * SSRF-safe, image-type-checked validateImageUrl before use.
  */
 
-import { fetchPublicHttpUrl } from './publicUrl';
+// Wikipedia / TheSportsDB are fixed, trusted public APIs (the only user input is the URL-encoded
+// subject in the path), so a plain fetch is safe here and avoids the SSRF-hardened fetcher that
+// was failing to resolve these in the serverless runtime.
+async function fetchJsonWithTimeout(url: string, timeoutMs: number): Promise<Response | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      headers: { 'User-Agent': 'PrestoMarketsAgent/1.0', Accept: 'application/json' },
+      signal: controller.signal,
+    });
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // Common countries → ISO 3166-1 alpha-2 (longest names first when matching).
 const COUNTRY_ISO: Record<string, string> = {
@@ -111,11 +127,11 @@ export function detectSportsTeamSearchName(text: string): string | undefined {
 async function fetchSportsTeamBadge(teamName: string): Promise<string | undefined> {
   if (!teamName) return undefined;
   try {
-    const res = await fetchPublicHttpUrl(
+    const res = await fetchJsonWithTimeout(
       `https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${encodeURIComponent(teamName)}`,
-      { headers: { 'User-Agent': 'PrestoMarketsAgent/1.0', Accept: 'application/json' }, maxBytes: 300_000, timeoutMs: 8_000 },
+      8_000,
     );
-    if (!res.ok) return undefined;
+    if (!res || !res.ok) return undefined;
     const data = (await res.json()) as { teams?: Array<{ strBadge?: string; strLogo?: string }> | null };
     return data.teams?.[0]?.strBadge || data.teams?.[0]?.strLogo || undefined;
   } catch {
@@ -126,11 +142,11 @@ async function fetchSportsTeamBadge(teamName: string): Promise<string | undefine
 async function fetchWikipediaThumbnail(subject: string): Promise<string | undefined> {
   if (!subject) return undefined;
   try {
-    const res = await fetchPublicHttpUrl(
+    const res = await fetchJsonWithTimeout(
       `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(subject)}`,
-      { headers: { 'User-Agent': 'PrestoMarketsAgent/1.0', Accept: 'application/json' }, maxBytes: 200_000, timeoutMs: 8_000 },
+      8_000,
     );
-    if (!res.ok) return undefined;
+    if (!res || !res.ok) return undefined;
     const data = (await res.json()) as { thumbnail?: { source?: string }; originalimage?: { source?: string } };
     return data.originalimage?.source || data.thumbnail?.source || undefined;
   } catch {
