@@ -1127,8 +1127,28 @@ function normalizeUrl(value?: string) {
   }
 }
 
+// Token set of a title, dropping short/stop-ish words so near-rephrasings overlap strongly.
+function titleTokens(value: string): Set<string> {
+  return new Set(normalizeText(value).split(' ').filter((w) => w.length > 2));
+}
+
+// Jaccard similarity of two token sets (intersection / union), 0..1.
+function tokenSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const t of a) if (b.has(t)) inter += 1;
+  const union = a.size + b.size - inter;
+  return union === 0 ? 0 : inter / union;
+}
+
+// Markets are considered duplicates at >= this token-overlap, which catches reworded
+// near-identical drafts (e.g. "Who will win Real Madrid presidency?" vs "...the Real Madrid
+// presidential election?") that exact/substring matching misses.
+const DUPLICATE_SIMILARITY_THRESHOLD = 0.6;
+
 function isDuplicateMarket(draft: GeminiDraft, trend: TrendItem, existingMarkets: AppMarket[]) {
   const draftTitle = normalizeText(draft.title);
+  const draftTokens = titleTokens(draft.title);
   const trendUrl = normalizeUrl(trend.url);
 
   return existingMarkets.some((market) => {
@@ -1137,6 +1157,9 @@ function isDuplicateMarket(draft: GeminiDraft, trend: TrendItem, existingMarkets
     const existingTitle = normalizeText(market.title);
     if (existingTitle === draftTitle) return true;
     if (existingTitle.includes(draftTitle) || draftTitle.includes(existingTitle)) return true;
+
+    // Near-duplicate by token overlap (reworded same question).
+    if (tokenSimilarity(draftTokens, titleTokens(market.title)) >= DUPLICATE_SIMILARITY_THRESHOLD) return true;
 
     const existingTrendUrl = normalizeUrl(market.trendUrl);
     if (trendUrl && existingTrendUrl && trendUrl === existingTrendUrl) return true;

@@ -51,3 +51,11 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -w "\nHTTP %{http_code}\n" \
             --fail-with-body
+
+      - name: Backfill missing market images
+        if: ${{ always() }}
+        run: |
+          curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/backfill-market-images" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n" \
+            --fail-with-body
