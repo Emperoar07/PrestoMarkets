@@ -1188,6 +1188,35 @@ function isDuplicateMarket(draft: GeminiDraft, trend: TrendItem, existingMarkets
   });
 }
 
+// LLM semantic dedup — catches same-meaning markets that token overlap misses, e.g.
+// "Who will win Real Madrid presidency?" vs "Who will be elected Real Madrid president in 2026?".
+// Only invoked after the cheap checks pass, so it adds at most one bounded call per creation.
+async function isSemanticDuplicateMarket(draft: GeminiDraft, existingMarkets: AppMarket[]): Promise<boolean> {
+  const openTitles = existingMarkets
+    .filter((m) => m.status !== 'Resolved' && m.status !== 'Canceled')
+    .map((m) => m.title)
+    .filter(Boolean)
+    .slice(0, 60);
+  if (openTitles.length === 0) return false;
+
+  const prompt = `You de-duplicate prediction markets. A NEW market is a DUPLICATE only if an existing market asks essentially the same question about the same subject AND the same event/outcome — even if reworded. Different price targets, different teams/players, simulations vs reality, or genuinely different events are NOT duplicates.
+
+New market: "${draft.title}"
+
+Existing open markets:
+${openTitles.map((t, i) => `${i + 1}. ${t}`).join('\n')}
+
+Return JSON only: { "duplicate": true|false, "matches": "<existing title it duplicates, or empty>" }`;
+
+  try {
+    const result = await callLlmJson({ task: 'safety', prompt, maxTokens: 120, temperature: 0 });
+    const parsed = extractJsonObject(result.text) as { duplicate?: unknown };
+    return parsed?.duplicate === true;
+  } catch {
+    return false; // never block creation on an LLM error
+  }
+}
+
 type MarketPrecedent = {
   id: string;
   name: string;
@@ -2235,6 +2264,11 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
 
       if (isDuplicateMarket(draft, trend, existingMarkets)) {
         results.push({ ok: false, topic: trend.topic, stage: 'duplicate', reason: 'Similar active market or trend source already exists.' });
+        continue;
+      }
+
+      if (await isSemanticDuplicateMarket(draft, existingMarkets)) {
+        results.push({ ok: false, topic: trend.topic, stage: 'duplicate', reason: 'A near-identical market already exists (semantic match).' });
         continue;
       }
 
