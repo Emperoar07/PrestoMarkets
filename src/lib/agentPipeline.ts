@@ -1029,12 +1029,32 @@ async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined>
   return undefined;
 }
 
+// Curated subject-image hosts (coin logos, flags, club crests, Wikipedia/Wikimedia thumbnails).
+// These are public, hotlink-friendly image CDNs that resolveSubjectImageUrl produces. Re-fetching
+// them from the serverless runtime to sniff content-type is fragile and was rejecting valid images,
+// so we trust them after the SSRF host check and let the browser's onError handle rare misses.
+const TRUSTED_IMAGE_HOSTS = [
+  'assets.coingecko.com', 'coin-images.coingecko.com', 'flagcdn.com',
+  'upload.wikimedia.org', 'r2.thesportsdb.com', 'www.thesportsdb.com', 'thesportsdb.com',
+];
+function isTrustedImageHost(imageUrl: string): boolean {
+  try {
+    const host = new URL(imageUrl).hostname.toLowerCase();
+    return TRUSTED_IMAGE_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}
+
 export async function validateImageUrl(imageUrl: string, topic: string): Promise<string | undefined> {
   // SSRF protection: validate URL before fetching
   if (!isSafeHttpUrl(imageUrl)) {
     logger.warn('agent-pipeline', `Rejected unsafe image URL for ${topic}`);
     return undefined;
   }
+
+  // Trusted curated image CDNs: use directly without the fragile server-side re-fetch.
+  if (isTrustedImageHost(imageUrl)) return imageUrl;
 
   try {
     let finalUrl = imageUrl;
