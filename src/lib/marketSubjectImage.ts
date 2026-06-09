@@ -139,6 +139,13 @@ async function fetchSportsTeamBadge(teamName: string): Promise<string | undefine
   }
 }
 
+// Wikipedia thumb URLs end in `/<width>px-<file>`; rewrite the width so we serve a sensibly
+// sized image (sharp on cards + the detail banner) instead of the multi-MB full-res original.
+function sizedWikiThumb(url: string | undefined, width = 800): string | undefined {
+  if (!url) return undefined;
+  return /\/\d+px-/.test(url) ? url.replace(/\/\d+px-/, `/${width}px-`) : url;
+}
+
 async function fetchWikipediaThumbnail(subject: string): Promise<string | undefined> {
   if (!subject) return undefined;
   try {
@@ -148,7 +155,8 @@ async function fetchWikipediaThumbnail(subject: string): Promise<string | undefi
     );
     if (!res || !res.ok) return undefined;
     const data = (await res.json()) as { thumbnail?: { source?: string }; originalimage?: { source?: string } };
-    return data.originalimage?.source || data.thumbnail?.source || undefined;
+    // Prefer the (resizable) thumbnail upscaled to a reasonable width over the raw original.
+    return sizedWikiThumb(data.thumbnail?.source) || data.thumbnail?.source || data.originalimage?.source || undefined;
   } catch {
     return undefined;
   }
@@ -170,6 +178,13 @@ export async function resolveSubjectImageUrl(trend: { topic: string; query?: str
     const flag = detectCountryFlagUrl(text);
     if (flag) return flag;
   }
-  // Otherwise the main subject's Wikipedia image (person photo, org/company logo, club crest, place).
-  return fetchWikipediaThumbnail(extractSubject(trend.topic));
+
+  // Main subject's Wikipedia image (person photo, org/company logo, club crest, place).
+  // Strip a trailing possessive ("Iran's" -> "Iran") so the lookup resolves.
+  const subject = extractSubject(trend.topic).replace(/['’]s\b/i, '').trim();
+  const wiki = await fetchWikipediaThumbnail(subject);
+  if (wiki) return wiki;
+
+  // Last resort: any country named in the market (e.g. "Iran's football team") → its flag.
+  return detectCountryFlagUrl(text);
 }
