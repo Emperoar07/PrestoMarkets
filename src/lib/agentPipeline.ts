@@ -14,7 +14,7 @@ import { AGENT_PLATFORM_CONTEXT } from './agentContext';
 import { fetchOnchainMarkets } from './onchainMarkets';
 import { sanitizeFeedText } from './feedSanitizer';
 import { fetchPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
-import { resolveSubjectImageUrl } from './marketSubjectImage';
+import { resolveSubjectImageUrl, brandedMarketImage } from './marketSubjectImage';
 import { deriveDisplayType } from './marketDisplay';
 import { logger } from './logger';
 import { assessTrendResearchQuality, formatResearchAssessment, getResearchDecision } from './agentResearch';
@@ -1024,9 +1024,8 @@ async function fetchTrendImageURI(trend: TrendItem): Promise<string | undefined>
     if (image) return image;
   }
 
-  // Nothing usable: leave imageURI unset so the UI uses its clean built-in category tile
-  // instead of a text-on-color "writeup" image (which read as decoration).
-  return undefined;
+  // Guaranteed fallback: a branded, always-loads banner so every agent market has an image.
+  return brandedMarketImage(trend.topic);
 }
 
 // Curated subject-image hosts (coin logos, flags, club crests, Wikipedia/Wikimedia thumbnails).

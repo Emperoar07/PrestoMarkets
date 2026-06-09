@@ -162,6 +162,24 @@ async function fetchWikipediaThumbnail(subject: string): Promise<string | undefi
   }
 }
 
+// Guaranteed, always-loads branded banner (SVG data URI) for markets with no resolvable subject
+// image, so every agent market shows something on-brand instead of a bare category tile.
+const FALLBACK_TINTS = ['#0e2030', '#10233a', '#0c2733', '#13203c', '#0d1e2e', '#102a34'];
+
+export function brandedMarketImage(seed: string): string {
+  const n = Array.from(seed || 'presto').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  const tint = FALLBACK_TINTS[n % FALLBACK_TINTS.length];
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="280" viewBox="0 0 800 280">` +
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b1322"/><stop offset="1" stop-color="${tint}"/></linearGradient>` +
+    `<radialGradient id="r" cx="0.82" cy="0.12" r="0.75"><stop offset="0" stop-color="#25c0f4" stop-opacity="0.16"/><stop offset="1" stop-color="#25c0f4" stop-opacity="0"/></radialGradient></defs>` +
+    `<rect width="800" height="280" fill="url(#g)"/><rect width="800" height="280" fill="url(#r)"/>` +
+    `<g transform="translate(400 132)" fill="none"><circle r="34" stroke="#25c0f4" stroke-opacity="0.22" stroke-width="5"/><circle r="11" fill="#25c0f4" fill-opacity="0.20"/></g>` +
+    `<text x="400" y="196" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="22" font-weight="800" fill="#ffffff" fill-opacity="0.10">Presto Markets</text>` +
+    `</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
 export async function resolveSubjectImageUrl(trend: { topic: string; query?: string }): Promise<string | undefined> {
   const text = `${trend.topic} ${trend.query ?? ''}`;
   const cryptoLogo = detectCryptoLogoUrl(text);

@@ -146,8 +146,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const nextMarkets = await applyImageOverrides(await fetchOnchainMarkets(options));
-      setMarkets(nextMarkets);
+      const nextMarkets = await fetchOnchainMarkets(options);
+      setMarkets(nextMarkets); // render the grid immediately
+      // Merge backfilled image overrides without blocking first paint.
+      void applyImageOverrides(nextMarkets).then((merged) => {
+        if (merged !== nextMarkets) setMarkets(merged);
+      });
       return nextMarkets;
     } catch (error) {
       console.warn('Unable to load onchain markets', error);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 import { verifyBearer } from '@/lib/authCompare';
-import { resolveSubjectImageUrl } from '@/lib/marketSubjectImage';
+import { resolveSubjectImageUrl, brandedMarketImage } from '@/lib/marketSubjectImage';
 import { validateImageUrl } from '@/lib/agentPipeline';
 import { getDb, hasDatabaseUrl } from '@/lib/db/client';
 import { marketMetadataOverrides } from '@/lib/db/schema';
@@ -62,30 +62,19 @@ export async function GET(req: NextRequest) {
           topic: market.title,
           query: market.description,
         });
+        const validated = imageCandidate ? await validateImageUrl(imageCandidate, market.title) : undefined;
+        // Guarantee an image: fall back to a branded banner when no real subject image resolves.
+        const finalImage = validated || brandedMarketImage(market.title);
 
-        if (imageCandidate) {
-          const validated = await validateImageUrl(imageCandidate, market.title);
-          if (validated) {
-            // Write/upsert image override to database
-            await db
-              .insert(marketMetadataOverrides)
-              .values({
-                marketId: market.id.toLowerCase(),
-                imageUri: validated,
-                updatedAt: new Date(),
-              })
-              .onConflictDoUpdate({
-                target: marketMetadataOverrides.marketId,
-                set: { imageUri: validated, updatedAt: new Date() },
-              });
+        await db
+          .insert(marketMetadataOverrides)
+          .values({ marketId: market.id.toLowerCase(), imageUri: finalImage, updatedAt: new Date() })
+          .onConflictDoUpdate({
+            target: marketMetadataOverrides.marketId,
+            set: { imageUri: finalImage, updatedAt: new Date() },
+          });
 
-            updates.push({
-              id: market.id,
-              title: market.title,
-              imageURI: validated,
-            });
-          }
-        }
+        updates.push({ id: market.id, title: market.title, imageURI: finalImage });
       } catch (err) {
         logger.error('backfill-market-images', `Failed to backfill image for market ${market.id}`, {
           error: err instanceof Error ? err.message : String(err),
