@@ -112,6 +112,24 @@ export function formatUsd(value: number) {
   return `$${value.toFixed(2)}`;
 }
 
+// The grid is fetched client-side, where the DB-backed image override merge can't run. Fetch the
+// override map from the server and fill in any market that has no on-chain image.
+async function applyImageOverrides(list: AppMarket[]): Promise<AppMarket[]> {
+  try {
+    const res = await fetch('/api/market-images', { cache: 'no-store' });
+    if (!res.ok) return list;
+    const data = await res.json().catch(() => ({ images: {} }));
+    const images: Record<string, string> = data.images ?? {};
+    if (!images || Object.keys(images).length === 0) return list;
+    return list.map((market) => {
+      const override = images[market.id.toLowerCase()];
+      return override && !market.imageURI ? { ...market, imageURI: override } : market;
+    });
+  } catch {
+    return list;
+  }
+}
+
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [markets, setMarkets] = useState<AppMarket[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
@@ -128,7 +146,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const nextMarkets = await fetchOnchainMarkets(options);
+      const nextMarkets = await applyImageOverrides(await fetchOnchainMarkets(options));
       setMarkets(nextMarkets);
       return nextMarkets;
     } catch (error) {
