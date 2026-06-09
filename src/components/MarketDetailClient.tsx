@@ -1,13 +1,23 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
-import { MarketSignalChart } from './MarketSignalChart';
 import { MarketQualityPanel } from './MarketQualityPanel';
 import { Countdown } from './Countdown';
 import { AlertPrefsControl } from './AlertPrefsControl';
-import { MarketComments } from './MarketComments';
+
+// Heavy, below-the-fold pieces — lazy-load so the market page shell (title, odds, trade panel)
+// paints immediately instead of waiting on the chart's history fetch and the comments list.
+const MarketSignalChart = dynamic(
+  () => import('./MarketSignalChart').then((m) => ({ default: m.MarketSignalChart })),
+  { ssr: false, loading: () => <div className="h-[336px] rounded-[14px] bg-white/[0.02]" /> },
+);
+const MarketComments = dynamic(
+  () => import('./MarketComments').then((m) => ({ default: m.MarketComments })),
+  { ssr: false, loading: () => <div className="mt-8 h-40 rounded-[14px] bg-white/[0.02]" /> },
+);
 import { ShareMarketButton } from './EmbedSnippetButton';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
 import type { StableSymbol } from '@/lib/walletBalance';
