@@ -5,7 +5,7 @@ import {
   type Address,
 } from 'viem';
 import { getArcConfig, getArcChainId } from './arcConfig';
-import { ARC_READ_BATCH, arcReadTransport } from './arcClient';
+import { ARC_READ_BATCH, arcReadTransport, withRpcRetry } from './arcClient';
 import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { fetchMarketCostBasisIndexed } from './costBasisIndexer';
 import type { AppMarket } from './appState';
@@ -192,13 +192,16 @@ export async function fetchAccountPortfolio(
 
     const address = market.id as Address;
     const outcomeLabels = market.outcomes.length > 0 ? market.outcomes.map((outcome) => outcome.label) : ['YES', 'NO'];
+    // Retry each read (429-aware backoff) before falling back. Without retries a transient RPC
+    // blip silently returns 0 shares, which drops a held position and makes the portfolio totals
+    // and counts flicker between loads.
     const [outcomeShareValues, claimPreview, refundable, hasClaimed] = await Promise.all([
       Promise.all(outcomeLabels.map((_, outcomeIndex) =>
-        client.readContract({ address, abi: prestoMarketAbi, functionName: 'sharesOf', args: [outcomeIndex, account] }).catch(() => BigInt(0)),
+        withRpcRetry(() => client.readContract({ address, abi: prestoMarketAbi, functionName: 'sharesOf', args: [outcomeIndex, account] })).catch(() => BigInt(0)),
       )),
-      client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewClaim', args: [account] }).catch(() => [BigInt(0), BigInt(0)] as const),
-      client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewRefund', args: [account] }).catch(() => BigInt(0)),
-      client.readContract({ address, abi: prestoMarketAbi, functionName: 'claimed', args: [account] }).catch(() => false),
+      withRpcRetry(() => client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewClaim', args: [account] })).catch(() => [BigInt(0), BigInt(0)] as const),
+      withRpcRetry(() => client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewRefund', args: [account] })).catch(() => BigInt(0)),
+      withRpcRetry(() => client.readContract({ address, abi: prestoMarketAbi, functionName: 'claimed', args: [account] })).catch(() => false),
     ]);
     const claimable = claimPreview[0];
     const yesIndex = outcomeLabels.findIndex((label) => label.toUpperCase() === 'YES');
