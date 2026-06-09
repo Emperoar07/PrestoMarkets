@@ -6,6 +6,12 @@ name: Agent tick
 # inside the pipeline decides whether each tick actually creates a market,
 # so most ticks legitimately skip (which is the intended behavior).
 #
+# The agent endpoints do heavy, variable work (LLM trend research, on-chain
+# seeding, image fetches) and can exceed the serverless gateway timeout while
+# still completing server-side. Those steps are continue-on-error so a slow
+# trigger never reds the whole tick; the lightweight leaderboard step stays
+# strict as a health signal.
+#
 # Required GitHub Actions secrets:
 #   APP_URL       - production base URL, e.g. https://presto-markets.vercel.app
 #   CRON_SECRET   - matches the CRON_SECRET env var set in Vercel
@@ -19,43 +25,43 @@ on:
 jobs:
   tick:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - name: Trigger market-factory cron
+        continue-on-error: true
         run: |
           curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/market-factory" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -w "\nHTTP %{http_code}\n" \
-            --fail-with-body
+            -w "\nHTTP %{http_code}\n" --max-time 290
 
       - name: Trigger auto-resolve cron
         if: ${{ always() }}
+        continue-on-error: true
         run: |
           curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/auto-resolve" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -w "\nHTTP %{http_code}\n" \
-            --fail-with-body
+            -w "\nHTTP %{http_code}\n" --max-time 290
 
       - name: Backfill seed any unseeded open markets
         if: ${{ always() }}
+        continue-on-error: true
         run: |
           curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/seed-open-markets" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -w "\nHTTP %{http_code}\n" \
-            --fail-with-body
+            -w "\nHTTP %{http_code}\n" --max-time 290
+
+      - name: Backfill missing market images
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/backfill-market-images" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n" --max-time 290
 
       - name: Refresh forecaster leaderboard
         if: ${{ always() }}
         run: |
           curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/leaderboard" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -w "\nHTTP %{http_code}\n" \
-            --fail-with-body
-
-      - name: Backfill missing market images
-        if: ${{ always() }}
-        run: |
-          curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/backfill-market-images" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -w "\nHTTP %{http_code}\n" \
             --fail-with-body

@@ -11,7 +11,7 @@ import { verifyBearer } from '@/lib/authCompare';
 import { runWithCronLease } from '@/lib/cronLease';
 
 export const runtime = 'nodejs';
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
