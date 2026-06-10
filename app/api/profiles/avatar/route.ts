@@ -46,8 +46,9 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ url: blob.url });
   } catch (error) {
+    console.error('[api] profiles/avatar failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Avatar upload failed.' },
+      { error: 'Avatar upload failed.' },
       { status: 502 },
     );
   }

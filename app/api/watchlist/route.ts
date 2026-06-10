@@ -24,8 +24,9 @@ export async function GET(request: NextRequest) {
     const items = await listWatchlist(session.address);
     return NextResponse.json({ items });
   } catch (error) {
+    console.error('[api] watchlist failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Watchlist is unavailable.' },
+      { error: 'Watchlist is unavailable.' },
       { status: 503 },
     );
   }
@@ -47,8 +48,9 @@ export async function POST(request: NextRequest) {
     const item = await addWatchlistItem(session.address, marketId);
     return NextResponse.json({ item }, { status: 201 });
   } catch (error) {
+    console.error('[api] watchlist failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Watchlist item could not be saved.' },
+      { error: 'Watchlist item could not be saved.' },
       { status: 503 },
     );
   }
@@ -70,8 +72,9 @@ export async function DELETE(request: NextRequest) {
     await removeWatchlistItem(session.address, marketId);
     return NextResponse.json({ ok: true });
   } catch (error) {
+    console.error('[api] watchlist failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Watchlist item could not be removed.' },
+      { error: 'Watchlist item could not be removed.' },
       { status: 503 },
     );
   }

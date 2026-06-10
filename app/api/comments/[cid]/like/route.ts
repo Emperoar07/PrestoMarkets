@@ -40,8 +40,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return NextResponse.json({ ok: true });
   } catch (error) {
+    console.error('[api] comments/[cid]/like failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Could not like comment.' },
+      { error: 'Could not like comment.' },
       { status: 500 },
     );
   }
@@ -64,8 +65,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     await unlikeComment(session.address, id);
     return NextResponse.json({ ok: true });
   } catch (error) {
+    console.error('[api] comments/[cid]/like failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Could not unlike comment.' },
+      { error: 'Could not unlike comment.' },
       { status: 500 },
     );
   }

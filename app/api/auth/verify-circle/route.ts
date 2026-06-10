@@ -45,8 +45,9 @@ export async function POST(request: NextRequest) {
   try {
     ownedAddresses = await listCircleWalletAddresses(userToken);
   } catch (error) {
+    console.error('[api] auth/verify-circle failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Circle verification failed.' },
+      { error: 'Circle verification failed.' },
       { status: 502 },
     );
   }

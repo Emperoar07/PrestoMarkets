@@ -22,8 +22,9 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    console.error('[api] profiles/me failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Profile is unavailable.' },
+      { error: 'Profile is unavailable.' },
       { status: 503 },
     );
   }
@@ -87,8 +88,9 @@ export async function PATCH(request: NextRequest) {
     if (isUniqueViolation(error)) {
       return NextResponse.json({ error: 'That username is taken.' }, { status: 409 });
     }
+    console.error('[api] profiles/me failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Profile could not be saved.' },
+      { error: 'Profile could not be saved.' },
       { status: 503 },
     );
   }

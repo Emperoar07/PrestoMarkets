@@ -20,8 +20,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const comments = await listComments(marketId, viewerAddress);
     return NextResponse.json({ comments });
   } catch (error) {
+    console.error('[api] markets/[id]/comments failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Comments are unavailable.' },
+      { error: 'Comments are unavailable.' },
       { status: 503 },
     );
   }
@@ -81,8 +82,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return NextResponse.json({ comment }, { status: 201 });
   } catch (error) {
+    console.error('[api] markets/[id]/comments failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Comment could not be saved.' },
+      { error: 'Comment could not be saved.' },
       { status: 503 },
     );
   }
@@ -122,8 +124,9 @@ export async function PUT(request: NextRequest) {
     }
     return NextResponse.json({ comment: updated });
   } catch (error) {
+    console.error('[api] markets/[id]/comments failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Comment could not be edited.' },
+      { error: 'Comment could not be edited.' },
       { status: 500 },
     );
   }
@@ -157,8 +160,9 @@ export async function DELETE(request: NextRequest) {
     }
     return NextResponse.json({ ok: true });
   } catch (error) {
+    console.error('[api] markets/[id]/comments failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Comment could not be deleted.' },
+      { error: 'Comment could not be deleted.' },
       { status: 500 },
     );
   }

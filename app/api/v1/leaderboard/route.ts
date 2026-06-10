@@ -19,8 +19,9 @@ export async function GET(request: NextRequest) {
     const rows = await listLeaderboard(query);
     return NextResponse.json({ ok: true, ...query, data: rows }, { headers });
   } catch (error) {
+    console.error('[api] v1/leaderboard failed:', error);
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : 'Leaderboard unavailable.' },
+      { ok: false, error: 'Leaderboard unavailable.' },
       { status: 503, headers },
     );
   }

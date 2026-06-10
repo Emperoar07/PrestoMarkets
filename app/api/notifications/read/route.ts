@@ -21,8 +21,9 @@ export async function POST(request: NextRequest) {
     await markNotificationsRead(session.address, ids);
     return NextResponse.json({ ok: true });
   } catch (error) {
+    console.error('[api] notifications/read failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Could not update notifications.' },
+      { error: 'Could not update notifications.' },
       { status: 503 },
     );
   }

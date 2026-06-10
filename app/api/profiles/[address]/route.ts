@@ -22,8 +22,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       },
     });
   } catch (error) {
+    console.error('[api] profiles/[address] failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Profile is unavailable.' },
+      { error: 'Profile is unavailable.' },
       { status: 503 },
     );
   }

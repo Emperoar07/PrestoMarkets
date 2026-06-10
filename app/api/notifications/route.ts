@@ -13,8 +13,9 @@ export async function GET(request: NextRequest) {
     ]);
     return NextResponse.json({ notifications, unreadCount });
   } catch (error) {
+    console.error('[api] notifications failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Notifications are unavailable.' },
+      { error: 'Notifications are unavailable.' },
       { status: 503 },
     );
   }

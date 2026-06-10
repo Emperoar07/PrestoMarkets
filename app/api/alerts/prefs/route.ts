@@ -24,8 +24,9 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    console.error('[api] alerts/prefs failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Alert preferences are unavailable.' },
+      { error: 'Alert preferences are unavailable.' },
       { status: 503 },
     );
   }
@@ -59,8 +60,9 @@ export async function PUT(request: NextRequest) {
     });
     return NextResponse.json({ prefs });
   } catch (error) {
+    console.error('[api] alerts/prefs failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Alert preferences could not be saved.' },
+      { error: 'Alert preferences could not be saved.' },
       { status: 503 },
     );
   }

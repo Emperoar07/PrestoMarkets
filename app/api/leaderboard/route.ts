@@ -9,8 +9,9 @@ export async function GET(request: NextRequest) {
     const rows = await listLeaderboard(query);
     return NextResponse.json({ ...query, rows });
   } catch (error) {
+    console.error('[api] leaderboard failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Leaderboard is unavailable.' },
+      { error: 'Leaderboard is unavailable.' },
       { status: 503 },
     );
   }

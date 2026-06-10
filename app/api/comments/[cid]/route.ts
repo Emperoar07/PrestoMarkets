@@ -39,8 +39,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!comment) return NextResponse.json({ error: 'Comment not found.' }, { status: 404 });
     return NextResponse.json({ comment });
   } catch (error) {
+    console.error('[api] comments/[cid] failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Comment could not be edited.' },
+      { error: 'Comment could not be edited.' },
       { status: 503 },
     );
   }
@@ -64,8 +65,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (!comment) return NextResponse.json({ error: 'Comment not found.' }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (error) {
+    console.error('[api] comments/[cid] failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Comment could not be deleted.' },
+      { error: 'Comment could not be deleted.' },
       { status: 503 },
     );
   }
