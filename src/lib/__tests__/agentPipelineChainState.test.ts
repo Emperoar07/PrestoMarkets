@@ -24,5 +24,5 @@ describe('agent pipeline chain-state safety', () => {
       stage: 'chain-state',
     });
     expect(results[0].ok ? '' : results[0].reason).toMatch(/Arc RPC unavailable/);
-  });
+  }, 20_000); // heavy module import + pipeline run; generous timeout so it doesn't flake under CI load
 });

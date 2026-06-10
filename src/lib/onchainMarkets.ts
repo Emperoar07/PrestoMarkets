@@ -371,21 +371,27 @@ async function readOnchainMarkets() {
     markets.push(...batchMarkets);
   }
 
-  // Load and apply local metadata overrides (like updated market images) from the database
-  if (hasDatabaseUrl()) {
-    try {
-      const db = getDb();
-      const overrides = await db.select().from(marketMetadataOverrides);
-      const overridesMap = new Map(overrides.map((row) => [row.marketId.toLowerCase(), row.imageUri]));
-      for (const m of markets) {
-        const overrideImage = overridesMap.get(m.id.toLowerCase());
-        if (overrideImage) {
-          m.imageURI = overrideImage;
-        }
+  // Apply metadata overrides (updated market images) here, at the single cached source, so every
+  // consumer gets merged markets and cards never flip between tile and image across renders.
+  // Server reads the DB directly; the browser fetches the public override map.
+  try {
+    let overridesMap = new Map<string, string>();
+    if (hasDatabaseUrl()) {
+      const overrides = await getDb().select().from(marketMetadataOverrides);
+      overridesMap = new Map(overrides.map((row) => [row.marketId.toLowerCase(), row.imageUri]));
+    } else if (typeof window !== 'undefined') {
+      const res = await fetch('/api/market-images', { cache: 'no-store', signal: AbortSignal.timeout(4_000) });
+      if (res.ok) {
+        const data = (await res.json().catch(() => ({ images: {} }))) as { images?: Record<string, string> };
+        overridesMap = new Map(Object.entries(data.images ?? {}));
       }
-    } catch (err) {
-      logger.warn('onchain-markets', 'Failed to load metadata overrides from database', { error: String(err) });
     }
+    for (const m of markets) {
+      const overrideImage = overridesMap.get(m.id.toLowerCase());
+      if (overrideImage && !m.imageURI) m.imageURI = overrideImage;
+    }
+  } catch (err) {
+    logger.warn('onchain-markets', 'Failed to load metadata overrides', { error: String(err) });
   }
 
   return markets;

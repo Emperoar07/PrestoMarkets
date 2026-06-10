@@ -69,7 +69,7 @@ describe('agent pipeline market quality gates', () => {
     expect(draft?.rules).not.toMatch(/Draw wins/);
   });
 
-  it('returns undefined when no source image is available', async () => {
+  it('returns a branded fallback image when no source image is available', async () => {
     const image = await (__agentPipelineTestHooks as unknown as {
       fetchTrendImageURI: (trend: { topic: string; query: string; source: string; url: string; imageUrl?: string }) => Promise<string | undefined>;
     }).fetchTrendImageURI({
@@ -80,7 +80,8 @@ describe('agent pipeline market quality gates', () => {
       imageUrl: undefined,
     });
 
-    expect(image).toBeUndefined();
+    // Every agent market must get an image — falls back to a branded SVG data URI.
+    expect(image).toMatch(/^data:image\/svg\+xml,/);
   });
 });
 

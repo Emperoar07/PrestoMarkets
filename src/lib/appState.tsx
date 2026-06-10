@@ -112,52 +112,6 @@ export function formatUsd(value: number) {
   return `$${value.toFixed(2)}`;
 }
 
-// The grid is fetched client-side, where the DB-backed image override merge can't run. We keep
-// the override map in a module cache and merge it SYNCHRONOUSLY when building markets, so cards
-// render with their image in a single pass (no tile→image flash on every refresh).
-let imageOverrideCache: Record<string, string> = {};
-let imageOverridesPrimed = false;
-let imageOverrideVersion = 0;
-
-async function refreshImageOverrideCache(): Promise<void> {
-  try {
-    const res = await fetch('/api/market-images', { cache: 'no-store' });
-    if (!res.ok) return;
-    const data = await res.json().catch(() => ({ images: {} }));
-    imageOverrideCache = data.images ?? {};
-    imageOverridesPrimed = true;
-    imageOverrideVersion += 1; // invalidate the merge memo
-  } catch {
-    /* best-effort */
-  }
-}
-
-// Memoized by input ref + cache version so a cache hit yields the SAME output reference — this
-// keeps the merge stable (no new array each call) and avoids a setMarkets→effect re-render loop.
-let mergeInputRef: AppMarket[] | null = null;
-let mergeOutputRef: AppMarket[] | null = null;
-let mergeMemoVersion = -1;
-
-function mergeImageOverrides(list: AppMarket[]): AppMarket[] {
-  if (!imageOverridesPrimed) return list;
-  if (list === mergeInputRef && mergeMemoVersion === imageOverrideVersion && mergeOutputRef) {
-    return mergeOutputRef;
-  }
-  let changed = false;
-  const out = list.map((market) => {
-    const override = imageOverrideCache[market.id.toLowerCase()];
-    if (override && !market.imageURI) {
-      changed = true;
-      return { ...market, imageURI: override };
-    }
-    return market;
-  });
-  mergeInputRef = list;
-  mergeMemoVersion = imageOverrideVersion;
-  mergeOutputRef = changed ? out : list;
-  return mergeOutputRef;
-}
-
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [markets, setMarkets] = useState<AppMarket[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
@@ -174,8 +128,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      // Synchronous merge from the module cache → cards render with their image in one pass.
-      const nextMarkets = mergeImageOverrides(await fetchOnchainMarkets(options));
+      // fetchOnchainMarkets already merges image overrides at the source, so markets are stable.
+      const nextMarkets = await fetchOnchainMarkets(options);
       setMarkets(nextMarkets);
       return nextMarkets;
     } catch (error) {
@@ -188,12 +142,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [markets]);
 
   useEffect(() => {
-    // Prime the image-override cache once before the first render so markets paint with their
-    // images in a single pass (no tile→image flash), then load markets.
-    void (async () => {
-      if (!imageOverridesPrimed) await refreshImageOverrideCache();
-      await refreshMarkets();
-    })();
+    void refreshMarkets();
   }, [refreshMarkets]);
 
   useEffect(() => {
