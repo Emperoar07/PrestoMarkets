@@ -51,6 +51,69 @@ function splitAgentReason(reason?: string): string[] {
     .filter(Boolean);
 }
 
+const renderEvidenceBlock = (uri?: string) => {
+  if (!uri) {
+    return <p className="mt-1.5 text-sm leading-6 text-muted">No evidence URI recorded.</p>;
+  }
+
+  let parsed: any = null;
+  try {
+    if (uri.startsWith('data:application/json,')) {
+      const rawJson = decodeURIComponent(uri.replace('data:application/json,', ''));
+      parsed = JSON.parse(rawJson);
+    }
+  } catch (e) {
+    // Ignore parse errors
+  }
+
+  if (parsed) {
+    return (
+      <div className="mt-2 space-y-2.5 text-sm">
+        {parsed.outcome && (
+          <div>
+            <span className="text-[10px] font-black uppercase text-muted">Resolved Outcome: </span>
+            <span className="font-extrabold text-white">{parsed.outcome}</span>
+          </div>
+        )}
+        {parsed.evidenceSummary && (
+          <div>
+            <span className="text-[10px] font-black uppercase text-muted block mb-1">Evidence Summary:</span>
+            <p className="leading-relaxed text-[#94a3b8] text-xs bg-white/[0.02] p-2.5 rounded-lg border border-white/[0.04]">
+              {parsed.evidenceSummary}
+            </p>
+          </div>
+        )}
+        {parsed.confidence !== undefined && (
+          <div>
+            <span className="text-[10px] font-black uppercase text-muted">Confidence: </span>
+            <span className="font-extrabold text-cyan">{Math.round(parsed.confidence * 100)}%</span>
+          </div>
+        )}
+        <details className="group mt-2">
+          <summary className="flex cursor-pointer items-center justify-between text-[10px] font-bold text-cyan select-none hover:opacity-85">
+            <span>View raw data URI</span>
+            <ChevronDown className="h-3.5 w-3.5 text-muted transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="mt-2 max-h-[120px] overflow-y-auto rounded-lg bg-[#070e17] border border-white/[0.04] p-3 text-[11px] font-mono break-all text-muted leading-relaxed">
+            {uri}
+          </div>
+        </details>
+      </div>
+    );
+  }
+
+  return (
+    <a
+      href={uri}
+      target="_blank"
+      rel="noreferrer"
+      className="mt-1.5 block break-all text-sm font-bold leading-6 text-cyan hover:opacity-80"
+    >
+      {uri.startsWith('http') ? 'View Evidence Source →' : uri}
+    </a>
+  );
+};
+
 export function MarketDetailClient({ marketId }: { marketId: string }) {
   const { accountPreviews, connectedWallet, getMarket, isLoadingMarkets, placeTrade, addLiquidity, resolveMarket, cancelMarket, claimMarket, refundMarket } = useAppState();
   const { track } = useTransactions();
@@ -434,14 +497,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-3">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-muted">Evidence URI</p>
-                    {market.resolutionURI ? (
-                      <a href={market.resolutionURI} target="_blank" rel="noreferrer"
-                        className="mt-1.5 block break-all text-sm font-bold leading-6 text-cyan hover:opacity-80">
-                        {market.resolutionURI}
-                      </a>
-                    ) : (
-                      <p className="mt-1.5 text-sm leading-6 text-muted">No evidence URI recorded.</p>
-                    )}
+                    {renderEvidenceBlock(market.resolutionURI)}
                   </div>
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-muted">Your settlement</p>

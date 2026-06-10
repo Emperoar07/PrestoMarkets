@@ -36,6 +36,10 @@ export function HomeExperience() {
   const [activeTab, setActiveTab] = useState<'worldcup' | 'all'>('worldcup');
   const featuredMarkets = markets.slice(0, 3);
 
+  const hasInactiveMarket = featuredMarkets.some(
+    (m) => m.status === 'Resolved' || m.status === 'Closed' || m.status === 'Canceled'
+  );
+
   const worldCupFixtures = featuredMarkets.map((market, index) => {
     const mock = mockWorldCupFixtures[index % mockWorldCupFixtures.length];
     
@@ -128,36 +132,45 @@ export function HomeExperience() {
         </section>
 
         <section className="mx-auto max-w-[1400px] px-4 py-6 md:px-7">
-          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-white/[0.06] pb-4">
-            <div className="flex items-center gap-2">
-              <Trophy className="h-5 w-5 text-cyan" />
-              <h2 className="text-[22px] font-extrabold tracking-tight text-white">Featured tournaments & markets</h2>
+          {!hasInactiveMarket ? (
+            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-white/[0.06] pb-4">
+              <div className="flex items-center gap-2">
+                <Trophy className="h-5 w-5 text-cyan" />
+                <h2 className="text-[22px] font-extrabold tracking-tight text-white">Featured tournaments & markets</h2>
+              </div>
+              <div className="inline-flex rounded-lg bg-[#070e17] p-0.5 border border-white/[0.04] shrink-0">
+                <button
+                  onClick={() => setActiveTab('worldcup')}
+                  className={`rounded-md px-4 py-1.5 text-[12px] font-bold transition-all ${
+                    activeTab === 'worldcup'
+                      ? 'bg-cyan text-[#090e1a]'
+                      : 'text-[#94a3b8] hover:text-[#f1f5f9]'
+                  }`}
+                >
+                  🏆 FIFA World Cup
+                </button>
+                <button
+                  onClick={() => setActiveTab('all')}
+                  className={`rounded-md px-4 py-1.5 text-[12px] font-bold transition-all ${
+                    activeTab === 'all'
+                      ? 'bg-cyan text-[#090e1a]'
+                      : 'text-[#94a3b8] hover:text-[#f1f5f9]'
+                  }`}
+                >
+                  🔮 All Featured
+                </button>
+              </div>
             </div>
-            <div className="inline-flex rounded-lg bg-[#070e17] p-0.5 border border-white/[0.04] shrink-0">
-              <button
-                onClick={() => setActiveTab('worldcup')}
-                className={`rounded-md px-4 py-1.5 text-[12px] font-bold transition-all ${
-                  activeTab === 'worldcup'
-                    ? 'bg-cyan text-[#090e1a]'
-                    : 'text-[#94a3b8] hover:text-[#f1f5f9]'
-                }`}
-              >
-                🏆 FIFA World Cup
-              </button>
-              <button
-                onClick={() => setActiveTab('all')}
-                className={`rounded-md px-4 py-1.5 text-[12px] font-bold transition-all ${
-                  activeTab === 'all'
-                    ? 'bg-cyan text-[#090e1a]'
-                    : 'text-[#94a3b8] hover:text-[#f1f5f9]'
-                }`}
-              >
-                🔮 All Featured
-              </button>
+          ) : (
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-[24px] font-extrabold tracking-tight text-white">Featured markets</h2>
+              <Link href="/markets" className="flex items-center gap-2 text-[13px] font-bold text-cyan">
+                View all <ArrowRight className="h-4 w-4" />
+              </Link>
             </div>
-          </div>
+          )}
 
-          {activeTab === 'worldcup' ? (
+          {activeTab === 'worldcup' && !hasInactiveMarket ? (
             <div className="space-y-8">
               <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-br from-[#0c1524] via-[#090e1a] to-[#0a1f1d] p-6 md:p-8 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-cyan/5 rounded-full blur-3xl pointer-events-none" />
