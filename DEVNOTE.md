@@ -20,7 +20,7 @@ These are the things the next chat should not rediscover or change casually.
 * Market creation supports prediction and opinion markets. Agent creates prediction markets autonomously daily.
 * Documentation should be human tone, precise, straightforward. Avoid hype and unnecessary hyphens.
 * GitHub repo is `https://github.com/Emperoar07/PrestoMarkets`.
-* Local repo is `C:\Users\bolaj\presto-markets`.
+* Local repo is `C:\presto-markets`.
 * Comprehensive documentation exists in docs/ directory: TESTNET_DEPLOYMENT.md, TESTNET_MONITORING.md, TESTNET_OPERATIONS.md, ARCHITECTURE.md, ABOUT.md.
 
 ## Current State
@@ -36,7 +36,7 @@ https://github.com/Emperoar07/PrestoMarkets
 Local repo:
 
 ```text
-C:\Users\bolaj\presto-markets
+C:\presto-markets
 ```
 
 The app is a Next.js 16 project with the Presto dark navy and cyan brand style. Current features:
@@ -336,5 +336,5 @@ The autonomous agent moves USDC without human review, so transfers are bounded:
 Use this:
 
 ```text
-We are in C:\Users\bolaj\presto-markets. Read DEVNOTE.md, README.md, and ARCHITECTURE.md first. The autonomous agent is live on Arc Testnet with full orchestration (perceive, analyze, plan, authorize, execute, verify), queue processing every 10 minutes, and comprehensive monitoring. We are focused on testnet stability and scale. Use Arc MCP for Arc decisions and Circle MCP for Circle wallet decisions. Do not add mainnet planning, AMM pricing, USYC yield, or complex features without MCP-backed design. Keep documentation in human tone without em-dashes.
+We are in C:\presto-markets. Read DEVNOTE.md, README.md, and ARCHITECTURE.md first. The autonomous agent is live on Arc Testnet with full orchestration (perceive, analyze, plan, authorize, execute, verify), queue processing every 10 minutes, and comprehensive monitoring. We are focused on testnet stability and scale. Use Arc MCP for Arc decisions and Circle MCP for Circle wallet decisions. Do not add mainnet planning, AMM pricing, USYC yield, or complex features without MCP-backed design. Keep documentation in human tone without em-dashes.
 ```

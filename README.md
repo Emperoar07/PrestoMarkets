@@ -1,16 +1,16 @@
 # Presto Markets
 
-Presto Markets is an institutional-grade prediction market built on Arc, Circle's stablecoin native Layer 1. You can open a public market in a couple of clicks, trade outcome shares settled in USDC, and follow the same signals the platform itself reads from. Every market is its own onchain contract, every settlement is published with evidence, and every market the agent opens carries a visible trail, so you always know what you are looking at.
+Presto Markets is a trust-first prediction market built on Arc, Circle's stablecoin native Layer 1, currently live on Arc Testnet. You can open a public market in a couple of clicks, trade outcome shares settled in USDC, and follow the same signals the platform itself reads from. Every market is its own onchain contract, every settlement is published with evidence, and every market the agent opens carries a visible trail, so you always know what you are looking at.
 
 The idea is simple. Prediction markets work best when the rails feel native, when stablecoins are the unit of account, and when the path from an interesting question to a live, tradable market takes under a minute. They get most useful as they move past entertainment into financial and operational workflows, where people need a live read on how outcomes are being priced. Arc gives us that foundation, with USDC as both the unit of account and the gas, and sub-second deterministic finality that settles every trade for good. Presto adds a calm, readable surface on top, with an agent that watches global trends and opens fresh markets every day.
 
 ## What you can do
 
-**Open a market in two flavors.** Prediction markets resolve from an external source of truth. Opinion markets resolve from a community vote. Each one takes a close date, up to four categories, a description, an image, optional poll options, and a resolver of your choosing.
+**Open a market in two flavors.** Prediction markets resolve from an external source of truth. Opinion markets capture sentiment and settle through their named resolver (community-vote settlement is on the roadmap, not live yet). Each one takes a close date, up to four categories, a description, an image, optional poll options, and a resolver of your choosing.
 
 **Trade with USDC.** Buy YES or NO on a binary market, or any option on a poll. Orders execute against the live share contract, and the panel shows your shares and a payout estimate before you sign.
 
-**Settle with confidence.** Resolvers post evidence that the contract keeps for good. Crypto price markets settle straight from the live price. Other markets settle from their declared sources once the evidence is clear, and anything uncertain waits for a person to review it.
+**Settle with confidence.** Resolvers post evidence that the contract keeps for good. Crypto price markets settle straight from the live price. Other markets settle from their declared sources once the evidence is clear; anything that stays uncertain past a grace window is canceled and every participant is refunded in full.
 
 **Watch the agent work.** The Presto agent reads live trends from a dozen sources, ranks them by how many outlets are covering the same story, and opens the few that clear its bar. It has its own onchain identity, its own wallet, and its own activity feed in the app. What the agent sees, you see.
 
@@ -24,7 +24,7 @@ The idea is simple. Prediction markets work best when the rails feel native, whe
 
 **Circle wallets.** New users onboard with email, Google, or a PIN. Anyone already holding an EVM wallet connects through the same surface. Sessions refresh on their own, so a working trader is never interrupted.
 
-**An autonomous agent.** It reads trends, classifies each one, drafts a market with a close date that fits the event, runs a safety pass, and opens the market onchain. The model rotation runs Claude first, then Groq, OpenRouter, Cerebras, and Together, so one provider hiccup never silences it.
+**An autonomous agent.** It reads trends, classifies each one, drafts a market with a close date that fits the event, runs a safety pass, seeds every outcome so the market can always settle, and opens it onchain. The model rotation runs Claude first with a seven-provider fallback chain (Gemini, Groq, Mistral, OpenRouter, Cerebras, Together, Hugging Face), so one provider hiccup never silences it.
 
 **Verifiable identity.** The agent is registered with an ERC-8004 identity on Arc, so its track record can be checked onchain.
 

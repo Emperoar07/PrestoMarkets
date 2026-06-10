@@ -6,8 +6,8 @@
 - **Chain.** Arc Testnet (chain ID 5042002), USDC as native gas.
 - **Chain Interaction.** viem publicClient for reads and walletClient for writes. No indexer; reads hit Arc RPC directly.
 - **Wallets.** Circle user-controlled wallets (email/Google/PIN onboarding) or any EVM wallet via external connection.
-- **Hosting.** Vercel for the app and API routes. Cron jobs run every 10 minutes for autonomous agent processing.
-- **LLM Stack.** Anthropic Claude as primary, with Groq, OpenRouter, Cerebras, and Together as fallbacks.
+- **Hosting.** Vercel for the app and API routes. The agent ticks every 2 hours via a GitHub Actions workflow (market factory, auto-resolve, liquidity seeding backfill, image backfill, leaderboard refresh), with a daily Vercel cron as a fallback heartbeat.
+- **LLM Stack.** Anthropic Claude as primary, with Gemini, Groq, Mistral, OpenRouter, Cerebras, Together, and Hugging Face as fallbacks.
 
 ## Contracts
 

@@ -43,6 +43,11 @@ export type TrendItem = {
   publishedAt?: number;
   /** Server-side Exa evidence bundle used for classification, drafting, and provenance notes. */
   exaEvidence?: ExaEvidence;
+  /**
+   * Guaranteed-creation lane: marquee fixtures (FIFA World Cup) that must become a market on
+   * every match day, bypassing the signal/classify gates. Dedup and the active cap still apply.
+   */
+  guaranteedFixture?: boolean;
 };
 
 /** Human-readable age of a trend ("3h ago", "2d ago") for prompts/logging. */
@@ -581,6 +586,7 @@ const MAJOR_SPORTS_LEAGUES = [
   'french ligue 1', 'uefa champions league', 'uefa europa league', 'uefa europa conference',
   'american major league soccer', 'english football league championship', 'fa cup',
   'copa del rey', 'dfb pokal', 'coppa italia', 'saudi pro league',
+  'fifa world cup',
   'nba', 'euroleague', 'wnba',
 ];
 
@@ -631,8 +637,12 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
         const away = sanitizeFeedText(event.strAwayTeam || '');
         if (!home || !away) return [];
 
+        // FIFA World Cup fixtures are marquee: every match on a match day must get a market,
+        // so they ride the guaranteed lane instead of competing through the signal gates.
+        const isWorldCupFixture = sport.sport === 'Soccer' && /world cup/i.test(event.strLeague ?? '');
+
         // Skip obscure competitions — only top-tier leagues/cups become markets.
-        if (!isMajorSportsLeague(event.strLeague)) return [];
+        if (!isWorldCupFixture && !isMajorSportsLeague(event.strLeague)) return [];
 
         // Only open a market on a match that has NOT started yet. A match with a score, a
         // finished/in-play status, or a kickoff already in the past is decided or underway,
@@ -654,11 +664,12 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
 
         return [{
           topic: `${home} vs ${away}`,
-          query: `${home} (${sport.category}) vs ${away}. Match ${event.strStatus || 'upcoming'}.`,
+          query: `${home} (${sport.category}) vs ${away}. Match ${event.strStatus || 'upcoming'}.${isWorldCupFixture ? ' FIFA World Cup fixture.' : ''}`,
           source: sport.source,
           url: `https://www.thesportsdb.com/event/${event.idEvent}`,
           imageUrl: event.strThumb ?? undefined,
           ...(closeMs !== null ? { closeDate: new Date(closeMs).toISOString() } : {}),
+          ...(isWorldCupFixture ? { guaranteedFixture: true } : {}),
         }];
       });
     } catch (err) {
@@ -2132,6 +2143,51 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
     }];
   }
 
+  let liveActive = activeAgentMarkets;
+
+  // ── Guaranteed lane: FIFA World Cup fixtures ──
+  // Every World Cup match on a match day gets its own market, created deterministically from
+  // the binary match-result template (no LLM classify/safety gates — the fixture is the signal).
+  // Dedup still applies so re-runs skip fixtures that already have a market, and the active-market
+  // cap remains the hard ceiling. The per-run cap is intentionally NOT applied here so a 4-match
+  // group-stage day gets all 4 markets in one tick.
+  const fixtureTrends = trends.filter((trend) => trend.guaranteedFixture);
+  for (const trend of fixtureTrends) {
+    if (liveActive >= AGENT_ACTIVE_MARKET_CAP) {
+      results.push({ ok: false, topic: trend.topic, stage: 'cap', reason: 'Active-market cap reached before all World Cup fixtures were created; remaining fixtures retry next tick.' });
+      break;
+    }
+    try {
+      const draft = fallbackTemplateFromTrend(trend, 'Prediction');
+      if (!draft) {
+        results.push({ ok: false, topic: trend.topic, stage: 'draft', reason: 'World Cup fixture could not be shaped into a match-result template.' });
+        continue;
+      }
+      if (isDuplicateMarket(draft, trend, existingMarkets)) {
+        results.push({ ok: false, topic: trend.topic, stage: 'duplicate', reason: 'Fixture market already exists.' });
+        continue;
+      }
+      const qualityIssue = validateDraftQuality(draft, trend);
+      if (qualityIssue) {
+        results.push({ ok: false, topic: trend.topic, stage: 'draft-quality', reason: qualityIssue });
+        continue;
+      }
+      const result = await createOnchain(
+        draft,
+        trend,
+        { worthy: true, momentumScore: 0.95, category: 'Football', categories: ['Football', 'Sports'], suggestedMarketType: 'Prediction', reason: 'Guaranteed FIFA World Cup fixture.' },
+        { pass: true, confidence: 0.95, reason: 'Deterministic World Cup match-result template; settles from the official fixture result.' },
+      );
+      results.push(result);
+      if (result.ok) {
+        liveActive += 1;
+        typeMix.Prediction += 1;
+      }
+    } catch (e) {
+      results.push({ ok: false, topic: trend.topic, stage: 'pipeline', reason: String(e) });
+    }
+  }
+
   // Stage 2: classify candidate trends so we can rank by signal strength.
   // Classification is the expensive LLM step. When only free providers are
   // available, classifying all ~24 trends per run risks rate-limiting the whole
@@ -2222,7 +2278,6 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   // Try candidates in pulled-from-pool order until one passes draft + safety + onchain.
   // Per-run cap still applies so we create at most AGENT_PER_RUN_CAP markets per tick.
   let createdThisRun = 0;
-  let liveActive = activeAgentMarkets;
   const pool = [...topPool];
 
   while (createdThisRun < AGENT_PER_RUN_CAP && liveActive < AGENT_ACTIVE_MARKET_CAP && pool.length > 0) {

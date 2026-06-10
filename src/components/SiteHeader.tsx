@@ -221,12 +221,17 @@ export function SiteHeader() {
       {/* ── Mobile search bar — always visible (< md) ── */}
       {showSearchBar ? (
         <div className="px-3 pb-2 md:hidden">
-          <input
-            value={searchValue}
-            onChange={(event) => updateExploreSearch(event.target.value)}
-            placeholder="Search markets…"
-            className="w-full rounded-xl border border-white/[0.06] bg-[#0d1520] px-3.5 py-2 text-[13px] font-medium text-white outline-none transition-colors placeholder:text-[#334155] focus:border-cyan/40"
-          />
+          <div className="relative">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#475569]">
+              <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              value={searchValue}
+              onChange={(event) => updateExploreSearch(event.target.value)}
+              placeholder="Search markets…"
+              className="w-full rounded-xl border border-white/[0.06] bg-[#0d1520] py-2 pl-9 pr-3.5 text-[13px] font-medium text-white outline-none transition-colors placeholder:text-[#334155] focus:border-cyan/40"
+            />
+          </div>
         </div>
       ) : null}
 
@@ -263,12 +268,17 @@ export function SiteHeader() {
         </div>
         <div className="flex flex-1">
           {showSearchBar ? (
-            <input
-              value={searchValue}
-              onChange={(event) => updateExploreSearch(event.target.value)}
-              placeholder="Search markets…"
-              className="w-full max-w-[520px] rounded-lg border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-[13px] font-medium text-white outline-none transition-colors placeholder:text-[#334155] focus:border-cyan/40"
-            />
+            <div className="relative w-full max-w-[520px]">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#475569]">
+                <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                value={searchValue}
+                onChange={(event) => updateExploreSearch(event.target.value)}
+                placeholder="Search markets…"
+                className="w-full rounded-lg border border-white/[0.06] bg-[#0d1520] py-2 pl-9 pr-3 text-[13px] font-medium text-white outline-none transition-colors placeholder:text-[#334155] focus:border-cyan/40"
+              />
+            </div>
           ) : null}
         </div>
         <nav className="ml-auto flex shrink-0 items-center gap-2">

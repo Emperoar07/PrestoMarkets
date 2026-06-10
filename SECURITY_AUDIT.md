@@ -2,6 +2,8 @@
 
 Date: 2026-05-22
 
+> **Addendum (2026-06-10).** Several findings below are resolved since this audit was written. Fixed: the P1 Circle execution allowlist (policy now derives known markets from factory logs), SIWE hardening (Arc chain id 5042002, origin/URI/nonce binding, issued-at freshness), a DB-backed cron lease replacing overlapping schedulers, removal of the static demo-market fallback, comment reply parent integrity, public URL byte caps, and CI now running the unit test suite. Still open: raw `error.message` leakage in many 5xx responses, in-memory (non-durable) rate limiting, single-key resolver with no timeout escape, and single-model resolution confidence. Treat the findings below as historical context, not current state.
+
 Scope: Next.js API routes, React transaction UI, Circle User-Controlled Wallet integration, Arc contract interactions, agent routes, and Solidity market contracts. Arc guidance was checked through the configured Arc MCP resource. Circle guidance was checked through the installed official Circle user-controlled wallet skill because the Circle MCP entry is configured but unsupported in this Codex runtime.
 
 ## Executive Summary
