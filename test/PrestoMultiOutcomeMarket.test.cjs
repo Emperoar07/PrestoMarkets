@@ -97,6 +97,23 @@ describe('PrestoMultiOutcomeMarket', function () {
     expect(await collateral.balanceOf(await market.getAddress())).to.equal(usdc(200));
   });
 
+  it('previews multi-outcome fixed-share buy math', async function () {
+    const { market, firstTrader, secondTrader } = await deployMarketFixture({ outcomeCount: 4 });
+
+    let [shares, probabilityBps, estimatedPayout] = await market.previewBuy(2, usdc(10));
+    expect(shares).to.equal(usdc(10));
+    expect(probabilityBps).to.equal(2500);
+    expect(estimatedPayout).to.equal(usdc(40));
+
+    await market.connect(firstTrader).buy(0, usdc(80));
+    await market.connect(secondTrader).buy(2, usdc(20));
+
+    [shares, probabilityBps, estimatedPayout] = await market.previewBuy(2, usdc(10));
+    expect(shares).to.equal(usdc(10));
+    expect(probabilityBps).to.equal(2000);
+    expect(estimatedPayout).to.equal(usdc(50));
+  });
+
   it('rejects out-of-range outcomes and unsafe constructor parameters', async function () {
     const { market, firstTrader } = await deployMarketFixture({ outcomeCount: 3 });
 
@@ -156,6 +173,22 @@ describe('PrestoMultiOutcomeMarket', function () {
 
     expect(await collateral.balanceOf(feeRecipient.address)).to.equal(usdc(4));
     await expect(market.connect(firstTrader).claim()).to.be.revertedWith('no winning shares');
+  });
+
+  it('supports optimistic proposal, dispute, and delayed settlement for multi-outcome markets', async function () {
+    const { market, resolver, secondTrader, outsider } = await deployMarketFixture({ outcomeCount: 4 });
+
+    await market.connect(secondTrader).buy(2, usdc(50));
+    await increaseToClose(market);
+
+    await expect(market.connect(resolver).proposeResolution(2, 'ipfs://evidence'))
+      .to.emit(market, 'ResolutionProposed')
+      .withArgs(resolver.address, 2, 'ipfs://evidence');
+    await expect(market.connect(outsider).settleProposedResolution()).to.be.revertedWithCustomError(market, 'ChallengeWindowOpen');
+    await expect(market.connect(outsider).disputeResolution('bad source'))
+      .to.emit(market, 'ResolutionDisputed')
+      .withArgs(outsider.address, 'bad source');
+    await expect(market.connect(resolver).settleProposedResolution()).to.be.revertedWithCustomError(market, 'ResolutionDisputedAlready');
   });
 
   it('refunds shares across all outcomes after cancellation', async function () {

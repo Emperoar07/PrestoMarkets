@@ -26,7 +26,8 @@ import { useTransactions } from '@/lib/transactions';
 import { agentResolutionGuardrails, buildAgentResolutionPrompt, buildAgentResolutionReport } from '@/lib/agentResolution';
 import type { MarketStatus } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
-import { estimateParimutuelPayout } from '@/lib/marketUtils';
+import { buildFixedShareQuote } from '@/lib/marketUtils';
+import { buildResolutionTrustState } from '@/lib/resolutionTrust';
 import { ChevronDown } from 'lucide-react';
 
 const statusStyle: Record<MarketStatus, string> = {
@@ -216,10 +217,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const isLimitOrder = tradeMode === 'buy' && orderMode === 'limit';
   // Fixed-share parimutuel: 1 USDC = 1 share. Payout if this outcome wins is an
   // estimate derived from current implied odds, not a priced-share quote.
-  const estimatedShares = amountValue > 0 ? amountValue : 0;
-  const potentialReturn = isLimitOrder
-    ? estimateParimutuelPayout(amountValue, Number(limitPrice))
-    : estimateParimutuelPayout(amountValue, Number(activeOutcome.odds));
+  const fixedShareQuote = buildFixedShareQuote({
+    amountUsdc: amountValue,
+    oddsPercent: isLimitOrder ? Number(limitPrice) : Number(activeOutcome.odds),
+  });
   const liquiditySideAmount = amountValue > 0 ? amountValue / market.outcomes.length : 0;
   const canTrade = market.status === 'Open' || market.status === 'Closing soon';
   // Real grounded-source state for agent markets (replaces the old "Source is private" copy
@@ -240,7 +241,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const connectedAddress = connectedWallet?.address.toLowerCase();
   const resolverAddress = market.resolverAddress?.toLowerCase();
   const isResolver = Boolean(connectedAddress && resolverAddress && connectedAddress === resolverAddress);
-  const isClosedForResolution = market.status === 'Closed' || market.closeLabel === 'Closed';
+  const resolutionTrustState = buildResolutionTrustState({
+    marketStatus: market.status,
+    closeTimeMs: market.closeDate ? new Date(market.closeDate).getTime() : undefined,
+  });
+  const isClosedForResolution = resolutionTrustState.canPropose || market.closeLabel === 'Closed';
   const canAccessResolverActions = isResolver && !hasSettlementRecord;
   const canUseResolverActions = canAccessResolverActions && isClosedForResolution;
   const resolverChecksPassed = confirmSource && confirmRules && confirmHuman;
@@ -679,15 +684,15 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   <span className="min-w-0 break-words text-right font-black text-white [overflow-wrap:anywhere]">
                     {tradeMode === 'liquidity'
                       ? liquiditySideAmount > 0 ? `${liquiditySideAmount.toFixed(2)} each x ${market.outcomes.length} outcomes` : '—'
-                      : estimatedShares > 0 ? estimatedShares.toFixed(2) : '—'}
+                      : fixedShareQuote.shares > 0 ? fixedShareQuote.shares.toFixed(2) : '—'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3 text-sm">
                   <span className="text-muted">{tradeMode === 'liquidity' ? 'Position' : `Est. payout if ${activeOutcome.label} wins`}</span>
-                  <span className={`min-w-0 break-words text-right font-black [overflow-wrap:anywhere] ${potentialReturn > amountValue ? 'text-mint' : 'text-white'}`}>
+                  <span className={`min-w-0 break-words text-right font-black [overflow-wrap:anywhere] ${fixedShareQuote.estimatedPayoutUsdc > amountValue ? 'text-mint' : 'text-white'}`}>
                     {tradeMode === 'liquidity'
                       ? 'Neutral depth'
-                      : potentialReturn > 0 ? `${unit}${potentialReturn.toFixed(2)}` : '—'}
+                      : fixedShareQuote.estimatedPayoutUsdc > 0 ? `${unit}${fixedShareQuote.estimatedPayoutUsdc.toFixed(2)}` : '—'}
                   </span>
                 </div>
                 {tradeMode === 'liquidity' ? (

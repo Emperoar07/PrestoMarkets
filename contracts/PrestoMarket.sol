@@ -11,6 +11,8 @@ contract PrestoMarket is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint16 public constant MAX_PROTOCOL_FEE_BPS = 500;
+    uint256 public constant RESOLUTION_CHALLENGE_WINDOW = 2 hours;
+    uint256 public constant BPS = 10_000;
 
     enum MarketKind {
         Prediction,
@@ -38,12 +40,19 @@ contract PrestoMarket is ReentrancyGuard {
     uint256 public totalCollateral;
     uint256 public resolvedCollateral;
     string public resolutionURI;
+    uint8 public proposedOutcome;
+    address public proposalProposer;
+    uint256 public proposalTime;
+    string public proposalURI;
+    bool public proposalDisputed;
 
     mapping(uint8 => uint256) public totalShares;
     mapping(uint8 => mapping(address => uint256)) public sharesOf;
     mapping(address => bool) public claimed;
 
     event SharesBought(address indexed buyer, address indexed recipient, uint8 indexed outcome, uint256 amount);
+    event ResolutionProposed(address indexed proposer, uint8 indexed outcome, string resolutionURI);
+    event ResolutionDisputed(address indexed disputer, string reason);
     event MarketResolved(uint8 indexed winningOutcome, string resolutionURI, uint256 resolvedCollateral);
     event MarketCanceled();
     event Claimed(address indexed user, uint256 amount, uint256 fee);
@@ -59,6 +68,10 @@ contract PrestoMarket is ReentrancyGuard {
     error NotResolved();
     error AlreadyClaimed();
     error NoWinningShares();
+    error ResolutionProposalPending();
+    error NoResolutionProposal();
+    error ChallengeWindowOpen();
+    error ResolutionDisputedAlready();
 
     constructor(
         address collateral_,
@@ -114,15 +127,46 @@ contract PrestoMarket is ReentrancyGuard {
     function resolve(uint8 outcome, string calldata resolutionURI_) external onlyResolver {
         if (state != State.Active) revert NotActive();
         if (block.timestamp < closeTime) revert MarketNotClosed();
+        if (proposalProposer != address(0) && !proposalDisputed) revert ResolutionProposalPending();
         if (outcome > 1) revert InvalidOutcome();
         if (totalShares[outcome] == 0) revert NoWinningShares();
 
-        winningOutcome = outcome;
-        resolutionURI = resolutionURI_;
-        resolvedCollateral = collateral.balanceOf(address(this));
-        state = State.Resolved;
+        _resolve(outcome, resolutionURI_);
+    }
 
-        emit MarketResolved(outcome, resolutionURI_, resolvedCollateral);
+    function proposeResolution(uint8 outcome, string calldata resolutionURI_) external onlyResolver {
+        if (state != State.Active) revert NotActive();
+        if (block.timestamp < closeTime) revert MarketNotClosed();
+        if (proposalProposer != address(0)) revert ResolutionProposalPending();
+        if (outcome > 1) revert InvalidOutcome();
+        if (totalShares[outcome] == 0) revert NoWinningShares();
+
+        proposedOutcome = outcome;
+        proposalProposer = msg.sender;
+        proposalTime = block.timestamp;
+        proposalURI = resolutionURI_;
+        proposalDisputed = false;
+
+        emit ResolutionProposed(msg.sender, outcome, resolutionURI_);
+    }
+
+    function disputeResolution(string calldata reason) external {
+        if (state != State.Active) revert NotActive();
+        if (proposalProposer == address(0)) revert NoResolutionProposal();
+        if (proposalDisputed) revert ResolutionDisputedAlready();
+        if (block.timestamp >= proposalChallengeEndsAt()) revert ChallengeWindowOpen();
+
+        proposalDisputed = true;
+        emit ResolutionDisputed(msg.sender, reason);
+    }
+
+    function settleProposedResolution() external {
+        if (state != State.Active) revert NotActive();
+        if (proposalProposer == address(0)) revert NoResolutionProposal();
+        if (proposalDisputed) revert ResolutionDisputedAlready();
+        if (block.timestamp < proposalChallengeEndsAt()) revert ChallengeWindowOpen();
+
+        _resolve(proposedOutcome, proposalURI);
     }
 
     function cancel() external onlyResolver {
@@ -174,5 +218,32 @@ contract PrestoMarket is ReentrancyGuard {
     function previewRefund(address user) external view returns (uint256) {
         if (state != State.Canceled) return 0;
         return sharesOf[0][user] + sharesOf[1][user];
+    }
+
+    function previewBuy(uint8 outcome, uint256 amount) external view returns (uint256 shares, uint256 impliedProbabilityBps, uint256 estimatedPayout) {
+        if (outcome > 1) revert InvalidOutcome();
+        shares = amount;
+        impliedProbabilityBps = _impliedProbabilityBps(outcome);
+        estimatedPayout = impliedProbabilityBps == 0 ? 0 : (amount * BPS) / impliedProbabilityBps;
+    }
+
+    function proposalChallengeEndsAt() public view returns (uint256) {
+        if (proposalTime == 0) return 0;
+        return proposalTime + RESOLUTION_CHALLENGE_WINDOW;
+    }
+
+    function _resolve(uint8 outcome, string memory resolutionURI_) internal {
+        winningOutcome = outcome;
+        resolutionURI = resolutionURI_;
+        resolvedCollateral = collateral.balanceOf(address(this));
+        state = State.Resolved;
+
+        emit MarketResolved(outcome, resolutionURI_, resolvedCollateral);
+    }
+
+    function _impliedProbabilityBps(uint8 outcome) internal view returns (uint256) {
+        uint256 total = totalShares[0] + totalShares[1];
+        if (total == 0) return BPS / 2;
+        return (totalShares[outcome] * BPS) / total;
     }
 }

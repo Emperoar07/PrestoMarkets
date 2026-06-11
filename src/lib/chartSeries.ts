@@ -1,5 +1,6 @@
 import type { Market } from './markets';
 import { getOutcomeColor } from './outcomeColors';
+import { normalizeOutcomeOdds } from './marketUtils';
 
 export type ChartMarketOutcome = Pick<Market['outcomes'][number], 'label' | 'odds'>;
 
@@ -61,12 +62,14 @@ export function buildChartOutcomeSeries(input: {
   const credibleHistory = getCredibleHistory(input.outcomes, input.history);
   const hasCredibleHistory = Boolean(credibleHistory);
 
+  const normalizedLiveOdds = normalizeOutcomeOdds(input.outcomes.map((item) => item.odds));
   const series = input.outcomes.map((outcome, index) => {
     const historyPoints = credibleHistory?.map((point) => toPercent(point.probabilities[index] ?? 0)) ?? [];
-    const points = historyPoints.length > 0 ? [...historyPoints, outcome.odds] : [outcome.odds, outcome.odds];
+    const liveOdds = normalizedLiveOdds[index] ?? outcome.odds;
+    const points = historyPoints.length > 0 ? [...historyPoints, liveOdds] : [liveOdds, liveOdds];
     return {
       label: outcome.label,
-      odds: outcome.odds,
+      odds: liveOdds,
       points,
       drawPoints: points.map((point) => clamp(point, 1, 99)),
       color: getOutcomeColor(index),

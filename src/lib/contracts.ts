@@ -169,6 +169,48 @@ export const prestoMarketAbi = [
   },
   {
     type: 'function',
+    name: 'proposedOutcome',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint8' }],
+  },
+  {
+    type: 'function',
+    name: 'proposalProposer',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    type: 'function',
+    name: 'proposalTime',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'proposalURI',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'string' }],
+  },
+  {
+    type: 'function',
+    name: 'proposalDisputed',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    type: 'function',
+    name: 'proposalChallengeEndsAt',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
     name: 'totalShares',
     stateMutability: 'view',
     inputs: [{ name: '', type: 'uint8' }],
@@ -210,6 +252,20 @@ export const prestoMarketAbi = [
   },
   {
     type: 'function',
+    name: 'previewBuy',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'outcome', type: 'uint8' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [
+      { name: 'shares', type: 'uint256' },
+      { name: 'impliedProbabilityBps', type: 'uint256' },
+      { name: 'estimatedPayout', type: 'uint256' },
+    ],
+  },
+  {
+    type: 'function',
     name: 'buy',
     stateMutability: 'nonpayable',
     inputs: [
@@ -226,6 +282,30 @@ export const prestoMarketAbi = [
       { name: 'outcome', type: 'uint8' },
       { name: 'resolutionURI_', type: 'string' },
     ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'proposeResolution',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'outcome', type: 'uint8' },
+      { name: 'resolutionURI_', type: 'string' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'disputeResolution',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'reason', type: 'string' }],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'settleProposedResolution',
+    stateMutability: 'nonpayable',
+    inputs: [],
     outputs: [],
   },
   {
@@ -283,6 +363,23 @@ export const prestoMarketAbi = [
       { name: 'winningOutcome', type: 'uint8', indexed: true },
       { name: 'resolutionURI', type: 'string', indexed: false },
       { name: 'resolvedCollateral', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'ResolutionProposed',
+    inputs: [
+      { name: 'proposer', type: 'address', indexed: true },
+      { name: 'outcome', type: 'uint8', indexed: true },
+      { name: 'resolutionURI', type: 'string', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'ResolutionDisputed',
+    inputs: [
+      { name: 'disputer', type: 'address', indexed: true },
+      { name: 'reason', type: 'string', indexed: false },
     ],
   },
   {

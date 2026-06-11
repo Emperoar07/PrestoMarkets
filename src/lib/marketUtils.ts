@@ -43,6 +43,70 @@ export function clearVolumeCache(): void {
   volumeParseCache.clear();
 }
 
+function clampProbabilityPercent(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  if (value >= 100) return 100;
+  return value;
+}
+
+function distributeRoundingRemainder(values: number[], target = 100): number[] {
+  const floored = values.map((value) => Math.floor(value));
+  let remainder = target - floored.reduce((total, value) => total + value, 0);
+  const order = values
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction || b.index - a.index);
+
+  for (const item of order) {
+    if (remainder <= 0) break;
+    floored[item.index] += 1;
+    remainder -= 1;
+  }
+
+  return floored;
+}
+
+/**
+ * Normalize outcome odds into whole percentages that always add to 100.
+ * Presto V1 is a fixed-share parimutuel market, so these are implied
+ * probabilities for display and quote estimates, not executable prices.
+ */
+export function normalizeOutcomeOdds(odds: number[]): number[] {
+  if (odds.length === 0) return [];
+
+  const cleaned = odds.map(clampProbabilityPercent);
+  const sum = cleaned.reduce((total, value) => total + value, 0);
+
+  if (sum <= 0) {
+    return distributeRoundingRemainder(Array.from({ length: odds.length }, () => 100 / odds.length));
+  }
+
+  return distributeRoundingRemainder(cleaned.map((value) => (value / sum) * 100));
+}
+
+export type FixedShareQuote = {
+  stakeUsdc: number;
+  shares: number;
+  impliedProbability: number;
+  estimatedPayoutUsdc: number;
+  estimatedProfitUsdc: number;
+};
+
+export function buildFixedShareQuote(input: { amountUsdc: number; oddsPercent: number }): FixedShareQuote {
+  const stakeUsdc = Number.isFinite(input.amountUsdc) && input.amountUsdc > 0 ? input.amountUsdc : 0;
+  const impliedProbability = Number.isFinite(input.oddsPercent) && input.oddsPercent > 0
+    ? Math.min(input.oddsPercent, 100) / 100
+    : 0.5;
+  const estimatedPayoutUsdc = stakeUsdc > 0 ? stakeUsdc / impliedProbability : 0;
+
+  return {
+    stakeUsdc,
+    shares: stakeUsdc,
+    impliedProbability,
+    estimatedPayoutUsdc,
+    estimatedProfitUsdc: Math.max(0, estimatedPayoutUsdc - stakeUsdc),
+  };
+}
+
 /**
  * Estimate the payout if a chosen outcome wins, for Presto's fixed-share
  * parimutuel markets. Shares are minted 1:1 with USDC (10 USDC = 10 shares),
@@ -58,7 +122,5 @@ export function clearVolumeCache(): void {
  * @param oddsPercent current implied odds for the outcome, 0–100
  */
 export function estimateParimutuelPayout(amountUsdc: number, oddsPercent: number): number {
-  if (!Number.isFinite(amountUsdc) || amountUsdc <= 0) return 0;
-  const prob = Number.isFinite(oddsPercent) && oddsPercent > 0 ? Math.min(oddsPercent, 100) / 100 : 0.5;
-  return amountUsdc / prob;
+  return buildFixedShareQuote({ amountUsdc, oddsPercent }).estimatedPayoutUsdc;
 }

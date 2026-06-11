@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { Market } from '@/lib/markets';
 import { useAppState } from '@/lib/appState';
 import { getOutcomeColor } from '@/lib/outcomeColors';
-import { estimateParimutuelPayout } from '@/lib/marketUtils';
+import { buildFixedShareQuote } from '@/lib/marketUtils';
 import type { StableSymbol } from '@/lib/walletBalance';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
 import { useTransactions } from '@/lib/transactions';
@@ -79,8 +79,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
   const activeOutcomeColor = getOutcomeColor(activeOutcomeIndex);
   
   const amountValue = Number(amount) || 0;
-  const estimatedShares = amountValue > 0 ? amountValue : 0;
-  const potentialReturn = estimateParimutuelPayout(amountValue, Number(activeOutcome.odds));
+  const fixedShareQuote = buildFixedShareQuote({ amountUsdc: amountValue, oddsPercent: Number(activeOutcome.odds) });
   const canTrade = market.status === 'Open' || market.status === 'Closing soon';
 
   async function handleBuy() {
@@ -247,12 +246,12 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[#8fa0b4]">{'Shares (1 USDC = 1 share)'}</span>
-            <span className="font-black text-white">{estimatedShares > 0 ? estimatedShares.toFixed(2) : '—'}</span>
+            <span className="font-black text-white">{fixedShareQuote.shares > 0 ? fixedShareQuote.shares.toFixed(2) : '—'}</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[#8fa0b4]">{'Est. payout if'} {activeOutcome.label} {'wins'}</span>
-            <span className={`font-black ${potentialReturn > amountValue ? 'text-mint' : 'text-white'}`}>
-              {potentialReturn > 0 ? `${unit}${potentialReturn.toFixed(2)}` : '—'}
+            <span className={`font-black ${fixedShareQuote.estimatedPayoutUsdc > amountValue ? 'text-mint' : 'text-white'}`}>
+              {fixedShareQuote.estimatedPayoutUsdc > 0 ? `${unit}${fixedShareQuote.estimatedPayoutUsdc.toFixed(2)}` : '—'}
             </span>
           </div>
         </div>

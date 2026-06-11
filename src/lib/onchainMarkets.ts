@@ -4,6 +4,7 @@ import { getArcConfig, getArcChainId } from './arcConfig';
 import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { isSafeResolutionUri, parseMarketMetadata } from './marketMetadata';
 import { stripSourceFromDescription } from './sourcePrivacy';
+import { normalizeOutcomeOdds } from './marketUtils';
 import type { AppMarket } from './appState';
 import type { MarketStatus, MarketType, ResolutionMode } from './markets';
 import { getDb, hasDatabaseUrl } from './db/client';
@@ -98,8 +99,9 @@ function formatOnchainUsd(value: bigint) {
 
 function getOutcomeOdds(shares: bigint[]) {
   const total = shares.reduce((sum, item) => sum + item, BigInt(0));
-  if (total === BigInt(0)) return shares.map(() => Math.round(100 / Math.max(shares.length, 1)));
-  return shares.map((item) => Math.round(Number((item * BigInt(100)) / total)));
+  if (total === BigInt(0)) return normalizeOutcomeOdds(shares.map(() => 0));
+  const totalUsdc = Number(formatUnits(total, 6));
+  return normalizeOutcomeOdds(shares.map((item) => (Number(formatUnits(item, 6)) / totalUsdc) * 100));
 }
 
 type MarketCreationInfo = {

@@ -92,6 +92,23 @@ describe('PrestoMarket', function () {
     expect(await collateral.balanceOf(await market.getAddress())).to.equal(usdc(175));
   });
 
+  it('previews fixed-share buy math without mutating balances', async function () {
+    const { market, yesTrader, noTrader } = await deployMarketFixture();
+
+    let [shares, probabilityBps, estimatedPayout] = await market.previewBuy(0, usdc(10));
+    expect(shares).to.equal(usdc(10));
+    expect(probabilityBps).to.equal(5000);
+    expect(estimatedPayout).to.equal(usdc(20));
+
+    await market.connect(yesTrader).buy(0, usdc(25));
+    await market.connect(noTrader).buy(1, usdc(75));
+
+    [shares, probabilityBps, estimatedPayout] = await market.previewBuy(0, usdc(10));
+    expect(shares).to.equal(usdc(10));
+    expect(probabilityBps).to.equal(2500);
+    expect(estimatedPayout).to.equal(usdc(40));
+  });
+
   it('supports buying shares for another recipient', async function () {
     const { market, yesTrader, outsider } = await deployMarketFixture();
 
@@ -131,6 +148,45 @@ describe('PrestoMarket', function () {
     expect(await market.winningOutcome()).to.equal(0);
     expect(await market.resolutionURI()).to.equal('ipfs://evidence');
     expect(await market.resolvedCollateral()).to.equal(usdc(100));
+  });
+
+  it('supports an optimistic proposal and public dispute before settlement', async function () {
+    const { market, resolver, yesTrader, outsider } = await deployMarketFixture();
+
+    await market.connect(yesTrader).buy(0, usdc(100));
+    await increaseToClose(market);
+
+    await expect(market.connect(outsider).settleProposedResolution()).to.be.revertedWithCustomError(market, 'NoResolutionProposal');
+    await expect(market.connect(resolver).proposeResolution(0, 'ipfs://evidence'))
+      .to.emit(market, 'ResolutionProposed')
+      .withArgs(resolver.address, 0, 'ipfs://evidence');
+
+    expect(await market.proposedOutcome()).to.equal(0);
+    expect(await market.proposalProposer()).to.equal(resolver.address);
+
+    await expect(market.connect(outsider).settleProposedResolution()).to.be.revertedWithCustomError(market, 'ChallengeWindowOpen');
+    await expect(market.connect(outsider).disputeResolution('wrong evidence'))
+      .to.emit(market, 'ResolutionDisputed')
+      .withArgs(outsider.address, 'wrong evidence');
+    await expect(market.connect(resolver).settleProposedResolution()).to.be.revertedWithCustomError(market, 'ResolutionDisputedAlready');
+  });
+
+  it('settles an undisputed optimistic proposal after the challenge window', async function () {
+    const { market, resolver, yesTrader } = await deployMarketFixture();
+
+    await market.connect(yesTrader).buy(0, usdc(100));
+    await increaseToClose(market);
+    await market.connect(resolver).proposeResolution(0, 'ipfs://evidence');
+
+    const challengeEndsAt = await market.proposalChallengeEndsAt();
+    await ethers.provider.send('evm_setNextBlockTimestamp', [Number(challengeEndsAt) + 1]);
+    await ethers.provider.send('evm_mine');
+
+    await expect(market.connect(resolver).settleProposedResolution())
+      .to.emit(market, 'MarketResolved')
+      .withArgs(0, 'ipfs://evidence', usdc(100));
+
+    expect(await market.state()).to.equal(State.Resolved);
   });
 
   it('pays winning claims and sends protocol fees', async function () {

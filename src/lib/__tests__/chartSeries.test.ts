@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildChartOutcomeSeries } from '../chartSeries';
 
 describe('buildChartOutcomeSeries', () => {
-  it('uses live odds as the final chart value without rounding them into clamp bounds', () => {
+  it('normalizes live odds as the final chart value without rounding them into clamp bounds', () => {
     const result = buildChartOutcomeSeries({
       outcomes: [
         { label: 'YES', odds: 4 },
@@ -12,10 +12,10 @@ describe('buildChartOutcomeSeries', () => {
     });
 
     expect(result.hasCredibleHistory).toBe(false);
-    expect(result.series.map((item) => item.odds)).toEqual([4, 95]);
+    expect(result.series.map((item) => item.odds)).toEqual([4, 96]);
     expect(result.series.map((item) => item.points)).toEqual([
       [4, 4],
-      [95, 95],
+      [96, 96],
     ]);
   });
 
@@ -35,7 +35,7 @@ describe('buildChartOutcomeSeries', () => {
     expect(result.hasCredibleHistory).toBe(false);
     expect(result.series.map((item) => item.points)).toEqual([
       [4, 4],
-      [95, 95],
+      [96, 96],
     ]);
   });
 
