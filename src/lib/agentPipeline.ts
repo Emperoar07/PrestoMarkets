@@ -48,6 +48,7 @@ export type TrendItem = {
    * every match day, bypassing the signal/classify gates. Dedup and the active cap still apply.
    */
   guaranteedFixture?: boolean;
+  kickoffTime?: string;
 };
 
 /** Human-readable age of a trend ("3h ago", "2d ago") for prompts/logging. */
@@ -670,6 +671,7 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
           imageUrl: event.strThumb ?? undefined,
           ...(closeMs !== null ? { closeDate: new Date(closeMs).toISOString() } : {}),
           ...(isWorldCupFixture ? { guaranteedFixture: true } : {}),
+          ...(kickoff && !Number.isNaN(kickoff.getTime()) ? { kickoffTime: kickoff.toISOString() } : {}),
         }];
       });
     } catch (err) {
@@ -2015,12 +2017,14 @@ async function createOnchain(
   const horizon = analyzeMarketHorizon(trend);
   const research = assessTrendResearchQuality(trend);
   const exaSummary = summarizeExaEvidence(trend.exaEvidence);
-  const displayType = deriveDisplayType({
-    pollOptions: draft.outcomeOptions,
-    type: draft.type,
-    category: classification.category,
-    title: draft.title,
-  });
+  const displayType = trend.kickoffTime
+    ? 'sports_live'
+    : deriveDisplayType({
+        pollOptions: draft.outcomeOptions,
+        type: draft.type,
+        category: classification.category,
+        title: draft.title,
+      });
   const input: MarketDraft = {
     type: draft.type,
     title: draft.title,
@@ -2054,6 +2058,7 @@ async function createOnchain(
       momentumScore: Math.round(classification.momentumScore * 100), // stored as 0-100 to match trends route
       safetyScore: Math.round(safety.confidence * 100),              // stored as 0-100 to match trends route
       displayType,
+      kickoffTime: trend.kickoffTime,
     },
   };
 

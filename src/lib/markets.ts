@@ -65,6 +65,7 @@ export type Market = {
   trendUrl?: string;
   momentumScore?: number;
   safetyScore?: number;
+  kickoffTime?: string;
   feeMode: string;
   pollOptions?: string[];
   outcomes: MarketOutcome[];

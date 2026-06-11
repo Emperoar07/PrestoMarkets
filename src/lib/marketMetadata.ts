@@ -18,6 +18,7 @@ export type AgentMarketMetadata = {
   momentumScore?: number;
   safetyScore?: number;
   displayType?: MarketDisplayType;
+  kickoffTime?: string;
 };
 
 export type MarketMetadata = AgentMarketMetadata & {
@@ -204,6 +205,7 @@ export function buildMarketMetadata(input: BuildMarketMetadataInput): MarketMeta
     momentumScore: input.agent?.momentumScore,
     safetyScore: input.agent?.safetyScore,
     displayType: input.agent?.displayType,
+    kickoffTime: input.agent?.kickoffTime,
   };
 }
 
@@ -228,6 +230,7 @@ export function parseMarketMetadata(metadataURI: string): Partial<MarketMetadata
   if (!isSafeUrl(parsed.trendUrl)) parsed.trendUrl = undefined;
   if (parsed.displayType && !DISPLAY_TYPES.has(parsed.displayType)) parsed.displayType = undefined;
   if (parsed.createdAt && !Number.isFinite(Date.parse(parsed.createdAt))) parsed.createdAt = undefined;
+  if (parsed.kickoffTime && !Number.isFinite(Date.parse(parsed.kickoffTime))) parsed.kickoffTime = undefined;
   parsed.collateral = 'USDC';
   if (parsed.rulesSchema) parsed.rulesSchema.settlementAsset = 'USDC';
   if (parsed.categories) {

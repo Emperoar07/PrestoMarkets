@@ -216,17 +216,66 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const isBinaryMarket = market.outcomes.length <= 2;
   const amountValue = Number(amount) || 0;
   const isLimitOrder = tradeMode === 'buy' && orderMode === 'limit';
-  // Fixed-share parimutuel: 1 USDC = 1 share. Payout if this outcome wins is an
-  // estimate derived from current implied odds, not a priced-share quote.
+  // Fixed-share parimutuel: 1 USDC = 1 share. Payout if this outcome wins is an estimate derived from current implied odds, not a priced-share quote.
   const fixedShareQuote = buildFixedShareQuote({
     amountUsdc: amountValue,
     oddsPercent: isLimitOrder ? Number(limitPrice) : Number(activeOutcome.odds),
   });
   const liquiditySideAmount = amountValue > 0 ? amountValue / market.outcomes.length : 0;
-  const canTrade = market.status === 'Open' || market.status === 'Closing soon';
-  // Real grounded-source state for agent markets (replaces the old "Source is private" copy
-  // now that markets are Exa/news-grounded). Prefer the trend URL, fall back to a public
-  // source-of-truth URL; show the host as a link, or "Source pending" when none is available.
+
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const kickoffMs = market?.kickoffTime ? new Date(market.kickoffTime).getTime() : null;
+  const isTradingLocked = kickoffMs !== null && now >= kickoffMs - 60_000;
+  const isMatchLive = kickoffMs !== null && now >= kickoffMs && market?.status !== 'Resolved' && market?.status !== 'Closed';
+
+  const eventIdMatch = market?.trendUrl?.match(/event\/(\d+)/);
+  const idEvent = eventIdMatch ? eventIdMatch[1] : null;
+
+  const [liveData, setLiveData] = useState<{
+    homeScore: string | null;
+    awayScore: string | null;
+    status: string | null;
+    progress: string | null;
+    time: string | null;
+    homeTeam?: string;
+    awayTeam?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!idEvent || kickoffMs === null || now < kickoffMs || market?.status === 'Resolved' || market?.status === 'Closed') {
+      return;
+    }
+
+    let cancelled = false;
+    async function fetchLiveScore() {
+      try {
+        const res = await fetch(`/api/sports/live?id=${idEvent}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) {
+            setLiveData(data);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to fetch live score', e);
+      }
+    }
+
+    void fetchLiveScore();
+    const interval = setInterval(fetchLiveScore, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [idEvent, kickoffMs, market?.status]);
+
+  const canTrade = (market.status === 'Open' || market.status === 'Closing soon') && !isTradingLocked;
+  
   const groundingUrl = [market.trendUrl, market.sourceOfTruth].find((u) => typeof u === 'string' && /^https?:\/\//i.test(u));
   const groundingHost = (() => {
     if (!groundingUrl) return null;
@@ -299,10 +348,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
       <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-28 md:px-7 md:pt-28">
         <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[1fr_380px]">
 
-          {/* ── Left column, top: header + chart ── */}
           <section className="min-w-0 order-1 lg:order-none lg:col-start-1 lg:row-start-1">
 
-            {/* Pills */}
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full border border-cyan/30 bg-cyan/10 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-cyan">
                 {market.type}
@@ -323,18 +370,22 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   Agent
                 </span>
               ) : null}
+              {isMatchLive ? (
+                <span className="flex items-center gap-1.5 rounded-full border border-red-500/35 bg-red-500/10 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-red-400">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
+                  Live
+                </span>
+              ) : null}
               <div className="ml-auto flex items-center gap-2 shrink-0">
                 {connectedWallet ? <AlertPrefsControl marketId={market.id} /> : null}
                 <ShareMarketButton marketId={market.id} title={market.title} />
               </div>
             </div>
 
-            {/* Title */}
             <h1 className="mt-4 text-[clamp(28px,4vw,46px)] font-black leading-tight tracking-tight text-white">
               {market.title}
             </h1>
 
-            {/* Meta strip */}
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#8fa0b4]">
               <span>{market.volume} Vol.</span>
               <span className="text-white/20">·</span>
@@ -343,7 +394,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               </span>
             </div>
 
-            {/* Odds bar */}
             <div className="mt-6">
               <div className="flex overflow-hidden rounded-full" style={{ height: 8 }}>
                 {market.outcomes.map((outcome, index) => {
@@ -381,28 +431,78 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               </div>
             </div>
 
-            {/* Description */}
             {market.description ? (
               <p className="mt-7 max-w-[900px] text-[16px] leading-8 text-[#94a3b8]">{market.description}</p>
             ) : null}
 
-            {/* Market image */}
+            {kickoffMs !== null && (
+              <div className="mt-6 rounded-[16px] border border-white/[0.06] bg-white/[0.02] p-5">
+                {isMatchLive ? (
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                      </span>
+                      <span className="text-xs font-black uppercase tracking-wider text-red-400">Match is Live</span>
+                      {liveData?.time && (
+                        <span className="rounded bg-white/10 px-2 py-0.5 text-[11px] font-mono font-bold text-white/85">
+                          {liveData.time}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="mt-4 flex items-center justify-between gap-6">
+                      <div className="flex flex-1 flex-col items-center text-center">
+                        <span className="text-xs font-bold text-muted uppercase">Home</span>
+                        <span className="mt-1.5 text-base md:text-lg font-black text-white">{liveData?.homeTeam || 'Home Team'}</span>
+                      </div>
+                      
+                      <div className="flex items-center gap-4 px-4 py-1.5 bg-white/[0.04] rounded-xl border border-white/[0.05]">
+                        <span className="text-3xl font-black text-white">{liveData?.homeScore ?? '0'}</span>
+                        <span className="text-xl font-bold text-muted">:</span>
+                        <span className="text-3xl font-black text-white">{liveData?.awayScore ?? '0'}</span>
+                      </div>
+                      
+                      <div className="flex flex-1 flex-col items-center text-center">
+                        <span className="text-xs font-bold text-muted uppercase">Away</span>
+                        <span className="mt-1.5 text-base md:text-lg font-black text-white">{liveData?.awayTeam || 'Away Team'}</span>
+                      </div>
+                    </div>
+                    
+                    {(liveData?.status || liveData?.progress) && (
+                      <div className="mt-4 text-center text-xs font-bold text-[#8fa0b4]">
+                        Status: <span className="text-white">{liveData.status || liveData.progress}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block h-2 w-2 rounded-full bg-yellow-400 animate-pulse"></span>
+                      <span className="text-xs font-bold text-yellow-200">Upcoming Fixture</span>
+                    </div>
+                    <div className="text-xs font-bold text-muted">
+                      Kickoff: <span className="text-white">{new Date(kickoffMs).toLocaleString()}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {market.imageURI ? (
               <div className="mt-6 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#0d1520]">
                 <img src={market.imageURI} alt={market.title} width={800} height={280} loading="lazy" decoding="async" className="mx-auto max-h-[280px] w-full object-contain" onError={(e) => { e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22800%22 height=%22280%22%3E%3Crect fill=%22%23141e30%22 width=%22800%22 height=%22280%22/%3E%3C/svg%3E'; }} />
               </div>
             ) : null}
 
-            {/* Signal chart */}
             <div className="mt-4">
               <MarketSignalChart market={market} live />
             </div>
           </section>
 
-          {/* ── Left column, bottom: activity + details (below the trade panel on mobile) ── */}
           <section className="min-w-0 order-3 lg:order-none lg:col-start-1 lg:row-start-2">
 
-            {/* Market activity */}
             <div>
               <h2 className="text-base font-black text-white">Market activity</h2>
               <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-3">
@@ -415,7 +515,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               </div>
             </div>
 
-            {/* Market quality + Resolution rules merged into one tabbed panel */}
             <MarketQualityPanel market={market} />
 
             {isAgentMarket ? (
@@ -485,7 +584,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               </details>
             ) : null}
 
-            {/* Settlement record */}
             {hasSettlementRecord ? (
               <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -527,11 +625,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               </div>
             ) : null}
 
-            {/* Alerts + comments — in the left column so they match the chart's width */}
             <MarketComments marketId={marketId} />
           </section>
 
-          {/* ── Right aside — trade panel ── */}
           <aside id="trade-panel" className="min-w-0 h-fit scroll-mt-28 order-2 lg:order-none lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:sticky lg:top-24">
             <div className="min-w-0 overflow-hidden rounded-[18px] border border-white/[0.06] bg-[#141e30] p-4 sm:p-5">
 
@@ -544,6 +640,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                       key={mode}
                       type="button"
                       onClick={() => setOrderMode(mode)}
+                      disabled={isTradingLocked}
                       className={`rounded-[9px] py-2 text-sm font-black transition-all border ${
                         orderMode === mode
                           ? 'border-white/80 text-white bg-transparent shadow-sm'
@@ -560,7 +657,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <button
                   type="button"
                   onClick={() => setSelectedOutcome('YES')}
-                  disabled={tradeMode === 'liquidity'}
+                  disabled={tradeMode === 'liquidity' || isTradingLocked}
                   className={`rounded-[12px] border py-4 text-center transition-all ${
                     selectedOutcome === 'YES'
                       ? 'border-cyan/40 bg-cyan/10 shadow-[0_0_16px_-4px_rgba(37,192,244,0.3)]'
@@ -575,7 +672,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <button
                   type="button"
                   onClick={() => setSelectedOutcome('NO')}
-                  disabled={tradeMode === 'liquidity'}
+                  disabled={tradeMode === 'liquidity' || isTradingLocked}
                   className={`rounded-[12px] border py-4 text-center transition-all ${
                     selectedOutcome === 'NO'
                       ? 'border-red-400/40 bg-red-400/10 shadow-[0_0_16px_-4px_rgba(248,113,113,0.2)]'
@@ -599,7 +696,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                         key={`${outcome.label}-${index}`}
                         type="button"
                         onClick={() => setSelectedOutcome(outcome.label)}
-                        disabled={tradeMode === 'liquidity'}
+                        disabled={tradeMode === 'liquidity' || isTradingLocked}
                         style={active ? {
                           borderColor: `${color}70`,
                           backgroundColor: `${color}18`,
@@ -619,14 +716,14 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
               )}
 
-              {/* Amount input */}
               <div className="mt-5">
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-black uppercase tracking-widest text-muted">Amount</label>
                   <button
                     type="button"
                     onClick={() => setFundingOpen(true)}
-                    className="text-[10px] font-black uppercase tracking-widest text-cyan transition hover:text-cyan/80"
+                    disabled={isTradingLocked}
+                    className="text-[10px] font-black uppercase tracking-widest text-cyan transition hover:text-cyan/80 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Available {payWith}
                   </button>
@@ -634,18 +731,19 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <input
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="mt-2 w-full bg-transparent text-4xl font-black text-white outline-none placeholder:text-white/20"
+                  disabled={isTradingLocked}
+                  className="mt-2 w-full bg-transparent text-4xl font-black text-white outline-none placeholder:text-white/20 disabled:opacity-50"
                   placeholder="0"
                   inputMode="decimal"
                 />
-                {/* Quick amounts */}
                 <div className="mt-3 flex gap-2">
                   {quickAmounts.map((q) => (
                     <button
                       key={q}
                       type="button"
                       onClick={() => setAmount(String(q))}
-                      className={`flex-1 rounded-[8px] border py-1.5 text-xs font-black transition-colors ${
+                      disabled={isTradingLocked}
+                      className={`flex-1 rounded-[8px] border py-1.5 text-xs font-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                         amount === String(q)
                           ? 'border-cyan/30 bg-cyan/10 text-cyan'
                           : 'border-white/[0.06] bg-[#0f172a] text-[#8fa0b4] hover:border-white/10 hover:text-white'
@@ -665,8 +763,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                       <input
                         value={limitPrice}
                         onChange={(event) => setLimitPrice(event.target.value)}
+                        disabled={isTradingLocked}
                         inputMode="decimal"
-                        className="w-14 bg-transparent text-right text-sm font-black text-white outline-none"
+                        className="w-14 bg-transparent text-right text-sm font-black text-white outline-none disabled:opacity-50"
                       />
                       <span className="text-xs font-black text-cyan">{'\u00a2'}</span>
                     </div>
@@ -677,7 +776,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
               ) : null}
 
-              {/* Trade summary */}
               <div className="mt-5 space-y-2.5 border-t border-white/[0.06] pt-5">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted">{tradeMode === 'liquidity' ? 'Liquidity method' : isLimitOrder ? 'Limit price' : 'Implied odds'}</span>
@@ -710,7 +808,41 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 ) : null}
               </div>
 
-              {/* Status message (shown above buy button so users see errors before retrying) */}
+              {/* Buy button / Lock Indicator */}
+              {isTradingLocked ? (
+                <div className="mt-5 rounded-[12px] border border-red-500/25 bg-red-500/10 p-4 text-center">
+                  <p className="text-xs font-black uppercase tracking-wider text-red-400">
+                    {now < (kickoffMs ?? 0)
+                      ? `Trading closed (match begins in ${Math.max(0, Math.ceil(((kickoffMs ?? 0) - now) / 1000))}s)`
+                      : 'Trading closed (match is live)'}
+                  </p>
+                  <p className="mt-1 text-xs text-[#8fa0b4]">
+                    Trading automatically locks 1 minute before kickoff to keep prediction pools fair.
+                  </p>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void runAction(() => (
+                    tradeMode === 'liquidity'
+                      ? addLiquidity({ marketId, amount: amountValue, payWith })
+                      : placeTrade({ marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, amount: amountValue, payWith })
+                  ), tradeMode === 'liquidity' ? `Add liquidity · ${unit}${amountValue}` : `Buy ${selectedOutcome} · ${unit}${amountValue}`)}
+                  disabled={!canTrade || isSubmitting || amountValue <= 0 || isLimitOrder}
+                  style={tradeMode === 'buy' ? { backgroundColor: activeOutcomeColor } : undefined}
+                  className={`mt-5 w-full min-w-0 rounded-[12px] px-3 py-4 font-black tracking-wide text-ink transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 ${
+                    tradeMode === 'liquidity' ? 'bg-cyan' : ''
+                  }`}
+                >
+                  {!canTrade ? 'Market not open'
+                    : isSubmitting ? 'Confirming…'
+                    : amountValue <= 0 ? 'Enter an amount'
+                    : isLimitOrder ? 'Limit order book phase'
+                    : tradeMode === 'liquidity' ? `Add liquidity · ${unit}${amountValue}`
+                    : `Buy ${selectedOutcome} · ${unit}${amountValue}`}
+                </button>
+              )}
+
               {message ? (
                 <div className={`mt-4 rounded-[10px] border px-3 py-2 text-xs leading-5 ${
                     message.toLowerCase().includes('fail') || message.toLowerCase().includes('error') || message.toLowerCase().includes('insufficient') || message.toLowerCase().includes('expired')
@@ -730,32 +862,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   ) : null}
                 </div>
               ) : null}
-
-              {/* Buy button */}
-              <button
-                type="button"
-                onClick={() => void runAction(() => (
-                  tradeMode === 'liquidity'
-                    ? addLiquidity({ marketId, amount: amountValue, payWith })
-                    : placeTrade({ marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, amount: amountValue, payWith })
-                ), tradeMode === 'liquidity' ? `Add liquidity · ${unit}${amountValue}` : `Buy ${selectedOutcome} · ${unit}${amountValue}`)}
-                disabled={!canTrade || isSubmitting || amountValue <= 0 || isLimitOrder}
-                style={tradeMode === 'buy' ? { backgroundColor: activeOutcomeColor } : undefined}
-                className={`mt-5 w-full min-w-0 rounded-[12px] px-3 py-4 font-black tracking-wide text-ink transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 ${
-                  tradeMode === 'liquidity' ? 'bg-cyan' : ''
-                }`}
-              >
-                {!canTrade ? 'Market not open'
-                  : isSubmitting ? 'Confirming…'
-                  : amountValue <= 0 ? 'Enter an amount'
-                  : isLimitOrder ? 'Limit order book phase'
-                  : tradeMode === 'liquidity' ? `Add liquidity · ${unit}${amountValue}`
-                  : `Buy ${selectedOutcome} · ${unit}${amountValue}`}
-              </button>
-
-
-
-              {/* Claim / Refund — user-facing settlement */}
               {(canClaim || canRefund) ? (
                 <div className="mt-5 border-t border-white/[0.06] pt-5">
                   <p className="text-[10px] font-black uppercase tracking-widest text-muted">Settlement available</p>

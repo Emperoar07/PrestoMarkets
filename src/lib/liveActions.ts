@@ -12,7 +12,7 @@ import {
 import { getArcConfig, getArcChainId } from './arcConfig';
 import { erc20Abi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { getStoredConnectedWallet } from './walletProvider';
-import { buildMarketMetadataURI, type AgentMarketMetadata } from './marketMetadata';
+import { buildMarketMetadataURI, parseMarketMetadata, type AgentMarketMetadata } from './marketMetadata';
 import type { MarketType } from './markets';
 import {
   buyCircleShares,
@@ -202,7 +202,7 @@ async function assertMarketOpenForTrading(
   publicClient: ReturnType<typeof createPublicClient>,
   marketAddress: Address,
 ) {
-  const [state, closeTime] = await Promise.all([
+  const [state, closeTime, uri] = await Promise.all([
     withRetry(() => publicClient.readContract({
       address: marketAddress,
       abi: prestoMarketAbi,
@@ -213,6 +213,11 @@ async function assertMarketOpenForTrading(
       abi: prestoMarketAbi,
       functionName: 'closeTime',
     })),
+    withRetry(() => publicClient.readContract({
+      address: marketAddress,
+      abi: prestoMarketAbi,
+      functionName: 'metadataURI',
+    })).catch(() => ''),
   ]);
 
   if (Number(state) !== 0) {
@@ -221,6 +226,18 @@ async function assertMarketOpenForTrading(
 
   if (Number(closeTime) <= Math.floor(Date.now() / 1000)) {
     throw new Error('This market is closed for trading.');
+  }
+
+  if (uri) {
+    const parsed = parseMarketMetadata(uri as string);
+    if (parsed?.kickoffTime) {
+      const kickoffMs = new Date(parsed.kickoffTime).getTime();
+      if (!Number.isNaN(kickoffMs)) {
+        if (Date.now() >= kickoffMs - 60_000) {
+          throw new Error('Trading is locked because this match starts in less than a minute or is currently live.');
+        }
+      }
+    }
   }
 }
 

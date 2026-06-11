@@ -223,6 +223,7 @@ async function readMarket(
     trendUrl: metadata?.trendUrl,
     momentumScore: metadata?.momentumScore,
     safetyScore: metadata?.safetyScore,
+    kickoffTime: metadata?.kickoffTime,
     feeMode: Number(protocolFeeBps) > 0 ? `${protocolFeeBps} bps protocol fee` : 'No protocol fee',
     outcomes: labels.map((label, outcomeIndex) => ({
       label,
