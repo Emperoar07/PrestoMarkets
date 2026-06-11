@@ -9,7 +9,7 @@
 
 import { createPublicClient, getAddress, http, isAddress, type AbiEvent, type Address } from 'viem';
 import { getArcChainId, getArcConfig } from './arcConfig';
-import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
+import { prestoMarketAbi } from './contracts';
 import { parseMarketMetadata } from './marketMetadata';
 
 export type ProbabilityPoint = {
@@ -60,47 +60,27 @@ export async function getMarketProbabilityHistory(marketAddress: string): Promis
   const latest = await client.getBlockNumber().catch(() => null);
   if (latest === null) return [];
 
-  // Query factory events to find the exact creation block of this market for deep history tracking
-  const config = getArcConfig();
-  const factories = [
-    config.factoryAddress ? { address: config.factoryAddress as Address, abi: prestoMarketFactoryAbi } : null,
-    config.multiOutcomeFactoryAddress ? { address: config.multiOutcomeFactoryAddress as Address, abi: prestoMultiOutcomeMarketFactoryAbi } : null,
-    ...config.legacyFactoryAddresses.map((address) => ({ address: address as Address, abi: prestoMarketFactoryAbi })),
-    ...config.legacyMultiOutcomeFactoryAddresses.map((address) => ({ address: address as Address, abi: prestoMultiOutcomeMarketFactoryAbi })),
-  ].filter(Boolean) as { address: Address; abi: any }[];
+  // Bounded recent window, fetched in PARALLEL chunks. Long-range density comes from the
+  // stored odds snapshots (market_snapshots) that the history endpoint merges in — scanning
+  // back to the creation block here meant hundreds of sequential getLogs calls on Arc's
+  // sub-second blocks and made the chart take many seconds to appear.
+  const span = BLOCK_CHUNK * BigInt(MAX_CHUNKS);
+  const fromBlock = latest > span ? latest - span : BigInt(0);
 
-  let creationBlock = BigInt(0);
-  for (const factory of factories) {
-    try {
-      const logs = await client.getContractEvents({
-        address: factory.address,
-        abi: factory.abi,
-        eventName: 'MarketCreated',
-        args: { market: address },
-        fromBlock: BigInt(0),
-        toBlock: 'latest',
-      });
-      if (logs.length > 0 && logs[0].blockNumber !== null) {
-        creationBlock = logs[0].blockNumber;
-        break;
-      }
-    } catch {
-      // ignore and try next
-    }
-  }
-
-  let fromBlock = creationBlock;
-  if (fromBlock === BigInt(0)) {
-    const span = BLOCK_CHUNK * BigInt(MAX_CHUNKS);
-    fromBlock = latest > span ? latest - span : BigInt(0);
-  }
-
-  const logs: TradeLog[] = [];
+  const ranges: Array<{ start: bigint; end: bigint }> = [];
   for (let start = fromBlock; start <= latest; start += BLOCK_CHUNK) {
     const end = start + BLOCK_CHUNK - BigInt(1) > latest ? latest : start + BLOCK_CHUNK - BigInt(1);
-    const chunk = await client
-      .getLogs({ address, event: sharesBoughtEvent, fromBlock: start, toBlock: end })
-      .catch(() => []);
+    ranges.push({ start, end });
+  }
+
+  const chunks = await Promise.all(ranges.map((range) =>
+    client
+      .getLogs({ address, event: sharesBoughtEvent, fromBlock: range.start, toBlock: range.end })
+      .catch(() => []),
+  ));
+
+  const logs: TradeLog[] = [];
+  for (const chunk of chunks) {
     for (const log of chunk) {
       const args = (log as { args?: { outcome?: number | bigint; amount?: bigint } }).args ?? {};
       if (log.blockNumber === null || log.logIndex === null) continue;

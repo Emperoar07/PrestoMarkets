@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Copy, ExternalLink, X } from 'lucide-react';
 import { fetchArcStableBalances, readCachedUsdcBalance } from '@/lib/walletBalance';
 import { shortAddress, type ConnectedWallet } from '@/lib/walletProvider';
@@ -11,9 +11,13 @@ export function AddUsdcDrawer(input: {
   open: boolean;
   onClose: () => void;
   wallet: ConnectedWallet | null;
+  /** 'modal' centers over the page; 'dropdown' anchors below the trigger (parent must be relative). */
+  variant?: 'modal' | 'dropdown';
 }) {
   const [balance, setBalance] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const isDropdown = input.variant === 'dropdown';
 
   useEffect(() => {
     if (!input.open || !input.wallet?.address) return;
@@ -39,6 +43,16 @@ export function AddUsdcDrawer(input: {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [input]);
 
+  // Dropdown mode has no backdrop, so close on outside click instead.
+  useEffect(() => {
+    if (!input.open || !isDropdown) return undefined;
+    function onPointerDown(event: MouseEvent) {
+      if (panelRef.current && !panelRef.current.contains(event.target as Node)) input.onClose();
+    }
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [input, isDropdown]);
+
   if (!input.open) return null;
 
   async function copyAddress() {
@@ -48,9 +62,8 @@ export function AddUsdcDrawer(input: {
     window.setTimeout(() => setCopied(false), 1400);
   }
 
-  return (
-    <div className="fixed inset-0 z-[9998] flex items-end justify-center bg-[#050b14]/70 px-3 pb-3 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="w-full max-w-[440px] rounded-[18px] border border-white/[0.08] bg-[#0b1322] p-5 shadow-2xl shadow-black/60">
+  const panelBody = (
+    <>
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan">Add USDC</p>
@@ -112,6 +125,24 @@ export function AddUsdcDrawer(input: {
         <p className="mt-4 text-xs leading-5 text-[#64748b]">
           Presto spends Arc Testnet USDC only. Circle App Kit / Unified Balance rails are wired as funding entry points here; every transfer still happens as an explicit user action.
         </p>
+    </>
+  );
+
+  if (isDropdown) {
+    return (
+      <div
+        ref={panelRef}
+        className="absolute right-0 top-[calc(100%+8px)] z-[60] w-[400px] max-w-[calc(100vw-24px)] rounded-[18px] border border-white/[0.08] bg-[#0b1322] p-5 shadow-2xl shadow-black/60"
+      >
+        {panelBody}
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-[9998] flex items-end justify-center bg-[#050b14]/70 px-3 pb-3 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="w-full max-w-[440px] rounded-[18px] border border-white/[0.08] bg-[#0b1322] p-5 shadow-2xl shadow-black/60">
+        {panelBody}
       </div>
     </div>
   );

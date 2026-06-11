@@ -531,9 +531,16 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             )}
 
             {market.imageURI ? (
-              <div className="mt-6 overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#0d1520]">
-                <img src={market.imageURI} alt={market.title} width={800} height={280} loading="lazy" decoding="async" className="mx-auto max-h-[280px] w-full object-contain" onError={(e) => { e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22800%22 height=%22280%22%3E%3Crect fill=%22%23141e30%22 width=%22800%22 height=%22280%22/%3E%3C/svg%3E'; }} />
-              </div>
+              <img
+                src={market.imageURI}
+                alt={market.title}
+                width={800}
+                height={280}
+                loading="lazy"
+                decoding="async"
+                className="mt-6 max-h-[280px] w-auto max-w-full rounded-[14px] object-contain"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
             ) : null}
 
             <div className="mt-4">

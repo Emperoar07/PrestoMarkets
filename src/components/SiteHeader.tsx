@@ -51,7 +51,8 @@ export function SiteHeader() {
   const [balances, setBalances] = useState<Record<StableSymbol, string | null>>({ USDC: null });
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [fundingOpen, setFundingOpen] = useState(false);
+  const [fundingOpen, setFundingOpen] = useState(false); // mobile bottom-sheet
+  const [fundingDropdownOpen, setFundingDropdownOpen] = useState(false); // desktop anchored dropdown
   const [showNotifications, setShowNotifications] = useState(false);
   const { unreadCount, notifications, markNotificationsRead } = useSocialSession();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -321,13 +322,19 @@ export function SiteHeader() {
               {/* Balance pill (standalone, sized to match the header actions) */}
               <button
                 type="button"
-                onClick={() => setFundingOpen(true)}
+                onClick={() => setFundingDropdownOpen((open) => !open)}
                 className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#0b1322]/80 px-3 py-1 text-[12px] font-black text-[#dbeafe] transition-colors hover:border-cyan/25 hover:text-white"
-                aria-label="Open Add USDC drawer"
+                aria-label="Open Add USDC dropdown"
               >
                 <span className="text-[#4a5568]">Available USDC</span>
                 <span className="text-cyan font-black">{balances.USDC ?? '--'}</span>
               </button>
+              <AddUsdcDrawer
+                variant="dropdown"
+                open={fundingDropdownOpen}
+                onClose={() => setFundingDropdownOpen(false)}
+                wallet={connectedWallet}
+              />
 
               {/* Wallet pill */}
               <WalletConnectButton
