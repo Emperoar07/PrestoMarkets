@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { X } from 'lucide-react';
+import { Fingerprint, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from 'wagmi';
 import {
@@ -31,7 +31,7 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
   const [showConnectPanel, setShowConnectPanel] = useState(false);
   const [email, setEmail] = useState('');
   const [pinUserId, setPinUserId] = useState('');
-  const [circleMethod, setCircleMethod] = useState<'email' | 'pin'>('email');
+  const [circleMethod, setCircleMethod] = useState<'email' | 'pin' | 'passkey'>('email');
   const [authMode, setAuthMode] = useState<'signup' | 'login'>('signup');
   const [copied, setCopied] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -128,9 +128,11 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
       ? 'Opening Circle email verification...'
       : input?.method === 'pin'
         ? 'Opening Circle PIN challenge...'
-        : input?.method === 'social'
-          ? 'Opening Circle social sign in...'
-          : 'Connecting...';
+        : input?.method === 'passkey'
+          ? 'Opening passkey prompt...'
+          : input?.method === 'social'
+            ? 'Opening Circle social sign in...'
+            : 'Connecting...';
     setStatus(nextStatus);
 
     try {
@@ -156,6 +158,11 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
 
     if (circleMethod === 'pin') {
       void connectWallet({ method: 'pin', userId: pinUserId });
+      return;
+    }
+
+    if (circleMethod === 'passkey') {
+      void connectWallet({ method: 'passkey' });
     }
   }
 
@@ -293,7 +300,7 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
                 <div className="px-4 pb-3 pt-4">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-cyan/70">
-                      {wallet.mode === 'circle-user-controlled' ? 'App wallet' : 'External wallet'}
+                      {wallet.mode === 'circle-user-controlled' ? 'App wallet' : wallet.mode === 'circle-passkey' ? 'Passkey wallet' : 'External wallet'}
                     </p>
                     <button
                       type="button"
@@ -443,7 +450,7 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
 
               {/* Capsule tab method switcher */}
               <div className="mt-5 flex gap-1 border border-white/[0.06] bg-[#0c1322] p-1 rounded-xl w-full">
-                {(['email', 'pin'] as const).map((method) => {
+                {(['email', 'pin', 'passkey'] as const).map((method) => {
                   const isActive = circleMethod === method;
                   return (
                     <button
@@ -497,6 +504,22 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
                   </p>
                 </div>
               ) : null}
+
+              {circleMethod === 'passkey' ? (
+                <div className="mt-4.5 rounded-xl border border-cyan/20 bg-cyan/[0.06] p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-cyan/25 bg-cyan/10 text-cyan">
+                      <Fingerprint className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-black text-white">Use a device passkey</p>
+                      <p className="mt-1.5 text-xs leading-5 text-[#94a3b8]">
+                        Circle creates a smart account on Arc Testnet and sponsors passkey-signed trades through its bundler.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-5 space-y-4">
@@ -508,6 +531,8 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
               >
                 {circleMethod === 'pin'
                   ? 'Continue with PIN'
+                  : circleMethod === 'passkey'
+                    ? 'Continue with Passkey'
                   : authMode === 'signup' ? 'Sign up' : 'Log in'}
               </button>
 

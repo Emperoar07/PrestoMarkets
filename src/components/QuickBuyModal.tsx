@@ -8,6 +8,7 @@ import { buildFixedShareQuote } from '@/lib/marketUtils';
 import type { StableSymbol } from '@/lib/walletBalance';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
 import { useTransactions } from '@/lib/transactions';
+import { AddUsdcDrawer } from './AddUsdcDrawer';
 
 interface QuickBuyModalProps {
   market: Market & { source?: 'onchain'; closeDate?: string };
@@ -25,9 +26,9 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
   const [payWith, setPayWith] = useState<StableSymbol>('USDC');
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fundingOpen, setFundingOpen] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
 
-  const isCircleWallet = connectedWallet?.mode === 'circle-user-controlled';
   const unit = '$';
   const isBinaryMarket = market.outcomes.length <= 2;
 
@@ -59,13 +60,14 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
   // Click outside to close
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
+      if (fundingOpen) return;
       if (modalRef.current && !modalRef.current.contains(event.target as Node)) {
         onClose();
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [onClose]);
+  }, [fundingOpen, onClose]);
 
   function choosePayWith(symbol: StableSymbol) {
     setPayWith(symbol);
@@ -81,6 +83,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
   const amountValue = Number(amount) || 0;
   const fixedShareQuote = buildFixedShareQuote({ amountUsdc: amountValue, oddsPercent: Number(activeOutcome.odds) });
   const canTrade = market.status === 'Open' || market.status === 'Closing soon';
+  const needsFundingHelp = message.toLowerCase().includes('insufficient') || message.toLowerCase().includes('add usdc');
 
   async function handleBuy() {
     setIsSubmitting(true);
@@ -205,7 +208,13 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
         <div className="mt-4">
           <div className="flex items-center justify-between">
             <label className="text-[10px] font-black uppercase tracking-widest text-[#475569]">{'Amount'}</label>
-            <span className="text-[10px] font-black uppercase tracking-widest text-cyan">{payWith}</span>
+            <button
+              type="button"
+              onClick={() => setFundingOpen(true)}
+              className="text-[10px] font-black uppercase tracking-widest text-cyan transition hover:text-cyan/80"
+            >
+              Available {payWith}
+            </button>
           </div>
           <div className="relative mt-1.5 flex items-center rounded-[12px] border border-white/[0.06] bg-[#0d1520] px-3.5 py-2.5">
             <span className="text-2xl font-black text-[#475569] mr-1">$</span>
@@ -258,13 +267,23 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
 
         {/* Notification Status message */}
         {message ? (
-          <p className={`mt-4 rounded-[10px] border px-3 py-2 text-xs leading-5 ${
+          <div className={`mt-4 rounded-[10px] border px-3 py-2 text-xs leading-5 ${
             message.toLowerCase().includes('fail') || message.toLowerCase().includes('error') || message.toLowerCase().includes('insufficient') || message.toLowerCase().includes('expired')
               ? 'border-red-400/25 bg-red-400/10 text-red-200'
               : 'border-mint/25 bg-mint/10 text-mint'
-          }`}>
-            {message}
-          </p>
+          }`}
+          >
+            <p>{message}</p>
+            {needsFundingHelp ? (
+              <button
+                type="button"
+                onClick={() => setFundingOpen(true)}
+                className="mt-2 rounded-[8px] border border-cyan/25 bg-cyan/10 px-2.5 py-1 text-[11px] font-black text-cyan transition hover:bg-cyan/15"
+              >
+                Add USDC
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
         {/* Submit Buy Button */}
@@ -281,6 +300,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
             : `Buy ${selectedOutcome} · ${unit}${amountValue}`}
         </button>
       </div>
+      <AddUsdcDrawer open={fundingOpen} onClose={() => setFundingOpen(false)} wallet={connectedWallet} />
     </div>
   );
 }

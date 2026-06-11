@@ -22,12 +22,23 @@ import {
   refundCircleMarket,
   resolveCircleMarket,
 } from './circleActions';
+import {
+  buyPasskeyShares,
+  cancelPasskeyMarket,
+  claimPasskeyMarket,
+  refundPasskeyMarket,
+  resolvePasskeyMarket,
+} from './passkeyActions';
 import type { StableSymbol } from './walletBalance';
 import { getAgentResolverSelectionError, getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
 import { ARC_READ_BATCH, arcReadTransport, withRpcRetry } from './arcClient';
 
 function isCircleWallet(): boolean {
   return getStoredConnectedWallet()?.mode === 'circle-user-controlled';
+}
+
+function isPasskeyWallet(): boolean {
+  return getStoredConnectedWallet()?.mode === 'circle-passkey';
 }
 
 const ARC_CHAIN_HEX = '0x4cef52';
@@ -215,6 +226,12 @@ async function assertMarketOpenForTrading(
 
 export async function createLiveMarket(input: CreateLiveMarketInput): Promise<LiveActionResult> {
   if (isCircleWallet()) return createCircleMarket(input);
+  if (isPasskeyWallet()) {
+    return {
+      ok: false,
+      message: 'Passkey market creation is not enabled yet. Use the app wallet PIN flow or an external wallet to create markets.',
+    };
+  }
   try {
     const { account, config, publicClient, walletClient } = await getClients();
 
@@ -305,6 +322,9 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
 export async function buyLiveShares(input: { marketAddress: string; outcome: string; outcomeIndex?: number; amount: number; payWith?: StableSymbol }): Promise<LiveActionResult> {
   if (isCircleWallet()) {
     return buyCircleShares(input);
+  }
+  if (isPasskeyWallet()) {
+    return buyPasskeyShares(input);
   }
   try {
     const { account, config, publicClient, walletClient } = await getClients();
@@ -420,6 +440,7 @@ export async function addLiveLiquidity(input: { marketAddress: string; amount: n
 
 export async function resolveLiveMarket(input: { marketAddress: string; outcome: string; outcomeIndex?: number; resolutionURI: string }): Promise<LiveActionResult> {
   if (isCircleWallet()) return resolveCircleMarket(input);
+  if (isPasskeyWallet()) return resolvePasskeyMarket(input);
   try {
     const { account, publicClient, walletClient } = await getClients();
 
@@ -445,6 +466,7 @@ export async function resolveLiveMarket(input: { marketAddress: string; outcome:
 
 export async function cancelLiveMarket(marketAddress: string): Promise<LiveActionResult> {
   if (isCircleWallet()) return cancelCircleMarket(marketAddress);
+  if (isPasskeyWallet()) return cancelPasskeyMarket(marketAddress);
   try {
     const { account, publicClient, walletClient } = await getClients();
 
@@ -491,6 +513,7 @@ async function settleInUsdc(input: {
 
 export async function claimLiveMarket(marketAddress: string, payWith?: StableSymbol): Promise<LiveActionResult> {
   if (isCircleWallet()) return claimCircleMarket(marketAddress);
+  if (isPasskeyWallet()) return claimPasskeyMarket(marketAddress);
   if (!isAddress(marketAddress)) {
     return { ok: false, message: 'Market address is invalid.' };
   }
@@ -507,6 +530,7 @@ export async function claimLiveMarket(marketAddress: string, payWith?: StableSym
 
 export async function refundLiveMarket(marketAddress: string, payWith?: StableSymbol): Promise<LiveActionResult> {
   if (isCircleWallet()) return refundCircleMarket(marketAddress);
+  if (isPasskeyWallet()) return refundPasskeyMarket(marketAddress);
   if (!isAddress(marketAddress)) {
     return { ok: false, message: 'Market address is invalid.' };
   }

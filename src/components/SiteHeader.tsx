@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { BrandMark } from './BrandMark';
 import { WalletConnectButton } from './WalletConnectButton';
+import { AddUsdcDrawer } from './AddUsdcDrawer';
 import { fetchArcStableBalances, readCachedUsdcBalance, type StableSymbol } from '@/lib/walletBalance';
 import { getStoredConnectedWallet, subscribeConnectedWallet, disconnectExternalWallet, type ConnectedWallet } from '@/lib/walletProvider';
 import { extractMarketCategories, mergeTopicNavCategories, primaryViewCategories } from '@/lib/categories';
@@ -50,6 +51,7 @@ export function SiteHeader() {
   const [balances, setBalances] = useState<Record<StableSymbol, string | null>>({ USDC: null });
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [fundingOpen, setFundingOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const { unreadCount, notifications, markNotificationsRead } = useSocialSession();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -184,9 +186,14 @@ export function SiteHeader() {
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           {showWallet && connectedWallet ? (
-            <div className="flex items-center gap-1 rounded-lg bg-[#25c0f4]/10 border border-[#25c0f4]/15 px-2 py-1 text-[11px] font-black text-cyan">
+            <button
+              type="button"
+              onClick={() => setFundingOpen(true)}
+              className="flex items-center gap-1 rounded-lg bg-[#25c0f4]/10 border border-[#25c0f4]/15 px-2 py-1 text-[11px] font-black text-cyan"
+              aria-label="Open Add USDC drawer"
+            >
               USDC <span>{balances.USDC ?? '--'}</span>
-            </div>
+            </button>
           ) : null}
           {showWallet ? (
             <a
@@ -312,12 +319,15 @@ export function SiteHeader() {
           {showWallet && connectedWallet ? (
             <div ref={menuRef} className="relative flex items-center gap-2">
               {/* Balance pill (standalone, sized to match the header actions) */}
-              <div
-                className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#0b1322]/80 px-3 py-1 text-[12px] font-black text-[#dbeafe]"
+              <button
+                type="button"
+                onClick={() => setFundingOpen(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#0b1322]/80 px-3 py-1 text-[12px] font-black text-[#dbeafe] transition-colors hover:border-cyan/25 hover:text-white"
+                aria-label="Open Add USDC drawer"
               >
-                <span className="text-[#4a5568]">USDC</span>
+                <span className="text-[#4a5568]">Available USDC</span>
                 <span className="text-cyan font-black">{balances.USDC ?? '--'}</span>
-              </div>
+              </button>
 
               {/* Wallet pill */}
               <WalletConnectButton
@@ -403,7 +413,7 @@ export function SiteHeader() {
                       <div className="px-4 pb-3.5 pt-4 bg-[#0d1627]/30">
                         <div className="flex items-center justify-between gap-3">
                           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan/70">
-                            {connectedWallet.mode === 'circle-user-controlled' ? 'App Wallet' : 'External Wallet'}
+                            {connectedWallet.mode === 'circle-user-controlled' ? 'App Wallet' : connectedWallet.mode === 'circle-passkey' ? 'Passkey Wallet' : 'External Wallet'}
                           </p>
                           <button
                             type="button"
@@ -581,6 +591,7 @@ export function SiteHeader() {
           </div>
         </div>
       ) : null}
+      <AddUsdcDrawer open={fundingOpen} onClose={() => setFundingOpen(false)} wallet={connectedWallet} />
     </header>
   );
 }

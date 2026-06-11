@@ -7,6 +7,7 @@ import { SiteFooter } from './SiteFooter';
 import { MarketQualityPanel } from './MarketQualityPanel';
 import { Countdown } from './Countdown';
 import { AlertPrefsControl } from './AlertPrefsControl';
+import { AddUsdcDrawer } from './AddUsdcDrawer';
 
 // Heavy, below-the-fold pieces — lazy-load so the market page shell (title, odds, trade panel)
 // paints immediately instead of waiting on the chart's history fetch and the comments list.
@@ -137,8 +138,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showRulesSchema, setShowRulesSchema] = useState(false);
+  const [fundingOpen, setFundingOpen] = useState(false);
   const [payWith, setPayWith] = useState<StableSymbol>('USDC');
-  const isCircleWallet = connectedWallet?.mode === 'circle-user-controlled';
   const unit = '$';
 
   useEffect(() => {
@@ -251,6 +252,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const resolverChecksPassed = confirmSource && confirmRules && confirmHuman;
   const canSubmitResolution = canUseResolverActions && resolverChecksPassed && Boolean(resolutionURI.trim());
   const isAgentMarket = market.createdByType === 'agent';
+  const needsFundingHelp = message.toLowerCase().includes('insufficient') || message.toLowerCase().includes('add usdc');
 
   async function runAction(
     action: () => Promise<{ ok: boolean; message: string; txHash?: string; pending?: boolean }>,
@@ -621,7 +623,13 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               <div className="mt-5">
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-black uppercase tracking-widest text-muted">Amount</label>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-muted">{payWith}</span>
+                  <button
+                    type="button"
+                    onClick={() => setFundingOpen(true)}
+                    className="text-[10px] font-black uppercase tracking-widest text-cyan transition hover:text-cyan/80"
+                  >
+                    Available {payWith}
+                  </button>
                 </div>
                 <input
                   value={amount}
@@ -704,13 +712,23 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
               {/* Status message (shown above buy button so users see errors before retrying) */}
               {message ? (
-                <p className={`mt-4 rounded-[10px] border px-3 py-2 text-xs leading-5 ${
-                  message.toLowerCase().includes('fail') || message.toLowerCase().includes('error') || message.toLowerCase().includes('insufficient') || message.toLowerCase().includes('expired')
-                    ? 'border-red-400/25 bg-red-400/10 text-red-200'
-                    : 'border-mint/25 bg-mint/10 text-mint'
-                }`}>
-                  {message}
-                </p>
+                <div className={`mt-4 rounded-[10px] border px-3 py-2 text-xs leading-5 ${
+                    message.toLowerCase().includes('fail') || message.toLowerCase().includes('error') || message.toLowerCase().includes('insufficient') || message.toLowerCase().includes('expired')
+                      ? 'border-red-400/25 bg-red-400/10 text-red-200'
+                      : 'border-mint/25 bg-mint/10 text-mint'
+                  }`}
+                >
+                  <p>{message}</p>
+                  {needsFundingHelp ? (
+                    <button
+                      type="button"
+                      onClick={() => setFundingOpen(true)}
+                      className="mt-2 rounded-[8px] border border-cyan/25 bg-cyan/10 px-2.5 py-1 text-[11px] font-black text-cyan transition hover:bg-cyan/15"
+                    >
+                      Add USDC
+                    </button>
+                  ) : null}
+                </div>
               ) : null}
 
               {/* Buy button */}
@@ -962,6 +980,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
         </div>
       </main>
+      <AddUsdcDrawer open={fundingOpen} onClose={() => setFundingOpen(false)} wallet={connectedWallet} />
       <SiteFooter />
     </>
   );

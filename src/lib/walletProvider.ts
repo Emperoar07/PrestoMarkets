@@ -1,6 +1,7 @@
 import { isStringArray, assertAddress } from './typeGuards';
+import { clearCirclePasskeyWallet, connectCirclePasskeyWallet, restoreCirclePasskeyWallet } from './circlePasskey';
 
-export type WalletProviderMode = 'circle-user-controlled' | 'external-eoa';
+export type WalletProviderMode = 'circle-user-controlled' | 'circle-passkey' | 'external-eoa';
 
 export type ConnectedWallet = {
   address: string;
@@ -132,7 +133,8 @@ export type CircleSocialProvider = 'google';
 export type CircleWalletLoginInput =
   | { method: 'email'; email: string }
   | { method: 'social'; provider: CircleSocialProvider }
-  | { method: 'pin'; userId: string };
+  | { method: 'pin'; userId: string }
+  | { method: 'passkey' };
 
 type CircleConfig = {
   appId: string;
@@ -238,6 +240,15 @@ async function ensureArc(provider: EthereumProvider) {
 }
 
 export async function getExistingExternalWallet(): Promise<ConnectedWallet | null> {
+  const stored = getStoredConnectedWallet();
+  if (stored?.mode === 'circle-passkey') {
+    const restored = await restoreCirclePasskeyWallet();
+    if (restored) {
+      return { address: restored.address, mode: 'circle-passkey' };
+    }
+    setStoredConnectedWallet(null);
+  }
+
   if (!window.ethereum) {
     return getStoredConnectedWallet();
   }
@@ -252,7 +263,10 @@ export async function getExistingExternalWallet(): Promise<ConnectedWallet | nul
 }
 
 export async function disconnectExternalWallet() {
+  clearCirclePasskeyWallet();
+
   if (!window.ethereum) {
+    setStoredConnectedWallet(null);
     return;
   }
 
@@ -269,6 +283,13 @@ export async function disconnectExternalWallet() {
 }
 
 export async function connectOfficialWalletProvider(input?: CircleWalletLoginInput): Promise<ConnectedWallet> {
+  if (input?.method === 'passkey') {
+    const passkeyWallet = await connectCirclePasskeyWallet();
+    const wallet: ConnectedWallet = { address: passkeyWallet.address, mode: 'circle-passkey' };
+    setStoredConnectedWallet(wallet);
+    return wallet;
+  }
+
   const circleWallet = await connectCircleUserControlledWalletProvider(input);
   if (circleWallet) {
     setStoredConnectedWallet(circleWallet);
@@ -331,6 +352,10 @@ async function connectCircleUserControlledWalletProvider(input?: CircleWalletLog
 
   if (input.method === 'social') {
     return connectCircleSocialWallet(input.provider);
+  }
+
+  if (input.method !== 'pin') {
+    return null;
   }
 
   const userId = input.userId.trim();
