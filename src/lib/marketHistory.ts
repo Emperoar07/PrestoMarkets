@@ -65,6 +65,8 @@ export async function getMarketProbabilityHistory(marketAddress: string): Promis
   const factories = [
     config.factoryAddress ? { address: config.factoryAddress as Address, abi: prestoMarketFactoryAbi } : null,
     config.multiOutcomeFactoryAddress ? { address: config.multiOutcomeFactoryAddress as Address, abi: prestoMultiOutcomeMarketFactoryAbi } : null,
+    ...config.legacyFactoryAddresses.map((address) => ({ address: address as Address, abi: prestoMarketFactoryAbi })),
+    ...config.legacyMultiOutcomeFactoryAddresses.map((address) => ({ address: address as Address, abi: prestoMultiOutcomeMarketFactoryAbi })),
   ].filter(Boolean) as { address: Address; abi: any }[];
 
   let creationBlock = BigInt(0);

@@ -285,6 +285,8 @@ export async function GET(request: NextRequest) {
   const factoryAddresses = [
     isAddress(config.factoryAddress) ? { address: config.factoryAddress as Address, multiOutcome: false } : null,
     isAddress(config.multiOutcomeFactoryAddress) ? { address: config.multiOutcomeFactoryAddress as Address, multiOutcome: true } : null,
+    ...config.legacyFactoryAddresses.filter((address) => isAddress(address)).map((address) => ({ address: address as Address, multiOutcome: false })),
+    ...config.legacyMultiOutcomeFactoryAddresses.filter((address) => isAddress(address)).map((address) => ({ address: address as Address, multiOutcome: true })),
   ].filter((factory): factory is { address: Address; multiOutcome: boolean } => factory !== null);
   const latestBlock = await client.getBlockNumber().catch(() => BigInt(0));
   const marketAddresses = (await Promise.all(factoryAddresses.map((factory) => (

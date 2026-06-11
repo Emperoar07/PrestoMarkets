@@ -56,6 +56,24 @@ async function isFactoryDeployedMarket(marketAddress: Address, config: ReturnTyp
       }
     }
 
+    // Legacy factories: markets created before a factory upgrade stay tradable.
+    for (const legacy of [
+      ...config.legacyFactoryAddresses.map((address) => ({ address, abi: prestoMarketFactoryAbi })),
+      ...config.legacyMultiOutcomeFactoryAddresses.map((address) => ({ address, abi: prestoMultiOutcomeMarketFactoryAbi })),
+    ]) {
+      try {
+        const logs = await publicClient.getLogs({
+          address: legacy.address as Address,
+          event: legacy.abi.find((x) => x.type === 'event' && x.name === 'MarketCreated') as any,
+          args: { market: marketAddress },
+          fromBlock: 'earliest',
+        });
+        if (logs.length > 0) return true;
+      } catch (err) {
+        console.error('[circle-security] Failed legacy factory logs read:', err);
+      }
+    }
+
     return false;
   } catch (error) {
     console.error('[circle-security] Failed to verify market provenance:', error);
