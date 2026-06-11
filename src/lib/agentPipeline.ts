@@ -2087,7 +2087,9 @@ const CONFIDENCE_THRESHOLD = 0.8;
 // Per-run cap: even if there are open slots under the active-market cap, the agent should
 // not burst-create multiple markets in a single cron invocation. With cron daily this means
 // at most 1 new market per day; if you upgrade to sub-daily cron it caps the burst per tick.
-const AGENT_PER_RUN_CAP = Math.max(1, Number(process.env.PRESTO_AGENT_PER_RUN_CAP ?? 1));
+// Up to 6 regular markets per tick (was 1) — the signal gates stay the quality filter, the cap
+// just stops a single run from flooding. World Cup fixtures don't count against this.
+const AGENT_PER_RUN_CAP = Math.max(1, Number(process.env.PRESTO_AGENT_PER_RUN_CAP ?? 6));
 // Cap the number of *active* agent-created markets (Open or Closing soon). Once a market
 // resolves or cancels, a slot frees up. Tunable via env so we can raise it once we trust the
 // pipeline more. Default 2 for safety while we're early.

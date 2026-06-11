@@ -77,7 +77,7 @@ export function WorldCupFixturesPanel({ markets, onQuickBuy }: {
     <div className="sm:col-span-2 lg:col-span-3 xl:col-span-3 overflow-hidden rounded-[16px] border border-cyan/15 bg-[radial-gradient(620px_220px_at_85%_-40px,rgba(37,192,244,0.14),transparent_60%),linear-gradient(160deg,#0d1726_0%,#0b1322_60%,#0d2030_100%)]">
       {/* Header ribbon */}
       <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
-        <div className="flex items-center gap-2.5 min-w-0">
+        <Link href="/world-cup" className="flex min-w-0 items-center gap-2.5 transition-opacity hover:opacity-85">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-cyan/15 text-cyan">
             <Trophy className="h-4 w-4" />
           </span>
@@ -85,10 +85,13 @@ export function WorldCupFixturesPanel({ markets, onQuickBuy }: {
             <p className="truncate text-sm font-black text-white">FIFA World Cup 2026</p>
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan/80">Fixtures · agent markets</p>
           </div>
-        </div>
-        <span className="hidden sm:block shrink-0 text-[10px] font-bold text-[#64748b]">
-          Locks 1 min before kickoff · settles ~1h after full time
-        </span>
+        </Link>
+        <Link
+          href="/world-cup"
+          className="shrink-0 rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-200 transition-colors hover:bg-amber-300/20"
+        >
+          View all →
+        </Link>
       </div>
 
       {/* Fixture rows */}
