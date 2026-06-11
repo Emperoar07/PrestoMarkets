@@ -128,3 +128,14 @@ export const marketMetadataOverrides = pgTable('market_metadata_overrides', {
   imageUri: text('image_uri').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Periodic odds snapshots per market so charts have dense, truthful history over long ranges
+// (the on-chain event reconstruction only covers a short recent block window).
+export const marketSnapshots = pgTable('market_snapshots', {
+  marketId: text('market_id').notNull(),
+  capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Per-outcome implied probabilities (0..1), index-aligned with the market's outcomes. */
+  probabilities: jsonb('probabilities').$type<number[]>().notNull(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.marketId, table.capturedAt] }),
+}));

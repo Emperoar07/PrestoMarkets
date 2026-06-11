@@ -58,6 +58,14 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -w "\nHTTP %{http_code}\n" --max-time 290
 
+      - name: Record market odds snapshots
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/market-snapshots" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n" --max-time 290
+
       - name: Refresh forecaster leaderboard
         if: ${{ always() }}
         run: |
