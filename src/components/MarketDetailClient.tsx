@@ -392,9 +392,23 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               </div>
             </div>
 
-            <h1 className="mt-4 text-[clamp(28px,4vw,46px)] font-black leading-tight tracking-tight text-white">
-              {market.title}
-            </h1>
+            {/* Polymarket-style header: compact square market image beside the title. */}
+            <div className="mt-4 flex items-start gap-4">
+              {market.imageURI ? (
+                <img
+                  src={market.imageURI}
+                  alt=""
+                  width={64}
+                  height={64}
+                  decoding="async"
+                  className="h-14 w-14 shrink-0 rounded-[12px] bg-[#0d1520] object-cover ring-1 ring-white/10 md:h-16 md:w-16"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+              ) : null}
+              <h1 className="min-w-0 text-[clamp(28px,4vw,46px)] font-black leading-tight tracking-tight text-white">
+                {market.title}
+              </h1>
+            </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#8fa0b4]">
               <span>{market.volume} Vol.</span>
@@ -529,19 +543,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 )}
               </div>
             )}
-
-            {market.imageURI ? (
-              <img
-                src={market.imageURI}
-                alt={market.title}
-                width={800}
-                height={280}
-                loading="lazy"
-                decoding="async"
-                className="mt-6 max-h-[280px] w-auto max-w-full rounded-[14px] object-contain"
-                onError={(e) => { e.currentTarget.style.display = 'none'; }}
-              />
-            ) : null}
 
             <div className="mt-4">
               <MarketSignalChart market={market} live />
