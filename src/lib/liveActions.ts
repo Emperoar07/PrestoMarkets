@@ -58,6 +58,18 @@ function getArcChain() {
   };
 }
 
+// Read-only client for pre-trade safety checks that must run regardless of wallet mode —
+// the Circle and passkey paths never build a wallet-bound client, so gates that live behind
+// getClients() (EOA-only) would silently not apply to them.
+function getReadClient() {
+  const config = getArcConfig();
+  return createPublicClient({
+    chain: getArcChain(),
+    transport: arcReadTransport(config.rpcUrl || undefined),
+    batch: ARC_READ_BATCH,
+  });
+}
+
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
 };
@@ -337,6 +349,15 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
 }
 
 export async function buyLiveShares(input: { marketAddress: string; outcome: string; outcomeIndex?: number; amount: number; payWith?: StableSymbol }): Promise<LiveActionResult> {
+  // Gate BEFORE the wallet-mode branches so the kickoff lock and open-state checks apply to
+  // Circle and passkey wallets too, not just the EOA path.
+  if (isAddress(input.marketAddress)) {
+    try {
+      await assertMarketOpenForTrading(getReadClient(), input.marketAddress as Address);
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : 'This market cannot be traded right now.' };
+    }
+  }
   if (isCircleWallet()) {
     return buyCircleShares(input);
   }
@@ -360,8 +381,8 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
 
     // Every market deployed by the factory settles in USDC at the contract level, and the
     // app is USDC-only, so trades always spend USDC (6-decimal ERC-20 interface on Arc).
+    // (Open-state + kickoff-lock already asserted above, before the wallet-mode branches.)
     const marketAddress = input.marketAddress as Address;
-    await assertMarketOpenForTrading(publicClient, marketAddress);
 
     const amount = parseUnits(String(input.amount), 6);
 

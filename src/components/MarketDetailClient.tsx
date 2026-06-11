@@ -231,7 +231,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
   const kickoffMs = market?.kickoffTime ? new Date(market.kickoffTime).getTime() : null;
   const isTradingLocked = kickoffMs !== null && now >= kickoffMs - 60_000;
-  const isMatchLive = kickoffMs !== null && now >= kickoffMs && market?.status !== 'Resolved' && market?.status !== 'Closed';
 
   const eventIdMatch = market?.trendUrl?.match(/event\/(\d+)/);
   const idEvent = eventIdMatch ? eventIdMatch[1] : null;
@@ -246,12 +245,19 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     awayTeam?: string;
   } | null>(null);
 
+  // TheSportsDB marks completed games as "Match Finished" / FT / AET / PEN — flip the live
+  // badge off at full time instead of keeping it red until the market's closeTime.
+  const matchFinished = /finished|full.?time|\bft\b|\baet\b|\bpen\b/i.test(`${liveData?.status ?? ''} ${liveData?.progress ?? ''}`);
+  const isMatchLive = kickoffMs !== null && now >= kickoffMs && !matchFinished
+    && market?.status !== 'Resolved' && market?.status !== 'Closed';
+
   useEffect(() => {
     if (!idEvent || kickoffMs === null || now < kickoffMs || market?.status === 'Resolved' || market?.status === 'Closed') {
       return;
     }
 
     let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | undefined;
     async function fetchLiveScore() {
       try {
         const res = await fetch(`/api/sports/live?id=${idEvent}`);
@@ -259,6 +265,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
           const data = await res.json();
           if (!cancelled) {
             setLiveData(data);
+            // Match over — stop polling; the final score stays on screen.
+            if (/finished|full.?time|\bft\b|\baet\b|\bpen\b/i.test(`${data?.status ?? ''} ${data?.progress ?? ''}`) && interval) {
+              clearInterval(interval);
+            }
           }
         }
       } catch (e) {
@@ -267,10 +277,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     }
 
     void fetchLiveScore();
-    const interval = setInterval(fetchLiveScore, 30000);
+    interval = setInterval(fetchLiveScore, 30000);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
     };
   }, [idEvent, kickoffMs, market?.status]);
 
@@ -476,7 +486,32 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                       </div>
                     )}
                   </div>
-                ) : (
+                ) : matchFinished && liveData ? (
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block h-2.5 w-2.5 rounded-full bg-mint"></span>
+                      <span className="text-xs font-black uppercase tracking-wider text-mint">Full Time</span>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between gap-6">
+                      <div className="flex flex-1 flex-col items-center text-center">
+                        <span className="text-xs font-bold text-muted uppercase">Home</span>
+                        <span className="mt-1.5 text-base md:text-lg font-black text-white">{liveData.homeTeam || 'Home Team'}</span>
+                      </div>
+                      <div className="flex items-center gap-4 px-4 py-1.5 bg-white/[0.04] rounded-xl border border-white/[0.05]">
+                        <span className="text-3xl font-black text-white">{liveData.homeScore ?? '0'}</span>
+                        <span className="text-xl font-bold text-muted">:</span>
+                        <span className="text-3xl font-black text-white">{liveData.awayScore ?? '0'}</span>
+                      </div>
+                      <div className="flex flex-1 flex-col items-center text-center">
+                        <span className="text-xs font-bold text-muted uppercase">Away</span>
+                        <span className="mt-1.5 text-base md:text-lg font-black text-white">{liveData.awayTeam || 'Away Team'}</span>
+                      </div>
+                    </div>
+                    <p className="mt-4 text-center text-xs font-bold text-[#8fa0b4]">
+                      Final result — settlement follows within about an hour.
+                    </p>
+                  </div>
+                ) : now < kickoffMs ? (
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                       <span className="inline-block h-2 w-2 rounded-full bg-yellow-400 animate-pulse"></span>
@@ -485,6 +520,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     <div className="text-xs font-bold text-muted">
                       Kickoff: <span className="text-white">{new Date(kickoffMs).toLocaleString()}</span>
                     </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block h-2 w-2 rounded-full bg-mint"></span>
+                    <span className="text-xs font-bold text-muted">Match completed — awaiting settlement.</span>
                   </div>
                 )}
               </div>

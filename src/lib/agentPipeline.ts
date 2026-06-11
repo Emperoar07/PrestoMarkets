@@ -659,9 +659,10 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
         const kickoffMs = kickoff && !Number.isNaN(kickoff.getTime()) ? kickoff.getTime() : null;
         if (kickoffMs !== null && kickoffMs <= Date.now()) return [];
 
-        // Close ~30 min after a typical match ends (kickoff + ~2.5h) so the market resolves
-        // the same day, right after the result is known.
-        const closeMs = kickoffMs !== null ? kickoffMs + 2.5 * 60 * 60 * 1000 : null;
+        // Close ~1h after the match ends (kickoff + ~3h) so the market resolves the same day,
+        // right after the result is known — with headroom for extra time and penalties in
+        // knockout games, which would outrun a 2.5h window.
+        const closeMs = kickoffMs !== null ? kickoffMs + 3 * 60 * 60 * 1000 : null;
 
         return [{
           topic: `${home} vs ${away}`,

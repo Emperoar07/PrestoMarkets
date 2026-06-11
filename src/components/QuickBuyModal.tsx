@@ -82,7 +82,10 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
   
   const amountValue = Number(amount) || 0;
   const fixedShareQuote = buildFixedShareQuote({ amountUsdc: amountValue, oddsPercent: Number(activeOutcome.odds) });
-  const canTrade = market.status === 'Open' || market.status === 'Closing soon';
+  // Sports markets lock one minute before kickoff (and stay locked while the match is live).
+  const kickoffMs = market.kickoffTime ? new Date(market.kickoffTime).getTime() : null;
+  const isTradingLocked = kickoffMs !== null && !Number.isNaN(kickoffMs) && Date.now() >= kickoffMs - 60_000;
+  const canTrade = (market.status === 'Open' || market.status === 'Closing soon') && !isTradingLocked;
   const needsFundingHelp = message.toLowerCase().includes('insufficient') || message.toLowerCase().includes('add usdc');
 
   async function handleBuy() {
@@ -294,7 +297,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
           style={canTrade && amountValue > 0 ? { backgroundColor: activeOutcomeColor } : undefined}
           className={`mt-4 w-full rounded-[12px] py-3.5 text-center text-xs font-black uppercase tracking-wider text-ink transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[#1a2436] disabled:text-[#475569]`}
         >
-          {!canTrade ? 'Market Closed'
+          {!canTrade ? (isTradingLocked ? 'Match Live · Trading Locked' : 'Market Closed')
             : isSubmitting ? 'Confirming…'
             : amountValue <= 0 ? 'Enter Amount'
             : `Buy ${selectedOutcome} · ${unit}${amountValue}`}

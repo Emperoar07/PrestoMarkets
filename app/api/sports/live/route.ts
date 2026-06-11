@@ -1,6 +1,14 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
 
-export async function GET(request: Request) {
+const liveScoreRateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+export async function GET(request: NextRequest) {
+  const ip = getClientIp(request.headers);
+  if (!checkFixedWindowRateLimit(liveScoreRateLimitStore, ip, { max: 30, windowMs: 60_000, maxEntries: 5_000 })) {
+    return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 });
+  }
+
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
 
@@ -60,8 +68,8 @@ export async function GET(request: Request) {
       thumbnail: event.strThumb ?? null,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: `Sports lookup request failed: ${message}` }, { status: 500 });
+    console.error('[api] sports/live lookup failed:', err);
+    return NextResponse.json({ error: 'Sports lookup is temporarily unavailable.' }, { status: 502 });
   } finally {
     clearTimeout(timeout);
   }
