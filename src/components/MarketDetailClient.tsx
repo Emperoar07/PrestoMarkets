@@ -29,6 +29,7 @@ import type { MarketStatus } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
 import { buildFixedShareQuote } from '@/lib/marketUtils';
 import { buildResolutionTrustState } from '@/lib/resolutionTrust';
+import { disputeLiveResolution } from '@/lib/liveActions';
 import { ChevronDown } from 'lucide-react';
 
 const statusStyle: Record<MarketStatus, string> = {
@@ -304,7 +305,19 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const resolutionTrustState = buildResolutionTrustState({
     marketStatus: market.status,
     closeTimeMs: market.closeDate ? new Date(market.closeDate).getTime() : undefined,
+    proposal: market.proposal
+      ? {
+          outcome: market.proposal.outcomeLabel,
+          proposedAtMs: market.proposal.proposedAtMs,
+          evidenceURI: market.proposal.evidenceURI,
+          disputedAtMs: market.proposal.disputed ? market.proposal.proposedAtMs : undefined,
+          proposer: market.proposal.proposer,
+        }
+      : null,
   });
+  // Disputes need skin in the game: a signed-in wallet holding shares in this market.
+  const holdsPosition = Boolean(accountPreview?.outcomeShares?.some((share) => Number(share.shares) > 0));
+  const disputeWindowEndsAt = market.proposal ? new Date(market.proposal.proposedAtMs + 2 * 60 * 60 * 1000).toISOString() : undefined;
   const isClosedForResolution = resolutionTrustState.canPropose || market.closeLabel === 'Closed';
   const canAccessResolverActions = isResolver && !hasSettlementRecord;
   const canUseResolverActions = canAccessResolverActions && isClosedForResolution;
@@ -417,6 +430,57 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 Closes in {market.closeDate ? <Countdown closeDate={market.closeDate} /> : market.closeLabel}
               </span>
             </div>
+
+            {/* ── Optimistic resolution status (V2 markets) ── */}
+            {resolutionTrustState.status === 'disputable' && market.proposal && disputeWindowEndsAt ? (
+              <div className="mt-5 rounded-[14px] border border-amber-300/25 bg-amber-300/[0.06] p-4">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-300 opacity-70" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-300" />
+                  </span>
+                  <span className="text-sm font-bold text-amber-100">
+                    Outcome proposed: <span className="font-black text-white">{market.proposal.outcomeLabel}</span>
+                  </span>
+                  <span className="ml-auto text-xs font-black text-amber-200">
+                    Dispute window ends in <Countdown closeDate={disputeWindowEndsAt} />
+                  </span>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-[#a8b6c9]">
+                  If unchallenged, this settles automatically on the next agent pass. Anyone holding a position in this market can dispute.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={!connectedWallet || !holdsPosition || isSubmitting}
+                    onClick={() => void runAction(
+                      () => disputeLiveResolution(marketId, 'Community dispute via Presto market page'),
+                      'Dispute resolution',
+                    )}
+                    className="rounded-[10px] border border-amber-300/40 bg-amber-300/15 px-4 py-2 text-xs font-black text-amber-100 transition-colors hover:bg-amber-300/25 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    Dispute this outcome
+                  </button>
+                  <span className="text-[11px] font-bold text-[#64748b]">
+                    {!connectedWallet ? 'Connect a wallet to dispute.' : !holdsPosition ? 'Only position holders in this market can dispute.' : 'You hold a position — you may dispute.'}
+                  </span>
+                </div>
+              </div>
+            ) : resolutionTrustState.status === 'ready_to_settle' && market.proposal ? (
+              <div className="mt-5 flex flex-wrap items-center gap-2.5 rounded-[14px] border border-cyan/20 bg-cyan/[0.06] px-4 py-3">
+                <span className="inline-block h-2 w-2 rounded-full bg-cyan" />
+                <span className="text-sm font-bold text-[#cbd5e1]">
+                  Proposal <span className="font-black text-white">{market.proposal.outcomeLabel}</span> survived its dispute window — settles on the next agent pass.
+                </span>
+              </div>
+            ) : resolutionTrustState.status === 'disputed' && market.proposal ? (
+              <div className="mt-5 flex flex-wrap items-center gap-2.5 rounded-[14px] border border-red-400/25 bg-red-400/[0.07] px-4 py-3">
+                <span className="inline-block h-2 w-2 rounded-full bg-red-400" />
+                <span className="text-sm font-bold text-[#e2c2c2]">
+                  This proposal was <span className="font-black text-red-300">disputed</span> — the resolver will settle directly with published evidence.
+                </span>
+              </div>
+            ) : null}
 
             <div className="mt-6">
               <div className="flex overflow-hidden rounded-full" style={{ height: 8 }}>

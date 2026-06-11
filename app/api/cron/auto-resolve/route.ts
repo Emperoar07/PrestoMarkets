@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Hex } from 'viem';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
-import { agentResolveMarket, agentCancelMarket, agentReadTotalShares, getAgentAddress } from '@/lib/agentWallet';
+import { agentResolveMarket, agentCancelMarket, agentProposeResolution, agentSettleProposedResolution, agentReadTotalShares, getAgentAddress } from '@/lib/agentWallet';
 import { verifyBearer } from '@/lib/authCompare';
 import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
 import { getAgentIdentityStatus, recordResolutionReputation } from '@/lib/agentIdentity';
@@ -17,8 +17,27 @@ export const maxDuration = 300;
 
 type ResolutionResult =
   | { ok: true; action: 'resolved'; marketId: string; title: string; outcome: string; txHash: string | Hex; confidence: number }
+  | { ok: true; action: 'proposed'; marketId: string; title: string; outcome: string; txHash: string | Hex; confidence: number }
   | { ok: true; action: 'canceled'; marketId: string; title: string; outcome: string; txHash: string | Hex; confidence: number; reason: string }
   | { ok: false; action: 'skipped'; marketId: string; title: string; reason: string };
+
+const DISPUTE_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+// V2 markets get the optimistic path: publish a proposal anyone can dispute for 2 hours, then
+// settle on a later tick. V1 markets lack proposeResolution and revert, so we fall back to the
+// direct resolve() — and a DISPUTED V2 proposal also lands here, where resolve() is the
+// contract-sanctioned escalation path.
+async function proposeOrResolve(
+  marketId: string,
+  outcomeIndex: number,
+  resolutionURI: string,
+): Promise<{ ok: true; mode: 'proposed' | 'resolved'; txHash: string } | { ok: false; error?: string }> {
+  const proposed = await agentProposeResolution(marketId, outcomeIndex, resolutionURI);
+  if (proposed.ok) return { ok: true, mode: 'proposed', txHash: assertNonEmptyString(proposed.txHash, 'txHash') };
+  const resolved = await agentResolveMarket(marketId, outcomeIndex, resolutionURI);
+  if (resolved.ok) return { ok: true, mode: 'resolved', txHash: assertNonEmptyString(resolved.txHash, 'txHash') };
+  return { ok: false, error: resolved.error ?? proposed.error };
+}
 
 // NOTE (mainnet gate): `confidence` below is self-reported by the same LLM that
 // chooses the outcome, so this threshold only filters how confident the model
@@ -223,15 +242,15 @@ async function resolveMarket(market: AppMarket): Promise<ResolutionResult> {
         autonomous: true,
       };
       const resolutionURI = `data:application/json,${encodeURIComponent(JSON.stringify(report))}`;
-      const result = await agentResolveMarket(market.id, derivedIndex, resolutionURI);
+      const result = await proposeOrResolve(market.id, derivedIndex, resolutionURI);
       if (result.ok) {
         return {
           ok: true,
-          action: 'resolved',
+          action: result.mode,
           marketId: market.id,
           title: market.title,
           outcome: priceSettlement.label,
-          txHash: assertNonEmptyString(result.txHash, 'txHash'),
+          txHash: result.txHash,
           confidence: 1,
         };
       }
@@ -373,19 +392,18 @@ Return JSON only:
   }
 
   const resolutionURI = `data:application/json,${encodeURIComponent(JSON.stringify(resolutionReport))}`;
-  const result = await agentResolveMarket(market.id, derivedIndex, resolutionURI);
+  const result = await proposeOrResolve(market.id, derivedIndex, resolutionURI);
   if (!result.ok) {
     return { ok: false, action: 'skipped', marketId: market.id, title: market.title, reason: result.error ?? 'Onchain resolve failed' };
   }
 
-  const txHash = assertNonEmptyString(result.txHash, 'txHash');
   return {
     ok: true,
-    action: 'resolved',
+    action: result.mode,
     marketId: market.id,
     title: market.title,
     outcome: parsed.outcome,
-    txHash,
+    txHash: result.txHash,
     confidence,
   };
 }
@@ -427,19 +445,45 @@ export async function GET(req: NextRequest) {
 
     for (const market of expired) {
       try {
-        const result = await resolveMarket(market);
+        // Pending optimistic proposal: wait out the dispute window, then settle. A DISPUTED
+        // proposal falls through to resolveMarket, where direct resolve() is the escalation.
+        let result: ResolutionResult;
+        const proposal = market.proposal;
+        if (proposal && !proposal.disputed) {
+          const windowEndsAt = proposal.proposedAtMs + DISPUTE_WINDOW_MS;
+          if (Date.now() < windowEndsAt) {
+            result = {
+              ok: false,
+              action: 'skipped',
+              marketId: market.id,
+              title: market.title,
+              reason: `Proposal "${proposal.outcomeLabel}" pending — dispute window ends ${new Date(windowEndsAt).toISOString()}.`,
+            };
+          } else {
+            const settled = await agentSettleProposedResolution(market.id);
+            result = settled.ok
+              ? { ok: true, action: 'resolved', marketId: market.id, title: market.title, outcome: proposal.outcomeLabel, txHash: assertNonEmptyString(settled.txHash, 'txHash'), confidence: 1 }
+              : { ok: false, action: 'skipped', marketId: market.id, title: market.title, reason: `Proposal settlement failed: ${settled.error ?? 'unknown error'}` };
+          }
+        } else {
+          result = await resolveMarket(market);
+        }
         results.push(result);
 
-        // Notify users watching this market that it settled. Best-effort, never blocks.
-        if (result.ok && (result.action === 'resolved' || result.action === 'canceled')) {
-          const resolved = result.action === 'resolved';
+        // Notify users watching this market. Best-effort, never blocks.
+        if (result.ok && (result.action === 'resolved' || result.action === 'canceled' || result.action === 'proposed')) {
+          const action = result.action;
           try {
             const watchers = await listMarketWatchers(market.id);
             if (watchers.length > 0) {
               await notifyMany(watchers, () => ({
-                type: resolved ? 'market_resolved' : 'market_canceled',
-                title: resolved ? `Market resolved: ${market.title}` : `Market canceled & refunded: ${market.title}`,
-                body: resolved ? `Outcome: ${result.outcome}. Claim your winnings if you held the winning side.` : 'All participants can claim a refund.',
+                type: action === 'resolved' ? 'market_resolved' : action === 'canceled' ? 'market_canceled' : 'system',
+                title: action === 'resolved' ? `Market resolved: ${market.title}`
+                  : action === 'canceled' ? `Market canceled & refunded: ${market.title}`
+                  : `Outcome proposed: ${market.title}`,
+                body: action === 'resolved' ? `Outcome: ${result.outcome}. Claim your winnings if you held the winning side.`
+                  : action === 'canceled' ? 'All participants can claim a refund.'
+                  : `Proposed outcome: ${result.outcome}. Anyone can dispute on the market page for about 2 hours before it settles.`,
                 marketId: market.id,
               }));
             }
@@ -472,6 +516,7 @@ export async function GET(req: NextRequest) {
       agentAddress,
       expired: expired.length,
       resolved: results.filter((result) => result.ok && result.action === 'resolved').length,
+      proposed: results.filter((result) => result.ok && result.action === 'proposed').length,
       canceled: results.filter((result) => result.ok && result.action === 'canceled').length,
       results,
     });

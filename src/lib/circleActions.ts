@@ -661,3 +661,24 @@ async function settleWithUsdcConfirm(marketAddress: string, signature: string, l
 export const cancelCircleMarket = (m: string) => noArgAction(m, 'cancel()', 'Market canceled');
 export const claimCircleMarket = (m: string) => settleWithUsdcConfirm(m, 'claim()', 'Claim submitted');
 export const refundCircleMarket = (m: string) => settleWithUsdcConfirm(m, 'refund()', 'Refund submitted');
+
+// Dispute a proposed resolution (V2 optimistic markets). Blocks the unchallenged settle path;
+// the resolver must then settle directly with evidence.
+export async function disputeCircleResolution(marketAddress: string, reason: string): Promise<LiveActionResult> {
+  try {
+    const session = await requireSession();
+    if (!isAddress(marketAddress)) throw new Error('Market address is invalid.');
+    const txHash = await runContractExecution({
+      session,
+      contractAddress: marketAddress,
+      abiFunctionSignature: 'disputeResolution(string)',
+      abiParameters: [reason],
+      waitForConfirmation: true,
+    });
+    return { ok: true, message: 'Dispute submitted via Circle wallet — the resolver must now settle directly with evidence.', txHash: txHash as `0x${string}` };
+  } catch (error) {
+    const pending = pendingResultFromError(error, 'Dispute');
+    if (pending) return pending;
+    return { ok: false, message: error instanceof Error ? error.message : 'Dispute failed.' };
+  }
+}

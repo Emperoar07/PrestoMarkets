@@ -13,6 +13,7 @@ export type CircleContractExecutionPolicyInput = {
 const allowedMarketSignatures = new Set([
   'buy(uint8,uint256)',
   'resolve(uint8,string)',
+  'disputeResolution(string)',
   'cancel()',
   'claim()',
   'refund()',

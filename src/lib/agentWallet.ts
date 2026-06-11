@@ -189,6 +189,50 @@ export async function agentResolveMarket(marketAddress: string, outcomeIndex: nu
   }
 }
 
+// Optimistic resolution (V2 markets): publish a proposed outcome that anyone may dispute for
+// 2 hours before it can settle. V1 markets lack the function and revert — callers fall back
+// to the direct resolve() path.
+export async function agentProposeResolution(marketAddress: string, outcomeIndex: number, resolutionURI: string) {
+  try {
+    if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
+    const { account, publicClient, walletClient } = getClients();
+
+    const hash = await walletClient.writeContract({
+      account,
+      address: marketAddress as Address,
+      abi: prestoMarketAbi,
+      functionName: 'proposeResolution',
+      args: [outcomeIndex, resolutionURI],
+    });
+
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    return { ok: true as const, txHash: hash };
+  } catch (error) {
+    return { ok: false as const, error: error instanceof Error ? error.message : 'Agent proposal failed.' };
+  }
+}
+
+// Settles an unchallenged proposal after its dispute window. Permissionless on-chain; the agent
+// calls it on the tick after it proposed.
+export async function agentSettleProposedResolution(marketAddress: string) {
+  try {
+    if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
+    const { account, publicClient, walletClient } = getClients();
+
+    const hash = await walletClient.writeContract({
+      account,
+      address: marketAddress as Address,
+      abi: prestoMarketAbi,
+      functionName: 'settleProposedResolution',
+    });
+
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    return { ok: true as const, txHash: hash };
+  } catch (error) {
+    return { ok: false as const, error: error instanceof Error ? error.message : 'Proposal settlement failed.' };
+  }
+}
+
 export async function agentCancelMarket(marketAddress: string) {
   try {
     if (!isAddress(marketAddress)) throw new Error('Invalid market address.');

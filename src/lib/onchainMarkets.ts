@@ -141,6 +141,16 @@ async function readMarket(
     client.readContract({ address, abi: prestoMarketAbi, functionName: 'resolutionURI' }),
   ]);
 
+  // Optimistic-resolution proposal state — V2 contracts only; V1 markets revert, so every read
+  // falls back to null and the market simply carries no proposal.
+  const [proposalProposer, proposedOutcomeRaw, proposalTimeRaw, proposalDisputed, proposalURI] = await Promise.all([
+    client.readContract({ address, abi: prestoMarketAbi, functionName: 'proposalProposer' }).catch(() => null),
+    client.readContract({ address, abi: prestoMarketAbi, functionName: 'proposedOutcome' }).catch(() => null),
+    client.readContract({ address, abi: prestoMarketAbi, functionName: 'proposalTime' }).catch(() => null),
+    client.readContract({ address, abi: prestoMarketAbi, functionName: 'proposalDisputed' }).catch(() => null),
+    client.readContract({ address, abi: prestoMarketAbi, functionName: 'proposalURI' }).catch(() => null),
+  ]);
+
   const metadata = parseMarketMetadata(metadataURI);
   const outcomeLabels = metadata?.outcomeOptions && metadata.outcomeOptions.length >= 2
     ? metadata.outcomeOptions
@@ -210,6 +220,16 @@ async function readMarket(
         : metadata?.rules || 'Rules live in the market metadata URI. Resolver evidence is published after settlement.',
     winningOutcomeLabel: status === 'Resolved' ? winningLabel : undefined,
     resolutionURI: isSafeResolutionUri(resolutionURI) ? resolutionURI : undefined,
+    proposal: typeof proposalProposer === 'string' && proposalProposer !== '0x0000000000000000000000000000000000000000' && status !== 'Resolved' && status !== 'Canceled'
+      ? {
+          outcome: Number(proposedOutcomeRaw ?? 0),
+          outcomeLabel: labels[Number(proposedOutcomeRaw ?? 0)] ?? `Outcome ${Number(proposedOutcomeRaw ?? 0) + 1}`,
+          proposer: proposalProposer,
+          proposedAtMs: Number(proposalTimeRaw ?? 0) * 1000,
+          disputed: Boolean(proposalDisputed),
+          evidenceURI: typeof proposalURI === 'string' && isSafeResolutionUri(proposalURI) ? proposalURI : undefined,
+        }
+      : undefined,
     createdBy: truncateAddress(creator),
     createdByType: metadata?.createdByType,
     displayType: metadata?.displayType,

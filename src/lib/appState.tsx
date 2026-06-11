@@ -47,6 +47,15 @@ export type AppMarket = Market & {
   createdSortKey?: number;
   winningOutcomeLabel?: string;
   resolutionURI?: string;
+  /** Optimistic-resolution proposal state (V2 markets only; absent on V1 contracts). */
+  proposal?: {
+    outcome: number;
+    outcomeLabel: string;
+    proposer: string;
+    proposedAtMs: number;
+    disputed: boolean;
+    evidenceURI?: string;
+  };
 };
 
 type CreateMarketInput = {

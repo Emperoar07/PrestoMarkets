@@ -19,6 +19,7 @@ import {
   cancelCircleMarket,
   claimCircleMarket,
   createCircleMarket,
+  disputeCircleResolution,
   refundCircleMarket,
   resolveCircleMarket,
 } from './circleActions';
@@ -580,5 +581,30 @@ export async function refundLiveMarket(marketAddress: string, payWith?: StableSy
     });
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Refund transaction failed.' };
+  }
+}
+
+/** Dispute a proposed resolution on a V2 optimistic market during its 2-hour window. */
+export async function disputeLiveResolution(marketAddress: string, reason: string): Promise<LiveActionResult> {
+  if (isCircleWallet()) return disputeCircleResolution(marketAddress, reason);
+  if (isPasskeyWallet()) {
+    return { ok: false, message: 'Disputing from a passkey wallet is coming soon — connect an external wallet to dispute this proposal.' };
+  }
+  if (!isAddress(marketAddress)) {
+    return { ok: false, message: 'Market address is invalid.' };
+  }
+  try {
+    const { account, publicClient, walletClient } = await getClients();
+    const hash = await walletClient.writeContract({
+      account,
+      address: marketAddress as Address,
+      abi: prestoMarketAbi,
+      functionName: 'disputeResolution',
+      args: [reason],
+    });
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    return { ok: true, message: 'Dispute submitted — automatic settlement is blocked and the resolver must settle directly with evidence.', txHash: hash };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : 'Dispute transaction failed.' };
   }
 }
