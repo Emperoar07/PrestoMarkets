@@ -603,7 +603,13 @@ function formatSportsDbDate(date: Date) {
 async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
   const apiKey = process.env.THESPORTSDB_API_KEY || '123';
   const dates = [new Date(), new Date(Date.now() + 24 * 60 * 60 * 1000)];
-  const requests = sportsDbSports.flatMap((sport) => dates.map(async (date) => {
+  // World Cup priority: scan Soccer a full WEEK ahead so every World Cup fixture in the coming
+  // week gets its market days before kickoff — a few missed ticks can never miss a match.
+  // Days beyond tomorrow only admit World Cup fixtures (guard below) so the regular trend lane
+  // isn't flooded with far-out club fixtures.
+  const soccerDates = Array.from({ length: 7 }, (_, i) => new Date(Date.now() + i * 86_400_000));
+  const requests = sportsDbSports.flatMap((sport) => (sport.sport === 'Soccer' ? soccerDates : dates).map(async (date, dateIndex) => {
+    const isExtendedDay = dateIndex >= 2; // beyond today + tomorrow → World Cup only
     const day = formatSportsDbDate(date);
     const url = `https://www.thesportsdb.com/api/v1/json/${apiKey}/eventsday.php?d=${day}&s=${encodeURIComponent(sport.sport)}`;
 
@@ -641,6 +647,9 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
         // FIFA World Cup fixtures are marquee: every match on a match day must get a market,
         // so they ride the guaranteed lane instead of competing through the signal gates.
         const isWorldCupFixture = sport.sport === 'Soccer' && /world cup/i.test(event.strLeague ?? '');
+
+        // The week-ahead scan exists for the World Cup only — other fixtures stay same/next-day.
+        if (isExtendedDay && !isWorldCupFixture) return [];
 
         // Skip obscure competitions — only top-tier leagues/cups become markets.
         if (!isWorldCupFixture && !isMajorSportsLeague(event.strLeague)) return [];
@@ -2157,10 +2166,15 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   // Dedup still applies so re-runs skip fixtures that already have a market, and the active-market
   // cap remains the hard ceiling. The per-run cap is intentionally NOT applied here so a 4-match
   // group-stage day gets all 4 markets in one tick.
-  const fixtureTrends = trends.filter((trend) => trend.guaranteedFixture);
+  // World Cup fixtures get reserved headroom above the regular cap, so ordinary trend markets
+  // can never crowd a match out of existence. The fixture lane is still bounded.
+  const WORLD_CUP_CAP_RESERVE = 10;
+  const fixtureTrends = trends
+    .filter((trend) => trend.guaranteedFixture)
+    .sort((a, b) => Date.parse(a.kickoffTime ?? '') - Date.parse(b.kickoffTime ?? '')); // soonest kickoff first
   for (const trend of fixtureTrends) {
-    if (liveActive >= AGENT_ACTIVE_MARKET_CAP) {
-      results.push({ ok: false, topic: trend.topic, stage: 'cap', reason: 'Active-market cap reached before all World Cup fixtures were created; remaining fixtures retry next tick.' });
+    if (liveActive >= AGENT_ACTIVE_MARKET_CAP + WORLD_CUP_CAP_RESERVE) {
+      results.push({ ok: false, topic: trend.topic, stage: 'cap', reason: 'Fixture cap reserve exhausted; remaining World Cup fixtures retry next tick.' });
       break;
     }
     try {
