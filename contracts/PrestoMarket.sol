@@ -12,6 +12,9 @@ contract PrestoMarket is ReentrancyGuard {
 
     uint16 public constant MAX_PROTOCOL_FEE_BPS = 500;
     uint256 public constant RESOLUTION_CHALLENGE_WINDOW = 2 hours;
+    /// @notice After closeTime + this timeout, anyone may cancel an unresolved market so a
+    /// lost or dead resolver key can never strand participant funds.
+    uint256 public constant RESOLUTION_TIMEOUT = 14 days;
     uint256 public constant BPS = 10_000;
 
     enum MarketKind {
@@ -72,6 +75,7 @@ contract PrestoMarket is ReentrancyGuard {
     error NoResolutionProposal();
     error ChallengeWindowOpen();
     error ResolutionDisputedAlready();
+    error ResolutionTimeoutNotReached();
 
     constructor(
         address collateral_,
@@ -169,9 +173,20 @@ contract PrestoMarket is ReentrancyGuard {
         _resolve(proposedOutcome, proposalURI);
     }
 
+    /// @notice Resolver may cancel at any time while Active. Early-cancel is safe by
+    /// construction: cancellation refunds every participant their full stake.
     function cancel() external onlyResolver {
         if (state != State.Active) revert NotActive();
-        if (block.timestamp < closeTime) revert MarketNotClosed();
+        state = State.Canceled;
+
+        emit MarketCanceled();
+    }
+
+    /// @notice Permissionless escape hatch: once a market has sat unresolved long past close,
+    /// anyone may cancel it so funds are always refundable even if the resolver disappears.
+    function timeoutCancel() external {
+        if (state != State.Active) revert NotActive();
+        if (block.timestamp < closeTime + RESOLUTION_TIMEOUT) revert ResolutionTimeoutNotReached();
         state = State.Canceled;
 
         emit MarketCanceled();

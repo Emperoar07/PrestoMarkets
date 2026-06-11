@@ -217,7 +217,6 @@ describe('PrestoMarket', function () {
     await market.connect(yesTrader).buy(0, usdc(25));
     await market.connect(noTrader).buy(1, usdc(35));
 
-    await expect(market.connect(resolver).cancel()).to.be.revertedWithCustomError(market, 'MarketNotClosed');
     await increaseToClose(market);
     await expect(market.connect(resolver).cancel()).to.emit(market, 'MarketCanceled');
 
@@ -232,6 +231,37 @@ describe('PrestoMarket', function () {
     expect(await collateral.balanceOf(yesTrader.address)).to.equal(yesBalanceBefore + usdc(25));
 
     await expect(market.connect(yesTrader).refund()).to.be.revertedWithCustomError(market, 'AlreadyClaimed');
+  });
+
+  it('allows the resolver to cancel early before close, refunding in full', async function () {
+    const { market, resolver, yesTrader, outsider } = await deployMarketFixture();
+
+    await market.connect(yesTrader).buy(0, usdc(25));
+
+    await expect(market.connect(outsider).cancel()).to.be.revertedWithCustomError(market, 'NotResolver');
+    await expect(market.connect(resolver).cancel()).to.emit(market, 'MarketCanceled');
+
+    expect(await market.state()).to.equal(State.Canceled);
+    expect(await market.previewRefund(yesTrader.address)).to.equal(usdc(25));
+  });
+
+  it('lets anyone timeout-cancel a market stranded past the resolution timeout', async function () {
+    const { market, yesTrader, outsider } = await deployMarketFixture();
+
+    await market.connect(yesTrader).buy(0, usdc(25));
+    await increaseToClose(market);
+
+    await expect(market.connect(outsider).timeoutCancel())
+      .to.be.revertedWithCustomError(market, 'ResolutionTimeoutNotReached');
+
+    const closeTime = await market.closeTime();
+    const timeout = await market.RESOLUTION_TIMEOUT();
+    await ethers.provider.send('evm_setNextBlockTimestamp', [Number(closeTime + timeout) + 1]);
+    await ethers.provider.send('evm_mine');
+
+    await expect(market.connect(outsider).timeoutCancel()).to.emit(market, 'MarketCanceled');
+    expect(await market.state()).to.equal(State.Canceled);
+    expect(await market.previewRefund(yesTrader.address)).to.equal(usdc(25));
   });
 
   it('rejects constructor parameters that would make the market unsafe', async function () {

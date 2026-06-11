@@ -205,4 +205,30 @@ describe('PrestoMultiOutcomeMarket', function () {
       .withArgs(firstTrader.address, usdc(25));
     await expect(market.connect(firstTrader).refund()).to.be.revertedWithCustomError(market, 'AlreadyClaimed');
   });
+
+  it('supports early resolver cancel and permissionless timeout cancel', async function () {
+    const { market, resolver, firstTrader, outsider } = await deployMarketFixture({ outcomeCount: 4 });
+
+    await market.connect(firstTrader).buy(1, usdc(10));
+
+    // Early cancel: allowed for the resolver before close, never for outsiders.
+    await expect(market.connect(outsider).cancel()).to.be.revertedWithCustomError(market, 'NotResolver');
+    await expect(market.connect(resolver).cancel()).to.emit(market, 'MarketCanceled');
+    expect(await market.previewRefund(firstTrader.address)).to.equal(usdc(10));
+
+    // Timeout cancel on a fresh market: blocked until closeTime + RESOLUTION_TIMEOUT, then open to anyone.
+    const fresh = await deployMarketFixture({ outcomeCount: 4 });
+    await fresh.market.connect(fresh.firstTrader).buy(2, usdc(5));
+    await increaseToClose(fresh.market);
+    await expect(fresh.market.connect(fresh.outsider).timeoutCancel())
+      .to.be.revertedWithCustomError(fresh.market, 'ResolutionTimeoutNotReached');
+
+    const closeTime = await fresh.market.closeTime();
+    const timeout = await fresh.market.RESOLUTION_TIMEOUT();
+    await ethers.provider.send('evm_setNextBlockTimestamp', [Number(closeTime + timeout) + 1]);
+    await ethers.provider.send('evm_mine');
+
+    await expect(fresh.market.connect(fresh.outsider).timeoutCancel()).to.emit(fresh.market, 'MarketCanceled');
+    expect(await fresh.market.previewRefund(fresh.firstTrader.address)).to.equal(usdc(5));
+  });
 });

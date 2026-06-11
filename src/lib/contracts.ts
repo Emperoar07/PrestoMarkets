@@ -317,6 +317,13 @@ export const prestoMarketAbi = [
   },
   {
     type: 'function',
+    name: 'timeoutCancel',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: 'function',
     name: 'claim',
     stateMutability: 'nonpayable',
     inputs: [],
