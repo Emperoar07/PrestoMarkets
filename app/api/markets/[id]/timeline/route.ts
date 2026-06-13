@@ -3,12 +3,11 @@ import {
   createPublicClient,
   formatUnits,
   getAddress,
-  http,
   isAddress,
   type AbiEvent,
   type Address,
 } from 'viem';
-import { getArcChainId, getArcConfig } from '@/lib/arcConfig';
+import { ARC_USDC_DECIMALS, createArcReadClient } from '@/lib/arcClient';
 import { prestoMarketAbi } from '@/lib/contracts';
 import { getPublicMarket } from '@/lib/publicMarketSource';
 import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
@@ -55,21 +54,11 @@ const marketResolvedEvent = prestoMarketAbi.find((entry) => entry.type === 'even
 const marketCanceledEvent = prestoMarketAbi.find((entry) => entry.type === 'event' && entry.name === 'MarketCanceled') as AbiEvent;
 
 function createClient() {
-  const config = getArcConfig();
-  if (!config.rpcUrl) return null;
-  return createPublicClient({
-    chain: {
-      id: getArcChainId(),
-      name: 'Arc Testnet',
-      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-      rpcUrls: { default: { http: [config.rpcUrl] } },
-    },
-    transport: http(config.rpcUrl),
-  });
+  return createArcReadClient();
 }
 
 function formatUsdc(amount: bigint) {
-  const value = Number(formatUnits(amount, 6));
+  const value = Number(formatUnits(amount, ARC_USDC_DECIMALS));
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
   if (value > 0 && value < 0.01) return '<$0.01';

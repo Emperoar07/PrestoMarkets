@@ -13,8 +13,8 @@ import {
   type Hex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { arcTestnet } from 'viem/chains';
 import { getArcConfig } from './arcConfig';
+import { createArcChain } from './arcClient';
 import { erc20Abi, prestoMarketFactoryAbi, prestoMarketAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { buildMarketMetadataURI } from './marketMetadata';
 import { logger } from './logger';
@@ -82,9 +82,10 @@ function getClients() {
   if (!isAddress(config.factoryAddress ?? '')) throw new Error('NEXT_PUBLIC_MARKET_FACTORY_ADDRESS not set.');
 
   const account = privateKeyToAccount(pk as Hex);
+  const chain = createArcChain(config.rpcUrls);
   const transport = config.rpcUrl ? http(config.rpcUrl) : http();
-  const publicClient = createPublicClient({ chain: arcTestnet, transport });
-  const walletClient = createWalletClient({ account, chain: arcTestnet, transport });
+  const publicClient = createPublicClient({ chain, transport });
+  const walletClient = createWalletClient({ account, chain, transport });
 
   return {
     account,

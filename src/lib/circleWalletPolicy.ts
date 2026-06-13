@@ -1,5 +1,5 @@
-import { createPublicClient, decodeFunctionData, http, isAddress, toFunctionSelector, type Address } from 'viem';
-import { arcTestnet } from 'viem/chains';
+import { decodeFunctionData, isAddress, toFunctionSelector, type Address } from 'viem';
+import { createArcReadClient } from './arcClient';
 import { getArcConfig } from './arcConfig';
 import { fetchOnchainMarkets } from './onchainMarkets';
 import { erc20Abi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
@@ -24,10 +24,8 @@ const ZERO = BigInt(0);
 
 async function isFactoryDeployedMarket(marketAddress: Address, config: ReturnType<typeof getArcConfig>): Promise<boolean> {
   try {
-    const publicClient = createPublicClient({
-      chain: arcTestnet,
-      transport: http(config.rpcUrl),
-    });
+    const publicClient = createArcReadClient();
+    if (!publicClient) return false;
 
     if (config.factoryAddress) {
       try {

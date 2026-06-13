@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
+import { getSportsDbApiKey } from '@/lib/sportsProvider';
 
 // Live match data with a multi-source chain for accuracy:
 //   1. TheSportsDB event lookup (always available, free key) — names, date, baseline score.
@@ -49,7 +50,8 @@ function teamsMatch(a?: string, b?: string): boolean {
 }
 
 async function fetchSportsDb(id: string, signal: AbortSignal): Promise<LiveScore | null> {
-  const apiKey = process.env.THESPORTSDB_API_KEY || '123';
+  const apiKey = getSportsDbApiKey();
+  if (!apiKey) return null;
   const res = await fetch(
     `https://www.thesportsdb.com/api/v1/json/${apiKey}/lookupevent.php?id=${id}`,
     { next: { revalidate: 15 }, signal },

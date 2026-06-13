@@ -7,8 +7,8 @@
  * `marketHistoryStub` → this module so `/api/v1/markets/[id]/history` returns live data.
  */
 
-import { createPublicClient, getAddress, http, isAddress, type AbiEvent, type Address } from 'viem';
-import { getArcChainId, getArcConfig } from './arcConfig';
+import { getAddress, isAddress, type AbiEvent, type Address } from 'viem';
+import { createArcReadClient } from './arcClient';
 import { prestoMarketAbi } from './contracts';
 import { parseMarketMetadata } from './marketMetadata';
 
@@ -28,17 +28,7 @@ const sharesBoughtEvent = prestoMarketAbi.find(
 ) as AbiEvent;
 
 function createClient() {
-  const config = getArcConfig();
-  if (!config.rpcUrl) return null;
-  return createPublicClient({
-    chain: {
-      id: getArcChainId(),
-      name: 'Arc Testnet',
-      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-      rpcUrls: { default: { http: [config.rpcUrl] } },
-    },
-    transport: http(config.rpcUrl),
-  });
+  return createArcReadClient();
 }
 
 type TradeLog = { outcome: number; amount: bigint; blockNumber: bigint; logIndex: number };

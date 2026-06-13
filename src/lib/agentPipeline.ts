@@ -19,6 +19,7 @@ import { deriveDisplayType } from './marketDisplay';
 import { logger } from './logger';
 import { assessTrendResearchQuality, formatResearchAssessment, getResearchDecision } from './agentResearch';
 import { formatExaEvidence, researchTrendWithExa, summarizeExaEvidence, type ExaEvidence } from './exaResearch';
+import { getSportsDbApiKey } from './sportsProvider';
 import {
   ARC_ECOSYSTEM_CONTEXT_SUMMARY,
   getArcEcosystemPriorityBoost,
@@ -635,7 +636,8 @@ function formatSportsDbDate(date: Date) {
 }
 
 async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
-  const apiKey = process.env.THESPORTSDB_API_KEY || '123';
+  const apiKey = getSportsDbApiKey();
+  if (!apiKey) return [];
   const dates = [new Date(), new Date(Date.now() + 24 * 60 * 60 * 1000)];
   // World Cup priority: scan Soccer a full WEEK ahead so every World Cup fixture in the coming
   // week gets its market days before kickoff — a few missed ticks can never miss a match.

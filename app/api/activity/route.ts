@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   createPublicClient,
   formatUnits,
-  http,
   isAddress,
   type Address,
 } from 'viem';
-import { getArcChainId, getArcConfig } from '@/lib/arcConfig';
+import { getArcConfig } from '@/lib/arcConfig';
+import { ARC_USDC_DECIMALS, createArcReadClient } from '@/lib/arcClient';
 import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from '@/lib/contracts';
 import { parseMarketMetadata } from '@/lib/marketMetadata';
 import type { PortfolioActivity } from '@/lib/portfolio';
@@ -42,7 +42,7 @@ type ActivityRow = PortfolioActivity & {
 };
 
 function formatUsdc(value: bigint) {
-  return `$${Number(formatUnits(value, 6)).toFixed(2)}`;
+  return `$${Number(formatUnits(value, ARC_USDC_DECIMALS)).toFixed(2)}`;
 }
 
 function truncateAddress(value: string) {
@@ -83,20 +83,7 @@ function sortRows(a: ActivityRow, b: ActivityRow) {
 }
 
 function createArcClient() {
-  const config = getArcConfig();
-  if (!config.rpcUrl) return null;
-
-  return createPublicClient({
-    chain: {
-      id: getArcChainId(),
-      name: 'Arc Testnet',
-      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-      rpcUrls: {
-        default: { http: [config.rpcUrl] },
-      },
-    },
-    transport: http(config.rpcUrl),
-  });
+  return createArcReadClient();
 }
 
 async function fetchFactoryMarkets(client: ReturnType<typeof createPublicClient>, factoryAddress: Address, multiOutcome = false) {
@@ -258,7 +245,7 @@ function serializeRow(row: ActivityRow): PortfolioActivity {
 
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request.headers);
-  if (!(await checkRateLimit('activity', ip, { limit: 90, windowSec: 60 }))) {
+  if (!(await checkRateLimit('activity', ip, { limit: 90, windowSec: 60, failOpen: true }))) {
     return NextResponse.json({ ok: false, error: 'Too many requests. Please try again later.' }, { status: 429 });
   }
 

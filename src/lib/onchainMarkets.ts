@@ -1,6 +1,6 @@
 import { createPublicClient, fallback, formatUnits, http, type Address } from 'viem';
-import { arcTestnet } from 'viem/chains';
 import { getArcConfig, getArcChainId } from './arcConfig';
+import { createArcChain } from './arcClient';
 import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { isSafeResolutionUri, parseMarketMetadata } from './marketMetadata';
 import { stripSourceFromDescription } from './sourcePrivacy';
@@ -328,12 +328,8 @@ async function readOnchainMarkets() {
   const chainId = getArcChainId();
   const client = createPublicClient({
     chain: {
-      ...arcTestnet,
+      ...createArcChain(config.rpcUrls),
       id: chainId,
-      rpcUrls: {
-        ...arcTestnet.rpcUrls,
-        default: { http: config.rpcUrls },
-      },
     },
     transport: fallback(config.rpcUrls.map((url) => http(url))),
     batch: {

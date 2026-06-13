@@ -29,12 +29,13 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
  * Checks rate limits for a given endpoint and client key.
  * If Upstash Redis credentials are present in the environment, it uses an Upstash sliding window.
  * Otherwise, it falls back to the in-memory Map fixed-window rate limiter.
- * Fails open (allows request) if Upstash throws an exception.
+ * Fails closed by default if Upstash throws. Read-only endpoints can opt into
+ * fail-open behavior with `failOpen: true`.
  */
 export async function checkRateLimit(
   endpoint: string,
   key: string,
-  options: { limit: number; windowSec: number }
+  options: { limit: number; windowSec: number; failOpen?: boolean }
 ): Promise<boolean> {
   if (redis) {
     try {
@@ -48,8 +49,7 @@ export async function checkRateLimit(
       return success;
     } catch (error) {
       console.error(`[rate-limit] Upstash Redis error on ${endpoint}:`, error);
-      // Fail open so an outage doesn't block write access
-      return true;
+      return options.failOpen === true;
     }
   }
 

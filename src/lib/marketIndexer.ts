@@ -10,8 +10,9 @@
  * market, so cost is ~chunks×3 calls, not per-market.
  */
 
-import { createPublicClient, formatUnits, http, type AbiEvent, type Address } from 'viem';
-import { getArcChainId, getArcConfig } from './arcConfig';
+import { createPublicClient, formatUnits, type AbiEvent, type Address } from 'viem';
+import { getArcConfig } from './arcConfig';
+import { ARC_USDC_DECIMALS, createArcReadClient } from './arcClient';
 import { prestoMarketAbi } from './contracts';
 import { fetchOnchainMarkets } from './onchainMarkets';
 import { computeAgentCalibration, type CalibrationMarket } from './marketCalibration';
@@ -41,15 +42,7 @@ const refundedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name =
 function createClient() {
   const config = getArcConfig();
   if (!config.rpcUrl) return null;
-  return createPublicClient({
-    chain: {
-      id: getArcChainId(),
-      name: 'Arc Testnet',
-      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-      rpcUrls: { default: { http: [config.rpcUrl] } },
-    },
-    transport: http(config.rpcUrl),
-  });
+  return createArcReadClient();
 }
 
 type LedgerEntry = { spent: bigint; received: bigint; markets: Set<string> };
@@ -124,7 +117,7 @@ function toCalibrationMarket(market: {
 }
 
 function usd(value: bigint): number {
-  return Number(formatUnits(value, 6));
+  return Number(formatUnits(value, ARC_USDC_DECIMALS));
 }
 
 /** Creator + trader stats for every address that created or traded a market. */

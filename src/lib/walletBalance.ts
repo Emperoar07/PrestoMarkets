@@ -1,6 +1,6 @@
-import { createPublicClient, formatUnits, isAddress, type Address } from 'viem';
-import { getArcConfig, getArcChainId } from './arcConfig';
-import { ARC_READ_BATCH, arcReadTransport } from './arcClient';
+import { formatUnits, isAddress, type Address } from 'viem';
+import { getArcConfig } from './arcConfig';
+import { ARC_USDC_DECIMALS, createArcReadClient } from './arcClient';
 import { erc20Abi } from './contracts';
 
 // Presto is USDC-only. StableSymbol is kept as a (single-member) type so the
@@ -39,16 +39,8 @@ async function fetchErc20Balance(address: string, token: Address): Promise<strin
   const config = getArcConfig();
   if (!config.rpcUrl || !isAddress(address) || !isAddress(token)) return null;
 
-  const client = createPublicClient({
-    chain: {
-      id: getArcChainId(),
-      name: 'Arc Testnet',
-      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-      rpcUrls: { default: { http: [config.rpcUrl] } },
-    },
-    transport: arcReadTransport(config.rpcUrl),
-    batch: ARC_READ_BATCH,
-  });
+  const client = createArcReadClient();
+  if (!client) return null;
 
   const balance = await client.readContract({
     address: token,
@@ -56,7 +48,7 @@ async function fetchErc20Balance(address: string, token: Address): Promise<strin
     functionName: 'balanceOf',
     args: [address as Address],
   });
-  return formatUnits(balance, 6);
+  return formatUnits(balance, ARC_USDC_DECIMALS);
 }
 
 export async function fetchArcUsdcBalance(address: string): Promise<string | null> {

@@ -11,6 +11,7 @@
 import { createPublicClient, erc20Abi, formatUnits, http, isAddress, type Address } from 'viem';
 import { baseSepolia, sepolia, avalancheFuji, arbitrumSepolia } from 'viem/chains';
 import { getArcConfig } from './arcConfig';
+import { ARC_USDC_DECIMALS, createArcReadClient } from './arcClient';
 
 export type ChainUsdcBalance = {
   key: string;
@@ -57,7 +58,21 @@ async function readUsdcBalance(rpcChain: Parameters<typeof createPublicClient>[0
       client.readContract({ address: usdc, abi: erc20Abi, functionName: 'balanceOf', args: [owner] }),
       READ_TIMEOUT_MS,
     );
-    return Number(formatUnits(raw as bigint, 6));
+    return Number(formatUnits(raw as bigint, ARC_USDC_DECIMALS));
+  } catch {
+    return null;
+  }
+}
+
+async function readArcUsdcBalance(usdc: Address, owner: Address): Promise<number | null> {
+  try {
+    const client = createArcReadClient();
+    if (!client) return null;
+    const raw = await withTimeout(
+      client.readContract({ address: usdc, abi: erc20Abi, functionName: 'balanceOf', args: [owner] }),
+      READ_TIMEOUT_MS,
+    );
+    return Number(formatUnits(raw as bigint, ARC_USDC_DECIMALS));
   } catch {
     return null;
   }
@@ -89,12 +104,7 @@ export async function fetchAvailableUsdc(address: string): Promise<AvailableUsdc
 
   const config = getArcConfig();
   const arcRead: Promise<number | null> = config.rpcUrl && config.usdcAddress && isAddress(config.usdcAddress)
-    ? readUsdcBalance(
-        { id: 5042002, name: 'Arc Testnet', nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 }, rpcUrls: { default: { http: [config.rpcUrl] } } },
-        config.rpcUrl,
-        config.usdcAddress as Address,
-        owner,
-      )
+    ? readArcUsdcBalance(config.usdcAddress as Address, owner)
     : Promise.resolve(null);
 
   const [arc, ...others] = await Promise.all([

@@ -12,7 +12,7 @@ const cacheHeaders = { 'Cache-Control': 'public, s-maxage=60, stale-while-revali
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ address: string }> }) {
   const ip = getClientIp(request.headers);
-  if (!(await checkRateLimit('profile-reputation', ip, { limit: 60, windowSec: 60 }))) {
+  if (!(await checkRateLimit('profile-reputation', ip, { limit: 60, windowSec: 60, failOpen: true }))) {
     return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 });
   }
 

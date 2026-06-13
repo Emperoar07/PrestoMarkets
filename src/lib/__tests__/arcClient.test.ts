@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { isRpcRateLimited, withRpcRetry } from '../arcClient';
+import {
+  ARC_NATIVE_USDC_DECIMALS,
+  ARC_USDC_DECIMALS,
+  createArcReadClient,
+  isRpcRateLimited,
+  withRpcRetry,
+} from '../arcClient';
 
 describe('arcClient', () => {
   afterEach(() => {
@@ -53,6 +59,30 @@ describe('arcClient', () => {
       await vi.runAllTimersAsync();
       await assertion;
       expect(fn).toHaveBeenCalledTimes(3); // initial + 2 retries
+    });
+  });
+
+  describe('Arc read client', () => {
+    it('uses Arc USDC decimal constants from the documented dual-interface model', () => {
+      expect(ARC_USDC_DECIMALS).toBe(6);
+      expect(ARC_NATIVE_USDC_DECIMALS).toBe(18);
+    });
+
+    it('creates a read client when Arc RPC configuration is present', () => {
+      const previous = process.env.NEXT_PUBLIC_ARC_RPC_URL;
+      process.env.NEXT_PUBLIC_ARC_RPC_URL = 'https://rpc.testnet.arc.network';
+
+      const client = createArcReadClient();
+
+      expect(client).not.toBeNull();
+      expect(client?.chain?.id).toBe(5042002);
+      expect(client?.chain?.nativeCurrency.decimals).toBe(ARC_NATIVE_USDC_DECIMALS);
+
+      if (previous === undefined) {
+        delete process.env.NEXT_PUBLIC_ARC_RPC_URL;
+      } else {
+        process.env.NEXT_PUBLIC_ARC_RPC_URL = previous;
+      }
     });
   });
 });

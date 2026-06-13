@@ -4,8 +4,8 @@ import {
   isAddress,
   type Address,
 } from 'viem';
-import { getArcConfig, getArcChainId } from './arcConfig';
-import { ARC_READ_BATCH, arcReadTransport, withRpcRetry } from './arcClient';
+import { ARC_USDC_DECIMALS, createArcReadClient, withRpcRetry } from './arcClient';
+import { getArcConfig } from './arcConfig';
 import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { fetchMarketCostBasisIndexed } from './costBasisIndexer';
 import type { AppMarket } from './appState';
@@ -42,15 +42,15 @@ const marketCreatedEvent = prestoMarketFactoryAbi.find((e) => e.type === 'event'
 const multiOutcomeMarketCreatedEvent = prestoMultiOutcomeMarketFactoryAbi.find((e) => e.type === 'event' && e.name === 'MarketCreated')!;
 
 function formatUsdc(value: bigint) {
-  return `$${Number(formatUnits(value, 6)).toFixed(2)}`;
+  return `$${Number(formatUnits(value, ARC_USDC_DECIMALS)).toFixed(2)}`;
 }
 
 function formatShares(value: bigint) {
-  return Number(formatUnits(value, 6)).toFixed(2);
+  return Number(formatUnits(value, ARC_USDC_DECIMALS)).toFixed(2);
 }
 
 function toUsdcNumber(value: bigint) {
-  return Number(formatUnits(value, 6));
+  return Number(formatUnits(value, ARC_USDC_DECIMALS));
 }
 
 function getPositionStatus(market: AppMarket, claimable: bigint, refundable: bigint, hasClaimed: boolean): Position['status'] {
@@ -120,24 +120,7 @@ function getPositionValuation(input: {
 }
 
 function createClient() {
-  const config = getArcConfig();
-
-  if (!config.rpcUrl) {
-    return null;
-  }
-
-  return createPublicClient({
-    chain: {
-      id: getArcChainId(),
-      name: 'Arc Testnet',
-      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-      rpcUrls: {
-        default: { http: [config.rpcUrl] },
-      },
-    },
-    transport: arcReadTransport(config.rpcUrl),
-    batch: ARC_READ_BATCH,
-  });
+  return createArcReadClient();
 }
 
 async function fetchMarketCostBasis(

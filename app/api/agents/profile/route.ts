@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { createPublicClient, formatUnits, http, isAddress, type Address } from 'viem';
+import { formatUnits, isAddress, type Address } from 'viem';
 import { ERC8004_CONTRACTS, getAgentIdentityStatus } from '@/lib/agentIdentity';
 import { getAgentAddress } from '@/lib/agentWallet';
-import { getArcConfig, getArcChainId } from '@/lib/arcConfig';
+import { getArcConfig } from '@/lib/arcConfig';
+import { ARC_USDC_DECIMALS, createArcReadClient } from '@/lib/arcClient';
 import { erc20Abi } from '@/lib/contracts';
 import { disputePolicy, grantDemoStory } from '@/lib/disputePolicy';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
@@ -35,22 +36,15 @@ const agentSkills = [
 ];
 
 function formatStable(value: bigint) {
-  return `$${Number(formatUnits(value, 6)).toFixed(2)}`;
+  return `$${Number(formatUnits(value, ARC_USDC_DECIMALS)).toFixed(2)}`;
 }
 
 async function readTokenBalance(address: Address, token: string | undefined) {
   const config = getArcConfig();
   if (!config.rpcUrl || !token || !isAddress(token)) return null;
 
-  const client = createPublicClient({
-    chain: {
-      id: getArcChainId(),
-      name: 'Arc Testnet',
-      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-      rpcUrls: { default: { http: [config.rpcUrl] } },
-    },
-    transport: http(config.rpcUrl),
-  });
+  const client = createArcReadClient();
+  if (!client) return null;
 
   const balance = await client.readContract({
     address: token as Address,

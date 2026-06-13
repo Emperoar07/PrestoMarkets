@@ -81,6 +81,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return NextResponse.json({ comment }, { status: 201 });
   } catch (error) {
+    if (error instanceof Error && error.message.includes('Reply parent')) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.error('[api] markets/[id]/comments failed:', error);
     return NextResponse.json(
       { error: 'Comment could not be saved.' },

@@ -18,10 +18,17 @@
  * Blockdaemon — see Arc node-providers docs) to remove the public-endpoint
  * limit entirely.
  */
-import { fallback, http } from 'viem';
+import { createPublicClient, fallback, http } from 'viem';
+import { getArcChainId, getArcConfig } from './arcConfig';
 
 /** Client-level batch config: aggregate contract reads via Multicall3. */
 export const ARC_READ_BATCH = { multicall: true } as const;
+
+/** Arc's ERC-20 USDC interface uses standard USDC precision for app balances. */
+export const ARC_USDC_DECIMALS = 6;
+
+/** Arc's native gas accounting uses EVM-native 18-decimal precision. */
+export const ARC_NATIVE_USDC_DECIMALS = 18;
 
 /** Arc public RPC — always the last-resort fallback (rate-limited, but always available). */
 const ARC_PUBLIC_RPC = 'https://rpc.testnet.arc.network';
@@ -49,6 +56,27 @@ export function arcRpcUrls(override?: string): string[] {
 export function arcReadTransport(rpcUrl?: string) {
   const transports = arcRpcUrls(rpcUrl).map((url) => http(url, { batch: true }));
   return fallback(transports, { rank: false });
+}
+
+export function createArcChain(rpcUrls?: string[]) {
+  return {
+    id: getArcChainId(),
+    name: 'Arc Testnet',
+    nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: ARC_NATIVE_USDC_DECIMALS },
+    rpcUrls: { default: { http: rpcUrls && rpcUrls.length > 0 ? rpcUrls : arcRpcUrls() } },
+  } as const;
+}
+
+export function createArcReadClient() {
+  const config = getArcConfig();
+  if (!config.rpcUrl) return null;
+  const rpcUrls = config.rpcUrls.length > 0 ? config.rpcUrls : arcRpcUrls(config.rpcUrl);
+
+  return createPublicClient({
+    chain: createArcChain(rpcUrls),
+    transport: arcReadTransport(config.rpcUrl),
+    batch: ARC_READ_BATCH,
+  });
 }
 
 /** True when an error looks like an RPC rate-limit (HTTP 429 / "too many requests"). */
