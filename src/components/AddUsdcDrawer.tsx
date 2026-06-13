@@ -50,7 +50,13 @@ export function AddUsdcDrawer(input: {
   const [pending, setPending] = useState<PendingMove[]>([]);
   const panelRef = useRef<HTMLDivElement>(null);
   const isDropdown = input.variant === 'dropdown';
-  const hasExternalWallet = typeof window !== 'undefined' && Boolean((window as { ethereum?: unknown }).ethereum);
+  // Cross-chain Move to Arc signs source-chain txs via window.ethereum, so it only applies when
+  // the CONNECTED wallet is an external EOA — not merely when MetaMask happens to be installed.
+  // Circle/passkey wallets are provisioned on Arc only and already hold their USDC there, so they
+  // can't (and don't need to) move funds in from another chain.
+  const hasInjected = typeof window !== 'undefined' && Boolean((window as { ethereum?: unknown }).ethereum);
+  const isExternalWallet = input.wallet?.mode === 'external-eoa' && hasInjected;
+  const isCircleWallet = input.wallet?.mode === 'circle-user-controlled' || input.wallet?.mode === 'circle-passkey';
   const { track } = useTransactions();
 
   function refreshGateway(address: string) {
@@ -189,7 +195,7 @@ export function AddUsdcDrawer(input: {
             <span className="text-[12px] font-black text-white">{formatAvailableUsdc(unified.total)} total</span>
           </div>
           {unified.chains.filter((chain) => !chain.isArc).map((chain) => {
-            const movable = GATEWAY_SOURCE_KEYS.has(chain.key) && (chain.amount ?? 0) > 0 && hasExternalWallet;
+            const movable = GATEWAY_SOURCE_KEYS.has(chain.key) && (chain.amount ?? 0) > 0 && isExternalWallet;
             const moving = move?.key === chain.key;
             return (
               <div key={chain.key} className="flex items-center justify-between gap-2 px-3 py-1 text-[11px] font-bold text-[#8fa0b4]">
@@ -218,18 +224,24 @@ export function AddUsdcDrawer(input: {
           })}
           {moveError ? (
             <p className="px-3 py-1 text-[10px] leading-relaxed text-red-300">{moveError}</p>
+          ) : isExternalWallet ? (
+            <p className="px-3 py-1 text-[10px] leading-relaxed text-[#64748b]">
+              Move to Arc deposits into Circle Gateway, then completes once the deposit finalizes (up to ~20 min on Sepolia chains).
+            </p>
+          ) : isCircleWallet ? (
+            <p className="px-3 py-1 text-[10px] leading-relaxed text-[#64748b]">
+              Your Circle wallet lives on Arc and already holds its USDC here. Top up with the Circle faucet below — cross-chain Move to Arc is for external wallets holding USDC on another chain.
+            </p>
           ) : (
             <p className="px-3 py-1 text-[10px] leading-relaxed text-[#64748b]">
-              {hasExternalWallet
-                ? 'Move to Arc deposits into Circle Gateway, then completes once the deposit finalizes (up to ~20 min on Sepolia chains).'
-                : 'Connect an external wallet to move USDC across chains; or bridge via the links below.'}
+              Connect an external wallet to move USDC across chains; or bridge via the links below.
             </p>
           )}
         </div>
       )}
 
       {/* Step 2 / recovery: funds sitting in Gateway, ready (or pending) to finish onto Arc. */}
-      {hasExternalWallet && (gatewayBalance > 0 || pending.length > 0) && (
+      {isExternalWallet && (gatewayBalance > 0 || pending.length > 0) && (
         <div className="flex flex-col gap-1 border-t border-white/[0.06] pt-2 mt-1">
           <div className="flex items-center justify-between px-3 py-1.5">
             <span className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-amber-300/80">In Gateway</span>
