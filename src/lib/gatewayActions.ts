@@ -143,15 +143,27 @@ async function ensureWalletChain(ethereum: Ethereum, chain: Chain): Promise<void
 }
 
 /** Unified USDC balance available in Gateway across all source domains (finalized deposits). */
-export async function getGatewayUnifiedBalance(address: Address): Promise<number> {
-  const sources = Object.values(GATEWAY_SOURCES).map((s) => ({ domain: s.domain, depositor: address }));
+export type GatewaySourceBalance = { source: GatewaySourceKey; domain: number; amount: number };
+
+/** Per-source-domain Gateway balances for the address (so the UI knows which chain to move from). */
+export async function getGatewayBalancesBySource(address: Address): Promise<GatewaySourceBalance[]> {
+  const entries = Object.values(GATEWAY_SOURCES);
   const res = await fetch(`${GATEWAY_API_TESTNET}/balances`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token: 'USDC', sources }),
+    body: JSON.stringify({ token: 'USDC', sources: entries.map((s) => ({ domain: s.domain, depositor: address })) }),
   });
-  if (!res.ok) return 0;
-  const data = await res.json() as { balances?: Array<{ balance: string }> };
-  return (data.balances ?? []).reduce((sum, b) => sum + (Number(b.balance) || 0), 0);
+  if (!res.ok) return [];
+  const data = await res.json() as { balances?: Array<{ domain: number; balance: string }> };
+  const byDomain = new Map<number, number>();
+  for (const b of data.balances ?? []) byDomain.set(b.domain, (byDomain.get(b.domain) ?? 0) + (Number(b.balance) || 0));
+  return entries
+    .map((s) => ({ source: s.key, domain: s.domain, amount: byDomain.get(s.domain) ?? 0 }))
+    .filter((s) => s.amount > 0);
+}
+
+export async function getGatewayUnifiedBalance(address: Address): Promise<number> {
+  const bySource = await getGatewayBalancesBySource(address);
+  return bySource.reduce((sum, s) => sum + s.amount, 0);
 }
 
 // ── Pending-deposit persistence (so a long finality wait survives reloads) ──

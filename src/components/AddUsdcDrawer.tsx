@@ -7,11 +7,12 @@ import { fetchAvailableUsdc, formatAvailableUsdc, type AvailableUsdc } from '@/l
 import {
   depositToGateway,
   transferGatewayToArc,
-  getGatewayUnifiedBalance,
+  getGatewayBalancesBySource,
   readPendingMoves,
   clearPendingMove,
   GATEWAY_SOURCES,
   type GatewaySourceKey,
+  type GatewaySourceBalance,
   type MoveStep,
   type PendingMove,
 } from '@/lib/gatewayActions';
@@ -46,8 +47,9 @@ export function AddUsdcDrawer(input: {
   const [unified, setUnified] = useState<AvailableUsdc | null>(null);
   const [move, setMove] = useState<{ key: string; step: MoveStep } | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
-  const [gatewayBalance, setGatewayBalance] = useState<number>(0);
+  const [gatewayBySource, setGatewayBySource] = useState<GatewaySourceBalance[]>([]);
   const [pending, setPending] = useState<PendingMove[]>([]);
+  const gatewayBalance = gatewayBySource.reduce((sum, s) => sum + s.amount, 0);
   const panelRef = useRef<HTMLDivElement>(null);
   const isDropdown = input.variant === 'dropdown';
   // Cross-chain Move to Arc signs source-chain txs via window.ethereum, so it only applies when
@@ -61,7 +63,7 @@ export function AddUsdcDrawer(input: {
 
   function refreshGateway(address: string) {
     setPending(readPendingMoves(address));
-    void getGatewayUnifiedBalance(address as Address).then(setGatewayBalance).catch(() => undefined);
+    void getGatewayBalancesBySource(address as Address).then(setGatewayBySource).catch(() => undefined);
   }
 
   // Step 1 — deposit into Gateway (funds leave the source chain; finalize in minutes).
@@ -237,6 +239,9 @@ export function AddUsdcDrawer(input: {
               Connect an external wallet to move USDC across chains; or bridge via the links below.
             </p>
           )}
+          <p className="px-3 pb-1 text-[9px] font-bold uppercase tracking-[0.18em] text-[#46586f]">
+            Powered by Circle Gateway
+          </p>
         </div>
       )}
 
@@ -247,15 +252,18 @@ export function AddUsdcDrawer(input: {
             <span className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-amber-300/80">In Gateway</span>
             <span className="text-[12px] font-black text-white">{formatAvailableUsdc(gatewayBalance)} ready</span>
           </div>
-          {gatewayBalance > 0 && pending[0] ? (
-            <div className="flex items-center justify-between gap-2 px-3 py-1 text-[11px] font-bold text-[#8fa0b4]">
-              <span>Ready to credit on Arc</span>
-              {move?.key === `complete-${pending[0].source}` ? (
+          {/* One Complete button per source domain that actually holds a finalized balance —
+              works straight from the Gateway balance, no local pending record required (so funds
+              deposited in another browser or before tracking can still be moved to Arc). */}
+          {gatewayBySource.map((s) => (
+            <div key={s.source} className="flex items-center justify-between gap-2 px-3 py-1 text-[11px] font-bold text-[#8fa0b4]">
+              <span>{formatAvailableUsdc(s.amount)} from {GATEWAY_SOURCES[s.source].label}</span>
+              {move?.key === `complete-${s.source}` ? (
                 <span className="rounded-full border border-cyan/15 bg-cyan/5 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-cyan animate-pulse">{MOVE_STEP_LABEL[move.step]}</span>
               ) : (
                 <button
                   type="button"
-                  onClick={() => void handleComplete(pending[0].source, Math.min(gatewayBalance, pending[0].amountUsdc), pending[0].depositTx)}
+                  onClick={() => void handleComplete(s.source, s.amount)}
                   disabled={Boolean(move)}
                   className="rounded-full border border-amber-300/30 bg-amber-300/10 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-200 transition-all hover:bg-amber-300/20 disabled:opacity-40"
                 >
@@ -263,16 +271,14 @@ export function AddUsdcDrawer(input: {
                 </button>
               )}
             </div>
-          ) : null}
-          {pending.map((p) => {
+          ))}
+          {/* Still-finalizing deposits we know about locally but that aren't in the balance yet. */}
+          {pending.filter((p) => !gatewayBySource.some((s) => s.source === p.source)).map((p) => {
             const minsLeft = Math.max(0, Math.ceil((FINALITY_MINUTES[p.source] ?? 19) - (Date.now() - p.depositedAt) / 60_000));
-            const ready = gatewayBalance >= p.amountUsdc || minsLeft === 0;
             return (
               <div key={p.depositTx} className="flex items-center justify-between gap-2 px-3 py-1 text-[10.5px] font-bold text-[#64748b]">
                 <span>{formatAvailableUsdc(p.amountUsdc)} from {GATEWAY_SOURCES[p.source].label}</span>
-                <span className={ready ? 'text-amber-200' : 'text-[#64748b]'}>
-                  {ready ? 'finalized' : `~${minsLeft} min`}
-                </span>
+                <span className="text-[#64748b]">{minsLeft === 0 ? 'finalizing…' : `~${minsLeft} min`}</span>
               </div>
             );
           })}
@@ -316,7 +322,7 @@ export function AddUsdcDrawer(input: {
       </div>
 
       <p className="px-3 py-2 text-[10px] leading-relaxed text-[#64748b]">
-        Presto spends Arc Testnet USDC only. Circle App Kit / Unified Balance rails are wired as funding entry points here; every transfer still happens as an explicit user action.
+        Presto spends Arc Testnet USDC only. Every transfer happens as an explicit user action.
       </p>
     </div>
   );
