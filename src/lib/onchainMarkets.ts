@@ -1,5 +1,5 @@
 import { createPublicClient, fallback, formatUnits, http, type Address } from 'viem';
-import { getArcConfig, getArcChainId } from './arcConfig';
+import { getArcConfig, getArcChainId, collateralSymbolForAddress } from './arcConfig';
 import { createArcChain } from './arcClient';
 import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { isSafeResolutionUri, parseMarketMetadata } from './marketMetadata';
@@ -127,6 +127,7 @@ async function readMarket(
     totalCollateral,
     resolvedCollateral,
     resolutionURI,
+    collateralToken,
   ] = await Promise.all([
     client.readContract({ address, abi: prestoMarketAbi, functionName: 'creator' }),
     client.readContract({ address, abi: prestoMarketAbi, functionName: 'resolver' }),
@@ -139,6 +140,8 @@ async function readMarket(
     client.readContract({ address, abi: prestoMarketAbi, functionName: 'totalCollateral' }),
     client.readContract({ address, abi: prestoMarketAbi, functionName: 'resolvedCollateral' }),
     client.readContract({ address, abi: prestoMarketAbi, functionName: 'resolutionURI' }),
+    // V2 markets expose collateral(); older markets without it fall back to USDC.
+    client.readContract({ address, abi: prestoMarketAbi, functionName: 'collateral' }).catch(() => null),
   ]);
 
   // Optimistic-resolution proposal state — V2 contracts only; V1 markets revert, so every read
@@ -220,6 +223,8 @@ async function readMarket(
         : metadata?.rules || 'Rules live in the market metadata URI. Resolver evidence is published after settlement.',
     winningOutcomeLabel: status === 'Resolved' ? winningLabel : undefined,
     resolutionURI: isSafeResolutionUri(resolutionURI) ? resolutionURI : undefined,
+    collateralAddress: typeof collateralToken === 'string' ? collateralToken : undefined,
+    collateralSymbol: collateralSymbolForAddress(typeof collateralToken === 'string' ? collateralToken : undefined),
     proposal: typeof proposalProposer === 'string' && proposalProposer !== '0x0000000000000000000000000000000000000000' && status !== 'Resolved' && status !== 'Canceled'
       ? {
           outcome: Number(proposedOutcomeRaw ?? 0),

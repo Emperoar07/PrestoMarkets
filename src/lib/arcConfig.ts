@@ -9,6 +9,22 @@ const DEFAULT_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS = '0xD01e6828601b9d813b361107
 const DEFAULT_LEGACY_MARKET_FACTORY_ADDRESSES = ['0xB5FA65ae7c76b2DeecA1906848e8805df6dCF807'];
 const DEFAULT_LEGACY_MULTI_OUTCOME_FACTORY_ADDRESSES = ['0xd2961F0e52a1F1Af787cf3722E90459dC0995F2c'];
 const DEFAULT_ARC_RPC_URL = 'https://rpc.testnet.arc.network';
+const DEFAULT_ARC_EURC_ADDRESS = '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
+
+export type CollateralSymbol = 'USDC' | 'EURC';
+
+/** Map a market's collateral token address to its display symbol. Defaults to USDC. */
+export function collateralSymbolForAddress(address: string | undefined): CollateralSymbol {
+  if (!address) return 'USDC';
+  const config = getArcConfig();
+  if (config.eurcAddress && address.toLowerCase() === config.eurcAddress.toLowerCase()) return 'EURC';
+  return 'USDC';
+}
+
+/** Currency prefix for a collateral symbol (€ for EURC, $ for USDC). */
+export function collateralUnit(symbol: CollateralSymbol): string {
+  return symbol === 'EURC' ? '€' : '$';
+}
 
 function publicEnv(value: string | undefined) {
   return value?.trim() ?? '';
@@ -43,6 +59,8 @@ export function getArcConfig() {
   const rpcUrls = uniqueValues([configuredRpcUrl, drpc, quiknode, DEFAULT_ARC_RPC_URL].filter(Boolean));
   const rpcUrl = rpcUrls[0] ?? DEFAULT_ARC_RPC_URL;
   const usdcAddress = publicEnv(process.env.NEXT_PUBLIC_USDC_ADDRESS);
+  // EURC on Arc Testnet (Circle docs) — euro-denominated market collateral. 6 decimals like USDC.
+  const eurcAddress = publicEnv(process.env.NEXT_PUBLIC_EURC_ADDRESS) || DEFAULT_ARC_EURC_ADDRESS;
   const factoryAddress = publicEnv(process.env.NEXT_PUBLIC_MARKET_FACTORY_ADDRESS) || DEFAULT_MARKET_FACTORY_ADDRESS;
   const multiOutcomeFactoryAddress = publicEnv(process.env.NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS) || DEFAULT_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS;
   // Retired factories whose markets must stay readable (positions, claims, history) after a
@@ -62,6 +80,7 @@ export function getArcConfig() {
     rpcUrl,
     rpcUrls,
     usdcAddress,
+    eurcAddress,
     factoryAddress,
     multiOutcomeFactoryAddress,
     legacyFactoryAddresses,

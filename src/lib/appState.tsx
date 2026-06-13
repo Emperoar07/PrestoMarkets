@@ -48,6 +48,9 @@ export type AppMarket = Market & {
   createdSortKey?: number;
   winningOutcomeLabel?: string;
   resolutionURI?: string;
+  /** Collateral token the market settles in (USDC default; EURC for euro markets). */
+  collateralAddress?: string;
+  collateralSymbol?: 'USDC' | 'EURC';
   /** Optimistic-resolution proposal state (V2 markets only; absent on V1 contracts). */
   proposal?: {
     outcome: number;
