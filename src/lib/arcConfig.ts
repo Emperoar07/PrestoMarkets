@@ -21,31 +21,33 @@ function publicEnvList(value: string | undefined): string[] {
     .filter((item) => item.length > 0);
 }
 
-function uniqueAddresses(addresses: string[]) {
+function uniqueValues(values: string[]) {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const address of addresses) {
-    const key = address.toLowerCase();
+  for (const value of values) {
+    const key = value.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push(address);
+    out.push(value);
   }
   return out;
 }
 
 export function getArcConfig() {
   const chainId = publicEnv(process.env.NEXT_PUBLIC_ARC_CHAIN_ID);
-  const rpcUrl = publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_URL) || publicEnv(process.env.ARC_RPC_URL) || DEFAULT_ARC_RPC_URL;
+  const configuredRpcUrl = publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_URL) || publicEnv(process.env.ARC_RPC_URL);
+  const rpcUrls = uniqueValues([configuredRpcUrl, DEFAULT_ARC_RPC_URL].filter(Boolean));
+  const rpcUrl = rpcUrls[0] ?? DEFAULT_ARC_RPC_URL;
   const usdcAddress = publicEnv(process.env.NEXT_PUBLIC_USDC_ADDRESS);
   const factoryAddress = publicEnv(process.env.NEXT_PUBLIC_MARKET_FACTORY_ADDRESS) || DEFAULT_MARKET_FACTORY_ADDRESS;
   const multiOutcomeFactoryAddress = publicEnv(process.env.NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS) || DEFAULT_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS;
   // Retired factories whose markets must stay readable (positions, claims, history) after a
   // factory upgrade. New markets are only ever created through the primary factories above.
-  const legacyFactoryAddresses = uniqueAddresses([
+  const legacyFactoryAddresses = uniqueValues([
     ...publicEnvList(process.env.NEXT_PUBLIC_LEGACY_MARKET_FACTORY_ADDRESSES),
     ...DEFAULT_LEGACY_MARKET_FACTORY_ADDRESSES,
   ].filter((address) => address.toLowerCase() !== factoryAddress.toLowerCase()));
-  const legacyMultiOutcomeFactoryAddresses = uniqueAddresses([
+  const legacyMultiOutcomeFactoryAddresses = uniqueValues([
     ...publicEnvList(process.env.NEXT_PUBLIC_LEGACY_MULTI_OUTCOME_FACTORY_ADDRESSES),
     ...publicEnvList(process.env.NEXT_PUBLIC_LEGACY_MULTI_OUTCOME_MARKET_FACTORY_ADDRESSES),
     ...DEFAULT_LEGACY_MULTI_OUTCOME_FACTORY_ADDRESSES,
@@ -54,6 +56,7 @@ export function getArcConfig() {
   return {
     chainId,
     rpcUrl,
+    rpcUrls,
     usdcAddress,
     factoryAddress,
     multiOutcomeFactoryAddress,

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createPublicClient, http, type Address } from 'viem';
+import { createPublicClient, fallback, http, type Address } from 'viem';
 import { arcTestnet } from 'viem/chains';
 import { getArcChainId, getArcConfig } from '@/lib/arcConfig';
 import { prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from '@/lib/contracts';
@@ -16,10 +16,10 @@ export async function GET() {
       id: chainId,
       rpcUrls: {
         ...arcTestnet.rpcUrls,
-        default: { http: [config.rpcUrl] },
+        default: { http: config.rpcUrls },
       },
     },
-    transport: http(config.rpcUrl),
+    transport: fallback(config.rpcUrls.map((url) => http(url))),
   });
 
   const factories = [
@@ -64,7 +64,7 @@ export async function GET() {
     ok: true,
     chainId,
     hasRpc: Boolean(config.rpcUrl),
-    rpcHost: config.rpcUrl ? new URL(config.rpcUrl).host : null,
+    rpcHosts: config.rpcUrls.map((url) => new URL(url).host),
     factoryCount: factories.length,
     counts,
     marketRead,

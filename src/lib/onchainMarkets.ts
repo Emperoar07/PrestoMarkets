@@ -1,4 +1,4 @@
-import { createPublicClient, formatUnits, http, type Address } from 'viem';
+import { createPublicClient, fallback, formatUnits, http, type Address } from 'viem';
 import { arcTestnet } from 'viem/chains';
 import { getArcConfig, getArcChainId } from './arcConfig';
 import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
@@ -332,10 +332,10 @@ async function readOnchainMarkets() {
       id: chainId,
       rpcUrls: {
         ...arcTestnet.rpcUrls,
-        default: { http: [config.rpcUrl] },
+        default: { http: config.rpcUrls },
       },
     },
-    transport: http(config.rpcUrl),
+    transport: fallback(config.rpcUrls.map((url) => http(url))),
     batch: {
       multicall: {
         batchSize: 16_384,
