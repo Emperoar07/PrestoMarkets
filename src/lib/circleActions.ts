@@ -529,7 +529,7 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: s
       throw new Error('Circle wallet address is missing. Sign in again.');
     }
 
-    const humanAmount = `$${Number(input.amount).toFixed(2)} USDC`;
+    const humanAmount = `${collUnit}${Number(input.amount).toFixed(2)} ${collateralSymbol}`;
     const funding = await readCircleTradeFunding({
       marketAddress,
       ownerAddress: ownerAddress as Address,
