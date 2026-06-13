@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ExternalLink, X } from 'lucide-react';
+import { Clock, ExternalLink, X } from 'lucide-react';
 import { fetchArcStableBalances, readCachedUsdcBalance } from '@/lib/walletBalance';
 import { fetchAvailableUsdc, formatAvailableUsdc, type AvailableUsdc } from '@/lib/unifiedBalance';
 import {
@@ -247,42 +247,69 @@ export function AddUsdcDrawer(input: {
 
       {/* Step 2 / recovery: funds sitting in Gateway, ready (or pending) to finish onto Arc. */}
       {isExternalWallet && (gatewayBalance > 0 || pending.length > 0) && (
-        <div className="flex flex-col gap-1 border-t border-white/[0.06] pt-2 mt-1">
-          <div className="flex items-center justify-between px-3 py-1.5">
-            <span className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-amber-300/80">In Gateway</span>
-            <span className="text-[12px] font-black text-white">{formatAvailableUsdc(gatewayBalance)} ready</span>
-          </div>
-          {/* One Complete button per source domain that actually holds a finalized balance —
-              works straight from the Gateway balance, no local pending record required (so funds
-              deposited in another browser or before tracking can still be moved to Arc). */}
-          {gatewayBySource.map((s) => (
-            <div key={s.source} className="flex items-center justify-between gap-2 px-3 py-1 text-[11px] font-bold text-[#8fa0b4]">
-              <span>{formatAvailableUsdc(s.amount)} from {GATEWAY_SOURCES[s.source].label}</span>
-              {move?.key === `complete-${s.source}` ? (
-                <span className="rounded-full border border-cyan/15 bg-cyan/5 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-cyan animate-pulse">{MOVE_STEP_LABEL[move.step]}</span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => void handleComplete(s.source, s.amount)}
-                  disabled={Boolean(move)}
-                  className="rounded-full border border-amber-300/30 bg-amber-300/10 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-200 transition-all hover:bg-amber-300/20 disabled:opacity-40"
-                >
-                  Complete → Arc
-                </button>
-              )}
+        <div className="border border-white/[0.06] bg-[#0d1626]/20 rounded-xl p-3 mt-2 mx-1 flex flex-col gap-2">
+          {/* Title & Status Bar */}
+          <div className="flex items-center justify-between pb-2 border-b border-white/[0.04]">
+            <div className="flex items-center gap-2">
+              <span className="flex h-2 w-2 relative shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#8fa0b4]">In Gateway</span>
             </div>
-          ))}
-          {/* Still-finalizing deposits we know about locally but that aren't in the balance yet. */}
-          {pending.filter((p) => !gatewayBySource.some((s) => s.source === p.source)).map((p) => {
-            const minsLeft = Math.max(0, Math.ceil((FINALITY_MINUTES[p.source] ?? 19) - (Date.now() - p.depositedAt) / 60_000));
-            return (
-              <div key={p.depositTx} className="flex items-center justify-between gap-2 px-3 py-1 text-[10.5px] font-bold text-[#64748b]">
-                <span>{formatAvailableUsdc(p.amountUsdc)} from {GATEWAY_SOURCES[p.source].label}</span>
-                <span className="text-[#64748b]">{minsLeft === 0 ? 'finalizing…' : `~${minsLeft} min`}</span>
+            <span className="text-[11.5px] font-black text-cyan">{formatAvailableUsdc(gatewayBalance)} ready</span>
+          </div>
+
+          {/* List items */}
+          <div className="flex flex-col divide-y divide-white/[0.04]">
+            {/* Finalized balances */}
+            {gatewayBySource.map((s) => (
+              <div key={s.source} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                <div className="flex flex-col">
+                  <span className="text-xs font-black text-white">{formatAvailableUsdc(s.amount)}</span>
+                  <span className="text-[9.5px] font-bold text-[#64748b]">{GATEWAY_SOURCES[s.source].label}</span>
+                </div>
+                {move?.key === `complete-${s.source}` ? (
+                  <span className="flex items-center gap-1.5 rounded-lg border border-cyan/20 bg-cyan/5 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-cyan animate-pulse">
+                    <svg className="animate-spin h-3 w-3 text-cyan shrink-0" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    {MOVE_STEP_LABEL[move.step]}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleComplete(s.source, s.amount)}
+                    disabled={Boolean(move)}
+                    className="rounded-lg bg-cyan text-[#07111f] hover:bg-cyan-300 active:scale-95 disabled:opacity-40 disabled:pointer-events-none px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all duration-150 shadow-md shadow-cyan/5"
+                  >
+                    Complete → Arc
+                  </button>
+                )}
               </div>
-            );
-          })}
-          <p className="px-3 py-1 text-[10px] leading-relaxed text-[#64748b]">
+            ))}
+
+            {/* Finalizing balances */}
+            {pending.filter((p) => !gatewayBySource.some((s) => s.source === p.source)).map((p) => {
+              const minsLeft = Math.max(0, Math.ceil((FINALITY_MINUTES[p.source] ?? 19) - (Date.now() - p.depositedAt) / 60_000));
+              return (
+                <div key={p.depositTx} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-black text-[#cbd5e1]/60">{formatAvailableUsdc(p.amountUsdc)}</span>
+                    <span className="text-[9.5px] font-bold text-[#64748b]">{GATEWAY_SOURCES[p.source].label}</span>
+                  </div>
+                  <span className="flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.01] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-[#64748b]">
+                    <Clock className="h-3 w-3 shrink-0" />
+                    {minsLeft === 0 ? 'finalizing…' : `~${minsLeft} min`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Alert subtitle description */}
+          <p className="mt-1 text-[9.5px] leading-relaxed text-[#64748b] px-0.5">
             Deposited USDC is held in your Gateway balance and is safe. Complete the move once it finalizes.
           </p>
         </div>
