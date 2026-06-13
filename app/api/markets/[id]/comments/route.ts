@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
+import { getClientIp } from '@/lib/requestGuards';
+import { checkRateLimit } from '@/lib/rateLimitRedis';
 import { createComment, listComments, editComment, hideComment, getCommentById } from '@/lib/socialDb';
 import { getSocialSession } from '@/lib/socialSession';
 import { notifyUser } from '@/lib/notifications';
 import { normalizeMarketId, sanitizeCommentBody } from '@/lib/socialValidation';
-
-const commentWriteRateLimitStore = new Map<string, { count: number; resetAt: number }>();
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -30,7 +29,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ip = getClientIp(request.headers);
-  if (!checkFixedWindowRateLimit(commentWriteRateLimitStore, ip, { max: 12, windowMs: 60_000, maxEntries: 5_000 })) {
+  if (!(await checkRateLimit('comments-write', ip, { limit: 12, windowSec: 60 }))) {
     return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
   }
 

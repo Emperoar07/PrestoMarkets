@@ -5,6 +5,7 @@ import { getAgentAddress } from '@/lib/agentWallet';
 import { getAgentIdentityStatus, ERC8004_CONTRACTS } from '@/lib/agentIdentity';
 import { getPublicMarkets } from '@/lib/publicMarketSource';
 import { computeAgentCalibration } from '@/lib/marketCalibration';
+import { toAgentStatusV1 } from '@/lib/apiContracts';
 
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 const cacheSeconds = 30;
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
   const headers = getPublicApiHeaders(cacheSeconds);
   const ip = getClientIp(request.headers);
   if (!checkFixedWindowRateLimit(rateLimitStore, ip, { max: 120, windowMs: 60_000, maxEntries: 5_000 })) {
-    return NextResponse.json({ ok: false, error: 'Rate limit exceeded.' }, { status: 429, headers });
+    return NextResponse.json({ apiVersion: 1, error: 'Rate limit exceeded.' }, { status: 429, headers });
   }
 
   const address = getAgentAddress();
@@ -31,25 +32,27 @@ export async function GET(request: NextRequest) {
   const agentMarkets = markets.filter((market) => market.createdByType === 'agent');
   const calibration = computeAgentCalibration(agentMarkets);
 
-  return NextResponse.json({
-    ok: true,
-    data: {
-      name: 'Presto Market Agent',
-      address,
-      identity: {
-        registered: Boolean(identity?.registered),
-        agentId: identity?.agentId ?? null,
-        registry: ERC8004_CONTRACTS.IdentityRegistry,
-      },
-      skills,
-      activity: {
-        totalMarkets: agentMarkets.length,
-        activeMarkets: agentMarkets.filter((market) => market.status === 'Open' || market.status === 'Closing soon').length,
-        resolvedMarkets: agentMarkets.filter((market) => market.status === 'Resolved').length,
-        canceledMarkets: agentMarkets.filter((market) => market.status === 'Canceled').length,
-      },
-      calibration,
+  const rawStatus = {
+    name: 'Presto Market Agent',
+    address,
+    identity: {
+      registered: Boolean(identity?.registered),
+      agentId: identity?.agentId ?? null,
+      registry: ERC8004_CONTRACTS.IdentityRegistry,
     },
+    skills,
+    activity: {
+      totalMarkets: agentMarkets.length,
+      activeMarkets: agentMarkets.filter((market) => market.status === 'Open' || market.status === 'Closing soon').length,
+      resolvedMarkets: agentMarkets.filter((market) => market.status === 'Resolved').length,
+      canceledMarkets: agentMarkets.filter((market) => market.status === 'Canceled').length,
+    },
+    calibration,
+  };
+
+  return NextResponse.json({
+    apiVersion: 1,
+    data: toAgentStatusV1(rawStatus),
   }, { headers });
 }
 

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { Fingerprint, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { RecoveryHelpModal } from '@/components/RecoveryHelpModal';
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from 'wagmi';
 import {
   completePendingCircleSocialLogin,
@@ -29,6 +30,7 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
   const [status, setStatus] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [showConnectPanel, setShowConnectPanel] = useState(false);
+  const [showRecoveryHelp, setShowRecoveryHelp] = useState(false);
   const [email, setEmail] = useState('');
   const [pinUserId, setPinUserId] = useState('');
   const [circleMethod, setCircleMethod] = useState<'email' | 'pin' | 'passkey'>('email');
@@ -385,6 +387,22 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
 
                   <button
                     type="button"
+                    onClick={() => {
+                      setIsOpen(false);
+                      setShowRecoveryHelp(true);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg text-left"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M12 16v-4" />
+                      <path d="M12 8h.01" />
+                    </svg>
+                    Recovery Info
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => void disconnectWallet()}
                     className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-bold text-[#f87171] transition-colors hover:text-red-300 hover:bg-red-500/[0.06] rounded-lg"
                   >
@@ -557,9 +575,21 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
                 </div>
               )}
 
-              <p className="text-[10px] text-[#64748b] leading-normal mt-1">
-                Circle-powered secure, non-custodial smart accounts.
-              </p>
+              <div className="flex items-center justify-between mt-1.5 gap-2">
+                <p className="text-[10px] text-[#64748b] leading-normal">
+                  Circle-powered secure, non-custodial smart accounts.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowConnectPanel(false);
+                    setShowRecoveryHelp(true);
+                  }}
+                  className="text-[10px] font-bold text-cyan hover:underline hover:opacity-95 shrink-0"
+                >
+                  Trouble signing in?
+                </button>
+              </div>
             </div>
           </div>
 
@@ -598,6 +628,9 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
       </button>
 
       {isMounted && signInModal ? createPortal(signInModal, document.body) : null}
+      {isMounted && showRecoveryHelp ? (
+        <RecoveryHelpModal onClose={() => setShowRecoveryHelp(false)} />
+      ) : null}
     </div>
   );
 }

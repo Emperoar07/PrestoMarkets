@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
+import { getClientIp } from '@/lib/requestGuards';
+import { checkRateLimit } from '@/lib/rateLimitRedis';
 import { getProfile, isHandleTaken, upsertProfile } from '@/lib/socialDb';
 import { getSocialSession } from '@/lib/socialSession';
 import { sanitizeHandle, sanitizeProfileText } from '@/lib/socialValidation';
@@ -43,11 +44,9 @@ function normalizeEmail(value: unknown): string | undefined {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : undefined;
 }
 
-const profileRateLimitStore = new Map<string, { count: number; resetAt: number }>();
-
 export async function PATCH(request: NextRequest) {
   const ip = getClientIp(request.headers);
-  if (!checkFixedWindowRateLimit(profileRateLimitStore, ip, { max: 10, windowMs: 60_000, maxEntries: 5_000 })) {
+  if (!(await checkRateLimit('profile', ip, { limit: 10, windowSec: 60 }))) {
     return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
   }
 

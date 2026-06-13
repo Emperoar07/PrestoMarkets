@@ -5,9 +5,9 @@ import {
   getPublicApiHeaders,
   parseMarketListQuery,
   publicOptionsResponse,
-  serializePublicMarket,
 } from '@/lib/publicApi';
 import { getPublicMarkets } from '@/lib/publicMarketSource';
+import { toMarketV1 } from '@/lib/apiContracts';
 
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 const cacheSeconds = 30;
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   const ip = getClientIp(request.headers);
   const headers = getPublicApiHeaders(cacheSeconds);
   if (!checkFixedWindowRateLimit(rateLimitStore, ip, { max: 120, windowMs: 60_000, maxEntries: 5_000 })) {
-    return NextResponse.json({ ok: false, error: 'Rate limit exceeded.' }, { status: 429, headers });
+    return NextResponse.json({ apiVersion: 1, error: 'Rate limit exceeded.' }, { status: 429, headers });
   }
 
   const query = parseMarketListQuery(new URL(request.url));
@@ -24,15 +24,17 @@ export async function GET(request: NextRequest) {
   const page = filterAndPageMarkets(markets, query);
 
   return NextResponse.json({
-    ok: true,
-    data: page.items.map(serializePublicMarket),
-    page: {
-      limit: query.limit,
-      nextCursor: page.nextCursor,
-    },
-    filters: {
-      category: query.category,
-      status: query.status,
+    apiVersion: 1,
+    data: {
+      items: page.items.map(toMarketV1),
+      page: {
+        limit: query.limit,
+        nextCursor: page.nextCursor,
+      },
+      filters: {
+        category: query.category,
+        status: query.status,
+      },
     },
   }, { headers });
 }

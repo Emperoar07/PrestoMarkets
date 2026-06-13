@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
+import { getClientIp } from '@/lib/requestGuards';
+import { checkRateLimit } from '@/lib/rateLimitRedis';
 import { getAlertPrefs, upsertAlertPrefs } from '@/lib/socialDb';
 import { getSocialSession } from '@/lib/socialSession';
 import { normalizeMarketId, parseAlertTypes } from '@/lib/socialValidation';
-
-const alertPrefsRateLimitStore = new Map<string, { count: number; resetAt: number }>();
 
 export async function GET(request: NextRequest) {
   const session = getSocialSession(request);
@@ -34,7 +33,7 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   const ip = getClientIp(request.headers);
-  if (!checkFixedWindowRateLimit(alertPrefsRateLimitStore, ip, { max: 20, windowMs: 60_000, maxEntries: 5_000 })) {
+  if (!(await checkRateLimit('alert-prefs', ip, { limit: 20, windowSec: 60 }))) {
     return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
   }
 

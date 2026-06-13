@@ -10,7 +10,8 @@ import { getArcChainId, getArcConfig } from '@/lib/arcConfig';
 import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from '@/lib/contracts';
 import { parseMarketMetadata } from '@/lib/marketMetadata';
 import type { PortfolioActivity } from '@/lib/portfolio';
-import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
+import { getClientIp } from '@/lib/requestGuards';
+import { checkRateLimit } from '@/lib/rateLimitRedis';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,7 +21,6 @@ const MAX_LIMIT = 25;
 const MAX_MARKETS = 500;
 const BLOCK_CHUNK = BigInt(7_200);
 const MAX_CHUNKS = 8;
-const activityRateLimitStore = new Map<string, { count: number; resetAt: number }>();
 const activityCacheHeaders = { 'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=30' };
 
 const sharesBoughtEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'SharesBought')!;
@@ -258,7 +258,7 @@ function serializeRow(row: ActivityRow): PortfolioActivity {
 
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request.headers);
-  if (!checkFixedWindowRateLimit(activityRateLimitStore, ip, { max: 90, windowMs: 60_000, maxEntries: 5_000 })) {
+  if (!(await checkRateLimit('activity', ip, { limit: 90, windowSec: 60 }))) {
     return NextResponse.json({ ok: false, error: 'Too many requests. Please try again later.' }, { status: 429 });
   }
 

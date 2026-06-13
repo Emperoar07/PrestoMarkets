@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
+import { getClientIp } from '@/lib/requestGuards';
+import { checkRateLimit } from '@/lib/rateLimitRedis';
 import { editComment, hideComment } from '@/lib/socialDb';
 import { getSocialSession } from '@/lib/socialSession';
 import { sanitizeCommentBody } from '@/lib/socialValidation';
-
-const commentEditRateLimitStore = new Map<string, { count: number; resetAt: number }>();
 
 function parseCommentId(value: string): number | null {
   const id = Number(value);
@@ -13,7 +12,7 @@ function parseCommentId(value: string): number | null {
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ cid: string }> }) {
   const ip = getClientIp(request.headers);
-  if (!checkFixedWindowRateLimit(commentEditRateLimitStore, ip, { max: 20, windowMs: 60_000, maxEntries: 5_000 })) {
+  if (!(await checkRateLimit('comments-edit', ip, { limit: 20, windowSec: 60 }))) {
     return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
   }
 
@@ -49,7 +48,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ cid: string }> }) {
   const ip = getClientIp(request.headers);
-  if (!checkFixedWindowRateLimit(commentEditRateLimitStore, ip, { max: 20, windowMs: 60_000, maxEntries: 5_000 })) {
+  if (!(await checkRateLimit('comments-edit', ip, { limit: 20, windowSec: 60 }))) {
     return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
   }
 

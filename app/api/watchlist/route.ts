@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
+import { getClientIp } from '@/lib/requestGuards';
+import { checkRateLimit } from '@/lib/rateLimitRedis';
 import { addWatchlistItem, listWatchlist, removeWatchlistItem } from '@/lib/socialDb';
 import { getSocialSession } from '@/lib/socialSession';
 import { normalizeMarketId } from '@/lib/socialValidation';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 import { notifyUser } from '@/lib/notifications';
 
-const watchlistRateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
 
 async function readMarketId(request: NextRequest): Promise<string | null> {
   let body: { marketId?: string };
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request.headers);
-  if (!checkFixedWindowRateLimit(watchlistRateLimitStore, ip, { max: 30, windowMs: 60_000, maxEntries: 5_000 })) {
+  if (!(await checkRateLimit('watchlist', ip, { limit: 30, windowSec: 60 }))) {
     return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
   }
 
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   const ip = getClientIp(request.headers);
-  if (!checkFixedWindowRateLimit(watchlistRateLimitStore, ip, { max: 30, windowMs: 60_000, maxEntries: 5_000 })) {
+  if (!(await checkRateLimit('watchlist', ip, { limit: 30, windowSec: 60 }))) {
     return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
   }
 
