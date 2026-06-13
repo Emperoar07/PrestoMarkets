@@ -27,7 +27,7 @@ import {
   type Chain,
   type Hex,
 } from 'viem';
-import { baseSepolia, sepolia, avalancheFuji, arcTestnet } from 'viem/chains';
+import { baseSepolia, sepolia, avalancheFuji, arbitrumSepolia, arcTestnet } from 'viem/chains';
 
 const GATEWAY_API_TESTNET = 'https://gateway-api-testnet.circle.com/v1';
 const GATEWAY_WALLET = '0x0077777d7EBA4688BDeF3E311b846F25870A19B9' as Address;
@@ -38,7 +38,7 @@ const ARC_USDC = '0x3600000000000000000000000000000000000000' as Address;
 const MAX_FEE = BigInt('2010000');
 const MAX_UINT64 = BigInt('18446744073709551615');
 
-export type GatewaySourceKey = 'baseSepolia' | 'sepolia' | 'avalancheFuji';
+export type GatewaySourceKey = 'baseSepolia' | 'sepolia' | 'avalancheFuji' | 'arbitrumSepolia';
 
 type SourceChain = {
   key: GatewaySourceKey;
@@ -52,6 +52,7 @@ export const GATEWAY_SOURCES: Record<GatewaySourceKey, SourceChain> = {
   baseSepolia: { key: 'baseSepolia', label: 'Base Sepolia', domain: 6, chain: baseSepolia, usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' },
   sepolia: { key: 'sepolia', label: 'Ethereum Sepolia', domain: 0, chain: sepolia, usdc: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' },
   avalancheFuji: { key: 'avalancheFuji', label: 'Avalanche Fuji', domain: 1, chain: avalancheFuji, usdc: '0x5425890298aed601595a70AB815c96711a31Bc65' },
+  arbitrumSepolia: { key: 'arbitrumSepolia', label: 'Arbitrum Sepolia', domain: 3, chain: arbitrumSepolia, usdc: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d' },
 };
 
 export type MoveStep =
@@ -112,10 +113,35 @@ export async function getGatewayUnifiedBalance(address: Address): Promise<number
   return (data.balances ?? []).reduce((sum, b) => sum + (Number(b.balance) || 0), 0);
 }
 
-function getEthereum() {
-  const ethereum = (globalThis as { ethereum?: { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> } }).ethereum;
+type Ethereum = { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> };
+
+function getEthereum(): Ethereum {
+  const ethereum = (globalThis as { ethereum?: Ethereum }).ethereum;
   if (!ethereum) throw new Error('No external wallet found. Connect an external wallet to move USDC.');
   return ethereum;
+}
+
+// Switch the wallet to `chain`; if the wallet doesn't know it yet (EIP-1193 error 4902), add it
+// first then switch. This lets users move from chains their wallet hasn't been configured for.
+async function ensureWalletChain(ethereum: Ethereum, chain: Chain): Promise<void> {
+  const chainIdHex = `0x${chain.id.toString(16)}`;
+  try {
+    await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: chainIdHex }] });
+  } catch (error) {
+    const code = (error as { code?: number })?.code;
+    if (code !== 4902) throw error;
+    await ethereum.request({
+      method: 'wallet_addEthereumChain',
+      params: [{
+        chainId: chainIdHex,
+        chainName: chain.name,
+        nativeCurrency: chain.nativeCurrency,
+        rpcUrls: chain.rpcUrls.default.http,
+        blockExplorerUrls: chain.blockExplorers?.default?.url ? [chain.blockExplorers.default.url] : undefined,
+      }],
+    });
+    await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: chainIdHex }] });
+  }
 }
 
 /**
@@ -140,9 +166,9 @@ export async function moveUsdcToArc(input: {
     const wallet = createWalletClient({ account: recipient, chain: src.chain, transport: custom(ethereum) });
     const sourcePublic = createPublicClient({ chain: src.chain, transport: http() });
 
-    // 1. ensure the wallet is on the source chain
+    // 1. ensure the wallet is on the source chain (adds it to the wallet if unknown)
     current = 'switching-source'; step(current);
-    await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${src.chain.id.toString(16)}` }] });
+    await ensureWalletChain(ethereum, src.chain);
 
     // 2. approve (skip if allowance already covers it)
     const allowance = await sourcePublic.readContract({ address: src.usdc, abi: erc20Abi, functionName: 'allowance', args: [recipient, GATEWAY_WALLET] }) as bigint;
@@ -204,9 +230,9 @@ export async function moveUsdcToArc(input: {
     }
     const { attestation, signature: apiSignature } = await transferRes.json() as { attestation: Hex; signature: Hex };
 
-    // 7. switch to Arc and mint
+    // 7. switch to Arc and mint (adds Arc to the wallet if unknown)
     current = 'switching-arc'; step(current);
-    await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${arcTestnet.id.toString(16)}` }] });
+    await ensureWalletChain(ethereum, arcTestnet);
 
     current = 'minting'; step(current);
     const arcWallet = createWalletClient({ account: recipient, chain: arcTestnet, transport: custom(ethereum) });

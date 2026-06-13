@@ -21,7 +21,7 @@ const MOVE_STEP_LABEL: Record<MoveStep, string> = {
   minting: 'Crediting Arc…',
   done: 'Done',
 };
-const GATEWAY_SOURCE_KEYS = new Set<string>(['baseSepolia', 'sepolia', 'avalancheFuji']);
+const GATEWAY_SOURCE_KEYS = new Set<string>(['baseSepolia', 'sepolia', 'avalancheFuji', 'arbitrumSepolia']);
 
 export function AddUsdcDrawer(input: {
   open: boolean;
@@ -145,7 +145,7 @@ export function AddUsdcDrawer(input: {
                     {chain.amount === null ? '—' : formatAvailableUsdc(chain.amount)}
                   </span>
                   {moving ? (
-                    <span className="rounded-full border border-cyan/25 bg-cyan/10 px-2 py-0.5 text-[9px] font-black text-cyan">
+                    <span className="rounded-full border border-cyan/15 bg-cyan/5 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-cyan animate-pulse">
                       {MOVE_STEP_LABEL[move.step]}
                     </span>
                   ) : movable ? (
@@ -153,7 +153,7 @@ export function AddUsdcDrawer(input: {
                       type="button"
                       onClick={() => void handleMove(chain.key, chain.amount as number)}
                       disabled={Boolean(move)}
-                      className="rounded-full border border-cyan/25 bg-cyan/10 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-cyan transition hover:bg-cyan/20 disabled:opacity-40"
+                      className="rounded-full border border-white/[0.08] bg-white/[0.02] px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-[#9fb0c8] transition-all hover:text-cyan hover:border-cyan/30 hover:bg-cyan/5 disabled:opacity-40"
                     >
                       Move to Arc
                     </button>

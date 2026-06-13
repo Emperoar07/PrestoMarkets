@@ -9,7 +9,7 @@
  */
 
 import { createPublicClient, erc20Abi, formatUnits, http, isAddress, type Address } from 'viem';
-import { baseSepolia, sepolia, avalancheFuji } from 'viem/chains';
+import { baseSepolia, sepolia, avalancheFuji, arbitrumSepolia } from 'viem/chains';
 import { getArcConfig } from './arcConfig';
 
 export type ChainUsdcBalance = {
@@ -34,6 +34,7 @@ const EXTERNAL_CHAINS = [
   { key: 'baseSepolia', label: 'Base Sepolia', chain: baseSepolia, usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as Address },
   { key: 'sepolia', label: 'Ethereum Sepolia', chain: sepolia, usdc: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' as Address },
   { key: 'avalancheFuji', label: 'Avalanche Fuji', chain: avalancheFuji, usdc: '0x5425890298aed601595a70ab815c96711a31bc65' as Address },
+  { key: 'arbitrumSepolia', label: 'Arbitrum Sepolia', chain: arbitrumSepolia, usdc: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d' as Address },
 ] as const;
 
 const READ_TIMEOUT_MS = 6_000;
