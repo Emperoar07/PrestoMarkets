@@ -12,7 +12,11 @@ const securityHeaders = [
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
+      // No external <script src> in the app (all bundled), so scripts are 'self' only — drops the
+      // broad `https:` that let any origin serve code. 'unsafe-inline' stays for Next's hydration
+      // bootstrap; full 'unsafe-eval' is replaced with 'wasm-unsafe-eval' so Circle's WASM wallets
+      // keep working while arbitrary JS eval (a classic XSS sink) is blocked.
+      "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
       "connect-src 'self' https: wss:",
       "frame-src 'self' https:",
       "worker-src 'self' blob:",
