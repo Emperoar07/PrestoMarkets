@@ -99,6 +99,13 @@ export const prestoMarketAbi = [
   },
   {
     type: 'function',
+    name: 'collateral',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    type: 'function',
     name: 'closeTime',
     stateMutability: 'view',
     inputs: [],
