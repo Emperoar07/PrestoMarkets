@@ -24,6 +24,7 @@ import {
   erc20Abi,
   http,
   pad,
+  formatUnits,
   parseUnits,
   zeroAddress,
   type Address,
@@ -37,7 +38,10 @@ const GATEWAY_WALLET = '0x0077777d7EBA4688BDeF3E311b846F25870A19B9' as Address;
 const GATEWAY_MINTER = '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B' as Address;
 const ARC_DOMAIN = 26;
 const ARC_USDC = '0x3600000000000000000000000000000000000000' as Address;
-const MAX_FEE = BigInt('2010000');
+// Max Gateway fee we allow per transfer (0.10 USDC). The actual fee is far smaller (~0.02 on
+// testnet), but the Gateway API requires value + maxFee <= available balance, so this is the
+// headroom we reserve out of the moved amount. Kept tight so small balances can still move.
+const MAX_FEE = BigInt('100000');
 const MAX_UINT64 = BigInt('18446744073709551615');
 
 export type GatewaySourceKey = 'baseSepolia' | 'sepolia' | 'avalancheFuji' | 'arbitrumSepolia';
@@ -242,9 +246,16 @@ export async function transferGatewayToArc(input: {
   source: GatewaySourceKey; amountUsdc: number; recipient: Address; onStep?: (s: MoveStep) => void;
 }): Promise<StepResult<void>> {
   const src = GATEWAY_SOURCES[input.source];
-  const value = parseUnits(String(input.amountUsdc), 6);
+  // The caller passes the full available Gateway balance. The Gateway API enforces
+  // value + maxFee <= available, so we transfer (available - MAX_FEE) and let maxFee cover the
+  // actual (smaller) fee — otherwise moving the whole balance always fails "insufficient balance".
+  const requested = parseUnits(String(input.amountUsdc), 6);
+  const value = requested > MAX_FEE ? requested - MAX_FEE : BigInt(0);
   const recipient = input.recipient;
   let current: MoveStep = 'switching-source';
+  if (value <= BigInt(0)) {
+    return { ok: false, error: `Amount too small — needs to exceed the ~${formatUnits(MAX_FEE, 6)} USDC Gateway fee.`, atStep: 'signing' };
+  }
   try {
     const ethereum = getEthereum();
 
