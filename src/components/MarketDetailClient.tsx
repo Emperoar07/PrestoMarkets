@@ -19,6 +19,10 @@ const MarketComments = dynamic(
   () => import('./MarketComments').then((m) => ({ default: m.MarketComments })),
   { ssr: false, loading: () => <div className="mt-8 h-40 rounded-[14px] bg-white/[0.02]" /> },
 );
+const MarketActivityTimeline = dynamic(
+  () => import('./MarketActivityTimeline').then((m) => ({ default: m.MarketActivityTimeline })),
+  { ssr: false, loading: () => <div className="mt-8 h-48 rounded-[14px] bg-white/[0.02]" /> },
+);
 import { ShareMarketButton } from './EmbedSnippetButton';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
 import type { StableSymbol } from '@/lib/walletBalance';
@@ -615,7 +619,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
           <section className="min-w-0 order-3 lg:order-none lg:col-start-1 lg:row-start-2">
 
-            <div>
+            <MarketActivityTimeline marketId={marketId} />
+
+            <div className="mt-8">
               <h2 className="text-base font-black text-white">Market activity</h2>
               <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-3">
                 {market.activity.map((item) => (
