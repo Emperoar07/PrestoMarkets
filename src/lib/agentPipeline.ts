@@ -600,7 +600,10 @@ const MAJOR_SPORTS_LEAGUES = [
   'french ligue 1', 'uefa champions league', 'uefa europa league', 'uefa europa conference',
   'american major league soccer', 'english football league championship', 'fa cup',
   'copa del rey', 'dfb pokal', 'coppa italia', 'saudi pro league',
-  'fifa world cup',
+  // International football: World Cup, its qualifiers, and the major national-team competitions.
+  // These are objectively settleable and give the agent live fixtures between club seasons.
+  'fifa world cup', 'world cup qualif', 'uefa nations league', 'uefa euro', 'copa america',
+  'africa cup of nations', 'concacaf', 'international friendl', 'friendlies',
   'nba', 'euroleague', 'wnba',
 ];
 
@@ -2177,9 +2180,14 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
 
   const activeAgentMarkets = countActiveAgentMarkets(existingMarkets);
   const typeMix = countAgentMarketTypeMix(existingMarkets);
+  // The deterministic fixture lane covers every recognized football/basketball match (objectively
+  // settleable from the official result), not just the World Cup. They skip the LLM classify/draft
+  // and are shaped into Home/Draw/Away markets. World Cup fixtures sort first, then by kickoff.
   const fixtureTrends = trends
-    .filter((trend) => trend.guaranteedFixture)
-    .sort((a, b) => Date.parse(a.kickoffTime ?? '') - Date.parse(b.kickoffTime ?? '')); // soonest kickoff first
+    .filter((trend) => trend.guaranteedFixture || (Boolean(trend.kickoffTime) && isFootballBasketballTrend(trend)))
+    .sort((a, b) =>
+      (a.guaranteedFixture === b.guaranteedFixture ? 0 : a.guaranteedFixture ? -1 : 1)
+      || Date.parse(a.kickoffTime ?? '') - Date.parse(b.kickoffTime ?? ''));
   if (
     activeAgentMarkets >= AGENT_ACTIVE_MARKET_CAP
     && (fixtureTrends.length === 0 || activeAgentMarkets >= AGENT_ACTIVE_MARKET_CAP + WORLD_CUP_CAP_RESERVE)
@@ -2222,11 +2230,21 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
         results.push({ ok: false, topic: trend.topic, stage: 'draft-quality', reason: qualityIssue });
         continue;
       }
+      // Tag World Cup fixtures with a 'World Cup' category so the /world-cup page picks them up
+      // (it matches on title/categories); other recognized fixtures stay plain Football/Sports.
+      const isWc = Boolean(trend.guaranteedFixture);
       const result = await createOnchain(
         draft,
         trend,
-        { worthy: true, momentumScore: 0.95, category: 'Football', categories: ['Football', 'Sports'], suggestedMarketType: 'Prediction', reason: 'Guaranteed FIFA World Cup fixture.' },
-        { pass: true, confidence: 0.95, reason: 'Deterministic World Cup Home / Draw / Away template; settles from the official fixture result.' },
+        {
+          worthy: true,
+          momentumScore: 0.95,
+          category: isWc ? 'World Cup' : 'Football',
+          categories: isWc ? ['World Cup', 'Football', 'Sports'] : ['Football', 'Sports'],
+          suggestedMarketType: 'Prediction',
+          reason: isWc ? 'Guaranteed FIFA World Cup fixture.' : 'Recognized football/basketball fixture.',
+        },
+        { pass: true, confidence: 0.95, reason: 'Deterministic Home / Draw / Away template; settles from the official fixture result.' },
       );
       results.push(result);
       if (result.ok) {
