@@ -55,7 +55,7 @@ describe('agent pipeline market quality gates', () => {
     expect(issue).toBeNull();
   });
 
-  it('uses a binary football fallback market with no Draw outcome', () => {
+  it('uses a Home/Draw/Away football fallback market', () => {
     const draft = __agentPipelineTestHooks.fallbackTemplateFromTrend({
       topic: 'Arsenal vs Chelsea',
       query: 'Arsenal playing Chelsea in Premier League',
@@ -64,9 +64,9 @@ describe('agent pipeline market quality gates', () => {
       closeDate: '2026-06-04T21:30:00.000Z',
     }, 'Prediction');
 
-    expect(draft?.title).toBe('Will Arsenal beat Chelsea?');
-    expect(draft?.outcomeOptions).toBeUndefined();
-    expect(draft?.rules).not.toMatch(/Draw wins/);
+    expect(draft?.title).toBe('Who will win Arsenal vs Chelsea?');
+    expect(draft?.outcomeOptions).toEqual(['Arsenal', 'Draw', 'Chelsea']);
+    expect(draft?.rules).toMatch(/Draw wins/);
   });
 
   it('returns a branded fallback image when no source image is available', async () => {

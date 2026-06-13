@@ -76,6 +76,19 @@ function isFootballBasketballTrend(trend: TrendItem): boolean {
   ].some((term) => haystack.includes(term));
 }
 
+function isFootballTrend(trend: TrendItem): boolean {
+  const haystack = `${trend.source} ${trend.topic} ${trend.query}`.toLowerCase();
+  return [
+    'football',
+    'soccer',
+    'premier league',
+    'champions league',
+    'mls',
+    'fifa',
+    'world cup',
+  ].some((term) => haystack.includes(term));
+}
+
 function agentTrendPriorityBoost(trend: TrendItem): number {
   return (isFootballBasketballTrend(trend) ? 8 : 0) + getArcEcosystemPriorityBoost(trend);
 }
@@ -675,7 +688,7 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
 
         return [{
           topic: `${home} vs ${away}`,
-          query: `${home} (${sport.category}) vs ${away}. Match ${event.strStatus || 'upcoming'}.${isWorldCupFixture ? ' FIFA World Cup fixture.' : ''}`,
+          query: `${home} (${sport.category}) vs ${away}. Match ${event.strStatus || 'upcoming'}. Football fixtures must use Home / Draw / Away outcomes.${isWorldCupFixture ? ' FIFA World Cup fixture.' : ''}`,
           source: sport.source,
           url: `https://www.thesportsdb.com/event/${event.idEvent}`,
           imageUrl: event.strThumb ?? undefined,
@@ -1472,7 +1485,7 @@ function validateDraftQuality(draft: GeminiDraft, trend: TrendItem): string | nu
 
   // Sports fixture status ("X vs Y: not started") leaked as the question.
   if (/\bvs\.?\b/.test(normalizedTitle) && /\b(not started|upcoming|postponed|live|full ?time|half ?time|scheduled|final|abandoned)\b/.test(normalizedTitle)) {
-    return 'Draft turned a fixture status into the question. Use a match-result question such as "Will <home> beat <away>?".';
+    return 'Draft turned a fixture status into the question. Use a match-result question such as "Who will win <home> vs <away>?".';
   }
 
   if (/\b(primary|secondary)\b/i.test(draft.title) || draft.outcomeOptions?.some((option) => BAD_CATEGORY_LABELS.has(option.toLowerCase()))) {
@@ -1752,8 +1765,11 @@ Copy rules for readable market writeups:
 - Do not mention internal research scores, model names, chain names, gas, liquidity, or platform plumbing.
 - For football or basketball markets, draft ONE of these shapes (never a fixture status like
   "not started"):
-  - Match result (binary): "Will <Home> beat <Away>?" — YES if the home side wins, NO on a
-    draw or away win. Name the real teams. Never use a separate "Draw" outcome for any sport.
+  - Football/soccer match result: "Who will win <Home> vs <Away>?" with exactly three
+    outcomeOptions ["<Home>", "Draw", "<Away>"]. Name the real teams. Draw must be its own
+    backed outcome, including World Cup fixtures.
+  - Basketball match result: "Who will win <Home> vs <Away>?" with exactly two outcomeOptions
+    ["<Home>", "<Away>"]. Basketball has no draw outcome.
   - League/competition winner (multi-outcome): "Who will win <league/competition>?" with one
     short label per realistic contending team (3 to 12 team names).
   - Total goals (multi-outcome): "How many total goals in <Home> vs <Away>?" with exhaustive
@@ -1905,7 +1921,7 @@ function cleanHeadline(text: string, maxLen = 90): string {
 
 // Fallback when the LLM pool is exhausted. We can only build a clean, grammatical question
 // deterministically for STRUCTURED trends (templated price markets) and sports fixtures
-// ("X vs Y: status" -> "Will X beat Y?"). A free-form news headline cannot be reframed into a
+// ("X vs Y: status" -> "Who will win X vs Y?"). A free-form news headline cannot be reframed into a
 // good future question without the LLM, so we return null and skip it rather than ship a
 // broken "Will <headline>?" market.
 function fallbackTemplateFromTrend(trend: TrendItem, suggestedType?: string): GeminiDraft | null {
@@ -1936,11 +1952,13 @@ function fallbackTemplateFromTrend(trend: TrendItem, suggestedType?: string): Ge
       const home = cleanHeadline(fixture[1], 36);
       const away = cleanHeadline(fixture[2], 36);
       if (!home || !away) return null;
-      // Binary match result for all sports — no separate "Draw" outcome. A draw counts as NO,
-      // so the market is always resolvable with two backed sides.
-      title = `Will ${home} beat ${away}?`;
-      description = cleanDraftText(`${home} face ${away}. YES wins if ${home} win the match; otherwise NO (including a draw).`, trend);
-      rules = `YES wins if ${home} win the match per the official result at the listed source by close. NO wins otherwise, including a draw or an ${away} win. Cancel only if the fixture is postponed or cannot be evaluated.`;
+      const isFootball = isFootballTrend(trend);
+      const outcomeOptions = isFootball ? [home, 'Draw', away] : [home, away];
+      title = `Who will win ${home} vs ${away}?`;
+      description = cleanDraftText(`${home} face ${away}. Traders are forecasting the final match result.`, trend);
+      rules = isFootball
+        ? `${home} wins if ${home} win the match in regulation plus stoppage time per the official result at the listed source. Draw wins if the official result is tied at full time. ${away} wins if ${away} win the match. Cancel and refund all participants only if the fixture is postponed, abandoned, or cannot be evaluated from the listed source.`
+        : `${home} wins if ${home} win the game per the official result at the listed source. ${away} wins if ${away} win the game. Cancel and refund all participants only if the fixture is postponed, abandoned, or cannot be evaluated from the listed source.`;
       type = 'Prediction';
       return {
         title,
@@ -1949,7 +1967,7 @@ function fallbackTemplateFromTrend(trend: TrendItem, suggestedType?: string): Ge
         sourceOfTruth: trend.url ?? trend.source ?? 'Public sources',
         closeDate: trend.closeDate ?? horizon.closeDate,
         type,
-        outcomeOptions: undefined,
+        outcomeOptions,
       };
     } else {
       return null;
@@ -2087,13 +2105,14 @@ const CONFIDENCE_THRESHOLD = 0.8;
 // Per-run cap: even if there are open slots under the active-market cap, the agent should
 // not burst-create multiple markets in a single cron invocation. With cron daily this means
 // at most 1 new market per day; if you upgrade to sub-daily cron it caps the burst per tick.
-// Up to 6 regular markets per tick (was 1) — the signal gates stay the quality filter, the cap
+// Up to 10 regular markets per tick (was 6) — the signal gates stay the quality filter, the cap
 // just stops a single run from flooding. World Cup fixtures don't count against this.
-const AGENT_PER_RUN_CAP = Math.max(1, Number(process.env.PRESTO_AGENT_PER_RUN_CAP ?? 6));
+const AGENT_PER_RUN_CAP = Math.max(1, Number(process.env.PRESTO_AGENT_PER_RUN_CAP ?? 10));
 // Cap the number of *active* agent-created markets (Open or Closing soon). Once a market
 // resolves or cancels, a slot frees up. Tunable via env so we can raise it once we trust the
 // pipeline more. Default 2 for safety while we're early.
 const AGENT_ACTIVE_MARKET_CAP = Math.max(0, Number(process.env.PRESTO_AGENT_ACTIVE_MARKET_CAP ?? 2));
+const WORLD_CUP_CAP_RESERVE = Math.max(0, Number(process.env.PRESTO_WORLD_CUP_FIXTURE_RESERVE ?? 10));
 
 function countAgentMarketTypeMix(markets: AppMarket[]): { Prediction: number; Opinion: number } {
   const out = { Prediction: 0, Opinion: 0 };
@@ -2151,7 +2170,13 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
 
   const activeAgentMarkets = countActiveAgentMarkets(existingMarkets);
   const typeMix = countAgentMarketTypeMix(existingMarkets);
-  if (activeAgentMarkets >= AGENT_ACTIVE_MARKET_CAP) {
+  const fixtureTrends = trends
+    .filter((trend) => trend.guaranteedFixture)
+    .sort((a, b) => Date.parse(a.kickoffTime ?? '') - Date.parse(b.kickoffTime ?? '')); // soonest kickoff first
+  if (
+    activeAgentMarkets >= AGENT_ACTIVE_MARKET_CAP
+    && (fixtureTrends.length === 0 || activeAgentMarkets >= AGENT_ACTIVE_MARKET_CAP + WORLD_CUP_CAP_RESERVE)
+  ) {
     return [{
       ok: false,
       topic: '(pipeline)',
@@ -2170,10 +2195,6 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   // group-stage day gets all 4 markets in one tick.
   // World Cup fixtures get reserved headroom above the regular cap, so ordinary trend markets
   // can never crowd a match out of existence. The fixture lane is still bounded.
-  const WORLD_CUP_CAP_RESERVE = 10;
-  const fixtureTrends = trends
-    .filter((trend) => trend.guaranteedFixture)
-    .sort((a, b) => Date.parse(a.kickoffTime ?? '') - Date.parse(b.kickoffTime ?? '')); // soonest kickoff first
   for (const trend of fixtureTrends) {
     if (liveActive >= AGENT_ACTIVE_MARKET_CAP + WORLD_CUP_CAP_RESERVE) {
       results.push({ ok: false, topic: trend.topic, stage: 'cap', reason: 'Fixture cap reserve exhausted; remaining World Cup fixtures retry next tick.' });
@@ -2198,7 +2219,7 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
         draft,
         trend,
         { worthy: true, momentumScore: 0.95, category: 'Football', categories: ['Football', 'Sports'], suggestedMarketType: 'Prediction', reason: 'Guaranteed FIFA World Cup fixture.' },
-        { pass: true, confidence: 0.95, reason: 'Deterministic World Cup match-result template; settles from the official fixture result.' },
+        { pass: true, confidence: 0.95, reason: 'Deterministic World Cup Home / Draw / Away template; settles from the official fixture result.' },
       );
       results.push(result);
       if (result.ok) {

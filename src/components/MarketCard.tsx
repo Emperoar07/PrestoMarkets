@@ -7,6 +7,7 @@ import { getOutcomeColor } from '@/lib/outcomeColors';
 import { useAppState } from '@/lib/appState';
 import { prefetchMarketDetail } from '@/lib/marketPrefetch';
 import { deriveDisplayType } from '@/lib/marketDisplay';
+import { detectCountryFlagUrl } from '@/lib/marketSubjectImage';
 import { Countdown } from './Countdown';
 import { ChanceMeter } from './ChanceMeter';
 import { ShareMarketButton } from './EmbedSnippetButton';
@@ -31,6 +32,33 @@ type MarketCardMarket = Market & {
   closeDate?: string;
 };
 
+function getTeamCode(team: string): string {
+  return team
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 3)
+    .toUpperCase() || team.slice(0, 3).toUpperCase();
+}
+
+function TeamBadge({ team, fallbackImage }: { team: string; fallbackImage?: string }) {
+  const flag = detectCountryFlagUrl(team);
+  const src = flag || fallbackImage;
+  if (src) {
+    return (
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[7px] border border-white/[0.05] bg-[#070e17]">
+        <img src={src} alt="" width={32} height={32} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+      </span>
+    );
+  }
+  return (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] border border-white/[0.05] bg-[#070e17] text-[9px] font-black text-cyan/70">
+      {getTeamCode(team)}
+    </span>
+  );
+}
+
 function MarketCardComponent({
   market,
   onQuickBuy,
@@ -48,6 +76,7 @@ function MarketCardComponent({
   const displayType = deriveDisplayType(market);
   const isListLayout = displayType === 'multi_outcome' || displayType === 'date_ladder';
   const isPulse = displayType === 'pulse_gauge';
+  const isSportsFixture = displayType === 'sports_live';
   const isOpinion = market.type === 'Opinion';
 
   const handleQuickBuy = (outcome: string) => (event: MouseEvent) => {
@@ -115,6 +144,70 @@ function MarketCardComponent({
         ) : (
           <div className="mt-2.5 rounded-[7px] border border-white/[0.06] py-2 text-center text-[10px] font-bold text-[#475569]">Closed</div>
         )}
+        {footer}
+      </Link>
+    );
+  }
+
+  if (isSportsFixture) {
+    const drawOutcome = market.outcomes.find((outcome) => /^draw$/i.test(outcome.label));
+    const homeOutcome = market.outcomes[0];
+    const awayOutcome = market.outcomes.find((outcome, index) => index > 0 && outcome.label !== drawOutcome?.label) ?? market.outcomes[2] ?? market.outcomes[1];
+    const homeLabel = homeOutcome?.label ?? 'Home';
+    const awayLabel = awayOutcome?.label ?? 'Away';
+    const buttonOutcomes = [homeOutcome, drawOutcome, awayOutcome]
+      .filter((outcome): outcome is Market['outcomes'][number] => Boolean(outcome))
+      .filter((outcome, index, list) => list.findIndex((item) => item.label === outcome.label) === index);
+
+    return (
+      <Link
+        href={`/markets/${market.id}`}
+        onMouseEnter={() => prefetchMarketDetail(market.id, refreshAccountPortfolio)}
+        className="group flex h-[156px] min-w-0 flex-col rounded-[10px] border border-white/[0.05] bg-[#0c121d] p-2.5 transition-all hover:border-white/[0.09] hover:bg-[#101929]"
+      >
+        <div className="space-y-1.5">
+          {[
+            { label: homeLabel, odds: homeOutcome?.odds ?? 0, image: market.imageURI },
+            { label: awayLabel, odds: awayOutcome?.odds ?? 0, image: undefined },
+          ].map((team) => (
+            <div key={team.label} className="flex items-center justify-between gap-2">
+              <span className="flex min-w-0 items-center gap-2">
+                <TeamBadge team={team.label} fallbackImage={team.image} />
+                <span className="truncate text-[12.5px] font-extrabold text-[#e5edf8]">{team.label}</span>
+              </span>
+              <span className="shrink-0 text-[11.5px] font-black text-white">{Math.round(team.odds)}%</span>
+            </div>
+          ))}
+        </div>
+
+        {isLive ? (
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {buttonOutcomes.map((outcome, index) => {
+              const isDraw = /^draw$/i.test(outcome.label);
+              const isAway = outcome.label === awayLabel;
+              return (
+                <button
+                  key={outcome.label}
+                  type="button"
+                  onClick={handleQuickBuy(outcome.label)}
+                  className={[
+                    'rounded-[8px] px-2 py-2 text-[11px] font-black transition-all active:scale-95',
+                    isDraw
+                      ? 'bg-[#25322f] text-[#9fb0c8] hover:bg-[#2d3c38] hover:text-white'
+                      : isAway || index === 2
+                        ? 'bg-[#13283a] text-[#28a8ff] hover:bg-[#17324a]'
+                        : 'bg-[#2d2d16] text-[#facc15] hover:bg-[#39391c]',
+                  ].join(' ')}
+                >
+                  {isDraw ? 'Draw' : getTeamCode(outcome.label)}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-3 rounded-[8px] border border-white/[0.06] py-2 text-center text-[10px] font-bold text-[#475569]">Closed</div>
+        )}
+
         {footer}
       </Link>
     );

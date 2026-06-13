@@ -70,7 +70,9 @@ export function WorldCupClient() {
     const seen = new Set<string>();
     const teams: Array<{ team: string; odds?: number }> = [];
     for (const fixture of fixtures) {
-      for (const [team, outcome] of [[fixture.home, fixture.market.outcomes[0]], [fixture.away, fixture.market.outcomes[1]]] as const) {
+      const draw = fixture.market.outcomes.find((outcome) => /^draw$/i.test(outcome.label));
+      const awayOutcome = fixture.market.outcomes.find((outcome, index) => index > 0 && outcome.label !== draw?.label) ?? fixture.market.outcomes[2] ?? fixture.market.outcomes[1];
+      for (const [team, outcome] of [[fixture.home, fixture.market.outcomes[0]], [fixture.away, awayOutcome]] as const) {
         const key = team.toLowerCase();
         if (seen.has(key)) continue;
         seen.add(key);
@@ -123,13 +125,6 @@ export function WorldCupClient() {
               <Trophy className="h-3.5 w-3.5" /> FIFA World Cup 2026
             </span>
             <h1 className="mt-4 text-[clamp(40px,7vw,72px)] font-black leading-none tracking-tight text-white">World Cup</h1>
-            <p className="mt-3 text-sm font-bold text-[#8fa0b4]">
-              Live World Cup predictions &amp; odds
-              <span className="text-[#46586f]"> · Updated {new Date(now).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-            </p>
-            <p className="mt-2 max-w-[520px] text-xs leading-5 text-[#64748b]">
-              Every fixture gets its own agent-created market. Trading locks one minute before kickoff and settles about an hour after full time.
-            </p>
           </div>
         </section>
 
@@ -151,8 +146,11 @@ export function WorldCupClient() {
                 {dayFixtures.map(({ market, home, away, kickoffMs }) => {
                   const isLive = now >= kickoffMs && now < kickoffMs + LIVE_WINDOW_MS;
                   const isLocked = now >= kickoffMs - 60_000;
-                  const yes = market.outcomes[0];
-                  const no = market.outcomes[1];
+                  const homeOutcome = market.outcomes[0];
+                  const drawOutcome = market.outcomes.find((outcome) => /^draw$/i.test(outcome.label));
+                  const awayOutcome = market.outcomes.find((outcome, index) => index > 0 && outcome.label !== drawOutcome?.label) ?? market.outcomes[2] ?? market.outcomes[1];
+                  const yes = homeOutcome;
+                  const no = awayOutcome;
                   return (
                     <div key={market.id} className="rounded-[14px] border border-white/[0.06] bg-[#0f1828] px-4 py-3 transition-colors hover:border-white/[0.12]">
                       <div className="flex items-center justify-between gap-3">
@@ -196,6 +194,15 @@ export function WorldCupClient() {
                             >
                               {home.split(' ')[0].toUpperCase().slice(0, 3)} {yes ? `${yes.odds}¢` : ''}
                             </button>
+                            {drawOutcome ? (
+                              <button
+                                type="button"
+                                onClick={() => setQuickBuy({ market, outcome: drawOutcome.label })}
+                                className="rounded-[10px] border border-white/10 bg-white/[0.05] px-4 py-2.5 text-xs font-black text-[#9fb0c8] transition-colors hover:bg-white/[0.08] hover:text-white"
+                              >
+                                DRAW {drawOutcome.odds}c
+                              </button>
+                            ) : null}
                             <button
                               type="button"
                               onClick={() => setQuickBuy({ market, outcome: no?.label ?? 'NO' })}
