@@ -244,9 +244,16 @@ export async function transferGatewayToArc(input: {
   const src = GATEWAY_SOURCES[input.source];
   const value = parseUnits(String(input.amountUsdc), 6);
   const recipient = input.recipient;
-  let current: MoveStep = 'signing';
+  let current: MoveStep = 'switching-source';
   try {
     const ethereum = getEthereum();
+
+    // Switch to the source chain BEFORE signing. The Gateway burn-intent EIP-712 domain is
+    // chainless (no chainId), so the signature is valid regardless of the wallet's current
+    // network — but signing while the wallet sits on, say, Ethereum mainnet is alarming and
+    // wrong UX. Switching first makes the wallet show the correct source testnet.
+    current = 'switching-source'; input.onStep?.(current);
+    await ensureWalletChain(ethereum, src.chain);
 
     current = 'signing'; input.onStep?.(current);
     const burnIntent = {
