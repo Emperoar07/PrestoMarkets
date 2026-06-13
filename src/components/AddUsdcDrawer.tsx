@@ -68,110 +68,130 @@ export function AddUsdcDrawer(input: {
     window.setTimeout(() => setCopied(false), 1400);
   }
 
-  const panelBody = (
-    <>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan">Add USDC</p>
-            <h2 className="mt-1 text-xl font-black text-white">Available USDC</h2>
-          </div>
-          <button
-            type="button"
-            onClick={input.onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-[#8fa0b4] transition hover:bg-white/[0.08] hover:text-white"
-            aria-label="Close Add USDC drawer"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="mt-5 rounded-[14px] border border-cyan/20 bg-cyan/[0.06] p-4">
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-sm font-bold text-[#94a3b8]">Arc Testnet USDC</span>
-            <span className="text-2xl font-black text-cyan">{balance ?? '--'}</span>
-          </div>
-          {input.wallet ? (
+  const header = (
+    <div className="px-4 pb-3 pt-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-cyan/70">
+          USDC
+        </p>
+        <div className="flex items-center gap-2">
+          {input.wallet && (
             <button
               type="button"
               onClick={() => void copyAddress()}
-              className="mt-3 flex w-full min-w-0 items-center justify-between gap-3 rounded-[10px] border border-white/[0.06] bg-[#0d1520] px-3 py-2 text-left text-xs font-bold text-[#94a3b8] transition hover:border-cyan/25 hover:text-white"
+              className="text-[10.5px] font-bold uppercase tracking-[0.18em] text-muted transition-colors hover:text-cyan"
+              aria-label="Copy address"
             >
-              <span className="truncate">{shortAddress(input.wallet.address)}</span>
-              <span className="inline-flex items-center gap-1.5 text-cyan">
-                <Copy className="h-3.5 w-3.5" />
-                {copied ? 'Copied' : 'Copy'}
-              </span>
+              {copied ? 'Copied' : 'Copy'}
             </button>
-          ) : (
-            <p className="mt-3 text-xs leading-5 text-[#94a3b8]">Connect a wallet first so Presto knows where to receive USDC.</p>
+          )}
+          {!isDropdown && (
+            <button
+              type="button"
+              onClick={input.onClose}
+              className="flex h-5 w-5 items-center justify-center rounded-full text-[#8fa0b4] hover:text-white transition-colors"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
           )}
         </div>
-
-        {/* Per-chain breakdown — Available USDC = everything the wallet could move to Arc. */}
-        {unified && unified.chains.some((chain) => !chain.isArc && chain.amount !== null) ? (
-          <div className="mt-3 rounded-[14px] border border-white/[0.06] bg-[#0d1520] p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-muted">Across chains</span>
-              <span className="text-sm font-black text-white">{formatAvailableUsdc(unified.total)} total</span>
-            </div>
-            <div className="mt-2.5 space-y-1.5">
-              {unified.chains.filter((chain) => !chain.isArc).map((chain) => (
-                <div key={chain.key} className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-[#94a3b8]">{chain.label}</span>
-                  <span className="font-black text-[#dbeafe]">
-                    {chain.amount === null ? '—' : formatAvailableUsdc(chain.amount)}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <p className="mt-3 text-[11px] leading-4 text-[#64748b]">
-              One-tap “Move to Arc” lands next — for now bridge via the links below.
-            </p>
-          </div>
-        ) : null}
-
-        <div className="mt-4 grid gap-2">
-          <a
-            href="https://faucet.circle.com"
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center justify-between rounded-[12px] border border-cyan/25 bg-cyan/10 px-4 py-3 text-sm font-black text-cyan transition hover:bg-cyan/15"
-          >
-            Circle faucet
-            <ExternalLink className="h-4 w-4" />
-          </a>
-          <a
-            href={dexUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center justify-between rounded-[12px] border border-white/[0.08] bg-[#0d1520] px-4 py-3 text-sm font-black text-[#dbeafe] transition hover:border-cyan/25 hover:text-cyan"
-          >
-            Bridge or swap USDC
-            <ExternalLink className="h-4 w-4" />
-          </a>
-        </div>
-
-        <p className="mt-4 text-xs leading-5 text-[#64748b]">
-          Presto spends Arc Testnet USDC only. Circle App Kit / Unified Balance rails are wired as funding entry points here; every transfer still happens as an explicit user action.
+      </div>
+      {input.wallet && (
+        <p className="mt-2.5 break-all font-mono text-[12.5px] leading-5 text-white/90">
+          {input.wallet.address}
         </p>
-    </>
+      )}
+    </div>
+  );
+
+  const content = (
+    <div className="flex flex-col gap-1 p-2 bg-[#090e1a]">
+      {/* Balance Row */}
+      <div className="flex items-center justify-between px-3 py-2 text-[12px] font-bold text-[#cbd5e1]">
+        <span className="text-[#8fa0b4]">Arc Testnet Balance</span>
+        <span className="text-base font-black text-cyan">{balance ?? '--'}</span>
+      </div>
+
+      {/* Per-chain breakdown */}
+      {unified && unified.chains.some((chain) => !chain.isArc && chain.amount !== null) && (
+        <div className="flex flex-col gap-1 border-t border-white/[0.06] pt-2 mt-1">
+          <div className="flex items-center justify-between px-3 py-1.5">
+            <span className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-cyan/70">Across chains</span>
+            <span className="text-[12px] font-black text-white">{formatAvailableUsdc(unified.total)} total</span>
+          </div>
+          {unified.chains.filter((chain) => !chain.isArc).map((chain) => (
+            <div key={chain.key} className="flex items-center justify-between px-3 py-1 text-[11px] font-bold text-[#8fa0b4]">
+              <span>{chain.label}</span>
+              <span className="font-black text-[#cbd5e1]">
+                {chain.amount === null ? '—' : formatAvailableUsdc(chain.amount)}
+              </span>
+            </div>
+          ))}
+          <p className="px-3 py-1 text-[10px] leading-relaxed text-[#64748b]">
+            One-tap “Move to Arc” lands next — for now bridge via the links below.
+          </p>
+        </div>
+      )}
+
+      {/* Actions and Faucets styled like profile links */}
+      <div className="flex flex-col gap-1 border-t border-white/[0.06] pt-2 mt-1">
+        <a
+          href="https://faucet.circle.com"
+          target="_blank"
+          rel="noreferrer"
+          className="w-full flex items-center justify-between px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
+        >
+          <span className="flex items-center gap-2.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
+              <path d="M12 2.5s6 6.3 6 10.5a6 6 0 0 1-12 0c0-4.2 6-10.5 6-10.5Z" />
+            </svg>
+            Circle Faucet
+          </span>
+          <ExternalLink className="h-3.5 w-3.5 opacity-60" />
+        </a>
+
+        <a
+          href={dexUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="w-full flex items-center justify-between px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
+        >
+          <span className="flex items-center gap-2.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
+              <path d="m17 2 4 4-4 4" /><path d="M3 6h18" /><path d="m7 22-4-4 4-4" /><path d="M21 18H3" />
+            </svg>
+            Bridge or Swap USDC
+          </span>
+          <ExternalLink className="h-3.5 w-3.5 opacity-60" />
+        </a>
+      </div>
+
+      <p className="px-3 py-2 text-[10px] leading-relaxed text-[#64748b]">
+        Presto spends Arc Testnet USDC only. Circle App Kit / Unified Balance rails are wired as funding entry points here; every transfer still happens as an explicit user action.
+      </p>
+    </div>
   );
 
   if (isDropdown) {
     return (
       <div
         ref={panelRef}
-        className="absolute right-0 top-[calc(100%+8px)] z-[60] w-[400px] max-w-[calc(100vw-24px)] rounded-[18px] border border-white/[0.08] bg-[#0b1322] p-5 shadow-2xl shadow-black/60"
+        className="absolute right-0 mt-3 z-50 w-[360px] overflow-hidden rounded-[14px] border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/40"
       >
-        {panelBody}
+        {header}
+        <div className="h-px bg-white/[0.06]" />
+        {content}
       </div>
     );
   }
 
   return (
     <div className="fixed inset-0 z-[9998] flex items-end justify-center bg-[#050b14]/70 px-3 pb-3 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="w-full max-w-[440px] rounded-[18px] border border-white/[0.08] bg-[#0b1322] p-5 shadow-2xl shadow-black/60">
-        {panelBody}
+      <div className="w-full max-w-[380px] overflow-hidden rounded-[14px] border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/60">
+        {header}
+        <div className="h-px bg-white/[0.06]" />
+        {content}
       </div>
     </div>
   );

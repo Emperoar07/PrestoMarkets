@@ -351,7 +351,7 @@ export function SiteHeader() {
                 className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#0b1322]/80 px-3 py-1 text-[12px] font-black text-[#dbeafe] transition-colors hover:border-cyan/25 hover:text-white"
                 aria-label="Open Add USDC dropdown"
               >
-                <span className="text-[#4a5568]">Available USDC</span>
+                <span className="text-[#4a5568]">USDC</span>
                 <span className="text-cyan font-black">{availableUsdc ?? balances.USDC ?? '--'}</span>
               </button>
               <AddUsdcDrawer

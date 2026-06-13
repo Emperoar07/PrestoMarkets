@@ -91,7 +91,7 @@ export function MarketActivityTimeline({ marketId }: { marketId: string }) {
   const hasEvents = visibleEvents.length > 0;
 
   return (
-    <section ref={rootRef} className="mt-8 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
+    <section ref={rootRef} className="mt-8">
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan">Activity timeline</p>
