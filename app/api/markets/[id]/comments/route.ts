@@ -58,6 +58,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     const parentId = typeof body.parentId === 'number' ? body.parentId : null;
+
+    // A reply's parent must belong to THIS market — otherwise a crafted parentId could thread a
+    // comment under an unrelated market. Validate before creating, and reuse the fetched parent
+    // for the reply notification.
+    let parent: Awaited<ReturnType<typeof getCommentById>> | null = null;
+    if (parentId) {
+      parent = await getCommentById(parentId).catch(() => null);
+      if (!parent || parent.marketId.toLowerCase() !== marketId.toLowerCase()) {
+        return NextResponse.json({ error: 'Parent comment does not belong to this market.' }, { status: 400 });
+      }
+    }
+
     const comment = await createComment({
       marketId,
       authorAddress: session.address,
@@ -66,17 +78,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
 
     // Notify the parent comment's author of a reply (not for self-replies). Best-effort.
-    if (parentId) {
-      const parent = await getCommentById(parentId).catch(() => null);
-      if (parent && parent.authorAddress.toLowerCase() !== session.address.toLowerCase()) {
-        void notifyUser({
-          address: parent.authorAddress,
-          type: 'comment_reply',
-          title: 'New reply to your comment',
-          body: commentBody.slice(0, 140),
-          marketId,
-        });
-      }
+    if (parent && parent.authorAddress.toLowerCase() !== session.address.toLowerCase()) {
+      void notifyUser({
+        address: parent.authorAddress,
+        type: 'comment_reply',
+        title: 'New reply to your comment',
+        body: commentBody.slice(0, 140),
+        marketId,
+      });
     }
 
     return NextResponse.json({ comment }, { status: 201 });
