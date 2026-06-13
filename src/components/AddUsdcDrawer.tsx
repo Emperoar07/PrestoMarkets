@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { ExternalLink, X } from 'lucide-react';
 import { fetchArcStableBalances, readCachedUsdcBalance } from '@/lib/walletBalance';
 import { fetchAvailableUsdc, formatAvailableUsdc, type AvailableUsdc } from '@/lib/unifiedBalance';
-import { moveUsdcToArc, type GatewaySourceKey, type MoveStep } from '@/lib/gatewayActions';
+import { moveUsdcToArc, GATEWAY_SOURCES, type GatewaySourceKey, type MoveStep } from '@/lib/gatewayActions';
+import { useTransactions } from '@/lib/transactions';
 import { type ConnectedWallet } from '@/lib/walletProvider';
 import type { Address } from 'viem';
 
@@ -37,23 +38,32 @@ export function AddUsdcDrawer(input: {
   const panelRef = useRef<HTMLDivElement>(null);
   const isDropdown = input.variant === 'dropdown';
   const hasExternalWallet = typeof window !== 'undefined' && Boolean((window as { ethereum?: unknown }).ethereum);
+  const { track } = useTransactions();
 
   async function handleMove(chainKey: string, amount: number) {
     if (!input.wallet?.address || move) return;
     setMoveError(null);
     setMove({ chain: chainKey, step: 'switching-source' });
-    const result = await moveUsdcToArc({
-      source: chainKey as GatewaySourceKey,
-      amountUsdc: amount,
-      recipient: input.wallet.address as Address,
-      onStep: (step) => setMove({ chain: chainKey, step }),
+    const label = `Move ${formatAvailableUsdc(amount)} from ${GATEWAY_SOURCES[chainKey as GatewaySourceKey].label} to Arc`;
+    // Route through the global transactions feed so the move shows in activity toasts alongside
+    // trades and claims; map MoveResult -> TrackResult (ok/txHash/message) for the reducer.
+    const result = await track({ label, amountLabel: formatAvailableUsdc(amount) }, async () => {
+      const moved = await moveUsdcToArc({
+        source: chainKey as GatewaySourceKey,
+        amountUsdc: amount,
+        recipient: input.wallet!.address as Address,
+        onStep: (step) => setMove({ chain: chainKey, step }),
+      });
+      return moved.ok
+        ? { ok: true as const, txHash: moved.txHash, message: 'USDC credited on Arc' }
+        : { ok: false as const, message: `${moved.error} (at ${moved.atStep})` };
     });
     if (result.ok) {
       window.dispatchEvent(new CustomEvent('presto:balances-refresh'));
       setMove({ chain: chainKey, step: 'done' });
       setTimeout(() => setMove(null), 2500);
     } else {
-      setMoveError(`${result.error} (at ${result.atStep})`);
+      setMoveError(result.message ?? 'Move to Arc failed.');
       setMove(null);
     }
   }

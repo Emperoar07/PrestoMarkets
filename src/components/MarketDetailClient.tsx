@@ -121,6 +121,23 @@ const renderEvidenceBlock = (uri?: string) => {
   );
 };
 
+function formatKickoffCountdown(kickoffMs: number, nowMs: number): string {
+  const diff = kickoffMs - nowMs;
+  if (diff <= 0) return '0s';
+  const seconds = Math.floor((diff / 1000) % 60);
+  const minutes = Math.floor((diff / (1000 * 60)) % 60);
+  const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0 || days > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || hours > 0 || days > 0) parts.push(`${minutes}m`);
+  parts.push(`${seconds}s`);
+
+  return parts.join(' ');
+}
+
 export function MarketDetailClient({ marketId }: { marketId: string }) {
   const { accountPreviews, connectedWallet, getMarket, isLoadingMarkets, placeTrade, addLiquidity, resolveMarket, cancelMarket, claimMarket, refundMarket } = useAppState();
   const { track } = useTransactions();
@@ -230,7 +247,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 5000);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -528,7 +545,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             ) : null}
 
             {kickoffMs !== null && (
-              <div className="mt-6 rounded-[16px] border border-white/[0.06] bg-white/[0.02] p-5">
+              <div className="mt-6 border-t border-white/[0.06] pt-5">
                 {isMatchLive ? (
                   <div>
                     <div className="flex items-center gap-2">
@@ -594,13 +611,16 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     </p>
                   </div>
                 ) : now < kickoffMs ? (
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-block h-2 w-2 rounded-full bg-yellow-400 animate-pulse"></span>
-                      <span className="text-xs font-bold text-yellow-200">Upcoming Fixture</span>
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="inline-block h-2.5 w-2.5 rounded-full bg-yellow-400 animate-pulse"></span>
+                      <span className="text-xs font-black uppercase tracking-wider text-yellow-200">Upcoming Match</span>
+                      <span className="rounded-full bg-amber-400/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-300">
+                        Starts in {formatKickoffCountdown(kickoffMs, now)}
+                      </span>
                     </div>
-                    <div className="text-xs font-bold text-muted">
-                      Kickoff: <span className="text-white">{new Date(kickoffMs).toLocaleString()}</span>
+                    <div className="text-xs font-semibold text-muted">
+                      Kickoff: <span className="text-white font-extrabold">{new Date(kickoffMs).toLocaleString()}</span>
                     </div>
                   </div>
                 ) : (
