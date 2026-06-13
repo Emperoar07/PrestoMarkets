@@ -1,6 +1,6 @@
 import { createPublicClient, encodeFunctionData, formatUnits, isAddress, parseEventLogs, parseUnits, type Address, type Hex } from 'viem';
 import { arcTestnet } from 'viem/chains';
-import { getArcConfig } from './arcConfig';
+import { getArcConfig, collateralSymbolForAddress, collateralUnit } from './arcConfig';
 import { ARC_READ_BATCH, arcReadTransport } from './arcClient';
 import { buildMarketMetadataURI } from './marketMetadata';
 import { executeCircleChallenge, getStoredConnectedWallet, refreshCircleSessionIfNeeded, type CircleSession } from './walletProvider';
@@ -511,11 +511,17 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: s
     const config = requireArcConfig();
     if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
     const marketAddress = input.marketAddress as Address;
-    const usdcAddress = config.usdcAddress! as Address;
     await assertMarketOpenForTrading(marketAddress);
     if (!Number.isFinite(input.amount) || input.amount < MIN_TRADE_USDC) {
       throw new Error(`Minimum trade is $${MIN_TRADE_USDC} USDC.`);
     }
+    // Spend the market's own collateral token (USDC for nearly all markets, EURC for euro
+    // markets). Older markets without collateral() fall back to the configured USDC address.
+    const usdcAddress = (await getPublicClient().readContract({
+      address: marketAddress, abi: prestoMarketAbi, functionName: 'collateral',
+    }).catch(() => config.usdcAddress!)) as Address;
+    const collateralSymbol = collateralSymbolForAddress(usdcAddress);
+    const collUnit = collateralUnit(collateralSymbol);
     const amount = parseUnits(String(input.amount), 6).toString();
     const amountValue = BigInt(amount);
     const ownerAddress = getStoredConnectedWallet()?.address;

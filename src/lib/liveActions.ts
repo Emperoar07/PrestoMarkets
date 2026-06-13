@@ -9,7 +9,7 @@ import {
   type Address,
   type Hex,
 } from 'viem';
-import { getArcConfig, getArcChainId } from './arcConfig';
+import { getArcConfig, getArcChainId, collateralSymbolForAddress, collateralUnit } from './arcConfig';
 import { erc20Abi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { getStoredConnectedWallet } from './walletProvider';
 import { buildMarketMetadataURI, parseMarketMetadata, type AgentMarketMetadata } from './marketMetadata';
@@ -380,22 +380,27 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
       throw new Error(`Minimum trade is $${MIN_TRADE_USDC} USDC.`);
     }
 
-    // Every market deployed by the factory settles in USDC at the contract level, and the
-    // app is USDC-only, so trades always spend USDC (6-decimal ERC-20 interface on Arc).
-    // (Open-state + kickoff-lock already asserted above, before the wallet-mode branches.)
+    // Spend the market's own collateral token (USDC for nearly all markets, EURC for euro
+    // markets). All amounts are 6-decimal on Arc. Older markets without collateral() fall back
+    // to USDC. (Open-state + kickoff-lock already asserted above, before the wallet-mode branches.)
     const marketAddress = input.marketAddress as Address;
+    const collateralToken = (await withRetry(() => publicClient.readContract({
+      address: marketAddress, abi: prestoMarketAbi, functionName: 'collateral',
+    })).catch(() => config.usdcAddress)) as Address;
+    const collateralSymbol = collateralSymbolForAddress(collateralToken);
+    const unit = collateralUnit(collateralSymbol);
 
     const amount = parseUnits(String(input.amount), 6);
 
     const [balance, allowance] = await Promise.all([
       withRetry(() => publicClient.readContract({
-        address: config.usdcAddress,
+        address: collateralToken,
         abi: erc20Abi,
         functionName: 'balanceOf',
         args: [account],
       })),
       withRetry(() => publicClient.readContract({
-        address: config.usdcAddress,
+        address: collateralToken,
         abi: erc20Abi,
         functionName: 'allowance',
         args: [account, marketAddress],
@@ -404,13 +409,13 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
 
     if (balance < amount) {
       const have = Number(formatUnits(balance, 6)).toFixed(2);
-      throw new Error(`Insufficient USDC balance. You have $${have} but the trade needs $${input.amount}.`);
+      throw new Error(`Insufficient ${collateralSymbol} balance. You have ${unit}${have} but the trade needs ${unit}${input.amount}.`);
     }
 
     if (allowance < amount) {
       const approveHash = await walletClient.writeContract({
         account,
-        address: config.usdcAddress,
+        address: collateralToken,
         abi: erc20Abi,
         functionName: 'approve',
         args: [marketAddress, amount],
