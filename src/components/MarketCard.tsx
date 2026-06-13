@@ -76,7 +76,12 @@ function MarketCardComponent({
   const displayType = deriveDisplayType(market);
   const isListLayout = displayType === 'multi_outcome' || displayType === 'date_ladder';
   const isPulse = displayType === 'pulse_gauge';
-  const isSportsFixture = displayType === 'sports_live';
+  // A binary YES/NO market must never render through the sports-fixture layout — that turns
+  // "YES"/"NO" into "Y"/"N" team-code buttons with flag badges (the broken card). Only treat
+  // it as a fixture when it actually has team-style outcomes.
+  const isBinaryYesNo = market.outcomes.length === 2
+    && market.outcomes.every((o) => /^(yes|no)$/i.test(o.label));
+  const isSportsFixture = displayType === 'sports_live' && !isBinaryYesNo;
   const isOpinion = market.type === 'Opinion';
 
   const handleQuickBuy = (outcome: string) => (event: MouseEvent) => {

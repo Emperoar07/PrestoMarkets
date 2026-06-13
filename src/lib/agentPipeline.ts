@@ -14,7 +14,7 @@ import { AGENT_PLATFORM_CONTEXT } from './agentContext';
 import { fetchOnchainMarkets } from './onchainMarkets';
 import { sanitizeFeedText } from './feedSanitizer';
 import { fetchPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
-import { resolveSubjectImageUrl, brandedMarketImage } from './marketSubjectImage';
+import { resolveSubjectImageUrl, brandedMarketImage, detectCountryFlagUrl } from './marketSubjectImage';
 import { deriveDisplayType } from './marketDisplay';
 import { logger } from './logger';
 import { assessTrendResearchQuality, formatResearchAssessment, getResearchDecision } from './agentResearch';
@@ -686,12 +686,17 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
         // knockout games, which would outrun a 2.5h window.
         const closeMs = kickoffMs !== null ? kickoffMs + 3 * 60 * 60 * 1000 : null;
 
+        // Fixtures must always carry a real image: prefer the match thumbnail, else the home
+        // team's country flag (World Cup teams are countries), so a fixture never falls back to
+        // the generic branded banner.
+        const fixtureImage = event.strThumb || detectCountryFlagUrl(home) || detectCountryFlagUrl(away) || undefined;
+
         return [{
           topic: `${home} vs ${away}`,
           query: `${home} (${sport.category}) vs ${away}. Match ${event.strStatus || 'upcoming'}. Football fixtures must use Home / Draw / Away outcomes.${isWorldCupFixture ? ' FIFA World Cup fixture.' : ''}`,
           source: sport.source,
           url: `https://www.thesportsdb.com/event/${event.idEvent}`,
-          imageUrl: event.strThumb ?? undefined,
+          imageUrl: fixtureImage,
           ...(closeMs !== null ? { closeDate: new Date(closeMs).toISOString() } : {}),
           ...(isWorldCupFixture ? { guaranteedFixture: true } : {}),
           ...(kickoff && !Number.isNaN(kickoff.getTime()) ? { kickoffTime: kickoff.toISOString() } : {}),
@@ -2112,7 +2117,9 @@ const AGENT_PER_RUN_CAP = Math.max(1, Number(process.env.PRESTO_AGENT_PER_RUN_CA
 // resolves or cancels, a slot frees up. Tunable via env so we can raise it once we trust the
 // pipeline more. Default 2 for safety while we're early.
 const AGENT_ACTIVE_MARKET_CAP = Math.max(0, Number(process.env.PRESTO_AGENT_ACTIVE_MARKET_CAP ?? 2));
-const WORLD_CUP_CAP_RESERVE = Math.max(0, Number(process.env.PRESTO_WORLD_CUP_FIXTURE_RESERVE ?? 10));
+// Reserved headroom above the active cap purely for World Cup fixtures, so a full week of
+// matches (group stage can be ~16) all get markets without crowding out regular trend markets.
+const WORLD_CUP_CAP_RESERVE = Math.max(0, Number(process.env.PRESTO_WORLD_CUP_FIXTURE_RESERVE ?? 40));
 
 function countAgentMarketTypeMix(markets: AppMarket[]): { Prediction: number; Opinion: number } {
   const out = { Prediction: 0, Opinion: 0 };
@@ -2336,6 +2343,15 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
     try {
       const precedents = await fetchPolymarketPrecedents(trend);
       let draft: GeminiDraft;
+      // Sports fixtures ("Home vs Away") are deterministic: always shape them into a
+      // Home/Draw/Away (or Home/Away) result market instead of letting the LLM turn them into
+      // a binary "Will X beat Y?" question. Matches the World Cup guaranteed lane.
+      const fixtureTemplate = /\bvs\.?\b/i.test(trend.topic) && isFootballBasketballTrend(trend)
+        ? fallbackTemplateFromTrend(trend, 'Prediction')
+        : null;
+      if (fixtureTemplate) {
+        draft = fixtureTemplate;
+      } else {
       try {
         draft = await draftWithGemini(trend, classification.category, {
           suggestedType: classification.suggestedMarketType,
@@ -2357,6 +2373,7 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
           results.push({ ok: false, topic: trend.topic, stage: 'draft', reason: err });
           continue;
         }
+      }
       }
 
       if (isDuplicateMarket(draft, trend, existingMarkets)) {
