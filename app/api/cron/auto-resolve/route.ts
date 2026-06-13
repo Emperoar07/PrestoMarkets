@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { Hex } from 'viem';
+import type { Hex, Address } from 'viem';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 import { agentResolveMarket, agentCancelMarket, agentProposeResolution, agentSettleProposedResolution, agentReadTotalShares, getAgentAddress } from '@/lib/agentWallet';
 import { verifyBearer } from '@/lib/authCompare';
@@ -9,6 +9,7 @@ import { assertNonEmptyString } from '@/lib/typeGuards';
 import { createAbortSignalWithTimeout } from '@/lib/timeoutUtils';
 import { tryDeterministicPriceResolution } from '@/lib/priceResolution';
 import { listMarketWatchers } from '@/lib/socialDb';
+import { listMarketTraders } from '@/lib/marketIndexer';
 import { notifyMany } from '@/lib/notifications';
 import type { AppMarket } from '@/lib/appState';
 
@@ -470,13 +471,16 @@ export async function GET(req: NextRequest) {
         }
         results.push(result);
 
-        // Notify users watching this market. Best-effort, never blocks.
+        // Notify users watching or trading this market. Best-effort, never blocks.
         if (result.ok && (result.action === 'resolved' || result.action === 'canceled' || result.action === 'proposed')) {
           const action = result.action;
           try {
             const watchers = await listMarketWatchers(market.id);
-            if (watchers.length > 0) {
-              await notifyMany(watchers, () => ({
+            const traders = await listMarketTraders(market.id as Address);
+            const recipients = Array.from(new Set([...watchers, ...traders]));
+
+            if (recipients.length > 0) {
+              await notifyMany(recipients, () => ({
                 type: action === 'resolved' ? 'market_resolved' : action === 'canceled' ? 'market_canceled' : 'system',
                 title: action === 'resolved' ? `Market resolved: ${market.title}`
                   : action === 'canceled' ? `Market canceled & refunded: ${market.title}`
@@ -487,7 +491,9 @@ export async function GET(req: NextRequest) {
                 marketId: market.id,
               }));
             }
-          } catch { /* notifications are best-effort */ }
+          } catch (err) {
+            console.error('Failed to notify auto-resolve action:', err);
+          }
         }
 
         if (agentErc8004Id && result.ok && result.action === 'resolved') {

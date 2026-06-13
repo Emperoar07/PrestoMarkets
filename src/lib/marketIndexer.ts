@@ -178,3 +178,35 @@ export async function getAccountStats(address: string): Promise<AccountStats> {
     }
   );
 }
+
+/** Fetch all unique on-chain traders/buyers of a given market address. */
+export async function listMarketTraders(marketAddress: Address): Promise<string[]> {
+  const client = createClient();
+  if (!client) return [];
+
+  const latest = await client.getBlockNumber().catch(() => null);
+  if (latest === null) return [];
+  const span = BLOCK_CHUNK * BigInt(MAX_CHUNKS);
+  const fromBlock = latest > span ? latest - span : BigInt(0);
+
+  const traders = new Set<string>();
+
+  for (let start = fromBlock; start <= latest; start += BLOCK_CHUNK) {
+    const toBlock = start + BLOCK_CHUNK - BigInt(1) > latest ? latest : start + BLOCK_CHUNK - BigInt(1);
+    const bought = await client.getLogs({
+      address: marketAddress,
+      event: sharesBoughtEvent,
+      fromBlock: start,
+      toBlock,
+    }).catch(() => []);
+
+    for (const log of bought) {
+      const args = (log as { args?: { buyer?: string } }).args ?? {};
+      if (args.buyer) {
+        traders.add(args.buyer.toLowerCase());
+      }
+    }
+  }
+
+  return Array.from(traders);
+}

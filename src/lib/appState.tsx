@@ -241,6 +241,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       writePayWith(connectedWallet?.address, input.marketId, input.payWith);
     }
     if (result.ok) {
+      // Notify market creator that someone traded on their market. Best effort.
+      fetch(`/api/markets/${input.marketId}/trade-notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outcome: input.outcome, amount: input.amount }),
+      }).catch((err) => console.error('Failed to dispatch trade notification:', err));
+
       // Arc finalizes in sub-second blocks but public RPC takes ~1-2s to surface the new
       // sharesOf state. Refresh once immediately, then once more after a short delay so the
       // YOUR POSITION block updates without a manual reload.
@@ -284,6 +291,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       resolutionURI: input.resolutionURI,
     });
     if (result.ok) {
+      // Notify watchers and traders of resolution. Best-effort.
+      fetch(`/api/markets/${input.marketId}/resolve-notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resolved', outcome: input.outcome }),
+      }).catch((err) => console.error('Failed to dispatch resolve notification:', err));
+
       await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }
@@ -293,6 +307,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const cancelMarket = useCallback(async (marketId: string) => {
     const result = await cancelLiveMarket(marketId);
     if (result.ok) {
+      // Notify watchers and traders of cancellation. Best-effort.
+      fetch(`/api/markets/${marketId}/resolve-notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'canceled' }),
+      }).catch((err) => console.error('Failed to dispatch cancel notification:', err));
+
       await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }

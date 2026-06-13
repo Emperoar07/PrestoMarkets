@@ -3,6 +3,8 @@ import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
 import { addWatchlistItem, listWatchlist, removeWatchlistItem } from '@/lib/socialDb';
 import { getSocialSession } from '@/lib/socialSession';
 import { normalizeMarketId } from '@/lib/socialValidation';
+import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
+import { notifyUser } from '@/lib/notifications';
 
 const watchlistRateLimitStore = new Map<string, { count: number; resetAt: number }>();
 
@@ -46,6 +48,24 @@ export async function POST(request: NextRequest) {
 
   try {
     const item = await addWatchlistItem(session.address, marketId);
+
+    // Notify the creator that someone added their market to their watchlist. Best effort.
+    try {
+      const markets = await fetchOnchainMarkets().catch(() => []);
+      const market = markets.find((m) => m.id.toLowerCase() === marketId.toLowerCase());
+      if (market && market.creatorAddress && market.creatorAddress.toLowerCase() !== session.address.toLowerCase()) {
+        await notifyUser({
+          address: market.creatorAddress,
+          type: 'system',
+          title: `Someone watched your market`,
+          body: `User ${session.address} added "${market.title}" to their watchlist.`,
+          marketId: market.id,
+        });
+      }
+    } catch (err) {
+      console.error('[api] watchlist notification failed:', err);
+    }
+
     return NextResponse.json({ item }, { status: 201 });
   } catch (error) {
     console.error('[api] watchlist failed:', error);
