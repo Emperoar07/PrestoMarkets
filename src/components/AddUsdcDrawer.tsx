@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Copy, ExternalLink, X } from 'lucide-react';
+import { ExternalLink, X } from 'lucide-react';
 import { fetchArcStableBalances, readCachedUsdcBalance } from '@/lib/walletBalance';
 import { fetchAvailableUsdc, formatAvailableUsdc, type AvailableUsdc } from '@/lib/unifiedBalance';
-import { shortAddress, type ConnectedWallet } from '@/lib/walletProvider';
+import { type ConnectedWallet } from '@/lib/walletProvider';
 
 const dexUrl = process.env.NEXT_PUBLIC_PRESTO_DEX_URL?.trim() || 'https://prestodex-arc.vercel.app';
 
@@ -17,7 +17,6 @@ export function AddUsdcDrawer(input: {
 }) {
   const [balance, setBalance] = useState<string | null>(null);
   const [unified, setUnified] = useState<AvailableUsdc | null>(null);
-  const [copied, setCopied] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const isDropdown = input.variant === 'dropdown';
 
@@ -62,48 +61,23 @@ export function AddUsdcDrawer(input: {
   }, [input, isDropdown]);
 
   if (!input.open) return null;
-
-  async function copyAddress() {
-    if (!input.wallet?.address) return;
-    await navigator.clipboard.writeText(input.wallet.address);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1400);
-  }
-
   const header = (
     <div className="px-4 pb-3 pt-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-cyan/70">
           USDC
         </p>
-        <div className="flex items-center gap-2">
-          {input.wallet && (
-            <button
-              type="button"
-              onClick={() => void copyAddress()}
-              className="text-[10.5px] font-bold uppercase tracking-[0.18em] text-muted transition-colors hover:text-cyan"
-              aria-label="Copy address"
-            >
-              {copied ? 'Copied' : 'Copy'}
-            </button>
-          )}
-          {!isDropdown && (
-            <button
-              type="button"
-              onClick={input.onClose}
-              className="flex h-5 w-5 items-center justify-center rounded-full text-[#8fa0b4] hover:text-white transition-colors"
-              aria-label="Close"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
+        {!isDropdown && (
+          <button
+            type="button"
+            onClick={input.onClose}
+            className="flex h-5 w-5 items-center justify-center rounded-full text-[#8fa0b4] hover:text-white transition-colors"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
-      {input.wallet && (
-        <p className="mt-2.5 break-all font-mono text-[12.5px] leading-5 text-white/90">
-          {input.wallet.address}
-        </p>
-      )}
     </div>
   );
 

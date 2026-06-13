@@ -354,6 +354,19 @@ export function SiteHeader() {
                 >
                   <span className="text-[#4a5568]">USDC</span>
                   <span className="text-cyan font-black">{availableUsdc ?? balances.USDC ?? '--'}</span>
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={`opacity-60 ml-0.5 shrink-0 transition-transform duration-200 ${fundingDropdownOpen ? 'rotate-180' : ''}`}
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
                 </button>
                 <AddUsdcDrawer
                   variant="dropdown"
