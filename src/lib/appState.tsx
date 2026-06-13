@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -123,6 +124,7 @@ export function formatUsd(value: number) {
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [markets, setMarkets] = useState<AppMarket[]>([]);
+  const marketsRef = useRef<AppMarket[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [activity, setActivity] = useState<PortfolioActivity[]>([]);
   const [accountPreviews, setAccountPreviews] = useState<Record<string, AccountMarketPreview>>({});
@@ -132,23 +134,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const refreshMarkets = useCallback(async (options: { force?: boolean } = {}) => {
     // Stale-while-revalidate: only show loading if we have no markets yet
-    if (markets.length === 0) {
+    if (marketsRef.current.length === 0) {
       setIsLoadingMarkets(true);
     }
 
     try {
       // fetchOnchainMarkets already merges image overrides at the source, so markets are stable.
       const nextMarkets = await fetchOnchainMarkets(options);
+      marketsRef.current = nextMarkets;
       setMarkets(nextMarkets);
       return nextMarkets;
     } catch (error) {
       console.warn('Unable to load onchain markets', error);
-      if (markets.length === 0) setMarkets([]);
-      return markets.length > 0 ? markets : [];
+      return marketsRef.current;
     } finally {
       setIsLoadingMarkets(false);
     }
-  }, [markets]);
+  }, []);
 
   useEffect(() => {
     void refreshMarkets();
