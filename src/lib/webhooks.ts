@@ -82,7 +82,15 @@ async function deliver(sub: { id: number; url: string; secret: string; failureCo
         },
         body,
         signal: controller.signal,
+        // Never auto-follow redirects: a 3xx Location could point at a private/internal host that
+        // the initial assertPublicHttpUrl never saw (SSRF). Treat any redirect as a failed delivery.
+        redirect: 'manual',
       }).finally(() => clearTimeout(timer));
+      if (res.status >= 300 && res.status < 400) {
+        lastStatus = `redirect_${res.status}`;
+        if (attempt < MAX_ATTEMPTS) await new Promise((r) => setTimeout(r, 500 * attempt));
+        continue;
+      }
       lastStatus = String(res.status);
       if (res.ok) {
         await getDb().update(webhookSubscriptions)
