@@ -53,6 +53,8 @@ export function AddUsdcDrawer(input: {
   useEffect(() => {
     if (!input.open || !isDropdown) return undefined;
     function onPointerDown(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      if (target.closest('[aria-label="Open Add USDC dropdown"]')) return;
       if (panelRef.current && !panelRef.current.contains(event.target as Node)) input.onClose();
     }
     document.addEventListener('mousedown', onPointerDown);
