@@ -4,7 +4,17 @@ import { useEffect, useRef, useState } from 'react';
 import { ExternalLink, X } from 'lucide-react';
 import { fetchArcStableBalances, readCachedUsdcBalance } from '@/lib/walletBalance';
 import { fetchAvailableUsdc, formatAvailableUsdc, type AvailableUsdc } from '@/lib/unifiedBalance';
-import { moveUsdcToArc, GATEWAY_SOURCES, type GatewaySourceKey, type MoveStep } from '@/lib/gatewayActions';
+import {
+  depositToGateway,
+  transferGatewayToArc,
+  getGatewayUnifiedBalance,
+  readPendingMoves,
+  clearPendingMove,
+  GATEWAY_SOURCES,
+  type GatewaySourceKey,
+  type MoveStep,
+  type PendingMove,
+} from '@/lib/gatewayActions';
 import { useTransactions } from '@/lib/transactions';
 import { type ConnectedWallet } from '@/lib/walletProvider';
 import type { Address } from 'viem';
@@ -15,7 +25,6 @@ const MOVE_STEP_LABEL: Record<MoveStep, string> = {
   'switching-source': 'Switching network…',
   approving: 'Approving USDC…',
   depositing: 'Depositing…',
-  'awaiting-finality': 'Awaiting finality…',
   signing: 'Sign transfer…',
   attesting: 'Getting attestation…',
   'switching-arc': 'Switching to Arc…',
@@ -23,6 +32,8 @@ const MOVE_STEP_LABEL: Record<MoveStep, string> = {
   done: 'Done',
 };
 const GATEWAY_SOURCE_KEYS = new Set<string>(['baseSepolia', 'sepolia', 'avalancheFuji', 'arbitrumSepolia']);
+// Sepolia-class testnets take up to ~20 min for Gateway deposit finality; Avalanche Fuji ~8s.
+const FINALITY_MINUTES: Record<string, number> = { baseSepolia: 19, sepolia: 19, arbitrumSepolia: 19, avalancheFuji: 1 };
 
 export function AddUsdcDrawer(input: {
   open: boolean;
@@ -33,38 +44,68 @@ export function AddUsdcDrawer(input: {
 }) {
   const [balance, setBalance] = useState<string | null>(null);
   const [unified, setUnified] = useState<AvailableUsdc | null>(null);
-  const [move, setMove] = useState<{ chain: string; step: MoveStep } | null>(null);
+  const [move, setMove] = useState<{ key: string; step: MoveStep } | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
+  const [gatewayBalance, setGatewayBalance] = useState<number>(0);
+  const [pending, setPending] = useState<PendingMove[]>([]);
   const panelRef = useRef<HTMLDivElement>(null);
   const isDropdown = input.variant === 'dropdown';
   const hasExternalWallet = typeof window !== 'undefined' && Boolean((window as { ethereum?: unknown }).ethereum);
   const { track } = useTransactions();
 
-  async function handleMove(chainKey: string, amount: number) {
+  function refreshGateway(address: string) {
+    setPending(readPendingMoves(address));
+    void getGatewayUnifiedBalance(address as Address).then(setGatewayBalance).catch(() => undefined);
+  }
+
+  // Step 1 — deposit into Gateway (funds leave the source chain; finalize in minutes).
+  async function handleDeposit(chainKey: string, amount: number) {
     if (!input.wallet?.address || move) return;
     setMoveError(null);
-    setMove({ chain: chainKey, step: 'switching-source' });
-    const label = `Move ${formatAvailableUsdc(amount)} from ${GATEWAY_SOURCES[chainKey as GatewaySourceKey].label} to Arc`;
-    // Route through the global transactions feed so the move shows in activity toasts alongside
-    // trades and claims; map MoveResult -> TrackResult (ok/txHash/message) for the reducer.
+    setMove({ key: chainKey, step: 'switching-source' });
+    const label = `Deposit ${formatAvailableUsdc(amount)} from ${GATEWAY_SOURCES[chainKey as GatewaySourceKey].label} → Gateway`;
     const result = await track({ label, amountLabel: formatAvailableUsdc(amount) }, async () => {
-      const moved = await moveUsdcToArc({
-        source: chainKey as GatewaySourceKey,
-        amountUsdc: amount,
+      const r = await depositToGateway({
+        source: chainKey as GatewaySourceKey, amountUsdc: amount,
         recipient: input.wallet!.address as Address,
-        onStep: (step) => setMove({ chain: chainKey, step }),
+        onStep: (step) => setMove({ key: chainKey, step }),
       });
-      return moved.ok
-        ? { ok: true as const, txHash: moved.txHash, message: 'USDC credited on Arc' }
-        : { ok: false as const, message: `${moved.error} (at ${moved.atStep})` };
+      return r.ok
+        ? { ok: true as const, txHash: r.txHash, message: 'Deposited — finalizing, then complete to Arc', pending: true }
+        : { ok: false as const, message: `${r.error} (at ${r.atStep})` };
     });
+    setMove(null);
     if (result.ok) {
       window.dispatchEvent(new CustomEvent('presto:balances-refresh'));
-      setMove({ chain: chainKey, step: 'done' });
-      setTimeout(() => setMove(null), 2500);
+      refreshGateway(input.wallet.address);
+    } else {
+      setMoveError(result.message ?? 'Deposit failed.');
+    }
+  }
+
+  // Step 2 — move the available Gateway balance to Arc (also recovers an earlier stuck deposit).
+  async function handleComplete(chainKey: string, amount: number, depositTx?: string) {
+    if (!input.wallet?.address || move) return;
+    setMoveError(null);
+    setMove({ key: `complete-${chainKey}`, step: 'signing' });
+    const label = `Move ${formatAvailableUsdc(amount)} to Arc`;
+    const result = await track({ label, amountLabel: formatAvailableUsdc(amount) }, async () => {
+      const r = await transferGatewayToArc({
+        source: chainKey as GatewaySourceKey, amountUsdc: amount,
+        recipient: input.wallet!.address as Address,
+        onStep: (step) => setMove({ key: `complete-${chainKey}`, step }),
+      });
+      return r.ok
+        ? { ok: true as const, txHash: r.txHash, message: 'USDC credited on Arc' }
+        : { ok: false as const, message: r.error };
+    });
+    setMove(null);
+    if (result.ok) {
+      if (depositTx) clearPendingMove(input.wallet.address, depositTx);
+      window.dispatchEvent(new CustomEvent('presto:balances-refresh'));
+      refreshGateway(input.wallet.address);
     } else {
       setMoveError(result.message ?? 'Move to Arc failed.');
-      setMove(null);
     }
   }
 
@@ -84,7 +125,10 @@ export function AddUsdcDrawer(input: {
     fetchAvailableUsdc(input.wallet.address)
       .then((result) => { if (!cancelled) setUnified(result); })
       .catch(() => undefined);
+    // Gateway unified balance + any pending deposits (step 2 / recovery).
+    refreshGateway(input.wallet.address);
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [input.open, input.wallet?.address]);
 
   useEffect(() => {
@@ -146,7 +190,7 @@ export function AddUsdcDrawer(input: {
           </div>
           {unified.chains.filter((chain) => !chain.isArc).map((chain) => {
             const movable = GATEWAY_SOURCE_KEYS.has(chain.key) && (chain.amount ?? 0) > 0 && hasExternalWallet;
-            const moving = move?.chain === chain.key;
+            const moving = move?.key === chain.key;
             return (
               <div key={chain.key} className="flex items-center justify-between gap-2 px-3 py-1 text-[11px] font-bold text-[#8fa0b4]">
                 <span>{chain.label}</span>
@@ -161,7 +205,7 @@ export function AddUsdcDrawer(input: {
                   ) : movable ? (
                     <button
                       type="button"
-                      onClick={() => void handleMove(chain.key, chain.amount as number)}
+                      onClick={() => void handleDeposit(chain.key, chain.amount as number)}
                       disabled={Boolean(move)}
                       className="rounded-full border border-white/[0.08] bg-white/[0.02] px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-[#9fb0c8] transition-all hover:text-cyan hover:border-cyan/30 hover:bg-cyan/5 disabled:opacity-40"
                     >
@@ -177,10 +221,52 @@ export function AddUsdcDrawer(input: {
           ) : (
             <p className="px-3 py-1 text-[10px] leading-relaxed text-[#64748b]">
               {hasExternalWallet
-                ? 'Move USDC from another chain into Arc via Circle Gateway — approve, deposit, then it’s credited on Arc.'
+                ? 'Move to Arc deposits into Circle Gateway, then completes once the deposit finalizes (up to ~20 min on Sepolia chains).'
                 : 'Connect an external wallet to move USDC across chains; or bridge via the links below.'}
             </p>
           )}
+        </div>
+      )}
+
+      {/* Step 2 / recovery: funds sitting in Gateway, ready (or pending) to finish onto Arc. */}
+      {hasExternalWallet && (gatewayBalance > 0 || pending.length > 0) && (
+        <div className="flex flex-col gap-1 border-t border-white/[0.06] pt-2 mt-1">
+          <div className="flex items-center justify-between px-3 py-1.5">
+            <span className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-amber-300/80">In Gateway</span>
+            <span className="text-[12px] font-black text-white">{formatAvailableUsdc(gatewayBalance)} ready</span>
+          </div>
+          {gatewayBalance > 0 && pending[0] ? (
+            <div className="flex items-center justify-between gap-2 px-3 py-1 text-[11px] font-bold text-[#8fa0b4]">
+              <span>Ready to credit on Arc</span>
+              {move?.key === `complete-${pending[0].source}` ? (
+                <span className="rounded-full border border-cyan/15 bg-cyan/5 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-cyan animate-pulse">{MOVE_STEP_LABEL[move.step]}</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void handleComplete(pending[0].source, Math.min(gatewayBalance, pending[0].amountUsdc), pending[0].depositTx)}
+                  disabled={Boolean(move)}
+                  className="rounded-full border border-amber-300/30 bg-amber-300/10 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-200 transition-all hover:bg-amber-300/20 disabled:opacity-40"
+                >
+                  Complete → Arc
+                </button>
+              )}
+            </div>
+          ) : null}
+          {pending.map((p) => {
+            const minsLeft = Math.max(0, Math.ceil((FINALITY_MINUTES[p.source] ?? 19) - (Date.now() - p.depositedAt) / 60_000));
+            const ready = gatewayBalance >= p.amountUsdc || minsLeft === 0;
+            return (
+              <div key={p.depositTx} className="flex items-center justify-between gap-2 px-3 py-1 text-[10.5px] font-bold text-[#64748b]">
+                <span>{formatAvailableUsdc(p.amountUsdc)} from {GATEWAY_SOURCES[p.source].label}</span>
+                <span className={ready ? 'text-amber-200' : 'text-[#64748b]'}>
+                  {ready ? 'finalized' : `~${minsLeft} min`}
+                </span>
+              </div>
+            );
+          })}
+          <p className="px-3 py-1 text-[10px] leading-relaxed text-[#64748b]">
+            Deposited USDC is held in your Gateway balance and is safe. Complete the move once it finalizes.
+          </p>
         </div>
       )}
 

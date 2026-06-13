@@ -1,17 +1,20 @@
 /**
  * UBK Phase 2 — move USDC from another chain into Arc via Circle Gateway.
  *
- * Flow (EOA / external wallet, per Circle's Gateway reference):
- *   1. deposit on the source chain:  USDC.approve(GatewayWallet) -> GatewayWallet.deposit()
- *   2. wait for source-chain finality (unified balance updates)
- *   3. sign an EIP-712 BurnIntent, POST it to the Gateway API for an attestation
- *   4. on Arc, GatewayMinter.gatewayMint(attestation, signature) credits Arc USDC
+ * TWO-STEP, RESUMABLE design (deposit and transfer are separate) because Gateway deposit
+ * finality on Sepolia-class testnets is up to ~20 minutes (Circle docs). A single blocking
+ * browser call can't hold that long, so:
+ *   Step 1 — depositToGateway: USDC.approve -> GatewayWallet.deposit() on the source chain.
+ *            Funds leave the wallet into the user's Gateway unified balance immediately, but
+ *            don't become *available* until source-chain finality. We persist a pending record.
+ *   Step 2 — transferGatewayToArc: once the unified balance reflects the deposit, sign an
+ *            EIP-712 BurnIntent, POST to the Gateway API for an attestation, then
+ *            GatewayMinter.gatewayMint() on Arc. This runs against ANY available unified
+ *            balance, so it both completes fresh deposits and RECOVERS funds from an
+ *            earlier deposit whose transfer never finished.
  *
- * Every step is explicit and surfaced to the UI via the onStep callback — no invisible magic
- * while money is moving (docs/UBK_SPIKE.md). USDC is 6 decimals everywhere here.
- *
- * NOTE: a plain ERC-20 transfer to the GatewayWallet permanently burns funds — we only ever call
- * deposit(). The GatewayWallet address is never surfaced as a "send here" target in the UI.
+ * NOTE: a plain ERC-20 transfer to the GatewayWallet permanently burns funds — we only ever
+ * call deposit(). The GatewayWallet address is never surfaced as a "send here" target.
  */
 
 import {
@@ -34,19 +37,12 @@ const GATEWAY_WALLET = '0x0077777d7EBA4688BDeF3E311b846F25870A19B9' as Address;
 const GATEWAY_MINTER = '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B' as Address;
 const ARC_DOMAIN = 26;
 const ARC_USDC = '0x3600000000000000000000000000000000000000' as Address;
-// Max fee the burn intent will pay the Gateway (2.01 USDC), matching Circle's reference.
 const MAX_FEE = BigInt('2010000');
 const MAX_UINT64 = BigInt('18446744073709551615');
 
 export type GatewaySourceKey = 'baseSepolia' | 'sepolia' | 'avalancheFuji' | 'arbitrumSepolia';
 
-type SourceChain = {
-  key: GatewaySourceKey;
-  label: string;
-  domain: number;
-  chain: Chain;
-  usdc: Address;
-};
+type SourceChain = { key: GatewaySourceKey; label: string; domain: number; chain: Chain; usdc: Address };
 
 export const GATEWAY_SOURCES: Record<GatewaySourceKey, SourceChain> = {
   baseSepolia: { key: 'baseSepolia', label: 'Base Sepolia', domain: 6, chain: baseSepolia, usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' },
@@ -55,11 +51,21 @@ export const GATEWAY_SOURCES: Record<GatewaySourceKey, SourceChain> = {
   arbitrumSepolia: { key: 'arbitrumSepolia', label: 'Arbitrum Sepolia', domain: 3, chain: arbitrumSepolia, usdc: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d' },
 };
 
+// Canonical EIP-3085 add-chain params. Arc's are taken from Arc docs (viem's chain object can
+// lack a usable explorer/rpc for wallet add). Source chains build from their viem object.
+const ARC_ADD_PARAMS = {
+  chainId: '0x4cf4b2', // 5042002
+  chainName: 'Arc Testnet',
+  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
+  rpcUrls: ['https://rpc.testnet.arc.network'],
+  blockExplorerUrls: ['https://testnet.arcscan.app'],
+} as const;
+
 export type MoveStep =
-  | 'switching-source' | 'approving' | 'depositing' | 'awaiting-finality'
+  | 'switching-source' | 'approving' | 'depositing'
   | 'signing' | 'attesting' | 'switching-arc' | 'minting' | 'done';
 
-export type MoveResult = { ok: true; txHash: Hex } | { ok: false; error: string; atStep: MoveStep };
+export type StepResult<T> = { ok: true; txHash: Hex; data?: T } | { ok: false; error: string; atStep: MoveStep };
 
 const gatewayWalletAbi = [{
   type: 'function', name: 'deposit',
@@ -90,22 +96,57 @@ const EIP712_TYPES = {
   ],
 } as const;
 
-function toBytes32(address: Address): Hex {
-  return pad(address.toLowerCase() as Hex, { size: 32 });
-}
-
+function toBytes32(address: Address): Hex { return pad(address.toLowerCase() as Hex, { size: 32 }); }
 function randomSalt(): Hex {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return `0x${Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('')}` as Hex;
 }
 
-/** Unified USDC balance held in Gateway across the given source domains. */
+type Ethereum = { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> };
+function getEthereum(): Ethereum {
+  const ethereum = (globalThis as { ethereum?: Ethereum }).ethereum;
+  if (!ethereum) throw new Error('No external wallet found. Connect an external wallet to move USDC.');
+  return ethereum;
+}
+
+// Robustly detect the EIP-1193 "chain not added" error (4902), including the nested shapes some
+// wallets wrap it in.
+function isUnrecognizedChain(error: unknown): boolean {
+  const e = error as { code?: number; data?: { originalError?: { code?: number } } };
+  return e?.code === 4902 || e?.data?.originalError?.code === 4902;
+}
+
+// Switch the wallet to `chain`; if unknown (4902) add it first (using canonical params for Arc)
+// then switch. Tolerates the wallet auto-switching after an add.
+async function ensureWalletChain(ethereum: Ethereum, chain: Chain): Promise<void> {
+  const chainIdHex = `0x${chain.id.toString(16)}`;
+  try {
+    await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: chainIdHex }] });
+    return;
+  } catch (error) {
+    if (!isUnrecognizedChain(error)) throw error;
+  }
+  const addParams = chain.id === arcTestnet.id ? ARC_ADD_PARAMS : {
+    chainId: chainIdHex,
+    chainName: chain.name,
+    nativeCurrency: chain.nativeCurrency,
+    rpcUrls: chain.rpcUrls.default.http,
+    blockExplorerUrls: chain.blockExplorers?.default?.url ? [chain.blockExplorers.default.url] : undefined,
+  };
+  await ethereum.request({ method: 'wallet_addEthereumChain', params: [addParams] });
+  // Most wallets auto-switch after adding; a follow-up switch is belt-and-suspenders and the
+  // wallet may already be on-chain, so ignore a benign error here.
+  try {
+    await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: chainIdHex }] });
+  } catch { /* already switched by the add */ }
+}
+
+/** Unified USDC balance available in Gateway across all source domains (finalized deposits). */
 export async function getGatewayUnifiedBalance(address: Address): Promise<number> {
   const sources = Object.values(GATEWAY_SOURCES).map((s) => ({ domain: s.domain, depositor: address }));
   const res = await fetch(`${GATEWAY_API_TESTNET}/balances`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token: 'USDC', sources }),
   });
   if (!res.ok) return 0;
@@ -113,82 +154,89 @@ export async function getGatewayUnifiedBalance(address: Address): Promise<number
   return (data.balances ?? []).reduce((sum, b) => sum + (Number(b.balance) || 0), 0);
 }
 
-type Ethereum = { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> };
+// ── Pending-deposit persistence (so a long finality wait survives reloads) ──
+export type PendingMove = { source: GatewaySourceKey; amountUsdc: number; recipient: string; depositedAt: number; depositTx: string };
+const PENDING_KEY = 'presto:pending-gateway-moves';
 
-function getEthereum(): Ethereum {
-  const ethereum = (globalThis as { ethereum?: Ethereum }).ethereum;
-  if (!ethereum) throw new Error('No external wallet found. Connect an external wallet to move USDC.');
-  return ethereum;
+export function readPendingMoves(recipient: string): PendingMove[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const all = JSON.parse(window.localStorage.getItem(PENDING_KEY) ?? '[]') as PendingMove[];
+    return all.filter((m) => m.recipient.toLowerCase() === recipient.toLowerCase());
+  } catch { return []; }
+}
+function writePendingMoves(all: PendingMove[]) {
+  try { window.localStorage.setItem(PENDING_KEY, JSON.stringify(all)); } catch { /* storage off */ }
+}
+function addPendingMove(move: PendingMove) {
+  if (typeof window === 'undefined') return;
+  try {
+    const all = JSON.parse(window.localStorage.getItem(PENDING_KEY) ?? '[]') as PendingMove[];
+    writePendingMoves([...all, move]);
+  } catch { /* storage off */ }
+}
+export function clearPendingMove(recipient: string, depositTx: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const all = JSON.parse(window.localStorage.getItem(PENDING_KEY) ?? '[]') as PendingMove[];
+    writePendingMoves(all.filter((m) => !(m.recipient.toLowerCase() === recipient.toLowerCase() && m.depositTx === depositTx)));
+  } catch { /* storage off */ }
 }
 
-// Switch the wallet to `chain`; if the wallet doesn't know it yet (EIP-1193 error 4902), add it
-// first then switch. This lets users move from chains their wallet hasn't been configured for.
-async function ensureWalletChain(ethereum: Ethereum, chain: Chain): Promise<void> {
-  const chainIdHex = `0x${chain.id.toString(16)}`;
+/**
+ * Step 1: deposit USDC from a source chain into the Gateway unified balance. Funds leave the
+ * wallet immediately but only become available to move after source-chain finality (up to ~20
+ * min on Sepolia-class chains). Records a pending move so it can be completed later.
+ */
+export async function depositToGateway(input: {
+  source: GatewaySourceKey; amountUsdc: number; recipient: Address; onStep?: (s: MoveStep) => void;
+}): Promise<StepResult<void>> {
+  const src = GATEWAY_SOURCES[input.source];
+  const value = parseUnits(String(input.amountUsdc), 6);
+  let current: MoveStep = 'switching-source';
   try {
-    await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: chainIdHex }] });
+    const ethereum = getEthereum();
+    const wallet = createWalletClient({ account: input.recipient, chain: src.chain, transport: custom(ethereum) });
+    const pub = createPublicClient({ chain: src.chain, transport: http() });
+
+    current = 'switching-source'; input.onStep?.(current);
+    await ensureWalletChain(ethereum, src.chain);
+
+    const allowance = await pub.readContract({ address: src.usdc, abi: erc20Abi, functionName: 'allowance', args: [input.recipient, GATEWAY_WALLET] }) as bigint;
+    if (allowance < value) {
+      current = 'approving'; input.onStep?.(current);
+      const approveHash = await wallet.writeContract({ address: src.usdc, abi: erc20Abi, functionName: 'approve', args: [GATEWAY_WALLET, value], chain: src.chain, account: input.recipient });
+      await pub.waitForTransactionReceipt({ hash: approveHash });
+    }
+
+    current = 'depositing'; input.onStep?.(current);
+    const depositHash = await wallet.writeContract({ address: GATEWAY_WALLET, abi: gatewayWalletAbi, functionName: 'deposit', args: [src.usdc, value], chain: src.chain, account: input.recipient });
+    await pub.waitForTransactionReceipt({ hash: depositHash });
+
+    addPendingMove({ source: input.source, amountUsdc: input.amountUsdc, recipient: input.recipient, depositedAt: Date.now(), depositTx: depositHash });
+    return { ok: true, txHash: depositHash };
   } catch (error) {
-    const code = (error as { code?: number })?.code;
-    if (code !== 4902) throw error;
-    await ethereum.request({
-      method: 'wallet_addEthereumChain',
-      params: [{
-        chainId: chainIdHex,
-        chainName: chain.name,
-        nativeCurrency: chain.nativeCurrency,
-        rpcUrls: chain.rpcUrls.default.http,
-        blockExplorerUrls: chain.blockExplorers?.default?.url ? [chain.blockExplorers.default.url] : undefined,
-      }],
-    });
-    await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: chainIdHex }] });
+    return { ok: false, error: error instanceof Error ? error.message : 'Deposit failed.', atStep: current };
   }
 }
 
 /**
- * Move `amountUsdc` of USDC from a source chain into Arc. Drives the full deposit → attest → mint
- * flow, reporting each step through onStep. EOA / external wallet only (the wallet must be able to
- * switch chains). Returns the Arc mint tx hash on success.
+ * Step 2: move available Gateway balance to Arc. Signs a BurnIntent against the source domain,
+ * gets an attestation from the Gateway API, then mints on Arc. Works on any AVAILABLE unified
+ * balance — completing a fresh deposit or recovering one whose transfer never finished.
+ * The Gateway API rejects this if the deposit hasn't finalized yet (returns a clear message).
  */
-export async function moveUsdcToArc(input: {
-  source: GatewaySourceKey;
-  amountUsdc: number;
-  recipient: Address;
-  onStep?: (step: MoveStep) => void;
-}): Promise<MoveResult> {
+export async function transferGatewayToArc(input: {
+  source: GatewaySourceKey; amountUsdc: number; recipient: Address; onStep?: (s: MoveStep) => void;
+}): Promise<StepResult<void>> {
   const src = GATEWAY_SOURCES[input.source];
-  const ethereum = getEthereum();
   const value = parseUnits(String(input.amountUsdc), 6);
   const recipient = input.recipient;
-  const step = (s: MoveStep) => input.onStep?.(s);
-  let current: MoveStep = 'switching-source';
-
+  let current: MoveStep = 'signing';
   try {
-    const wallet = createWalletClient({ account: recipient, chain: src.chain, transport: custom(ethereum) });
-    const sourcePublic = createPublicClient({ chain: src.chain, transport: http() });
+    const ethereum = getEthereum();
 
-    // 1. ensure the wallet is on the source chain (adds it to the wallet if unknown)
-    current = 'switching-source'; step(current);
-    await ensureWalletChain(ethereum, src.chain);
-
-    // 2. approve (skip if allowance already covers it)
-    const allowance = await sourcePublic.readContract({ address: src.usdc, abi: erc20Abi, functionName: 'allowance', args: [recipient, GATEWAY_WALLET] }) as bigint;
-    if (allowance < value) {
-      current = 'approving'; step(current);
-      const approveHash = await wallet.writeContract({ address: src.usdc, abi: erc20Abi, functionName: 'approve', args: [GATEWAY_WALLET, value], chain: src.chain, account: recipient });
-      await sourcePublic.waitForTransactionReceipt({ hash: approveHash });
-    }
-
-    // 3. deposit into the Gateway wallet on the source chain
-    current = 'depositing'; step(current);
-    const depositHash = await wallet.writeContract({ address: GATEWAY_WALLET, abi: gatewayWalletAbi, functionName: 'deposit', args: [src.usdc, value], chain: src.chain, account: recipient });
-    await sourcePublic.waitForTransactionReceipt({ hash: depositHash });
-
-    // 4. wait for the deposit to count toward the unified balance (source-chain finality)
-    current = 'awaiting-finality'; step(current);
-    await waitForUnifiedBalance(recipient, input.amountUsdc);
-
-    // 5. sign the burn intent
-    current = 'signing'; step(current);
+    current = 'signing'; input.onStep?.(current);
     const burnIntent = {
       maxBlockHeight: MAX_UINT64.toString(),
       maxFee: MAX_FEE.toString(),
@@ -209,53 +257,35 @@ export async function moveUsdcToArc(input: {
         hookData: '0x' as Hex,
       },
     };
-    const signature = await wallet.signTypedData({
-      account: recipient,
-      domain: EIP712_DOMAIN,
-      primaryType: 'BurnIntent',
-      types: EIP712_TYPES,
-      message: burnIntent as never,
-    });
+    // Sign on the source chain context (the signer is the depositor). Wallet need not switch to
+    // sign typed data, but ensure we're on a sane chain for the signature request.
+    const signWallet = createWalletClient({ account: recipient, chain: src.chain, transport: custom(ethereum) });
+    const signature = await signWallet.signTypedData({ account: recipient, domain: EIP712_DOMAIN, primaryType: 'BurnIntent', types: EIP712_TYPES, message: burnIntent as never });
 
-    // 6. submit to the Gateway API for an attestation
-    current = 'attesting'; step(current);
+    current = 'attesting'; input.onStep?.(current);
     const transferRes = await fetch(`${GATEWAY_API_TESTNET}/transfer`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify([{ burnIntent, signature }]),
     });
     if (!transferRes.ok) {
       const body = await transferRes.text();
-      throw new Error(`Gateway attestation failed: ${transferRes.status} ${body.slice(0, 160)}`);
+      // The most common reason here is the deposit hasn't finalized yet.
+      throw new Error(`Transfer not ready: ${transferRes.status}. ${body.slice(0, 140)}`);
     }
     const { attestation, signature: apiSignature } = await transferRes.json() as { attestation: Hex; signature: Hex };
 
-    // 7. switch to Arc and mint (adds Arc to the wallet if unknown)
-    current = 'switching-arc'; step(current);
+    current = 'switching-arc'; input.onStep?.(current);
     await ensureWalletChain(ethereum, arcTestnet);
 
-    current = 'minting'; step(current);
+    current = 'minting'; input.onStep?.(current);
     const arcWallet = createWalletClient({ account: recipient, chain: arcTestnet, transport: custom(ethereum) });
     const arcPublic = createPublicClient({ chain: arcTestnet, transport: http() });
     const mintHash = await arcWallet.writeContract({ address: GATEWAY_MINTER, abi: gatewayMinterAbi, functionName: 'gatewayMint', args: [attestation, apiSignature], chain: arcTestnet, account: recipient });
     await arcPublic.waitForTransactionReceipt({ hash: mintHash });
 
-    current = 'done'; step(current);
+    current = 'done'; input.onStep?.(current);
     return { ok: true, txHash: mintHash };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Move to Arc failed.', atStep: current };
   }
-}
-
-// Poll the unified balance until the just-made deposit is reflected (source-chain finality),
-// capped so a slow chain can't hang the flow forever.
-async function waitForUnifiedBalance(address: Address, expectedAtLeast: number, timeoutMs = 180_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const balance = await getGatewayUnifiedBalance(address).catch(() => 0);
-    if (balance >= expectedAtLeast) return;
-    await new Promise((resolve) => { setTimeout(resolve, 6_000); });
-  }
-  // Don't hard-fail: finality may simply be slow. The attestation step will reject if the
-  // balance truly isn't there, surfacing a precise error.
 }
