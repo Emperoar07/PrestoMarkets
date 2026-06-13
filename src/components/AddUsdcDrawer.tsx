@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Copy, ExternalLink, X } from 'lucide-react';
 import { fetchArcStableBalances, readCachedUsdcBalance } from '@/lib/walletBalance';
+import { fetchAvailableUsdc, formatAvailableUsdc, type AvailableUsdc } from '@/lib/unifiedBalance';
 import { shortAddress, type ConnectedWallet } from '@/lib/walletProvider';
 
 const dexUrl = process.env.NEXT_PUBLIC_PRESTO_DEX_URL?.trim() || 'https://prestodex-arc.vercel.app';
@@ -15,6 +16,7 @@ export function AddUsdcDrawer(input: {
   variant?: 'modal' | 'dropdown';
 }) {
   const [balance, setBalance] = useState<string | null>(null);
+  const [unified, setUnified] = useState<AvailableUsdc | null>(null);
   const [copied, setCopied] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const isDropdown = input.variant === 'dropdown';
@@ -31,6 +33,10 @@ export function AddUsdcDrawer(input: {
       .catch(() => {
         if (!cancelled && !cached) setBalance(null);
       });
+    // Multichain Available USDC (read-only Phase 1 of the Gateway rails).
+    fetchAvailableUsdc(input.wallet.address)
+      .then((result) => { if (!cancelled) setUnified(result); })
+      .catch(() => undefined);
     return () => { cancelled = true; };
   }, [input.open, input.wallet?.address]);
 
@@ -100,6 +106,29 @@ export function AddUsdcDrawer(input: {
             <p className="mt-3 text-xs leading-5 text-[#94a3b8]">Connect a wallet first so Presto knows where to receive USDC.</p>
           )}
         </div>
+
+        {/* Per-chain breakdown — Available USDC = everything the wallet could move to Arc. */}
+        {unified && unified.chains.some((chain) => !chain.isArc && chain.amount !== null) ? (
+          <div className="mt-3 rounded-[14px] border border-white/[0.06] bg-[#0d1520] p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-muted">Across chains</span>
+              <span className="text-sm font-black text-white">{formatAvailableUsdc(unified.total)} total</span>
+            </div>
+            <div className="mt-2.5 space-y-1.5">
+              {unified.chains.filter((chain) => !chain.isArc).map((chain) => (
+                <div key={chain.key} className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-[#94a3b8]">{chain.label}</span>
+                  <span className="font-black text-[#dbeafe]">
+                    {chain.amount === null ? '—' : formatAvailableUsdc(chain.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-[11px] leading-4 text-[#64748b]">
+              One-tap “Move to Arc” lands next — for now bridge via the links below.
+            </p>
+          </div>
+        ) : null}
 
         <div className="mt-4 grid gap-2">
           <a

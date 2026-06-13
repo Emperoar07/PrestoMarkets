@@ -7,6 +7,7 @@ import { BrandMark } from './BrandMark';
 import { WalletConnectButton } from './WalletConnectButton';
 import { AddUsdcDrawer } from './AddUsdcDrawer';
 import { fetchArcStableBalances, readCachedUsdcBalance, type StableSymbol } from '@/lib/walletBalance';
+import { fetchAvailableUsdc, formatAvailableUsdc, readCachedAvailableUsdc } from '@/lib/unifiedBalance';
 import { getStoredConnectedWallet, subscribeConnectedWallet, disconnectExternalWallet, type ConnectedWallet } from '@/lib/walletProvider';
 import { extractMarketCategories, mergeTopicNavCategories, primaryViewCategories } from '@/lib/categories';
 import { useAppState } from '@/lib/appState';
@@ -49,6 +50,30 @@ export function SiteHeader() {
   const [activeCategory, setActiveCategory] = useState('Trending');
   const [connectedWallet, setConnectedWallet] = useState<ConnectedWallet | null>(null);
   const [balances, setBalances] = useState<Record<StableSymbol, string | null>>({ USDC: null });
+  // Unified Available USDC (Arc + Gateway-supported testnets) — stale-while-revalidate.
+  const [availableUsdc, setAvailableUsdc] = useState<string | null>(null);
+
+  useEffect(() => {
+    const address = connectedWallet?.address;
+    if (!address) {
+      setAvailableUsdc(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const cached = readCachedAvailableUsdc(address);
+    if (cached) setAvailableUsdc(cached);
+    const load = () => {
+      void fetchAvailableUsdc(address).then((result) => {
+        if (!cancelled && result) setAvailableUsdc(formatAvailableUsdc(result.total));
+      });
+    };
+    load();
+    window.addEventListener('presto:balances-refresh', load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('presto:balances-refresh', load);
+    };
+  }, [connectedWallet?.address]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [fundingOpen, setFundingOpen] = useState(false); // mobile bottom-sheet
@@ -327,7 +352,7 @@ export function SiteHeader() {
                 aria-label="Open Add USDC dropdown"
               >
                 <span className="text-[#4a5568]">Available USDC</span>
-                <span className="text-cyan font-black">{balances.USDC ?? '--'}</span>
+                <span className="text-cyan font-black">{availableUsdc ?? balances.USDC ?? '--'}</span>
               </button>
               <AddUsdcDrawer
                 variant="dropdown"
