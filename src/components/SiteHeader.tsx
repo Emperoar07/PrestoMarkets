@@ -315,6 +315,19 @@ export function SiteHeader() {
           ) : null}
         </div>
         <nav className="ml-auto flex shrink-0 items-center gap-2">
+          {showWallet ? (
+            <a
+              href="https://faucet.circle.com"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan/30 bg-cyan/10 px-2 py-1 text-[13px] font-bold text-cyan transition-colors hover:border-cyan/50 hover:bg-cyan/15"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                <path d="M12 2.5s6 6.3 6 10.5a6 6 0 0 1-12 0c0-4.2 6-10.5 6-10.5Z" />
+              </svg>
+              Faucet
+            </a>
+          ) : null}
           {!isLandingPage ? (
             <Link href="/markets/create" className={`${navLinkClass(isCreatePage)} inline-flex items-center gap-1.5`}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-70">
@@ -329,19 +342,6 @@ export function SiteHeader() {
             </svg>
             DEX
           </a>
-          {showWallet ? (
-            <a
-              href="https://faucet.circle.com"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan/30 bg-cyan/10 px-2 py-1 text-[13px] font-bold text-cyan transition-colors hover:border-cyan/50 hover:bg-cyan/15"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-                <path d="M12 2.5s6 6.3 6 10.5a6 6 0 0 1-12 0c0-4.2 6-10.5 6-10.5Z" />
-              </svg>
-              Faucet
-            </a>
-          ) : null}
           {showWallet && connectedWallet ? (
             <div ref={menuRef} className="relative flex items-center gap-2">
               {/* Balance pill (standalone, sized to match the header actions) */}
