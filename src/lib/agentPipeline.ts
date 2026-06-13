@@ -89,8 +89,26 @@ function isFootballTrend(trend: TrendItem): boolean {
   ].some((term) => haystack.includes(term));
 }
 
+// High-engagement consumer themes Presto wants to lead with: crypto/DeFi price & protocol
+// milestones, and major tech makers hitting concrete milestones (launches, ships, IPOs, records).
+const CONSUMER_PRIORITY_TERMS = [
+  // crypto / defi
+  'bitcoin', 'btc', 'ethereum', 'eth', 'solana', 'sol', 'defi', 'tvl', 'stablecoin', 'token',
+  'airdrop', 'staking', 'etf', 'halving', 'all-time high', 'ath', 'liquid staking', 'restaking',
+  // big tech makers + milestones
+  'apple', 'nvidia', 'tesla', 'openai', 'anthropic', 'google', 'microsoft', 'meta', 'spacex',
+  'launch', 'ships', 'ship', 'milestone', 'ipo', 'record', 'unveil', 'release', 'gpu', 'chip',
+];
+
+function getConsumerMarketPriorityBoost(trend: TrendItem): number {
+  const haystack = `${trend.source} ${trend.topic} ${trend.query}`.toLowerCase();
+  return CONSUMER_PRIORITY_TERMS.some((term) => haystack.includes(term)) ? 7 : 0;
+}
+
 function agentTrendPriorityBoost(trend: TrendItem): number {
-  return (isFootballBasketballTrend(trend) ? 8 : 0) + getArcEcosystemPriorityBoost(trend);
+  return (isFootballBasketballTrend(trend) ? 8 : 0)
+    + getArcEcosystemPriorityBoost(trend)
+    + getConsumerMarketPriorityBoost(trend);
 }
 
 function isAllowedResolutionSourceUrl(value: string | undefined): value is string {
@@ -662,13 +680,26 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
 
         // FIFA World Cup fixtures are marquee: every match on a match day must get a market,
         // so they ride the guaranteed lane instead of competing through the signal gates.
-        const isWorldCupFixture = sport.sport === 'Soccer' && /world cup/i.test(event.strLeague ?? '');
+        const league = event.strLeague ?? '';
+        const isWorldCupFixture = sport.sport === 'Soccer' && /world cup/i.test(league);
 
-        // The week-ahead scan exists for the World Cup only — other fixtures stay same/next-day.
-        if (isExtendedDay && !isWorldCupFixture) return [];
+        // International matches (national teams) — World Cup qualifiers, Nations League, and
+        // friendlies between countries — also ride the guaranteed lane. We detect them when
+        // both sides resolve to a country flag (e.g. Brazil vs Qatar, Switzerland vs Morocco),
+        // which catches them regardless of the exact league label.
+        const isInternationalFixture = sport.sport === 'Soccer'
+          && Boolean(detectCountryFlagUrl(home))
+          && Boolean(detectCountryFlagUrl(away))
+          && (/world cup|qualif|nations league|friendl|international|euro|copa|afcon|concacaf|conmebol|uefa|caf|afc/i.test(league) || isWorldCupFixture);
 
-        // Skip obscure competitions — only top-tier leagues/cups become markets.
-        if (!isWorldCupFixture && !isMajorSportsLeague(event.strLeague)) return [];
+        const isGuaranteed = isWorldCupFixture || isInternationalFixture;
+
+        // The week-ahead scan exists for guaranteed (World Cup / international) fixtures only —
+        // other club fixtures stay same/next-day.
+        if (isExtendedDay && !isGuaranteed) return [];
+
+        // Skip obscure competitions — only top-tier leagues/cups or international matches.
+        if (!isGuaranteed && !isMajorSportsLeague(league)) return [];
 
         // Only open a market on a match that has NOT started yet. A match with a score, a
         // finished/in-play status, or a kickoff already in the past is decided or underway,
@@ -701,7 +732,7 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
           url: `https://www.thesportsdb.com/event/${event.idEvent}`,
           imageUrl: fixtureImage,
           ...(closeMs !== null ? { closeDate: new Date(closeMs).toISOString() } : {}),
-          ...(isWorldCupFixture ? { guaranteedFixture: true } : {}),
+          ...(isGuaranteed ? { guaranteedFixture: true } : {}),
           ...(kickoff && !Number.isNaN(kickoff.getTime()) ? { kickoffTime: kickoff.toISOString() } : {}),
         }];
       });
