@@ -4,9 +4,24 @@ import { useEffect, useRef, useState } from 'react';
 import { ExternalLink, X } from 'lucide-react';
 import { fetchArcStableBalances, readCachedUsdcBalance } from '@/lib/walletBalance';
 import { fetchAvailableUsdc, formatAvailableUsdc, type AvailableUsdc } from '@/lib/unifiedBalance';
+import { moveUsdcToArc, type GatewaySourceKey, type MoveStep } from '@/lib/gatewayActions';
 import { type ConnectedWallet } from '@/lib/walletProvider';
+import type { Address } from 'viem';
 
 const dexUrl = process.env.NEXT_PUBLIC_PRESTO_DEX_URL?.trim() || 'https://prestodex-arc.vercel.app';
+
+const MOVE_STEP_LABEL: Record<MoveStep, string> = {
+  'switching-source': 'Switching network…',
+  approving: 'Approving USDC…',
+  depositing: 'Depositing…',
+  'awaiting-finality': 'Awaiting finality…',
+  signing: 'Sign transfer…',
+  attesting: 'Getting attestation…',
+  'switching-arc': 'Switching to Arc…',
+  minting: 'Crediting Arc…',
+  done: 'Done',
+};
+const GATEWAY_SOURCE_KEYS = new Set<string>(['baseSepolia', 'sepolia', 'avalancheFuji']);
 
 export function AddUsdcDrawer(input: {
   open: boolean;
@@ -17,8 +32,31 @@ export function AddUsdcDrawer(input: {
 }) {
   const [balance, setBalance] = useState<string | null>(null);
   const [unified, setUnified] = useState<AvailableUsdc | null>(null);
+  const [move, setMove] = useState<{ chain: string; step: MoveStep } | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const isDropdown = input.variant === 'dropdown';
+  const hasExternalWallet = typeof window !== 'undefined' && Boolean((window as { ethereum?: unknown }).ethereum);
+
+  async function handleMove(chainKey: string, amount: number) {
+    if (!input.wallet?.address || move) return;
+    setMoveError(null);
+    setMove({ chain: chainKey, step: 'switching-source' });
+    const result = await moveUsdcToArc({
+      source: chainKey as GatewaySourceKey,
+      amountUsdc: amount,
+      recipient: input.wallet.address as Address,
+      onStep: (step) => setMove({ chain: chainKey, step }),
+    });
+    if (result.ok) {
+      window.dispatchEvent(new CustomEvent('presto:balances-refresh'));
+      setMove({ chain: chainKey, step: 'done' });
+      setTimeout(() => setMove(null), 2500);
+    } else {
+      setMoveError(`${result.error} (at ${result.atStep})`);
+      setMove(null);
+    }
+  }
 
   useEffect(() => {
     if (!input.open || !input.wallet?.address) return;
@@ -96,17 +134,43 @@ export function AddUsdcDrawer(input: {
             <span className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-cyan/70">Across chains</span>
             <span className="text-[12px] font-black text-white">{formatAvailableUsdc(unified.total)} total</span>
           </div>
-          {unified.chains.filter((chain) => !chain.isArc).map((chain) => (
-            <div key={chain.key} className="flex items-center justify-between px-3 py-1 text-[11px] font-bold text-[#8fa0b4]">
-              <span>{chain.label}</span>
-              <span className="font-black text-[#cbd5e1]">
-                {chain.amount === null ? '—' : formatAvailableUsdc(chain.amount)}
-              </span>
-            </div>
-          ))}
-          <p className="px-3 py-1 text-[10px] leading-relaxed text-[#64748b]">
-            One-tap “Move to Arc” lands next — for now bridge via the links below.
-          </p>
+          {unified.chains.filter((chain) => !chain.isArc).map((chain) => {
+            const movable = GATEWAY_SOURCE_KEYS.has(chain.key) && (chain.amount ?? 0) > 0 && hasExternalWallet;
+            const moving = move?.chain === chain.key;
+            return (
+              <div key={chain.key} className="flex items-center justify-between gap-2 px-3 py-1 text-[11px] font-bold text-[#8fa0b4]">
+                <span>{chain.label}</span>
+                <span className="flex items-center gap-2">
+                  <span className="font-black text-[#cbd5e1]">
+                    {chain.amount === null ? '—' : formatAvailableUsdc(chain.amount)}
+                  </span>
+                  {moving ? (
+                    <span className="rounded-full border border-cyan/25 bg-cyan/10 px-2 py-0.5 text-[9px] font-black text-cyan">
+                      {MOVE_STEP_LABEL[move.step]}
+                    </span>
+                  ) : movable ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleMove(chain.key, chain.amount as number)}
+                      disabled={Boolean(move)}
+                      className="rounded-full border border-cyan/25 bg-cyan/10 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-cyan transition hover:bg-cyan/20 disabled:opacity-40"
+                    >
+                      Move to Arc
+                    </button>
+                  ) : null}
+                </span>
+              </div>
+            );
+          })}
+          {moveError ? (
+            <p className="px-3 py-1 text-[10px] leading-relaxed text-red-300">{moveError}</p>
+          ) : (
+            <p className="px-3 py-1 text-[10px] leading-relaxed text-[#64748b]">
+              {hasExternalWallet
+                ? 'Move USDC from another chain into Arc via Circle Gateway — approve, deposit, then it’s credited on Arc.'
+                : 'Connect an external wallet to move USDC across chains; or bridge via the links below.'}
+            </p>
+          )}
         </div>
       )}
 
