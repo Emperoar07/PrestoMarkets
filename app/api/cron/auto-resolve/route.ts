@@ -11,6 +11,7 @@ import { tryDeterministicPriceResolution } from '@/lib/priceResolution';
 import { listMarketWatchers } from '@/lib/socialDb';
 import { listMarketTraders } from '@/lib/marketIndexer';
 import { notifyMany } from '@/lib/notifications';
+import { dispatchWebhookEvent } from '@/lib/webhooks';
 import type { AppMarket } from '@/lib/appState';
 
 export const runtime = 'nodejs';
@@ -494,6 +495,16 @@ export async function GET(req: NextRequest) {
           } catch (err) {
             console.error('Failed to notify auto-resolve action:', err);
           }
+
+          // Fan out to partner webhooks (best-effort, fully isolated from resolution).
+          await dispatchWebhookEvent({
+            type: action === 'resolved' ? 'market_resolved' : action === 'canceled' ? 'market_canceled' : 'resolution_proposed',
+            marketId: market.id,
+            title: market.title,
+            outcome: result.outcome,
+            txHash: typeof result.txHash === 'string' ? result.txHash : undefined,
+            at: new Date().toISOString(),
+          }).catch(() => undefined);
         }
 
         if (agentErc8004Id && result.ok && result.action === 'resolved') {

@@ -139,3 +139,21 @@ export const marketSnapshots = pgTable('market_snapshots', {
 }, (table) => ({
   pk: primaryKey({ columns: [table.marketId, table.capturedAt] }),
 }));
+
+// Partner-registered webhook endpoints that receive market settlement events (resolved /
+// canceled / proposed). Each delivery is signed with the subscription's secret (HMAC-SHA256).
+export const webhookSubscriptions = pgTable('webhook_subscriptions', {
+  id: serial('id').primaryKey(),
+  /** Owner wallet address (the signed-in creator of the subscription). */
+  owner: text('owner').notNull(),
+  url: text('url').notNull(),
+  secret: text('secret').notNull(),
+  /** Event types this endpoint subscribes to, e.g. ['market_resolved','market_canceled']. */
+  eventTypes: jsonb('event_types').$type<string[]>().notNull(),
+  active: boolean('active').notNull().default(true),
+  failureCount: integer('failure_count').notNull().default(0),
+  lastStatus: text('last_status'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  ownerIdx: index('webhook_subscriptions_owner_idx').on(table.owner),
+}));
