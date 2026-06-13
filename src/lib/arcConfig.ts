@@ -36,7 +36,11 @@ function uniqueValues(values: string[]) {
 export function getArcConfig() {
   const chainId = publicEnv(process.env.NEXT_PUBLIC_ARC_CHAIN_ID);
   const configuredRpcUrl = publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_URL) || publicEnv(process.env.ARC_RPC_URL);
-  const rpcUrls = uniqueValues([configuredRpcUrl, DEFAULT_ARC_RPC_URL].filter(Boolean));
+  // Ordered RPC fallback: dedicated providers (dRPC, QuikNode) first, public RPC last. Provider
+  // URLs carry API keys and live in env. configuredRpcUrl (usually dRPC) leads; dedupe keeps order.
+  const drpc = publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_DRPC);
+  const quiknode = publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_QUIKNODE);
+  const rpcUrls = uniqueValues([configuredRpcUrl, drpc, quiknode, DEFAULT_ARC_RPC_URL].filter(Boolean));
   const rpcUrl = rpcUrls[0] ?? DEFAULT_ARC_RPC_URL;
   const usdcAddress = publicEnv(process.env.NEXT_PUBLIC_USDC_ADDRESS);
   const factoryAddress = publicEnv(process.env.NEXT_PUBLIC_MARKET_FACTORY_ADDRESS) || DEFAULT_MARKET_FACTORY_ADDRESS;

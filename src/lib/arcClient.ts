@@ -18,14 +18,37 @@
  * Blockdaemon — see Arc node-providers docs) to remove the public-endpoint
  * limit entirely.
  */
-import { http } from 'viem';
+import { fallback, http } from 'viem';
 
 /** Client-level batch config: aggregate contract reads via Multicall3. */
 export const ARC_READ_BATCH = { multicall: true } as const;
 
-/** HTTP transport that also batches JSON-RPC calls into a single request. */
+/** Arc public RPC — always the last-resort fallback (rate-limited, but always available). */
+const ARC_PUBLIC_RPC = 'https://rpc.testnet.arc.network';
+
+/**
+ * Ordered Arc RPC endpoints: dedicated providers first (dRPC, then QuikNode), the public RPC
+ * last. Provider URLs carry API keys, so they live in env (NEXT_PUBLIC_* — these run client-side
+ * and are visible in the browser regardless) rather than committed source. An explicit override
+ * jumps to the front when provided.
+ */
+export function arcRpcUrls(override?: string): string[] {
+  const drpc = process.env.NEXT_PUBLIC_ARC_RPC_DRPC?.trim();
+  const quiknode = process.env.NEXT_PUBLIC_ARC_RPC_QUIKNODE?.trim();
+  const ordered = [override?.trim(), drpc, quiknode, ARC_PUBLIC_RPC].filter(
+    (url): url is string => Boolean(url),
+  );
+  return Array.from(new Set(ordered));
+}
+
+/**
+ * Fallback HTTP transport across the ordered Arc RPCs. viem's `fallback` advances to the next
+ * endpoint on error (so a throttled/down provider transparently fails over), and each leg batches
+ * JSON-RPC calls into a single request via Multicall3-friendly batching.
+ */
 export function arcReadTransport(rpcUrl?: string) {
-  return rpcUrl ? http(rpcUrl, { batch: true }) : http(undefined, { batch: true });
+  const transports = arcRpcUrls(rpcUrl).map((url) => http(url, { batch: true }));
+  return fallback(transports, { rank: false });
 }
 
 /** True when an error looks like an RPC rate-limit (HTTP 429 / "too many requests"). */
