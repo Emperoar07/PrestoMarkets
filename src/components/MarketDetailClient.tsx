@@ -34,6 +34,7 @@ import { getOutcomeColor } from '@/lib/outcomeColors';
 import { buildFixedShareQuote } from '@/lib/marketUtils';
 import { buildResolutionTrustState } from '@/lib/resolutionTrust';
 import { disputeLiveResolution } from '@/lib/liveActions';
+import { collateralUnit } from '@/lib/arcConfig';
 import Link from 'next/link';
 import { ChevronDown, Loader2, AlertCircle } from 'lucide-react';
 
@@ -163,7 +164,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const [showRulesSchema, setShowRulesSchema] = useState(false);
   const [fundingOpen, setFundingOpen] = useState(false);
   const [payWith, setPayWith] = useState<StableSymbol>('USDC');
-  const unit = '$';
+  // Currency unit follows the market's collateral (€ for EURC markets, $ for USDC).
+  const collateralSymbol = market?.collateralSymbol ?? 'USDC';
+  const unit = collateralUnit(collateralSymbol);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
