@@ -529,9 +529,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             </div>
 
 
-            {/* Polymarket-style header: compact square market image beside the title. */}
+            {/* Polymarket-style header: compact square market image beside the title. Hidden for
+                sports/vs markets — they render both team flags in the match header below, so a
+                third single-team logo here is redundant. */}
             <div className="mt-4 flex items-start gap-4">
-              {market.imageURI ? (
+              {market.imageURI && kickoffMs === null ? (
                 <img
                   src={market.imageURI}
                   alt=""
