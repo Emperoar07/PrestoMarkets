@@ -26,7 +26,8 @@ export type CirclePasskeyBundlerClient = {
     calls: Array<{ to: Hex; data: Hex; value?: bigint }>;
     paymaster: true;
   }) => Promise<Hex>;
-  waitForUserOperationReceipt: (args: { hash: Hex }) => Promise<{ receipt: { transactionHash: Hex } }>;
+  waitForUserOperationReceipt: (args: { hash: Hex; pollingInterval?: number; retryCount?: number; timeout?: number }) => Promise<{ receipt: { transactionHash: Hex } }>;
+  getUserOperationReceipt: (args: { hash: Hex }) => Promise<{ success?: boolean; receipt?: { transactionHash?: Hex } } | null>;
   request: (args: { method: string }) => Promise<unknown>;
 };
 

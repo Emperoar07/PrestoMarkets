@@ -64,6 +64,21 @@ function normalizeError(error: unknown, fallback: string) {
   return raw || fallback;
 }
 
+const PASSKEY_PENDING_TAG = '__PASSKEY_PENDING__:';
+
+// A passkey op that was submitted but hadn't surfaced a receipt in our polling window isn't a
+// failure — it's almost certainly finalizing on Arc. Convert the tagged error into a soft
+// "submitted, confirming" result so the UI doesn't show a scary red Failed toast.
+export function passkeyPendingResult(error: unknown, label: string): LiveActionResult | null {
+  const msg = error instanceof Error ? error.message : '';
+  if (!msg.startsWith(PASSKEY_PENDING_TAG)) return null;
+  return {
+    ok: true,
+    pending: true,
+    message: `${label} submitted with passkey — confirming on Arc. Your balance updates shortly.`,
+  };
+}
+
 async function assertMarketOpenForTrading(publicClient: ReturnType<typeof getPublicClient>, marketAddress: Address) {
   const [state, closeTime] = await Promise.all([
     withRetry(() => publicClient.readContract({
@@ -86,14 +101,34 @@ async function assertMarketOpenForTrading(publicClient: ReturnType<typeof getPub
   }
 }
 
+const PASSKEY_RECEIPT_TIMEOUT_MS = 150_000;
+const PASSKEY_RECEIPT_POLL_MS = 3_000;
+
 export async function runPasskeyCalls(calls: Array<{ to: Address; data: Hex }>) {
   const { bundlerClient } = getCirclePasskeyBundlerClient();
   const userOpHash = await bundlerClient.sendUserOperation({
     calls: calls.map((call) => ({ ...call, to: call.to as Hex })),
     paymaster: true,
   });
-  const { receipt } = await bundlerClient.waitForUserOperationReceipt({ hash: userOpHash });
-  return receipt.transactionHash;
+
+  // Poll the receipt ourselves with a generous window. viem's waitForUserOperationReceipt defaults
+  // to ~24s (6 retries × 4s), but Circle's Arc bundler routinely takes longer to surface the
+  // receipt — so every passkey op was timing out even though it had landed. Arc finalizes fast, so
+  // once the bundler exposes the receipt we return immediately.
+  const deadline = Date.now() + PASSKEY_RECEIPT_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const received = await bundlerClient.getUserOperationReceipt({ hash: userOpHash }).catch(() => null);
+    if (received?.receipt?.transactionHash) {
+      if (received.success === false) {
+        throw new Error('The passkey transaction was included but reverted on-chain.');
+      }
+      return received.receipt.transactionHash;
+    }
+    await new Promise((resolve) => setTimeout(resolve, PASSKEY_RECEIPT_POLL_MS));
+  }
+  // Submitted but not yet confirmed within the window — surface a soft "still confirming" message
+  // (tagged) instead of a hard failure, since the op is almost certainly finalizing on Arc.
+  throw new Error(`__PASSKEY_PENDING__:${userOpHash}`);
 }
 
 const gatewayMinterAbi = [{
@@ -190,7 +225,7 @@ export async function buyPasskeyShares(input: {
       txHash,
     };
   } catch (error) {
-    return { ok: false, message: normalizeError(error, 'Passkey buy failed.') };
+    return passkeyPendingResult(error, `Buy ${input.outcome}`) ?? { ok: false, message: normalizeError(error, 'Passkey buy failed.') };
   }
 }
 
@@ -212,7 +247,7 @@ async function callPasskeyMarket(
     }]);
     return { ok: true, message: success, txHash };
   } catch (error) {
-    return { ok: false, message: normalizeError(error, `${success} failed.`) };
+    return passkeyPendingResult(error, success) ?? { ok: false, message: normalizeError(error, `${success} failed.`) };
   }
 }
 
@@ -243,7 +278,7 @@ export async function disputePasskeyMarket(marketAddress: string, reason: string
       txHash,
     };
   } catch (error) {
-    return { ok: false, message: normalizeError(error, 'Passkey dispute failed.') };
+    return passkeyPendingResult(error, 'Dispute') ?? { ok: false, message: normalizeError(error, 'Passkey dispute failed.') };
   }
 }
 
@@ -267,6 +302,6 @@ export async function resolvePasskeyMarket(input: {
     }]);
     return { ok: true, message: 'Market resolved with passkey.', txHash };
   } catch (error) {
-    return { ok: false, message: normalizeError(error, 'Passkey resolve failed.') };
+    return passkeyPendingResult(error, 'Resolve') ?? { ok: false, message: normalizeError(error, 'Passkey resolve failed.') };
   }
 }

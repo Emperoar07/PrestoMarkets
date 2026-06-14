@@ -30,6 +30,7 @@ import {
   claimPasskeyMarket,
   disputePasskeyMarket,
   refundPasskeyMarket,
+  passkeyPendingResult,
   resolvePasskeyMarket,
   runPasskeyCalls,
 } from './passkeyActions';
@@ -334,7 +335,7 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
         marketAddress: created?.args.market,
       };
     } catch (error) {
-      return { ok: false, message: error instanceof Error ? error.message : 'Passkey market creation failed.' };
+      return passkeyPendingResult(error, 'Market creation') ?? { ok: false, message: error instanceof Error ? error.message : 'Passkey market creation failed.' };
     }
   }
   try {
