@@ -5,6 +5,7 @@
 import {
   createPublicClient,
   createWalletClient,
+  fallback,
   http,
   isAddress,
   parseEventLogs,
@@ -83,7 +84,12 @@ function getClients() {
 
   const account = privateKeyToAccount(pk as Hex);
   const chain = createArcChain(config.rpcUrls);
-  const transport = config.rpcUrl ? http(config.rpcUrl) : http();
+  // Fallback across all configured Arc RPCs (dRPC -> QuikNode -> public). The agent's writes were
+  // failing whenever the primary provider was down/throttled because it used a single endpoint;
+  // viem's fallback advances to the next on error so a dead provider no longer blocks creation.
+  const transport = config.rpcUrls.length > 0
+    ? fallback(config.rpcUrls.map((url) => http(url)))
+    : http();
   const publicClient = createPublicClient({ chain, transport });
   const walletClient = createWalletClient({ account, chain, transport });
 

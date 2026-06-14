@@ -2194,6 +2194,11 @@ async function createOnchain(
 ): Promise<PipelineResult> {
   const agentConfidence = String(Math.round(safety.confidence * 100)) + '%';
   const imageURI = await fetchTrendImageURI(trend);
+  // Strict image policy: a market must have a REAL image (article/subject/team/flag), not the
+  // generic branded SVG fallback. No real image → don't create the market.
+  if (!imageURI || imageURI.startsWith('data:image/svg+xml')) {
+    return { ok: false, topic: trend.topic, stage: 'no-image', reason: 'No real image available for this market — skipped (strict image policy).' };
+  }
   const horizon = analyzeMarketHorizon(trend);
   const research = assessTrendResearchQuality(trend);
   const exaSummary = summarizeExaEvidence(trend.exaEvidence);
