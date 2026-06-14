@@ -498,38 +498,12 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
           <section className="min-w-0 order-1 lg:order-none lg:col-start-1 lg:row-start-1">
 
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-cyan/30 bg-cyan/10 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-cyan">
-                {market.type}
-              </span>
-              <span className={`rounded-full border px-3 py-1 text-[11px] font-black ${statusStyle[market.status]}`}>
-                {market.status}
-              </span>
-              {(market.categories?.length ? market.categories : [market.category]).map((cat) => (
-                <span
-                  key={cat}
-                  className="rounded-full border border-white/[0.06] bg-white/[0.04] px-3 py-1 text-[11px] font-black text-[#8fa0b4]"
-                >
-                  {cat}
-                </span>
-              ))}
-              {isAgentMarket ? (
-                <span className="rounded-full border border-cyan/35 bg-cyan/10 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-cyan">
-                  Agent
-                </span>
-              ) : null}
-              {isMatchLive ? (
-                <span className="flex items-center gap-1.5 rounded-full border border-red-500/35 bg-red-500/10 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-red-400">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
-                  Live
-                </span>
-              ) : null}
-              <div className="ml-auto flex items-center gap-2 shrink-0">
-                {connectedWallet ? <AlertPrefsControl marketId={market.id} /> : null}
-                <WatchlistButton marketId={market.id} />
-                <ShareMarketButton marketId={market.id} title={market.title} />
-              </div>
+            <div className="flex items-center justify-end gap-2">
+              {connectedWallet ? <AlertPrefsControl marketId={market.id} /> : null}
+              <WatchlistButton marketId={market.id} />
+              <ShareMarketButton marketId={market.id} title={market.title} />
             </div>
+
 
             {/* Polymarket-style header: compact square market image beside the title. */}
             <div className="mt-4 flex items-start gap-4">
@@ -787,7 +761,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
             <MarketQualityPanel market={market} />
 
-            {isAgentMarket ? (
+            {isAgentMarket && isResolver ? (
               <details className="group mt-6 rounded-[14px] border border-cyan/20 bg-cyan/[0.06]">
                 <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-cyan/[0.04] [&::-webkit-details-marker]:hidden">
                   <div className="min-w-0">
