@@ -45,6 +45,15 @@ function isPasskeyWallet(): boolean {
 const ARC_CHAIN_HEX = '0x4cef52';
 const MIN_TRADE_USDC = 0.01;
 
+// Batch/one-time approval: when enabled (default), the first buy on a market approves the max so
+// every subsequent buy needs no approve (one signature). Set NEXT_PUBLIC_BATCH_APPROVAL=false to
+// fall back to per-trade exact-amount approvals.
+const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
+const USE_MAX_APPROVAL = (process.env.NEXT_PUBLIC_BATCH_APPROVAL ?? 'true') !== 'false';
+function approvalAmount(exactAmount: bigint): bigint {
+  return USE_MAX_APPROVAL ? MAX_UINT256 : exactAmount;
+}
+
 // Shared 429-aware retry with exponential backoff (see arcClient).
 const withRetry = withRpcRetry;
 
@@ -418,7 +427,9 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
         address: collateralToken,
         abi: erc20Abi,
         functionName: 'approve',
-        args: [marketAddress, amount],
+        // Max approval (flag-gated) so every later buy on this market skips the approve step —
+        // first buy is approve+buy, repeat buys are a single signature. Falls back to exact amount.
+        args: [marketAddress, approvalAmount(amount)],
       });
       await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash }));
     }

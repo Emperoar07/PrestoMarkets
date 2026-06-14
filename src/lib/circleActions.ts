@@ -556,10 +556,14 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: s
     // string must stay in sync with BATCH_SIGNATURE in circleWalletPolicy.ts.
     const legs: Array<[string, string, string]> = [];
     if (funding.allowance < amountValue) {
+      // Max approval (flag-gated) so future buys on this market skip the approve leg entirely.
+      const approveValue = (process.env.NEXT_PUBLIC_BATCH_APPROVAL ?? 'true') !== 'false'
+        ? BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')
+        : amountValue;
       legs.push([
         usdcAddress,
         '0',
-        encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [marketAddress, amountValue] }),
+        encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [marketAddress, approveValue] }),
       ]);
     }
     legs.push([
