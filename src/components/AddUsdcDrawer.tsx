@@ -131,26 +131,33 @@ export function AddUsdcDrawer(input: {
 
   useEffect(() => {
     if (!input.open || !input.wallet?.address) return;
+    const address = input.wallet.address;
     let cancelled = false;
-    const cached = readCachedUsdcBalance(input.wallet.address);
+    const cached = readCachedUsdcBalance(address);
     if (cached) setBalance(cached);
-    fetchArcStableBalances(input.wallet.address)
-      .then((balances) => {
-        if (!cancelled) setBalance(balances.USDC);
-      })
-      .catch(() => {
-        if (!cancelled && !cached) setBalance(null);
-      });
-    fetchArcEurcBalance(input.wallet.address)
-      .then((eurc) => { if (!cancelled) setEurcBalance(eurc); })
-      .catch(() => undefined);
-    // Multichain Available USDC (read-only Phase 1 of the Gateway rails).
-    fetchAvailableUsdc(input.wallet.address)
-      .then((result) => { if (!cancelled) setUnified(result); })
-      .catch(() => undefined);
-    // Gateway unified balance + any pending deposits (step 2 / recovery).
-    refreshGateway(input.wallet.address);
-    return () => { cancelled = true; };
+
+    function loadBalances() {
+      fetchArcStableBalances(address)
+        .then((balances) => { if (!cancelled) setBalance(balances.USDC); })
+        .catch(() => { if (!cancelled && !cached) setBalance(null); });
+      fetchArcEurcBalance(address)
+        .then((eurc) => { if (!cancelled) setEurcBalance(eurc); })
+        .catch(() => undefined);
+      fetchAvailableUsdc(address)
+        .then((result) => { if (!cancelled) setUnified(result); })
+        .catch(() => undefined);
+      refreshGateway(address);
+    }
+
+    loadBalances();
+    // After a Move to Arc (or any balance-changing action) the Arc USDC/EURC balances must
+    // re-fetch — the mint is confirmed, but RPC can lag ~1s, so refresh on the event and once more.
+    function onRefresh() {
+      loadBalances();
+      window.setTimeout(() => { if (!cancelled) loadBalances(); }, 2500);
+    }
+    window.addEventListener('presto:balances-refresh', onRefresh);
+    return () => { cancelled = true; window.removeEventListener('presto:balances-refresh', onRefresh); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [input.open, input.wallet?.address]);
 
