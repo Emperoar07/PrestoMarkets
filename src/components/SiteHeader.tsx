@@ -315,6 +315,12 @@ export function SiteHeader() {
           ) : null}
         </div>
         <nav className="ml-auto flex shrink-0 items-center gap-2">
+          <a href={dexUrl} className={`${navLinkClass()} inline-flex items-center gap-1.5`}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-70">
+              <path d="m17 2 4 4-4 4" /><path d="M3 6h18" /><path d="m7 22-4-4 4-4" /><path d="M21 18H3" />
+            </svg>
+            DEX
+          </a>
           {showWallet ? (
             <a
               href="https://faucet.circle.com"
@@ -336,12 +342,6 @@ export function SiteHeader() {
               Create Market
             </Link>
           ) : null}
-          <a href={dexUrl} className={`${navLinkClass()} inline-flex items-center gap-1.5`}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-70">
-              <path d="m17 2 4 4-4 4" /><path d="M3 6h18" /><path d="m7 22-4-4 4-4" /><path d="M21 18H3" />
-            </svg>
-            DEX
-          </a>
           {showWallet && connectedWallet ? (
             <div ref={menuRef} className="relative flex items-center gap-2">
               {/* Balance pill (standalone, sized to match the header actions) */}
