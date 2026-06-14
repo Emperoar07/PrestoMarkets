@@ -34,8 +34,10 @@ type TransactionContextValue = {
 
 const TransactionContext = createContext<TransactionContextValue | null>(null);
 
-// confirmed/cancelled auto-dismiss; pending/failed are sticky until dismissed.
-const AUTO_DISMISS_MS: Partial<Record<TxStage, number>> = { confirmed: 6_000, cancelled: 4_000 };
+// confirmed/cancelled auto-dismiss quickly; 'pending' (submitted, still confirming — e.g. a
+// Gateway deposit finalizing) auto-dismisses after 10s so it doesn't linger; 'failed' stays
+// sticky until the user dismisses it.
+const AUTO_DISMISS_MS: Partial<Record<TxStage, number>> = { confirmed: 6_000, cancelled: 4_000, pending: 10_000 };
 
 function newId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();

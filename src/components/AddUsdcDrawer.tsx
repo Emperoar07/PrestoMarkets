@@ -325,9 +325,6 @@ export function AddUsdcDrawer(input: {
                     </svg>
                     {MOVE_STEP_LABEL[move.step]}
                   </span>
-                ) : s.amount < minCompletableUsdc(s.source) ? (
-                  // Below the source's Gateway fee + margin: can't be moved, so show why instead of a dead button.
-                  <span className="rounded-md border border-white/[0.06] px-2 py-1 text-[8px] font-bold text-[#64748b]">Below ~{minCompletableUsdc(s.source).toFixed(2)} fee</span>
                 ) : (
                   <button
                     type="button"
