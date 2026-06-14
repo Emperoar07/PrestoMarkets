@@ -341,6 +341,19 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const eventIdMatch = market?.trendUrl?.match(/event\/(\d+)/);
   const idEvent = eventIdMatch ? eventIdMatch[1] : null;
 
+  // Real team names + match date for the keyless ESPN live-score lookup (and so the scoreboard
+  // shows the actual teams, not "Home Team"/"Away Team", even before a score loads). Prefer the
+  // outcome labels (they're the team names for fixtures); fall back to parsing the "X vs Y" title.
+  const GENERIC_OUTCOME = /^(yes|no|draw|home|away|over|under|tie)$/i;
+  const teamLabels = (market?.outcomes ?? []).map((o) => o.label).filter((l) => l && !GENERIC_OUTCOME.test(l));
+  let homeTeamName: string | undefined = teamLabels[0];
+  let awayTeamName: string | undefined = teamLabels[teamLabels.length - 1];
+  if (!homeTeamName || !awayTeamName || homeTeamName === awayTeamName) {
+    const vs = market?.title?.match(/^(.+?)\s+vs\.?\s+(.+?)(?:\?|$)/i);
+    if (vs) { homeTeamName = vs[1].trim(); awayTeamName = vs[2].trim(); }
+  }
+  const matchDateYmd = kickoffMs ? new Date(kickoffMs).toISOString().slice(0, 10).replace(/-/g, '') : null;
+
   const [liveData, setLiveData] = useState<{
     homeScore: string | null;
     awayScore: string | null;
@@ -358,7 +371,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     && market?.status !== 'Resolved' && market?.status !== 'Closed';
 
   useEffect(() => {
-    if (!idEvent || kickoffMs === null || now < kickoffMs || market?.status === 'Resolved' || market?.status === 'Closed') {
+    const haveTeams = Boolean(homeTeamName && awayTeamName);
+    if ((!idEvent && !haveTeams) || kickoffMs === null || now < kickoffMs || market?.status === 'Resolved' || market?.status === 'Closed') {
       return;
     }
 
@@ -366,7 +380,12 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     let interval: ReturnType<typeof setInterval> | undefined;
     async function fetchLiveScore() {
       try {
-        const res = await fetch(`/api/sports/live?id=${idEvent}`);
+        const params = new URLSearchParams();
+        if (idEvent) params.set('id', idEvent);
+        if (homeTeamName) params.set('home', homeTeamName);
+        if (awayTeamName) params.set('away', awayTeamName);
+        if (matchDateYmd) params.set('date', matchDateYmd);
+        const res = await fetch(`/api/sports/live?${params.toString()}`);
         if (res.ok) {
           const data = await res.json();
           if (!cancelled) {
@@ -388,7 +407,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
       cancelled = true;
       if (interval) clearInterval(interval);
     };
-  }, [idEvent, kickoffMs, market?.status]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idEvent, homeTeamName, awayTeamName, matchDateYmd, kickoffMs, market?.status]);
 
   const canTrade = (market.status === 'Open' || market.status === 'Closing soon') && !isTradingLocked;
   
@@ -676,18 +696,18 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     <div className="mt-4 flex items-center justify-between gap-6">
                       <div className="flex flex-1 flex-col items-center text-center">
                         <span className="text-xs font-bold text-muted uppercase">Home</span>
-                        <span className="mt-1.5 text-base md:text-lg font-black text-white">{liveData?.homeTeam || 'Home Team'}</span>
+                        <span className="mt-1.5 text-base md:text-lg font-black text-white">{liveData?.homeTeam || homeTeamName || 'Home'}</span>
                       </div>
-                      
+
                       <div className="flex items-center gap-4 px-4 py-1.5 bg-white/[0.04] rounded-xl border border-white/[0.05]">
                         <span className="text-3xl font-black text-white">{liveData?.homeScore ?? '0'}</span>
                         <span className="text-xl font-bold text-muted">:</span>
                         <span className="text-3xl font-black text-white">{liveData?.awayScore ?? '0'}</span>
                       </div>
-                      
+
                       <div className="flex flex-1 flex-col items-center text-center">
                         <span className="text-xs font-bold text-muted uppercase">Away</span>
-                        <span className="mt-1.5 text-base md:text-lg font-black text-white">{liveData?.awayTeam || 'Away Team'}</span>
+                        <span className="mt-1.5 text-base md:text-lg font-black text-white">{liveData?.awayTeam || awayTeamName || 'Away'}</span>
                       </div>
                     </div>
                     
@@ -706,7 +726,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     <div className="mt-4 flex items-center justify-between gap-6">
                       <div className="flex flex-1 flex-col items-center text-center">
                         <span className="text-xs font-bold text-muted uppercase">Home</span>
-                        <span className="mt-1.5 text-base md:text-lg font-black text-white">{liveData.homeTeam || 'Home Team'}</span>
+                        <span className="mt-1.5 text-base md:text-lg font-black text-white">{liveData.homeTeam || homeTeamName || 'Home'}</span>
                       </div>
                       <div className="flex items-center gap-4 px-4 py-1.5 bg-white/[0.04] rounded-xl border border-white/[0.05]">
                         <span className="text-3xl font-black text-white">{liveData.homeScore ?? '0'}</span>
@@ -715,7 +735,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                       </div>
                       <div className="flex flex-1 flex-col items-center text-center">
                         <span className="text-xs font-bold text-muted uppercase">Away</span>
-                        <span className="mt-1.5 text-base md:text-lg font-black text-white">{liveData.awayTeam || 'Away Team'}</span>
+                        <span className="mt-1.5 text-base md:text-lg font-black text-white">{liveData.awayTeam || awayTeamName || 'Away'}</span>
                       </div>
                     </div>
                     <p className="mt-4 text-center text-xs font-bold text-[#8fa0b4]">

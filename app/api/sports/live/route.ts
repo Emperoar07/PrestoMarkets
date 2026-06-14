@@ -26,7 +26,64 @@ type LiveScore = {
   time: string | null;
   timestamp?: string | null;
   thumbnail?: string | null;
-  source: 'thesportsdb' | 'football-data' | 'api-football';
+  source: 'thesportsdb' | 'football-data' | 'api-football' | 'espn';
+}
+
+// ESPN's public scoreboard API needs no key and covers global soccer. We scan international + top
+// club competitions for the fixture's date and match by team name — this is the source that makes
+// live scores work out of the box (no THESPORTSDB/FOOTBALL_DATA/API_FOOTBALL key required).
+const ESPN_SOCCER_LEAGUES = [
+  'fifa.world', 'fifa.worldq.uefa', 'fifa.worldq.conmebol', 'fifa.worldq.concacaf',
+  'fifa.worldq.afc', 'fifa.worldq.caf', 'fifa.worldq.ofc', 'fifa.friendly', 'fifa.cwc',
+  'uefa.euro', 'uefa.nations', 'conmebol.america', 'concacaf.gold',
+  'eng.1', 'esp.1', 'ita.1', 'ger.1', 'fra.1', 'uefa.champions',
+];
+
+async function fetchEspnLive(home: string, away: string, dateYmd: string, signal: AbortSignal): Promise<LiveScore | null> {
+  if (!home || !away || !/^\d{8}$/.test(dateYmd)) return null;
+  const results = await Promise.all(
+    ESPN_SOCCER_LEAGUES.map((slug) =>
+      fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}/scoreboard?dates=${dateYmd}`,
+        { next: { revalidate: 15 }, signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null)),
+  );
+
+  type EspnComp = { homeAway?: string; score?: string; team?: { displayName?: string; name?: string; shortDisplayName?: string } };
+  type EspnEvent = { id?: string; name?: string; competitions?: Array<{ competitors?: EspnComp[] }>;
+    status?: { displayClock?: string; type?: { state?: string; description?: string; detail?: string; shortDetail?: string } } };
+
+  for (const data of results as Array<{ events?: EspnEvent[] } | null>) {
+    for (const event of data?.events ?? []) {
+      const competitors = event.competitions?.[0]?.competitors ?? [];
+      const eHome = competitors.find((c) => c.homeAway === 'home');
+      const eAway = competitors.find((c) => c.homeAway === 'away');
+      const eHomeName = eHome?.team?.displayName ?? eHome?.team?.name;
+      const eAwayName = eAway?.team?.displayName ?? eAway?.team?.name;
+      const direct = teamsMatch(eHomeName, home) && teamsMatch(eAwayName, away);
+      const swapped = teamsMatch(eHomeName, away) && teamsMatch(eAwayName, home);
+      if (!direct && !swapped) continue;
+
+      const state = event.status?.type?.state; // 'pre' | 'in' | 'post'
+      const statusText = event.status?.type?.description ?? event.status?.type?.detail ?? null;
+      // Orient ESPN's scores onto the market's home/away (the title order), flipping if reversed.
+      const homeScore = direct ? eHome?.score : eAway?.score;
+      const awayScore = direct ? eAway?.score : eHome?.score;
+      return {
+        id: event.id,
+        event: event.name,
+        homeTeam: home,
+        awayTeam: away,
+        homeScore: homeScore != null ? String(homeScore) : null,
+        awayScore: awayScore != null ? String(awayScore) : null,
+        status: statusText,
+        progress: state === 'in' ? (statusText ?? 'Live') : state === 'post' ? 'Match Finished' : 'Not Started',
+        time: state === 'in' ? (event.status?.displayClock || null) : null,
+        source: 'espn',
+      };
+    }
+  }
+  return null;
 }
 
 // A score counts as "settled-or-live" (worth preferring over a not-started baseline) when it
@@ -39,7 +96,8 @@ function hasLiveScore(s: LiveScore | null): boolean {
 };
 
 function normalizeTeam(name: string): string {
-  return name.toLowerCase().replace(/[^a-z]/g, '');
+  // Strip diacritics first (Curaçao -> curacao, Türkiye -> turkiye) so names match across sources.
+  return name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z]/g, '');
 }
 
 function teamsMatch(a?: string, b?: string): boolean {
@@ -166,30 +224,50 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
+  const home = searchParams.get('home')?.trim() || undefined;
+  const away = searchParams.get('away')?.trim() || undefined;
+  const dateParam = searchParams.get('date')?.trim() || undefined; // YYYYMMDD or YYYY-MM-DD
+  const hasId = Boolean(id && /^\d+$/.test(id));
 
-  if (!id || !/^\d+$/.test(id)) {
-    return NextResponse.json({ error: 'Valid sports event id is required' }, { status: 400 });
+  // Need either a TheSportsDB event id OR home+away team names (for the keyless ESPN lookup).
+  if (!hasId && !(home && away)) {
+    return NextResponse.json({ error: 'A sports event id or home & away team names are required' }, { status: 400 });
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
 
   try {
-    const base = await fetchSportsDb(id, controller.signal);
+    // Baseline (names/date): TheSportsDB when a key + id are present, otherwise synthesize one from
+    // the passed teams so ESPN and the keyed providers can match the fixture.
+    let base = hasId ? await fetchSportsDb(id as string, controller.signal).catch(() => null) : null;
+    if (!base && home && away) {
+      const iso = dateParam
+        ? (dateParam.includes('-') ? dateParam : `${dateParam.slice(0, 4)}-${dateParam.slice(4, 6)}-${dateParam.slice(6, 8)}`)
+        : null;
+      base = {
+        homeTeam: home, awayTeam: away, homeScore: null, awayScore: null,
+        status: null, progress: null, time: null, timestamp: iso, source: 'thesportsdb',
+      };
+    }
     if (!base) {
       return NextResponse.json({ error: 'Sports event not found' }, { status: 404 });
     }
 
-    // Query the keyed providers in parallel; each is best-effort and never fails the request.
-    const [footballData, apiFootball] = await Promise.all([
+    const espnDate = (dateParam?.replace(/-/g, '') || (base.timestamp ?? '').slice(0, 10).replace(/-/g, '')) || '';
+
+    // All sources best-effort and parallel; none fails the request. ESPN is keyless.
+    const [espn, footballData, apiFootball] = await Promise.all([
+      (base.homeTeam && base.awayTeam)
+        ? fetchEspnLive(base.homeTeam, base.awayTeam, espnDate, controller.signal).catch(() => null)
+        : Promise.resolve(null),
       fetchFootballData(base, controller.signal).catch(() => null),
       fetchApiFootball(base, controller.signal).catch(() => null),
     ]);
 
-    // Prefer a source that actually reports a live/finished score over the not-started baseline;
-    // among those, later providers (richer live coverage) win. Otherwise the baseline stands.
-    const result = [apiFootball, footballData].find(hasLiveScore)
-      ?? (hasLiveScore(base) ? base : (apiFootball ?? footballData ?? base));
+    // Prefer a source actually reporting a live/finished score over the not-started baseline.
+    const result = [apiFootball, footballData, espn].find(hasLiveScore)
+      ?? (hasLiveScore(base) ? base : (espn ?? apiFootball ?? footballData ?? base));
 
     return NextResponse.json(result);
   } catch (err) {
