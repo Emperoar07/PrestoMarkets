@@ -78,13 +78,35 @@ export function WorldCupFixturesPanel({ markets, onQuickBuy }: {
       {/* Header ribbon */}
       <div className="flex items-center justify-between gap-2.5 border-b border-white/[0.06] bg-white/[0.01] px-3.5 py-1.5 shrink-0">
         <Link href="/world-cup" className="flex min-w-0 items-center gap-2 transition-opacity hover:opacity-85">
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] overflow-hidden bg-cyan/5 border border-cyan/15">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img 
-              src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c7/FIFA_World_Cup_Trophy.png/120px-FIFA_World_Cup_Trophy.png" 
-              alt="World Cup" 
-              className="h-[18px] w-auto object-contain select-none filter drop-shadow-[0_0_3px_rgba(34,211,238,0.25)]"
-            />
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-[#141e30] border border-cyan/15">
+            <svg viewBox="10 10 60 145" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-auto">
+              <defs>
+                <linearGradient id="goldGradPanel" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#fbbf24" />
+                  <stop offset="50%" stopColor="#d97706" />
+                  <stop offset="100%" stopColor="#b45309" />
+                </linearGradient>
+              </defs>
+              {/* Base of the trophy */}
+              <path d="M 20,130 L 60,130 L 55,145 L 25,145 Z" fill="url(#goldGradPanel)" />
+              <path d="M 15,145 L 65,145 L 62,152 L 18,152 Z" fill="url(#goldGradPanel)" opacity="0.8" />
+              <rect x="23" y="115" width="34" height="15" rx="2" fill="#0c121d" stroke="url(#goldGradPanel)" strokeWidth="1.5" />
+              
+              {/* Stem & abstract figures holding the globe */}
+              <path d="M 27,115 C 27,95 35,80 30,60 C 35,65 45,65 50,60 C 45,80 53,95 53,115 Z" fill="url(#goldGradPanel)" />
+              <path d="M 33,60 C 33,52 37,45 40,45 C 43,45 47,52 47,60 Z" fill="url(#goldGradPanel)" />
+              
+              {/* Wings / spirals */}
+              <path d="M 20,95 C 10,80 15,55 30,60 C 23,55 18,70 24,85 Z" fill="url(#goldGradPanel)" opacity="0.75" />
+              <path d="M 60,95 C 70,80 65,55 50,60 C 57,55 62,70 56,85 Z" fill="url(#goldGradPanel)" opacity="0.75" />
+
+              {/* The Globe at the top */}
+              <circle cx="40" cy="30" r="18" fill="url(#goldGradPanel)" />
+              <path d="M 24,24 C 30,30 30,40 24,46" stroke="#78350f" strokeWidth="1" fill="none" opacity="0.5" />
+              <path d="M 56,24 C 50,30 50,40 56,46" stroke="#78350f" strokeWidth="1" fill="none" opacity="0.5" />
+              <path d="M 22,30 L 58,30" stroke="#78350f" strokeWidth="1" fill="none" opacity="0.5" />
+              <path d="M 40,12 A 18,18 0 0 0 40,48" stroke="#78350f" strokeWidth="1" fill="none" opacity="0.5" />
+            </svg>
           </div>
           <div className="min-w-0">
             <p className="truncate text-xs font-black text-white">FIFA World Cup 2026</p>
@@ -95,7 +117,7 @@ export function WorldCupFixturesPanel({ markets, onQuickBuy }: {
           href="/world-cup"
           className="shrink-0 rounded-full border border-cyan/25 bg-cyan/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-cyan transition-colors hover:bg-cyan/20"
         >
-          View all →
+          View all
         </Link>
       </div>
 
@@ -151,14 +173,14 @@ export function WorldCupFixturesPanel({ markets, onQuickBuy }: {
                     <button
                       type="button"
                       onClick={() => onQuickBuy(market, yes?.label ?? 'YES')}
-                      className="rounded-[6px] border border-mint/25 bg-mint/10 px-2 py-0.5 text-[9.5px] font-black text-mint transition-colors hover:bg-mint/20"
+                      className="rounded-full border border-mint/20 bg-mint/5 px-2.5 py-0.5 text-[10px] font-black text-mint transition-colors hover:bg-mint/15 active:scale-95"
                     >
                       {home.split(' ')[0]} {yes ? `${yes.odds}¢` : ''}
                     </button>
                     <button
                       type="button"
                       onClick={() => onQuickBuy(market, no?.label ?? 'NO')}
-                      className="rounded-[6px] border border-red-400/25 bg-red-400/10 px-2 py-0.5 text-[9.5px] font-black text-red-300 transition-colors hover:bg-red-400/20"
+                      className="rounded-full border border-red-400/20 bg-red-400/5 px-2.5 py-0.5 text-[10px] font-black text-red-300 transition-colors hover:bg-red-400/15 active:scale-95"
                     >
                       {no ? `${no.odds}¢` : 'NO'}
                     </button>
