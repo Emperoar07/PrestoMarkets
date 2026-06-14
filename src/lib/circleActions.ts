@@ -7,6 +7,7 @@ import { executeCircleChallenge, getStoredConnectedWallet, refreshCircleSessionI
 import { requestCircleConfirmation, type CircleConfirmDetails } from './circleConfirm';
 import { getAgentResolverSelectionError, getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
 import { erc20Abi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
+import { GATEWAY_MINTER, GATEWAY_MINT_SIGNATURE } from './gatewayActions';
 import type { CreateLiveMarketInput, LiveActionResult } from './liveActions';
 import type { MarketType } from './markets';
 import { isRecord } from './typeGuards';
@@ -509,6 +510,28 @@ export async function createCircleMarket(input: CreateLiveMarketInput): Promise<
     if (pending) return pending;
     return { ok: false, message: error instanceof Error ? error.message : 'Market creation failed.' };
   }
+}
+
+// Submit the Arc mint leg of a Move-to-Arc from the Circle wallet itself. The external EOA
+// deposited on the source chain and signed the (gasless) burn intent; here the Circle UCW
+// submits the Gateway-attested mint via contractExecution, so the EOA needs no Arc gas. The mint
+// is callable by anyone and fully gated by the attestation, so the Circle wallet submitting it is
+// safe. Returns the Arc mint tx hash (throws on failure).
+export async function mintGatewayViaCircle(attestation: string, apiSignature: string): Promise<string> {
+  const session = await requireSession();
+  return runContractExecution({
+    session,
+    contractAddress: GATEWAY_MINTER,
+    abiFunctionSignature: GATEWAY_MINT_SIGNATURE,
+    abiParameters: [attestation, apiSignature],
+    refId: `presto-gateway-mint-${Date.now()}`,
+    waitForConfirmation: true,
+    preview: {
+      label: 'Receive USDC on Arc',
+      action: 'Completes your cross-chain move by minting the USDC into your Circle wallet on Arc.',
+      parameters: ['Circle Gateway attested transfer', 'destination: your Arc balance'],
+    },
+  });
 }
 
 export async function buyCircleShares(input: { marketAddress: string; outcome: string; outcomeIndex?: number; amount: number }): Promise<LiveActionResult> {

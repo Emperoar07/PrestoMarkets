@@ -35,7 +35,9 @@ import { baseSepolia, sepolia, avalancheFuji, arbitrumSepolia, arcTestnet } from
 
 const GATEWAY_API_TESTNET = 'https://gateway-api-testnet.circle.com/v1';
 const GATEWAY_WALLET = '0x0077777d7EBA4688BDeF3E311b846F25870A19B9' as Address;
-const GATEWAY_MINTER = '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B' as Address;
+export const GATEWAY_MINTER = '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B' as Address;
+/** ABI signature Circle's contractExecution uses to submit the Arc mint. */
+export const GATEWAY_MINT_SIGNATURE = 'gatewayMint(bytes,bytes)';
 const ARC_DOMAIN = 26;
 const ARC_USDC = '0x3600000000000000000000000000000000000000' as Address;
 // Per-source max Gateway fee (6-decimal base units). The Gateway API enforces value + maxFee <=
@@ -281,6 +283,12 @@ export async function transferGatewayToArc(input: {
   // sourceSigner stay the EOA (Gateway only accepts EOA signatures, and the Circle SCA doesn't
   // exist on source chains), while destinationRecipient is the Circle wallet's Arc address.
   arcRecipient?: Address;
+  // Optional delegate for the Arc mint. When provided, the mint is submitted by this callback
+  // (e.g. a Circle UCW via contractExecution) instead of the EOA, so the EOA needs no Arc gas —
+  // it only deposits on the source chain and signs the (gasless) burn intent. The mint is
+  // callable by anyone (destinationCaller is zero) and fully gated by the attestation, so it's
+  // safe for a different party to submit it. Returns the Arc mint tx hash.
+  mintWith?: (attestation: Hex, apiSignature: Hex) => Promise<string>;
   onStep?: (s: MoveStep) => void;
 }): Promise<StepResult<void>> {
   const src = GATEWAY_SOURCES[input.source];
@@ -347,14 +355,22 @@ export async function transferGatewayToArc(input: {
     }
     const { attestation, signature: apiSignature } = await transferRes.json() as { attestation: Hex; signature: Hex };
 
-    current = 'switching-arc'; input.onStep?.(current);
-    await ensureWalletChain(ethereum, arcTestnet);
+    let mintHash: Hex;
+    if (input.mintWith) {
+      // Delegate the Arc mint (Circle UCW submits it via contractExecution). The EOA never
+      // touches Arc, so it needs no Arc gas — only source-chain gas for the deposit.
+      current = 'minting'; input.onStep?.(current);
+      mintHash = (await input.mintWith(attestation, apiSignature)) as Hex;
+    } else {
+      current = 'switching-arc'; input.onStep?.(current);
+      await ensureWalletChain(ethereum, arcTestnet);
 
-    current = 'minting'; input.onStep?.(current);
-    const arcWallet = createWalletClient({ account: recipient, chain: arcTestnet, transport: custom(ethereum) });
-    const arcPublic = createPublicClient({ chain: arcTestnet, transport: http() });
-    const mintHash = await arcWallet.writeContract({ address: GATEWAY_MINTER, abi: gatewayMinterAbi, functionName: 'gatewayMint', args: [attestation, apiSignature], chain: arcTestnet, account: recipient });
-    await arcPublic.waitForTransactionReceipt({ hash: mintHash });
+      current = 'minting'; input.onStep?.(current);
+      const arcWallet = createWalletClient({ account: recipient, chain: arcTestnet, transport: custom(ethereum) });
+      const arcPublic = createPublicClient({ chain: arcTestnet, transport: http() });
+      mintHash = await arcWallet.writeContract({ address: GATEWAY_MINTER, abi: gatewayMinterAbi, functionName: 'gatewayMint', args: [attestation, apiSignature], chain: arcTestnet, account: recipient });
+      await arcPublic.waitForTransactionReceipt({ hash: mintHash });
+    }
 
     current = 'done'; input.onStep?.(current);
     return { ok: true, txHash: mintHash };

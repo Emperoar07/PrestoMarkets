@@ -19,6 +19,7 @@ import {
   type PendingMove,
 } from '@/lib/gatewayActions';
 import { useTransactions } from '@/lib/transactions';
+import { mintGatewayViaCircle } from '@/lib/circleActions';
 import { type ConnectedWallet } from '@/lib/walletProvider';
 import type { Address } from 'viem';
 
@@ -140,6 +141,9 @@ export function AddUsdcDrawer(input: {
         source: chainKey as GatewaySourceKey, amountUsdc: amount,
         recipient: depositorAddress as Address,
         arcRecipient: arcRecipient as Address,
+        // Circle wallets submit the Arc mint themselves (they hold Arc gas), so the external EOA
+        // that signed the burn intent never needs Arc gas — it only deposits on the source chain.
+        ...(isCircleWallet ? { mintWith: mintGatewayViaCircle } : {}),
         onStep: (step) => setMove({ key: `complete-${chainKey}`, step }),
       });
       return r.ok

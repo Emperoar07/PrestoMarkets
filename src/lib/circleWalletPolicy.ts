@@ -22,6 +22,14 @@ const allowedMarketSignatures = new Set([
 const DEFAULT_MAX_USDC_TRANSFER_BASE_UNITS = BigInt(5_000_000);
 const ZERO = BigInt(0);
 
+// Circle Gateway Minter (testnet). A Circle UCW may call gatewayMint here to RECEIVE a
+// cross-chain Move-to-Arc into its own Arc balance, so the external EOA that signed the burn
+// intent doesn't need Arc gas to submit the mint. Safe to allow with no param checks: the mint
+// is fully gated by the Gateway API's attestation + operator signature (bound to a specific
+// recipient/value), so whoever submits it can't mint anything that wasn't already attested.
+const GATEWAY_MINTER_ADDRESS = '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B'.toLowerCase();
+const GATEWAY_MINT_SIGNATURE = 'gatewayMint(bytes,bytes)';
+
 async function isFactoryDeployedMarket(marketAddress: Address, config: ReturnType<typeof getArcConfig>): Promise<boolean> {
   try {
     const publicClient = createArcReadClient();
@@ -224,6 +232,11 @@ export async function isAllowedContractExecution(input: CircleContractExecutionP
 
   if (input.abiFunctionSignature === BATCH_SIGNATURE) {
     return validateBatchExecution(input, config);
+  }
+
+  // Receiving a Move-to-Arc: the Circle wallet submits the Gateway-attested mint to itself.
+  if (contract === GATEWAY_MINTER_ADDRESS) {
+    return input.abiFunctionSignature === GATEWAY_MINT_SIGNATURE;
   }
 
   if ((factory && contract === factory) || (eurcFactory && contract === eurcFactory)) {
