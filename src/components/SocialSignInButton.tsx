@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useSignMessage } from 'wagmi';
 import { useAppState } from '@/lib/appState';
 import { broadcastSocialChanged, signInCircleWallet, signInExternalWallet } from '@/lib/socialSignIn';
+import { signCirclePasskeyMessage } from '@/lib/circlePasskey';
 
 export function SocialSignInButton({ onSignedIn }: { onSignedIn?: () => void }) {
   const { connectedWallet } = useAppState();
@@ -17,19 +18,17 @@ export function SocialSignInButton({ onSignedIn }: { onSignedIn?: () => void }) 
       return;
     }
 
-    // Passkey wallets can't do SIWE (smart account, no ECDSA key) and have no Circle userToken
-    // session — social write features need ERC-1271 verification, which isn't wired yet.
-    if (connectedWallet.mode === 'circle-passkey') {
-      setMessage('Commenting from a passkey wallet is coming soon. Use the app wallet (Email/PIN) or an external wallet to post.');
-      return;
-    }
-
     setIsSigning(true);
     setMessage('Preparing sign-in...');
     try {
       if (connectedWallet.mode === 'circle-user-controlled') {
         setMessage('Verifying your Circle wallet…');
         await signInCircleWallet(connectedWallet.address);
+      } else if (connectedWallet.mode === 'circle-passkey') {
+        // Passkey smart account signs the SIWE nonce via WebAuthn; the server verifies it with
+        // ERC-1271/ERC-6492 (no ECDSA key, no Circle userToken session).
+        setMessage('Confirm with your passkey…');
+        await signInExternalWallet(connectedWallet.address, (m) => signCirclePasskeyMessage(m));
       } else {
         setMessage('Sign the message in your wallet.');
         await signInExternalWallet(connectedWallet.address, (m) => signMessageAsync({ message: m }));

@@ -1,6 +1,8 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { getAddress, isAddress, verifyMessage, type Address } from 'viem';
+import { createPublicClient, getAddress, http, isAddress, verifyMessage, type Address } from 'viem';
+import { arcTestnet } from 'viem/chains';
 import { eq } from 'drizzle-orm';
+import { getArcConfig } from './arcConfig';
 import { getDb, hasDatabaseUrl } from './db/client';
 import { siweNonces } from './db/schema';
 
@@ -170,8 +172,30 @@ export async function verifySiweSignature(input: {
 }): Promise<boolean> {
   const normalized = normalizeSocialAddress(input.address);
   if (!normalized) return false;
+
+  // 1. Fast path: plain EOA (ECDSA) — recover + compare, no RPC.
   try {
-    return await verifyMessage({
+    if (await verifyMessage({
+      address: normalized as Address,
+      message: input.message,
+      signature: input.signature as `0x${string}`,
+    })) {
+      return true;
+    }
+  } catch {
+    // fall through to smart-account verification
+  }
+
+  // 2. Smart-account path (ERC-1271 for deployed accounts, ERC-6492 for counterfactual ones) via
+  //    an Arc RPC call — this is how Circle passkey smart accounts prove ownership, since they have
+  //    no ECDSA key to recover from.
+  try {
+    const config = getArcConfig();
+    const client = createPublicClient({
+      chain: arcTestnet,
+      transport: http(config.rpcUrl || 'https://rpc.testnet.arc.network'),
+    });
+    return await client.verifyMessage({
       address: normalized as Address,
       message: input.message,
       signature: input.signature as `0x${string}`,

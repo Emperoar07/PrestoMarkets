@@ -36,6 +36,7 @@ let circlePublicClientRef: PublicClient | null = null;
 let directPublicClientRef: PublicClient | null = null;
 let bundlerClientRef: CirclePasskeyBundlerClient | null = null;
 let addressRef: Address | null = null;
+let smartAccountRef: Awaited<ReturnType<typeof toCircleSmartAccount>> | null = null;
 
 export function isCirclePasskeyConfigured() {
   return !placeholderValues.has(clientKey) && !placeholderValues.has(clientUrl);
@@ -133,8 +134,21 @@ async function initializePasskeyAccount(credential: Awaited<ReturnType<typeof to
 
   addressRef = smartAccount.address;
   bundlerClientRef = bundlerClient as unknown as CirclePasskeyBundlerClient;
+  smartAccountRef = smartAccount;
 
   return smartAccount.address;
+}
+
+/**
+ * Sign a plain message with the passkey smart account (WebAuthn assertion → ERC-1271/ERC-6492
+ * signature). Used to prove wallet ownership for social sign-in. Triggers a biometric prompt, so
+ * only call it on an explicit user action.
+ */
+export async function signCirclePasskeyMessage(message: string): Promise<Hex> {
+  if (!smartAccountRef) {
+    throw new Error('Passkey wallet is not connected. Sign in with passkey again.');
+  }
+  return smartAccountRef.signMessage({ message });
 }
 
 function readStoredCredential(): StoredCredential | null {
@@ -218,4 +232,5 @@ export function clearCirclePasskeyWallet() {
   }
   addressRef = null;
   bundlerClientRef = null;
+  smartAccountRef = null;
 }
