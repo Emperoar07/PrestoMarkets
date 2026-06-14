@@ -52,7 +52,10 @@ export function ShareMarketButton({ marketId, title = 'Presto market', compact =
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
-    const right = Math.max(16, window.innerWidth - rect.right);
+    const popoverWidth = Math.min(320, window.innerWidth - 32);
+    const computedRight = window.innerWidth - rect.right;
+    const maxRight = Math.max(16, window.innerWidth - popoverWidth - 16);
+    const right = Math.min(Math.max(16, computedRight), maxRight);
     const openUp = rect.bottom + 240 > window.innerHeight;
     setPos(openUp ? { bottom: window.innerHeight - rect.top + 8, right } : { top: rect.bottom + 8, right });
     setOpen(true);

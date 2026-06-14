@@ -83,7 +83,10 @@ export function AlertPrefsControl({ marketId }: { marketId: string }) {
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
-    const right = Math.max(16, window.innerWidth - rect.right);
+    const popoverWidth = 280;
+    const computedRight = window.innerWidth - rect.right;
+    const maxRight = Math.max(16, window.innerWidth - popoverWidth - 16);
+    const right = Math.min(Math.max(16, computedRight), maxRight);
     const openUp = rect.bottom + 260 > window.innerHeight;
     setPos(openUp ? { bottom: window.innerHeight - rect.top + 8, right } : { top: rect.bottom + 8, right });
     setOpen(true);
