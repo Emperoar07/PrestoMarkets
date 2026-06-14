@@ -45,11 +45,12 @@ function isPasskeyWallet(): boolean {
 const ARC_CHAIN_HEX = '0x4cef52';
 const MIN_TRADE_USDC = 0.01;
 
-// Batch/one-time approval: when enabled (default), the first buy on a market approves the max so
-// every subsequent buy needs no approve (one signature). Set NEXT_PUBLIC_BATCH_APPROVAL=false to
-// fall back to per-trade exact-amount approvals.
+// Approval amount: by DEFAULT we approve exactly the trade amount, so the on-chain allowance never
+// exceeds what the user is buying (trust-first — a $5 buy approves $5). Opt into a max/unlimited
+// approval with NEXT_PUBLIC_BATCH_APPROVAL=true to let repeat buys on a market skip the approve
+// step (first buy is approve+buy, later buys a single signature).
 const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
-const USE_MAX_APPROVAL = (process.env.NEXT_PUBLIC_BATCH_APPROVAL ?? 'true') !== 'false';
+const USE_MAX_APPROVAL = process.env.NEXT_PUBLIC_BATCH_APPROVAL === 'true';
 function approvalAmount(exactAmount: bigint): bigint {
   return USE_MAX_APPROVAL ? MAX_UINT256 : exactAmount;
 }
@@ -433,8 +434,8 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
         address: collateralToken,
         abi: erc20Abi,
         functionName: 'approve',
-        // Max approval (flag-gated) so every later buy on this market skips the approve step —
-        // first buy is approve+buy, repeat buys are a single signature. Falls back to exact amount.
+        // Exact-amount by default so the allowance matches the stated trade; max approval is opt-in
+        // (NEXT_PUBLIC_BATCH_APPROVAL=true) to let repeat buys skip the approve step.
         args: [marketAddress, approvalAmount(amount)],
       });
       await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash }));

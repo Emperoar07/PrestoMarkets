@@ -562,8 +562,11 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: s
     // string must stay in sync with BATCH_SIGNATURE in circleWalletPolicy.ts.
     const legs: Array<[string, string, string]> = [];
     if (funding.allowance < amountValue) {
-      // Max approval (flag-gated) so future buys on this market skip the approve leg entirely.
-      const approveValue = (process.env.NEXT_PUBLIC_BATCH_APPROVAL ?? 'true') !== 'false'
+      // Exact-amount approval by default so the allowance never exceeds the stated buy (trust-first).
+      // The approve + buy are already batched into ONE signature here, so exact approval costs the
+      // user nothing extra. Opt into max approval (skips the approve leg on future buys) with
+      // NEXT_PUBLIC_BATCH_APPROVAL=true.
+      const approveValue = process.env.NEXT_PUBLIC_BATCH_APPROVAL === 'true'
         ? BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')
         : amountValue;
       legs.push([
