@@ -1,10 +1,13 @@
 name: Agent tick
 
 # Pings the Presto agent cron endpoints on a 2-hour cadence so the agent
-# gets more chances per day to surface a market-worthy trend. Vercel's own
-# daily cron stays as a fallback heartbeat. The signal-threshold gate
-# inside the pipeline decides whether each tick actually creates a market,
-# so most ticks legitimately skip (which is the intended behavior).
+# gets more chances per day to surface a market-worthy trend. This is now the
+# SOLE scheduler for these endpoints — the redundant Vercel daily crons were
+# removed (they only duplicated market-factory + auto-resolve at a lower
+# cadence) to stop triple-triggering the same heavy work (and wasting RPC
+# quota). Run manually any time via workflow_dispatch. The signal-threshold
+# gate inside the pipeline decides whether each tick actually creates a
+# market, so most ticks legitimately skip (which is the intended behavior).
 #
 # The agent endpoints do heavy, variable work (LLM trend research, on-chain
 # seeding, image fetches) and can exceed the serverless gateway timeout while
