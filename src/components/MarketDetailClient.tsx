@@ -37,6 +37,7 @@ import { buildResolutionTrustState } from '@/lib/resolutionTrust';
 import { disputeLiveResolution } from '@/lib/liveActions';
 import { collateralUnit } from '@/lib/arcConfig';
 import { identifyAsset } from '@/lib/priceResolution';
+import { detectCountryFlagUrl } from '@/lib/marketSubjectImage';
 import Link from 'next/link';
 import { ChevronDown, Loader2, AlertCircle } from 'lucide-react';
 
@@ -124,6 +125,23 @@ const renderEvidenceBlock = (uri?: string) => {
     </a>
   );
 };
+
+// Team crest for the sports match header: explicit per-outcome image, else the derived country
+// flag, else a letter monogram. Rounded 56px tile to match the fixture header design.
+function TeamFlag({ name, image }: { name?: string; image?: string }) {
+  const src = image || (name ? detectCountryFlagUrl(name) : undefined);
+  const code = (name ?? '?').replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase() || '?';
+  return (
+    <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-[#070e17] shadow-lg shadow-black/30">
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt="" width={56} height={56} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+      ) : (
+        <span className="text-sm font-black text-cyan/70">{code}</span>
+      )}
+    </span>
+  );
+}
 
 function formatKickoffCountdown(kickoffMs: number, nowMs: number): string {
   const diff = kickoffMs - nowMs;
@@ -345,13 +363,21 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   // shows the actual teams, not "Home Team"/"Away Team", even before a score loads). Prefer the
   // outcome labels (they're the team names for fixtures); fall back to parsing the "X vs Y" title.
   const GENERIC_OUTCOME = /^(yes|no|draw|home|away|over|under|tie)$/i;
-  const teamLabels = (market?.outcomes ?? []).map((o) => o.label).filter((l) => l && !GENERIC_OUTCOME.test(l));
-  let homeTeamName: string | undefined = teamLabels[0];
-  let awayTeamName: string | undefined = teamLabels[teamLabels.length - 1];
+  const teamEntries = (market?.outcomes ?? [])
+    .map((o, index) => ({ label: o.label, image: o.image, index }))
+    .filter((o) => o.label && !GENERIC_OUTCOME.test(o.label));
+  const homeEntry = teamEntries[0];
+  const awayEntry = teamEntries[teamEntries.length - 1];
+  let homeTeamName: string | undefined = homeEntry?.label;
+  let awayTeamName: string | undefined = awayEntry?.label;
   if (!homeTeamName || !awayTeamName || homeTeamName === awayTeamName) {
     const vs = market?.title?.match(/^(.+?)\s+vs\.?\s+(.+?)(?:\?|$)/i);
     if (vs) { homeTeamName = vs[1].trim(); awayTeamName = vs[2].trim(); }
   }
+  const homeImage = homeEntry?.image;
+  const awayImage = awayEntry?.image;
+  const homeColor = getOutcomeColor(homeEntry?.index ?? 0);
+  const awayColor = getOutcomeColor(awayEntry?.index ?? 1);
   const matchDateYmd = kickoffMs ? new Date(kickoffMs).toISOString().slice(0, 10).replace(/-/g, '') : null;
 
   const [liveData, setLiveData] = useState<{
@@ -651,90 +677,70 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             })()}
 
             {kickoffMs !== null && (
-              <div className="mt-6 border-t border-white/[0.06] pt-5">
-                {isMatchLive ? (
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="relative flex h-2.5 w-2.5">
+              <div className="mt-6 border-t border-white/[0.06] pt-6">
+                {/* Status pill: Live / Full Time / Upcoming / Awaiting settlement */}
+                <div className="flex items-center justify-center">
+                  {isMatchLive ? (
+                    <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-red-400">
+                      <span className="relative flex h-2 w-2">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span>
                       </span>
-                      <span className="text-xs font-black uppercase tracking-wider text-red-400">Match is Live</span>
-                      {liveData?.time && (
-                        <span className="rounded bg-white/10 px-2 py-0.5 text-[11px] font-mono font-bold text-white/85">
-                          {liveData.time}
+                      Live
+                    </span>
+                  ) : matchFinished && liveData ? (
+                    <span className="text-[11px] font-black uppercase tracking-wider text-mint">Full Time</span>
+                  ) : now < kickoffMs ? (
+                    <span className="text-[11px] font-black uppercase tracking-wider text-cyan">
+                      Upcoming · starts in {formatKickoffCountdown(kickoffMs, now)}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-black uppercase tracking-wider text-[#8fa0b4]">Awaiting settlement</span>
+                  )}
+                </div>
+
+                {/* Two-team fixture header: flag + name on each side, score or kickoff time in the middle */}
+                <div className="mt-4 flex items-start justify-center gap-5 md:gap-12">
+                  <div className="flex w-[34%] max-w-[180px] flex-col items-center text-center">
+                    <TeamFlag name={homeTeamName} image={homeImage} />
+                    <span className="mt-2 max-w-full truncate text-sm font-black md:text-base" style={{ color: homeColor }}>
+                      {liveData?.homeTeam || homeTeamName || 'Home'}
+                    </span>
+                  </div>
+
+                  <div className="flex shrink-0 flex-col items-center justify-center pt-1 text-center">
+                    {isMatchLive || (matchFinished && liveData) ? (
+                      <>
+                        <div className="flex items-center gap-3">
+                          <span className="text-3xl font-black tabular-nums text-white md:text-4xl">{liveData?.homeScore ?? '0'}</span>
+                          <span className="text-xl font-bold text-muted">-</span>
+                          <span className="text-3xl font-black tabular-nums text-white md:text-4xl">{liveData?.awayScore ?? '0'}</span>
+                        </div>
+                        <span className="mt-1.5 text-[11px] font-bold text-[#8fa0b4]">
+                          {[liveData?.status || liveData?.progress, liveData?.time].filter(Boolean).join(' · ') || (matchFinished ? 'FT' : 'Live')}
                         </span>
-                      )}
-                    </div>
-                    
-                    <div className="mt-4 flex items-center justify-between gap-6">
-                      <div className="flex flex-1 flex-col items-center text-center">
-                        <span className="text-xs font-bold text-muted uppercase">Home</span>
-                        <span className="mt-1.5 text-base md:text-lg font-black text-white">{liveData?.homeTeam || homeTeamName || 'Home'}</span>
-                      </div>
-
-                      <div className="flex items-center gap-4 px-4 py-1.5 bg-white/[0.04] rounded-xl border border-white/[0.05]">
-                        <span className="text-3xl font-black text-white">{liveData?.homeScore ?? '0'}</span>
-                        <span className="text-xl font-bold text-muted">:</span>
-                        <span className="text-3xl font-black text-white">{liveData?.awayScore ?? '0'}</span>
-                      </div>
-
-                      <div className="flex flex-1 flex-col items-center text-center">
-                        <span className="text-xs font-bold text-muted uppercase">Away</span>
-                        <span className="mt-1.5 text-base md:text-lg font-black text-white">{liveData?.awayTeam || awayTeamName || 'Away'}</span>
-                      </div>
-                    </div>
-                    
-                    {(liveData?.status || liveData?.progress) && (
-                      <div className="mt-4 text-center text-xs font-bold text-[#8fa0b4]">
-                        Status: <span className="text-white">{liveData.status || liveData.progress}</span>
-                      </div>
+                      </>
+                    ) : now < kickoffMs ? (
+                      <>
+                        <span className="text-2xl font-black text-white md:text-3xl">
+                          {new Date(kickoffMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                        <span className="mt-1 text-[11px] font-bold text-[#8fa0b4]">
+                          {new Date(kickoffMs).toLocaleDateString([], { month: 'long', day: 'numeric' })}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-base font-black text-muted">vs</span>
                     )}
                   </div>
-                ) : matchFinished && liveData ? (
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="inline-block h-2.5 w-2.5 rounded-full bg-mint"></span>
-                      <span className="text-xs font-black uppercase tracking-wider text-mint">Full Time</span>
-                    </div>
-                    <div className="mt-4 flex items-center justify-between gap-6">
-                      <div className="flex flex-1 flex-col items-center text-center">
-                        <span className="text-xs font-bold text-muted uppercase">Home</span>
-                        <span className="mt-1.5 text-base md:text-lg font-black text-white">{liveData.homeTeam || homeTeamName || 'Home'}</span>
-                      </div>
-                      <div className="flex items-center gap-4 px-4 py-1.5 bg-white/[0.04] rounded-xl border border-white/[0.05]">
-                        <span className="text-3xl font-black text-white">{liveData.homeScore ?? '0'}</span>
-                        <span className="text-xl font-bold text-muted">:</span>
-                        <span className="text-3xl font-black text-white">{liveData.awayScore ?? '0'}</span>
-                      </div>
-                      <div className="flex flex-1 flex-col items-center text-center">
-                        <span className="text-xs font-bold text-muted uppercase">Away</span>
-                        <span className="mt-1.5 text-base md:text-lg font-black text-white">{liveData.awayTeam || awayTeamName || 'Away'}</span>
-                      </div>
-                    </div>
-                    <p className="mt-4 text-center text-xs font-bold text-[#8fa0b4]">
-                      Final result — settlement follows within about an hour.
-                    </p>
+
+                  <div className="flex w-[34%] max-w-[180px] flex-col items-center text-center">
+                    <TeamFlag name={awayTeamName} image={awayImage} />
+                    <span className="mt-2 max-w-full truncate text-sm font-black md:text-base" style={{ color: awayColor }}>
+                      {liveData?.awayTeam || awayTeamName || 'Away'}
+                    </span>
                   </div>
-                ) : now < kickoffMs ? (
-                  <div className="flex items-center justify-between flex-wrap gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <span className="inline-block h-2 w-2 rounded-full bg-cyan"></span>
-                      <span className="text-xs font-black uppercase tracking-wider text-cyan">Upcoming Match</span>
-                      <span className="text-xs font-black uppercase tracking-wider text-slate-400">
-                        Starts in {formatKickoffCountdown(kickoffMs, now)}
-                      </span>
-                    </div>
-                    <div className="text-xs font-semibold text-muted">
-                      Kickoff: <span className="text-white font-extrabold">{new Date(kickoffMs).toLocaleString()}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="inline-block h-2 w-2 rounded-full bg-mint"></span>
-                    <span className="text-xs font-bold text-muted">Match completed — awaiting settlement.</span>
-                  </div>
-                )}
+                </div>
               </div>
             )}
 
