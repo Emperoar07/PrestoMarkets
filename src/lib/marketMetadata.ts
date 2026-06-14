@@ -33,6 +33,8 @@ export type MarketMetadata = AgentMarketMetadata & {
   imageURI?: string;
   image?: string;
   outcomeOptions?: string[];
+  /** Optional image per outcome, aligned to outcomeOptions (e.g. both team flags for a fixture). */
+  outcomeImages?: string[];
   rules: string;
   sourceOfTruth: string;
   resolutionMode: ResolutionMode;
@@ -58,6 +60,8 @@ export type BuildMarketMetadataInput = {
   resolutionMode: ResolutionMode | string;
   imageURI?: string;
   outcomeOptions?: string[];
+  /** Optional image per outcome, aligned to outcomeOptions. Empty/blank entries are allowed. */
+  outcomeImages?: (string | undefined)[];
   collateral?: 'USDC' | 'EURC';
   agent?: AgentMarketMetadata;
 };
@@ -168,6 +172,13 @@ export function validateMetadataInputs(input: BuildMarketMetadataInput): void {
       throw new Error('CANCEL is reserved for canceling settlement and cannot be an outcome option.');
     }
   }
+  if (input.outcomeImages) {
+    for (const img of input.outcomeImages) {
+      if (img && img.trim() && !isSafeImage(img)) {
+        throw new Error('Each outcome image must be an http/https URL or a data:image/{png,jpeg,gif,webp} payload under the size budget.');
+      }
+    }
+  }
 }
 
 export function buildMarketMetadata(input: BuildMarketMetadataInput): MarketMetadata {
@@ -176,6 +187,10 @@ export function buildMarketMetadata(input: BuildMarketMetadataInput): MarketMeta
     ?.map((option) => option.trim())
     .filter(Boolean)
     .map((option) => trunc(option, MAX.outcomeOption) ?? option);
+  // Per-outcome images, aligned to outcomeOptions; blank ('') where an outcome has no image. Only
+  // emitted when at least one outcome actually carries an image.
+  const sanitizedOutcomeImages = input.outcomeImages?.map((img) => (img && isSafeImage(img) ? img.trim() : ''));
+  const outcomeImages = sanitizedOutcomeImages?.some(Boolean) ? sanitizedOutcomeImages : undefined;
   const categories = normalizeCategories(input);
 
   return {
@@ -187,6 +202,7 @@ export function buildMarketMetadata(input: BuildMarketMetadataInput): MarketMeta
     categories,
     imageURI: input.imageURI,
     outcomeOptions,
+    outcomeImages,
     rules: trunc(input.rules, MAX.rules) ?? input.rules,
     sourceOfTruth: trunc(input.sourceOfTruth, MAX.sourceOfTruth) ?? input.sourceOfTruth,
     resolutionMode: input.resolutionMode as ResolutionMode,
@@ -252,6 +268,14 @@ export function parseMarketMetadata(metadataURI: string): Partial<MarketMetadata
       .map((option) => option.trim())
       .filter(Boolean)
       .slice(0, 12);
+  }
+  // Per-outcome images — drop any entry that fails the same image safety check (permissionless
+  // factory: anyone can write metadata). Keep '' placeholders so indices stay aligned to outcomes.
+  if (parsed.outcomeImages) {
+    parsed.outcomeImages = parsed.outcomeImages
+      .map((img) => (typeof img === 'string' && isSafeImage(img) ? img : ''))
+      .slice(0, 12);
+    if (!parsed.outcomeImages.some(Boolean)) parsed.outcomeImages = undefined;
   }
   return parsed;
 }

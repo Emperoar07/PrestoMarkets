@@ -254,6 +254,7 @@ async function readMarket(
       label,
       odds: odds[outcomeIndex] ?? 0,
       liquidity: formatOnchainUsd(shares[outcomeIndex] ?? BigInt(0)),
+      image: metadata?.outcomeImages?.[outcomeIndex] || undefined,
     })) as AppMarket['outcomes'],
     activity: [
       ...labels.slice(0, 4).map((label, outcomeIndex) => ({

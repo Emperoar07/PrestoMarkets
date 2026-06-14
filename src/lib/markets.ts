@@ -8,6 +8,8 @@ export type MarketOutcome = {
   label: string;
   odds: number;
   liquidity: string;
+  /** Optional per-outcome image (team flag/crest, candidate photo…). From metadata.outcomeImages. */
+  image?: string;
 };
 
 export type MarketActivity = {

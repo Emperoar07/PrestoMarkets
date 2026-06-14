@@ -40,9 +40,10 @@ function getTeamCode(team: string): string {
     .toUpperCase() || team.slice(0, 3).toUpperCase();
 }
 
-function TeamBadge({ team, fallbackImage }: { team: string; fallbackImage?: string }) {
-  const flag = detectCountryFlagUrl(team);
-  const src = flag || fallbackImage;
+function TeamBadge({ team, image, fallbackImage }: { team: string; image?: string; fallbackImage?: string }) {
+  // Prefer an explicit per-outcome image (user-uploaded or agent-resolved crest), then the derived
+  // country flag, then any provided fallback, then the letter code.
+  const src = image || detectCountryFlagUrl(team) || fallbackImage;
   if (src) {
     return (
       <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[7px] border border-white/[0.05] bg-[#070e17]">
@@ -173,7 +174,7 @@ function MarketCardComponent({
           ].map((team) => (
             <div key={team.label} className="flex items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-2">
-                <TeamBadge team={team.label} fallbackImage={team.image} />
+                <TeamBadge team={team.label} image={team.image} />
                 <span className="truncate text-[12.5px] font-extrabold text-[#e5edf8]">{team.label}</span>
               </span>
               <span className="shrink-0 text-[11.5px] font-black text-white">{Math.round(team.odds)}%</span>
