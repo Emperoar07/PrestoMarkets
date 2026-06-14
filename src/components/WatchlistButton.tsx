@@ -48,13 +48,13 @@ export function WatchlistButton({ marketId }: { marketId: string }) {
       type="button"
       onClick={toggle}
       title={watching ? 'Remove from watchlist' : 'Add to watchlist'}
-      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] border transition-colors ${
+      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border transition-colors ${
         watching
-          ? 'border-cyan/30 bg-cyan/10 text-cyan'
-          : 'border-white/[0.06] bg-white/[0.02] text-[#475569] hover:text-cyan'
+          ? 'border-cyan/30 bg-cyan/10 text-cyan hover:bg-cyan/15'
+          : 'border-white/[0.08] bg-white/[0.02] text-[#8fa0b4] hover:border-cyan/30 hover:bg-cyan/5 hover:text-cyan'
       }`}
     >
-      <Star className="h-3.5 w-3.5" fill={watching ? 'currentColor' : 'none'} />
+      <Star className="h-4 w-4" fill={watching ? 'currentColor' : 'none'} />
     </button>
   );
 }
