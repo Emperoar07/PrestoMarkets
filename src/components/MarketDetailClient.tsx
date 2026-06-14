@@ -725,9 +725,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 ) : now < kickoffMs ? (
                   <div className="flex items-center justify-between flex-wrap gap-3">
                     <div className="flex items-center gap-2.5">
-                      <span className="inline-block h-2.5 w-2.5 rounded-full bg-yellow-400 animate-pulse"></span>
-                      <span className="text-xs font-black uppercase tracking-wider text-yellow-200">Upcoming Match</span>
-                      <span className="rounded-full bg-amber-400/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-300">
+                      <span className="inline-block h-2 w-2 rounded-full bg-cyan"></span>
+                      <span className="text-xs font-black uppercase tracking-wider text-cyan">Upcoming Match</span>
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-400">
                         Starts in {formatKickoffCountdown(kickoffMs, now)}
                       </span>
                     </div>
