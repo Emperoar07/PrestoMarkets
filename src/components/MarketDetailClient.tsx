@@ -35,6 +35,7 @@ import { buildFixedShareQuote } from '@/lib/marketUtils';
 import { buildResolutionTrustState } from '@/lib/resolutionTrust';
 import { disputeLiveResolution } from '@/lib/liveActions';
 import { collateralUnit } from '@/lib/arcConfig';
+import { identifyAsset } from '@/lib/priceResolution';
 import Link from 'next/link';
 import { ChevronDown, Loader2, AlertCircle } from 'lucide-react';
 
@@ -167,6 +168,71 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   // Currency unit follows the market's collateral (€ for EURC markets, $ for USDC).
   const collateralSymbol = market?.collateralSymbol ?? 'USDC';
   const unit = collateralUnit(collateralSymbol);
+
+  const [livePrice, setLivePrice] = useState<number | null>(null);
+  const [isFetchingPrice, setIsFetchingPrice] = useState(false);
+
+  // Identify if this is a crypto asset market
+  const cryptoAsset = market ? identifyAsset(market) : null;
+
+  useEffect(() => {
+    if (!cryptoAsset) return;
+
+    let active = true;
+    let timer: NodeJS.Timeout | null = null;
+
+    async function fetchPrice() {
+      if (!cryptoAsset || !active) return;
+      setIsFetchingPrice(true);
+      try {
+        const res = await fetch(`/api/crypto/price?assetId=${cryptoAsset.id}`);
+        if (!res.ok) throw new Error('Failed to fetch price');
+        const data = await res.json();
+        if (active && typeof data.price === 'number') {
+          setLivePrice(data.price);
+        }
+      } catch (err) {
+        console.error('Failed to fetch live crypto price:', err);
+      } finally {
+        if (active) {
+          setIsFetchingPrice(false);
+        }
+      }
+    }
+
+    // Initial fetch
+    fetchPrice();
+
+    // Setup polling every 15 seconds when active
+    const setupInterval = () => {
+      if (timer) clearInterval(timer);
+      timer = setInterval(fetchPrice, 15000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchPrice();
+        setupInterval();
+      } else {
+        if (timer) {
+          clearInterval(timer);
+          timer = null;
+        }
+      }
+    };
+
+    if (document.visibilityState === 'visible') {
+      setupInterval();
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      active = false;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (timer) clearInterval(timer);
+    };
+  }, [cryptoAsset?.id]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -557,9 +623,36 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               </div>
             </div>
 
-            {market.description ? (
-              <p className="mt-7 max-w-[900px] text-[16px] leading-8 text-[#94a3b8]">{market.description}</p>
-            ) : null}
+            {cryptoAsset && (
+              <div className="mt-6 flex items-center gap-3.5 rounded-2xl border border-white/[0.06] bg-white/[0.03] backdrop-blur-md px-5 py-4 max-w-[340px] shadow-lg shadow-black/10">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-mint opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-mint"></span>
+                </span>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-[#8fa0b4]">
+                    Current {cryptoAsset.symbol} Price
+                  </span>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-black text-white leading-none">
+                      {livePrice !== null
+                        ? `$${livePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : 'Loading...'}
+                    </span>
+                    <span className="text-[10px] font-bold text-mint uppercase tracking-wider">USD (Live)</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {(() => {
+              const cleanedDescription = market.description
+                ? market.description.replace(/current\s+price:\s*\$?[0-9a-z_$-]+[a-z0-9_$-]*[.,;:\s]*/gi, '').trim()
+                : '';
+              return cleanedDescription ? (
+                <p className="mt-7 max-w-[900px] text-[16px] leading-8 text-[#94a3b8]">{cleanedDescription}</p>
+              ) : null;
+            })()}
 
             {kickoffMs !== null && (
               <div className="mt-6 border-t border-white/[0.06] pt-5">

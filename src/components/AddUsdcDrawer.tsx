@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Clock, ExternalLink, X } from 'lucide-react';
+import { Clock, ExternalLink, Pencil, X } from 'lucide-react';
 import { fetchArcStableBalances, fetchArcEurcBalance, readCachedUsdcBalance } from '@/lib/walletBalance';
 import { fetchAvailableUsdc, formatAvailableUsdc, type AvailableUsdc } from '@/lib/unifiedBalance';
 import {
@@ -288,6 +288,9 @@ export function AddUsdcDrawer(input: {
                     </svg>
                     {MOVE_STEP_LABEL[move.step]}
                   </span>
+                ) : s.amount < MIN_COMPLETE_USDC ? (
+                  // Below the Gateway fee + margin: can't be moved, so show why instead of a dead button.
+                  <span className="rounded-md border border-white/[0.06] px-2 py-1 text-[8px] font-bold text-[#64748b]">Below ~{MIN_COMPLETE_USDC} fee</span>
                 ) : (
                   <button
                     type="button"

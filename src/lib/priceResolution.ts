@@ -103,7 +103,7 @@ export function resolveBinaryTargetOutcome(
   return labels.find((l) => l.trim().toUpperCase() === winner) ?? winner;
 }
 
-async function fetchAssetUsdPrice(assetId: string): Promise<number | null> {
+export async function fetchAssetUsdPrice(assetId: string): Promise<number | null> {
   const apiKey = process.env.COINGECKO_API_KEY;
   const headers: HeadersInit = apiKey ? { 'x-cg-demo-api-key': apiKey } : {};
   const controller = new AbortController();
