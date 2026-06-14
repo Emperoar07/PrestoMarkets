@@ -1070,9 +1070,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                       ? `Trading closed (match begins in ${Math.max(0, Math.ceil(((kickoffMs ?? 0) - now) / 1000))}s)`
                       : 'Trading closed (match is live)'}
                   </p>
-                  <p className="mt-1 text-xs text-[#8fa0b4]">
-                    Trading automatically locks 1 minute before kickoff to keep prediction pools fair.
-                  </p>
                 </div>
               ) : (
                 <button
