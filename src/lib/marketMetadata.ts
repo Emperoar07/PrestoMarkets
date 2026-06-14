@@ -88,7 +88,12 @@ const MAX = { title: 200, description: 1000, rules: 2000, sourceOfTruth: 500, ag
 const MIN = { title: 8, description: 12, rules: 20, sourceOfTruth: 10 };
 
 const SAFE_URL_SCHEMES = new Set(['http:', 'https:']);
-const SAFE_IMAGE_DATA_PREFIXES = ['data:image/png', 'data:image/jpeg', 'data:image/jpg', 'data:image/gif', 'data:image/webp'];
+// data:image/svg+xml is allowed because the agent's branded fallback image is an SVG data URI,
+// and every market image in the app is rendered via <img src> — where browsers run SVG in
+// "secure static mode" (no scripts, no external fetches), so there's no XSS path. Without this,
+// parseMarketMetadata dropped every branded fallback and the market showed no image until the
+// backfill cron patched it.
+const SAFE_IMAGE_DATA_PREFIXES = ['data:image/png', 'data:image/jpeg', 'data:image/jpg', 'data:image/gif', 'data:image/webp', 'data:image/svg+xml'];
 
 function trunc(s: string | undefined, max: number): string | undefined {
   return s && s.length > max ? s.slice(0, max) : s;
