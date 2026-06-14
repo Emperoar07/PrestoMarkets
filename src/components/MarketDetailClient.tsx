@@ -298,34 +298,32 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     return (
       <>
         <SiteHeader />
-        <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-28 md:px-7 md:pt-28 flex flex-col justify-center items-center min-h-[65vh]">
-          <div className="border border-white/[0.06] bg-[#0d1626]/20 backdrop-blur-md rounded-2xl max-w-md w-full p-8 text-center flex flex-col items-center justify-center shadow-2xl shadow-black/40">
-            {stillLoading ? (
-              <>
-                <div className="relative flex items-center justify-center w-16 h-16 mb-4">
-                  <div className="absolute inset-0 rounded-full bg-cyan/10 blur-xl animate-pulse" />
-                  <Loader2 className="h-9 w-9 animate-spin text-cyan relative z-10" />
-                </div>
-                <h1 className="text-2xl font-black text-white tracking-tight">Loading market…</h1>
-                <p className="mt-2 text-sm text-[#8fa0b4]">Fetching this market from Arc.</p>
-              </>
-            ) : (
-              <>
-                <div className="relative flex items-center justify-center w-16 h-16 mb-4">
-                  <div className="absolute inset-0 rounded-full bg-amber-500/10 blur-xl" />
-                  <AlertCircle className="h-9 w-9 text-amber-400 relative z-10" />
-                </div>
-                <h1 className="text-2xl font-black text-white tracking-tight">Market not found</h1>
-                <p className="mt-2 text-sm text-[#8fa0b4]">This market was not returned by the deployed Arc factory.</p>
-                <Link
-                  href="/markets"
-                  className="mt-6 inline-flex items-center justify-center rounded-lg bg-cyan px-4 py-2 text-xs font-black uppercase tracking-wider text-[#07111f] transition-all duration-150 hover:bg-cyan-300 active:scale-95 shadow-md shadow-cyan/5"
-                >
-                  Back to Explorer
-                </Link>
-              </>
-            )}
-          </div>
+        <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-28 md:px-7 md:pt-28 flex flex-col justify-center items-center min-h-[75vh]">
+          {stillLoading ? (
+            <div className="flex flex-col items-center justify-center text-center">
+              <div className="relative flex items-center justify-center w-16 h-16 mb-4">
+                <div className="absolute inset-0 rounded-full bg-cyan/10 blur-xl animate-pulse" />
+                <Loader2 className="h-9 w-9 animate-spin text-cyan relative z-10" />
+              </div>
+              <h1 className="text-2xl font-black text-white tracking-tight">Loading market…</h1>
+              <p className="mt-2 text-sm text-[#8fa0b4]">Fetching this market from Arc.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center text-center">
+              <div className="relative flex items-center justify-center w-16 h-16 mb-4">
+                <div className="absolute inset-0 rounded-full bg-amber-500/10 blur-xl" />
+                <AlertCircle className="h-9 w-9 text-amber-400 relative z-10" />
+              </div>
+              <h1 className="text-2xl font-black text-white tracking-tight">Market not found</h1>
+              <p className="mt-2 text-sm text-[#8fa0b4]">This market was not returned by the deployed Arc factory.</p>
+              <Link
+                href="/markets"
+                className="mt-6 inline-flex items-center justify-center rounded-lg bg-cyan px-4 py-2 text-xs font-black uppercase tracking-wider text-[#07111f] transition-all duration-150 hover:bg-cyan-300 active:scale-95 shadow-md shadow-cyan/5"
+              >
+                Back to Explorer
+              </Link>
+            </div>
+          )}
         </main>
         <SiteFooter />
       </>
