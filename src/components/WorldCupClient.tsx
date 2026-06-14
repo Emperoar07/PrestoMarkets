@@ -94,7 +94,7 @@ export function WorldCupClient() {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-[1100px] px-4 pb-16 pt-28 md:px-7 md:pt-28">
+      <main className="mx-auto max-w-[1100px] px-4 pb-16 pt-36 md:px-7 md:pt-36">
 
         {/* ── Hero (No Wrapper, Elegant Flat Pitch & Trophy SVG) ── */}
         <section className="relative overflow-visible pb-12 border-b border-white/[0.06]">
@@ -223,7 +223,7 @@ export function WorldCupClient() {
             </span>
             <h1 className="mt-4 text-[clamp(40px,7vw,72px)] font-black leading-none tracking-tight text-white">World Cup</h1>
             <p className="mt-4 max-w-[500px] text-sm font-bold text-[#8fa0b4] leading-relaxed">
-              Live prediction pools on Arc. Every fixture gets its own agent-created 3-way prediction market backed by USDC.
+              Live prediction pools on Arc. Every fixture gets its own 3-way prediction market backed by USDC/EURC.
             </p>
           </div>
         </section>

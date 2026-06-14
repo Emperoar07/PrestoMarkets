@@ -24,6 +24,7 @@ const MarketActivityTimeline = dynamic(
   { ssr: false, loading: () => <div className="mt-8 h-48 rounded-[14px] bg-white/[0.02]" /> },
 );
 import { ShareMarketButton } from './EmbedSnippetButton';
+import { WatchlistButton } from './WatchlistButton';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
 import type { StableSymbol } from '@/lib/walletBalance';
 import { formatUsd, useAppState } from '@/lib/appState';
@@ -505,6 +506,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               ) : null}
               <div className="ml-auto flex items-center gap-2 shrink-0">
                 {connectedWallet ? <AlertPrefsControl marketId={market.id} /> : null}
+                <WatchlistButton marketId={market.id} />
                 <ShareMarketButton marketId={market.id} title={market.title} />
               </div>
             </div>
