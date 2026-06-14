@@ -74,28 +74,28 @@ export function WorldCupFixturesPanel({ markets, onQuickBuy }: {
   let lastDay = '';
 
   return (
-    <div className="sm:col-span-2 lg:col-span-3 xl:col-span-3 overflow-hidden rounded-[16px] border border-cyan/15 bg-[radial-gradient(620px_220px_at_85%_-40px,rgba(37,192,244,0.14),transparent_60%),linear-gradient(160deg,#0d1726_0%,#0b1322_60%,#0d2030_100%)]">
+    <div className="sm:col-span-2 lg:col-span-3 xl:col-span-3 h-[156px] flex flex-col justify-between overflow-hidden rounded-[10px] border border-white/[0.05] bg-[#0c121d] hover:border-white/[0.09] hover:bg-[#101929] transition-all">
       {/* Header ribbon */}
-      <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
-        <Link href="/world-cup" className="flex min-w-0 items-center gap-2.5 transition-opacity hover:opacity-85">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-cyan/15 text-cyan">
-            <Trophy className="h-4 w-4" />
+      <div className="flex items-center justify-between gap-2.5 border-b border-white/[0.04] bg-white/[0.01] px-3.5 py-2 shrink-0">
+        <Link href="/world-cup" className="flex min-w-0 items-center gap-2 transition-opacity hover:opacity-85">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-cyan/15 text-cyan">
+            <Trophy className="h-3.5 w-3.5" />
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-black text-white">FIFA World Cup 2026</p>
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan/80">Fixtures · agent markets</p>
+            <p className="truncate text-xs font-black text-white">FIFA World Cup 2026</p>
+            <p className="text-[9px] font-black uppercase tracking-[0.12em] text-cyan/70">Fixtures · agent markets</p>
           </div>
         </Link>
         <Link
           href="/world-cup"
-          className="shrink-0 rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-200 transition-colors hover:bg-amber-300/20"
+          className="shrink-0 rounded-full border border-cyan/25 bg-cyan/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-cyan transition-colors hover:bg-cyan/20"
         >
           View all →
         </Link>
       </div>
 
       {/* Fixture rows */}
-      <div className="scrollbar-hide max-h-[268px] divide-y divide-white/[0.05] overflow-y-auto">
+      <div className="scrollbar-hide flex-1 divide-y divide-white/[0.04] overflow-y-auto">
         {fixtures.map((fixture) => {
           const { market, home, away, kickoffMs } = fixture;
           const isLive = now >= kickoffMs && now < kickoffMs + LIVE_WINDOW_MS;
@@ -109,14 +109,14 @@ export function WorldCupFixturesPanel({ markets, onQuickBuy }: {
           return (
             <div key={market.id}>
               {showDay ? (
-                <p className="bg-white/[0.025] px-4 py-1 text-[9.5px] font-black uppercase tracking-[0.18em] text-[#5b7290]">{day}</p>
+                <p className="bg-white/[0.015] px-3.5 py-0.5 text-[8.5px] font-black uppercase tracking-[0.15em] text-[#5b7290]">{day}</p>
               ) : null}
-              <div className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.02]">
+              <div className="flex items-center gap-3 px-3.5 py-2 transition-colors hover:bg-white/[0.02]">
                 <Link href={`/markets/${market.id}`} className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-extrabold text-white">
+                  <p className="truncate text-[12.5px] font-extrabold text-white">
                     {home} <span className="font-bold text-[#516179]">vs</span> {away}
                   </p>
-                  <p className="mt-0.5 text-[11px] font-bold text-[#64748b]">
+                  <p className="mt-0.5 text-[10px] font-bold text-[#64748b]">
                     {isLive ? 'In play' : isLocked ? 'Locked — kickoff imminent' : (
                       <>
                         {new Date(kickoffMs).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
@@ -129,7 +129,7 @@ export function WorldCupFixturesPanel({ markets, onQuickBuy }: {
                 {isLive ? (
                   <Link
                     href={`/markets/${market.id}`}
-                    className="flex shrink-0 items-center gap-1.5 rounded-full border border-red-400/30 bg-red-400/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-300"
+                    className="flex shrink-0 items-center gap-1 rounded-full border border-red-400/30 bg-red-400/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-red-300"
                   >
                     <span className="relative flex h-1.5 w-1.5">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
@@ -138,7 +138,7 @@ export function WorldCupFixturesPanel({ markets, onQuickBuy }: {
                     Live
                   </Link>
                 ) : isLocked ? (
-                  <span className="shrink-0 rounded-full border border-yellow-400/25 bg-yellow-400/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-yellow-200">
+                  <span className="shrink-0 rounded-full border border-yellow-400/25 bg-yellow-400/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-yellow-200">
                     Locked
                   </span>
                 ) : (
@@ -146,14 +146,14 @@ export function WorldCupFixturesPanel({ markets, onQuickBuy }: {
                     <button
                       type="button"
                       onClick={() => onQuickBuy(market, yes?.label ?? 'YES')}
-                      className="rounded-[8px] border border-mint/25 bg-mint/10 px-2.5 py-1.5 text-[11px] font-black text-mint transition-colors hover:bg-mint/20"
+                      className="rounded-[6px] border border-mint/25 bg-mint/10 px-2 py-1 text-[10px] font-black text-mint transition-colors hover:bg-mint/20"
                     >
                       {home.split(' ')[0]} {yes ? `${yes.odds}¢` : ''}
                     </button>
                     <button
                       type="button"
                       onClick={() => onQuickBuy(market, no?.label ?? 'NO')}
-                      className="rounded-[8px] border border-red-400/25 bg-red-400/10 px-2.5 py-1.5 text-[11px] font-black text-red-300 transition-colors hover:bg-red-400/20"
+                      className="rounded-[6px] border border-red-400/25 bg-red-400/10 px-2 py-1 text-[10px] font-black text-red-300 transition-colors hover:bg-red-400/20"
                     >
                       {no ? `${no.odds}¢` : 'NO'}
                     </button>
