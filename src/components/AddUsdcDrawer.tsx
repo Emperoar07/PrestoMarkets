@@ -53,7 +53,10 @@ export function AddUsdcDrawer(input: {
   const [pending, setPending] = useState<PendingMove[]>([]);
   // Custom-amount deposit: { chain, value } when the user opens the pencil to move a chosen amount.
   const [customDeposit, setCustomDeposit] = useState<{ chain: string; value: string } | null>(null);
-  const gatewayBalance = gatewayBySource.reduce((sum, s) => sum + s.amount, 0);
+  // Only show sources whose balance can actually be moved (above the per-source Gateway fee) —
+  // dust below the fee is hidden entirely rather than shown as a dead "below fee" row.
+  const movableBySource = gatewayBySource.filter((s) => s.amount >= minCompletableUsdc(s.source));
+  const gatewayBalance = movableBySource.reduce((sum, s) => sum + s.amount, 0);
   const panelRef = useRef<HTMLDivElement>(null);
   const isDropdown = input.variant === 'dropdown';
   // Cross-chain Move to Arc signs source-chain txs via window.ethereum, so it only applies when
@@ -308,7 +311,7 @@ export function AddUsdcDrawer(input: {
           {/* List items */}
           <div className="flex flex-col divide-y divide-white/[0.04]">
             {/* Finalized balances */}
-            {gatewayBySource.map((s) => (
+            {movableBySource.map((s) => (
               <div key={s.source} className="flex items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
                 <div className="flex flex-col">
                   <span className="text-[11px] font-black text-white">{formatAvailableUsdc(s.amount)}</span>
@@ -406,7 +409,7 @@ export function AddUsdcDrawer(input: {
     return (
       <div
         ref={panelRef}
-        className="absolute right-0 mt-3 z-50 w-[288px] overflow-hidden rounded-[14px] border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/40"
+        className="absolute right-0 mt-3 z-50 w-[346px] overflow-hidden rounded-[14px] border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/40"
       >
         {header}
         <div className="h-px bg-white/[0.06]" />
@@ -417,7 +420,7 @@ export function AddUsdcDrawer(input: {
 
   return (
     <div className="fixed inset-0 z-[9998] flex items-end justify-center bg-[#050b14]/70 px-3 pb-3 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="w-full max-w-[304px] overflow-hidden rounded-[14px] border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/60">
+      <div className="w-full max-w-[365px] overflow-hidden rounded-[14px] border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/60">
         {header}
         <div className="h-px bg-white/[0.06]" />
         {content}
