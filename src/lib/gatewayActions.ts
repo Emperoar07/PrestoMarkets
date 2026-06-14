@@ -274,7 +274,14 @@ export async function depositToGateway(input: {
  * The Gateway API rejects this if the deposit hasn't finalized yet (returns a clear message).
  */
 export async function transferGatewayToArc(input: {
-  source: GatewaySourceKey; amountUsdc: number; recipient: Address; onStep?: (s: MoveStep) => void;
+  source: GatewaySourceKey; amountUsdc: number; recipient: Address;
+  // Where the minted USDC lands on Arc. Defaults to `recipient` (the depositor/signer EOA).
+  // Set this to a DIFFERENT Arc address to credit someone else — this is how a Circle
+  // User-Controlled Wallet receives a cross-chain move: the burn intent's sourceDepositor/
+  // sourceSigner stay the EOA (Gateway only accepts EOA signatures, and the Circle SCA doesn't
+  // exist on source chains), while destinationRecipient is the Circle wallet's Arc address.
+  arcRecipient?: Address;
+  onStep?: (s: MoveStep) => void;
 }): Promise<StepResult<void>> {
   const src = GATEWAY_SOURCES[input.source];
   const maxFee = SOURCE_MAX_FEE[input.source];
@@ -284,7 +291,10 @@ export async function transferGatewayToArc(input: {
   // fee is rejected as below the minimum (Ethereum/Base Sepolia require >= 1 USDC).
   const requested = parseUnits(String(input.amountUsdc), 6);
   const value = requested > maxFee ? requested - maxFee : BigInt(0);
+  // The EOA depositor/signer (its Gateway balance is burned, and it signs the intent + mints).
   const recipient = input.recipient;
+  // The Arc destination — defaults to the depositor for the plain EOA flow.
+  const arcRecipient = input.arcRecipient ?? input.recipient;
   let current: MoveStep = 'switching-source';
   if (value <= BigInt(0)) {
     return { ok: false, error: `Amount too small — needs to exceed the ~${formatUnits(maxFee, 6)} USDC ${src.label} Gateway fee.`, atStep: 'signing' };
@@ -312,7 +322,7 @@ export async function transferGatewayToArc(input: {
         sourceToken: toBytes32(src.usdc),
         destinationToken: toBytes32(ARC_USDC),
         sourceDepositor: toBytes32(recipient),
-        destinationRecipient: toBytes32(recipient),
+        destinationRecipient: toBytes32(arcRecipient),
         sourceSigner: toBytes32(recipient),
         destinationCaller: toBytes32(zeroAddress as Address),
         value: value.toString(),

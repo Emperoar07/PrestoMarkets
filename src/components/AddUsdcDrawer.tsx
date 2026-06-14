@@ -56,19 +56,29 @@ export function AddUsdcDrawer(input: {
   const [pending, setPending] = useState<PendingMove[]>([]);
   // Custom-amount deposit: { chain, value } when the user opens the pencil to move a chosen amount.
   const [customDeposit, setCustomDeposit] = useState<{ chain: string; value: string } | null>(null);
+  // For Circle/passkey wallets: the separately-connected browser EOA that actually holds the
+  // cross-chain USDC and signs the Gateway burn intent (the Circle SCA can't — see below).
+  const [eoaSigner, setEoaSigner] = useState<string | null>(null);
   // Only show sources whose balance can actually be moved (above the per-source Gateway fee) —
   // dust below the fee is hidden entirely rather than shown as a dead "below fee" row.
   const movableBySource = gatewayBySource.filter((s) => s.amount >= minCompletableUsdc(s.source));
   const gatewayBalance = movableBySource.reduce((sum, s) => sum + s.amount, 0);
   const panelRef = useRef<HTMLDivElement>(null);
   const isDropdown = input.variant === 'dropdown';
-  // Cross-chain Move to Arc signs source-chain txs via window.ethereum, so it only applies when
-  // the CONNECTED wallet is an external EOA — not merely when MetaMask happens to be installed.
-  // Circle/passkey wallets are provisioned on Arc only and already hold their USDC there, so they
-  // can't (and don't need to) move funds in from another chain.
   const hasInjected = typeof window !== 'undefined' && Boolean((window as { ethereum?: unknown }).ethereum);
   const isExternalWallet = input.wallet?.mode === 'external-eoa' && hasInjected;
   const isCircleWallet = input.wallet?.mode === 'circle-user-controlled' || input.wallet?.mode === 'circle-passkey';
+  const connectedAddress = input.wallet?.address ?? null;
+  // The wallet that SOURCES the cross-chain USDC and signs the Gateway burn intent.
+  //  • External EOA  → itself.
+  //  • Circle/passkey → a separately-connected browser EOA. Circle wallets are Arc-only SCAs:
+  //    they don't exist on source chains to deposit from, and Gateway only accepts EOA
+  //    signatures for burn intents (an SCA would need a registered EOA delegate). So the EOA
+  //    sources + signs the move while the minted USDC is credited to the Circle Arc address.
+  const depositorAddress = isExternalWallet ? connectedAddress : isCircleWallet ? eoaSigner : null;
+  // Minted funds always land on the Presto-connected wallet's Arc address.
+  const arcRecipient = connectedAddress;
+  const canMove = Boolean(depositorAddress && arcRecipient);
   const { track } = useTransactions();
 
   function refreshGateway(address: string) {
@@ -76,16 +86,32 @@ export function AddUsdcDrawer(input: {
     void getGatewayBalancesBySource(address as Address).then(setGatewayBySource).catch(() => undefined);
   }
 
+  // Connect a browser EOA to source the cross-chain USDC for a Circle/passkey wallet.
+  async function connectEoaSigner(prompt: boolean) {
+    const eth = (window as { ethereum?: { request: (a: { method: string }) => Promise<unknown> } }).ethereum;
+    if (!eth) {
+      if (prompt) setMoveError('No external wallet found. Install or connect one holding USDC on another chain.');
+      return;
+    }
+    try {
+      const accounts = await eth.request({ method: prompt ? 'eth_requestAccounts' : 'eth_accounts' });
+      if (Array.isArray(accounts) && typeof accounts[0] === 'string') setEoaSigner(accounts[0]);
+    } catch {
+      if (prompt) setMoveError('Could not connect the external wallet.');
+    }
+  }
+
   // Step 1 — deposit into Gateway (funds leave the source chain; finalize in minutes).
+  // Deposits are made by the depositor EOA into ITS OWN Gateway balance.
   async function handleDeposit(chainKey: string, amount: number) {
-    if (!input.wallet?.address || move) return;
+    if (!depositorAddress || move) return;
     setMoveError(null);
     setMove({ key: chainKey, step: 'switching-source' });
     const label = `Deposit ${formatAvailableUsdc(amount)} from ${GATEWAY_SOURCES[chainKey as GatewaySourceKey].label} → Gateway`;
     const result = await track({ label, amountLabel: formatAvailableUsdc(amount) }, async () => {
       const r = await depositToGateway({
         source: chainKey as GatewaySourceKey, amountUsdc: amount,
-        recipient: input.wallet!.address as Address,
+        recipient: depositorAddress as Address,
         onStep: (step) => setMove({ key: chainKey, step }),
       });
       return r.ok
@@ -95,22 +121,25 @@ export function AddUsdcDrawer(input: {
     setMove(null);
     if (result.ok) {
       window.dispatchEvent(new CustomEvent('presto:balances-refresh'));
-      refreshGateway(input.wallet.address);
+      refreshGateway(depositorAddress);
     } else {
       setMoveError(result.message ?? 'Deposit failed.');
     }
   }
 
   // Step 2 — move the available Gateway balance to Arc (also recovers an earlier stuck deposit).
+  // The depositor EOA burns its Gateway balance + signs; minted USDC is credited to arcRecipient
+  // (the same EOA for external wallets, or the Circle/passkey Arc address for Circle users).
   async function handleComplete(chainKey: string, amount: number, depositTx?: string) {
-    if (!input.wallet?.address || move) return;
+    if (!depositorAddress || !arcRecipient || move) return;
     setMoveError(null);
     setMove({ key: `complete-${chainKey}`, step: 'signing' });
     const label = `Move ${formatAvailableUsdc(amount)} to Arc`;
     const result = await track({ label, amountLabel: formatAvailableUsdc(amount) }, async () => {
       const r = await transferGatewayToArc({
         source: chainKey as GatewaySourceKey, amountUsdc: amount,
-        recipient: input.wallet!.address as Address,
+        recipient: depositorAddress as Address,
+        arcRecipient: arcRecipient as Address,
         onStep: (step) => setMove({ key: `complete-${chainKey}`, step }),
       });
       return r.ok
@@ -119,34 +148,55 @@ export function AddUsdcDrawer(input: {
     });
     setMove(null);
     if (result.ok) {
-      // Record the move so it shows on the Activity page (it isn't a Presto market event).
-      recordCompletedMove({ source: chainKey as GatewaySourceKey, amountUsdc: amount, txHash: result.txHash ?? '', at: Date.now(), recipient: input.wallet.address });
-      if (depositTx) clearPendingMove(input.wallet.address, depositTx);
+      // Record under the Arc recipient (where the funds landed) so the Activity page — keyed by
+      // the Presto-connected wallet — surfaces it. It isn't a Presto market event.
+      recordCompletedMove({ source: chainKey as GatewaySourceKey, amountUsdc: amount, txHash: result.txHash ?? '', at: Date.now(), recipient: arcRecipient });
+      // Pending records are keyed by the EOA depositor.
+      if (depositTx) clearPendingMove(depositorAddress, depositTx);
       window.dispatchEvent(new CustomEvent('presto:balances-refresh'));
-      refreshGateway(input.wallet.address);
+      refreshGateway(depositorAddress);
     } else {
       setMoveError(result.message ?? 'Move to Arc failed.');
     }
   }
 
+  // For Circle/passkey wallets, silently adopt an already-authorized browser EOA on open so the
+  // cross-chain rows light up without an extra click. A fresh prompt only happens on user action.
   useEffect(() => {
-    if (!input.open || !input.wallet?.address) return;
-    const address = input.wallet.address;
+    if (!input.open || !isCircleWallet || eoaSigner) return;
+    void connectEoaSigner(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input.open, isCircleWallet]);
+
+  useEffect(() => {
+    if (!input.open || !connectedAddress) return;
+    const arcAddress = connectedAddress;
+    // Cross-chain/Gateway reads follow the EOA that holds the source-chain USDC (for external
+    // wallets that's the same address; for Circle users it's the connected browser EOA).
+    const sourceAddress = depositorAddress;
     let cancelled = false;
-    const cached = readCachedUsdcBalance(address);
+    const cached = readCachedUsdcBalance(arcAddress);
     if (cached) setBalance(cached);
 
     function loadBalances() {
-      fetchArcStableBalances(address)
+      // Arc USDC/EURC balances are always the Presto-connected wallet's (where minted funds land).
+      fetchArcStableBalances(arcAddress)
         .then((balances) => { if (!cancelled) setBalance(balances.USDC); })
         .catch(() => { if (!cancelled && !cached) setBalance(null); });
-      fetchArcEurcBalance(address)
+      fetchArcEurcBalance(arcAddress)
         .then((eurc) => { if (!cancelled) setEurcBalance(eurc); })
         .catch(() => undefined);
-      fetchAvailableUsdc(address)
-        .then((result) => { if (!cancelled) setUnified(result); })
-        .catch(() => undefined);
-      refreshGateway(address);
+      if (sourceAddress) {
+        fetchAvailableUsdc(sourceAddress)
+          .then((result) => { if (!cancelled) setUnified(result); })
+          .catch(() => undefined);
+        refreshGateway(sourceAddress);
+      } else {
+        // No source EOA yet (Circle user hasn't connected one) — clear cross-chain state.
+        setUnified(null);
+        setGatewayBySource([]);
+        setPending([]);
+      }
     }
 
     loadBalances();
@@ -159,7 +209,7 @@ export function AddUsdcDrawer(input: {
     window.addEventListener('presto:balances-refresh', onRefresh);
     return () => { cancelled = true; window.removeEventListener('presto:balances-refresh', onRefresh); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input.open, input.wallet?.address]);
+  }, [input.open, connectedAddress, depositorAddress]);
 
   useEffect(() => {
     if (!input.open) return undefined;
@@ -218,6 +268,25 @@ export function AddUsdcDrawer(input: {
         </div>
       ) : null}
 
+      {/* Circle/passkey wallets are Arc-only — to move USDC in from another chain the user connects
+          a browser EOA that holds it. Once connected, the cross-chain rows below light up and any
+          move is credited to this Circle wallet's Arc address. */}
+      {isCircleWallet && !depositorAddress && (
+        <div className="flex flex-col gap-1.5 border-t border-white/[0.06] pt-1.5 mt-0.5 px-1">
+          <button
+            type="button"
+            onClick={() => void connectEoaSigner(true)}
+            className="w-full rounded-lg border border-cyan/25 bg-cyan/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-cyan transition-all hover:bg-cyan/10"
+          >
+            Connect external wallet to move USDC in
+          </button>
+          <p className="px-2 text-[9px] leading-relaxed text-[#64748b]">
+            Your Circle wallet lives on Arc. Hold USDC on another chain? Connect that wallet to move it
+            here via Circle Gateway — it’s credited straight to your Circle Arc balance.
+          </p>
+        </div>
+      )}
+
       {/* Per-chain breakdown */}
       {unified && unified.chains.some((chain) => !chain.isArc && (chain.amount ?? 0) >= MIN_LISTED_USDC) && (
         <div className="flex flex-col gap-0.5 border-t border-white/[0.06] pt-1.5 mt-0.5">
@@ -227,7 +296,7 @@ export function AddUsdcDrawer(input: {
           </div>
           {/* Only list source chains that actually hold a usable balance (>= 1 USDC). */}
           {unified.chains.filter((chain) => !chain.isArc && (chain.amount ?? 0) >= MIN_LISTED_USDC).map((chain) => {
-            const movable = GATEWAY_SOURCE_KEYS.has(chain.key) && (chain.amount ?? 0) > 0 && isExternalWallet;
+            const movable = GATEWAY_SOURCE_KEYS.has(chain.key) && (chain.amount ?? 0) > 0 && canMove;
             const moving = move?.key === chain.key;
             return (
               <div key={chain.key} className="flex items-center justify-between gap-2 px-3 py-0.5 text-[10px] font-bold text-[#8fa0b4]">
@@ -287,13 +356,10 @@ export function AddUsdcDrawer(input: {
           })}
           {moveError ? (
             <p className="px-3 py-0.5 text-[9px] leading-relaxed text-red-300">{moveError}</p>
-          ) : isExternalWallet ? (
+          ) : canMove ? (
             <p className="px-3 py-0.5 text-[9px] leading-relaxed text-[#64748b]">
               Move to Arc deposits into Circle Gateway, then completes once the deposit finalizes (up to ~20 min on Sepolia chains).
-            </p>
-          ) : isCircleWallet ? (
-            <p className="px-3 py-0.5 text-[9px] leading-relaxed text-[#64748b]">
-              Your Circle wallet lives on Arc and already holds its USDC here. Top up with the Circle faucet below — cross-chain Move to Arc is for external wallets holding USDC on another chain.
+              {isCircleWallet ? ' Funds are credited to your Circle wallet’s Arc balance.' : ''}
             </p>
           ) : (
             <p className="px-3 py-0.5 text-[9px] leading-relaxed text-[#64748b]">
@@ -307,7 +373,7 @@ export function AddUsdcDrawer(input: {
       )}
 
       {/* Step 2 / recovery: funds sitting in Gateway, ready (or pending) to finish onto Arc. */}
-      {isExternalWallet && (gatewayBalance > 0 || pending.length > 0) && (
+      {canMove && (gatewayBalance > 0 || pending.length > 0) && (
         <div className="border border-white/[0.06] bg-[#0d1626]/20 rounded-xl p-2.5 mt-1.5 mx-1 flex flex-col gap-1.5">
           {/* Title & Status Bar */}
           <div className="flex items-center justify-between pb-1.5 border-b border-white/[0.04]">
