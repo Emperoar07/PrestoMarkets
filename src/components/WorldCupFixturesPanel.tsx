@@ -74,7 +74,7 @@ export function WorldCupFixturesPanel({ markets, onQuickBuy }: {
   let lastDay = '';
 
   return (
-    <div className="sm:col-span-2 lg:col-span-3 xl:col-span-3 h-[156px] flex flex-col justify-between overflow-hidden rounded-[10px] border border-white/[0.06] bg-[#0c121d]/90 hover:border-cyan/20 hover:bg-[#101929]/95 backdrop-blur-md transition-all duration-300 shadow-lg shadow-black/10">
+    <div className="sm:col-span-2 lg:col-span-2 xl:col-span-2 h-[156px] flex flex-col justify-between overflow-hidden rounded-[10px] border border-white/[0.06] bg-[#0c121d]/90 hover:border-cyan/20 hover:bg-[#101929]/95 backdrop-blur-md transition-all duration-300 shadow-lg shadow-black/10">
       {/* Header ribbon */}
       <div className="flex items-center justify-between gap-2.5 border-b border-white/[0.06] bg-white/[0.01] px-3.5 py-1.5 shrink-0">
         <Link href="/world-cup" className="flex min-w-0 items-center gap-2 transition-opacity hover:opacity-85">
