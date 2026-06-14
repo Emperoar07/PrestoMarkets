@@ -11,6 +11,7 @@ import {
   readPendingMoves,
   clearPendingMove,
   GATEWAY_SOURCES,
+  minCompletableUsdc,
   type GatewaySourceKey,
   type GatewaySourceBalance,
   type MoveStep,
@@ -50,6 +51,8 @@ export function AddUsdcDrawer(input: {
   const [moveError, setMoveError] = useState<string | null>(null);
   const [gatewayBySource, setGatewayBySource] = useState<GatewaySourceBalance[]>([]);
   const [pending, setPending] = useState<PendingMove[]>([]);
+  // Custom-amount deposit: { chain, value } when the user opens the pencil to move a chosen amount.
+  const [customDeposit, setCustomDeposit] = useState<{ chain: string; value: string } | null>(null);
   const gatewayBalance = gatewayBySource.reduce((sum, s) => sum + s.amount, 0);
   const panelRef = useRef<HTMLDivElement>(null);
   const isDropdown = input.variant === 'dropdown';
@@ -221,15 +224,46 @@ export function AddUsdcDrawer(input: {
                     <span className="rounded-full border border-cyan/15 bg-cyan/5 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-cyan animate-pulse">
                       {MOVE_STEP_LABEL[move.step]}
                     </span>
+                  ) : movable && customDeposit?.chain === chain.key ? (
+                    // Custom-amount entry: deposit a chosen amount instead of the whole balance.
+                    <span className="flex items-center gap-1">
+                      <input
+                        type="number" inputMode="decimal" autoFocus
+                        value={customDeposit.value}
+                        max={chain.amount as number}
+                        onChange={(e) => setCustomDeposit({ chain: chain.key, value: e.target.value })}
+                        className="w-16 rounded-md border border-cyan/30 bg-[#0d1626] px-1.5 py-0.5 text-[10px] font-black text-white outline-none"
+                        placeholder="0.00"
+                      />
+                      <button
+                        type="button"
+                        disabled={Boolean(move) || !(Number(customDeposit.value) > 0) || Number(customDeposit.value) > (chain.amount as number)}
+                        onClick={() => { const v = Number(customDeposit.value); setCustomDeposit(null); void handleDeposit(chain.key, v); }}
+                        className="rounded-full bg-cyan px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-[#07111f] transition-all hover:bg-cyan-300 disabled:opacity-40"
+                      >Move</button>
+                      <button type="button" onClick={() => setCustomDeposit(null)} className="text-[#64748b] hover:text-white"><X className="h-3 w-3" /></button>
+                    </span>
                   ) : movable ? (
-                    <button
-                      type="button"
-                      onClick={() => void handleDeposit(chain.key, chain.amount as number)}
-                      disabled={Boolean(move)}
-                      className="rounded-full border border-white/[0.08] bg-white/[0.02] px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-[#9fb0c8] transition-all hover:text-cyan hover:border-cyan/30 hover:bg-cyan/5 disabled:opacity-40"
-                    >
-                      Move to Arc
-                    </button>
+                    <span className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => void handleDeposit(chain.key, chain.amount as number)}
+                        disabled={Boolean(move)}
+                        className="rounded-full border border-white/[0.08] bg-white/[0.02] px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-[#9fb0c8] transition-all hover:text-cyan hover:border-cyan/30 hover:bg-cyan/5 disabled:opacity-40"
+                      >
+                        Move to Arc
+                      </button>
+                      {/* Pencil: move a custom amount instead of the whole balance. */}
+                      <button
+                        type="button"
+                        title="Move a custom amount"
+                        onClick={() => setCustomDeposit({ chain: chain.key, value: '' })}
+                        disabled={Boolean(move)}
+                        className="text-[#64748b] transition-colors hover:text-cyan disabled:opacity-40"
+                      >
+                        <Pencil className="h-2.5 w-2.5" />
+                      </button>
+                    </span>
                   ) : null}
                 </span>
               </div>
@@ -288,9 +322,9 @@ export function AddUsdcDrawer(input: {
                     </svg>
                     {MOVE_STEP_LABEL[move.step]}
                   </span>
-                ) : s.amount < MIN_COMPLETE_USDC ? (
-                  // Below the Gateway fee + margin: can't be moved, so show why instead of a dead button.
-                  <span className="rounded-md border border-white/[0.06] px-2 py-1 text-[8px] font-bold text-[#64748b]">Below ~{MIN_COMPLETE_USDC} fee</span>
+                ) : s.amount < minCompletableUsdc(s.source) ? (
+                  // Below the source's Gateway fee + margin: can't be moved, so show why instead of a dead button.
+                  <span className="rounded-md border border-white/[0.06] px-2 py-1 text-[8px] font-bold text-[#64748b]">Below ~{minCompletableUsdc(s.source).toFixed(2)} fee</span>
                 ) : (
                   <button
                     type="button"

@@ -38,10 +38,20 @@ const GATEWAY_WALLET = '0x0077777d7EBA4688BDeF3E311b846F25870A19B9' as Address;
 const GATEWAY_MINTER = '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B' as Address;
 const ARC_DOMAIN = 26;
 const ARC_USDC = '0x3600000000000000000000000000000000000000' as Address;
-// Max Gateway fee we allow per transfer (0.10 USDC). The actual fee is far smaller (~0.02 on
-// testnet), but the Gateway API requires value + maxFee <= available balance, so this is the
-// headroom we reserve out of the moved amount. Kept tight so small balances can still move.
-const MAX_FEE = BigInt('100000');
+// Per-source max Gateway fee (6-decimal base units). The Gateway API enforces value + maxFee <=
+// available AND a per-chain MINIMUM maxFee (Ethereum/Base Sepolia require >= 1 USDC; Arbitrum/
+// Avalanche accept ~0.10). We reserve this out of the moved amount, so the source's minimum fee
+// also sets the smallest balance that can be completed.
+const SOURCE_MAX_FEE: Record<GatewaySourceKey, bigint> = {
+  sepolia: BigInt('1000000'),        // Ethereum Sepolia — API min 1 USDC
+  baseSepolia: BigInt('1000000'),    // Base Sepolia — same slow-finality class, min 1 USDC
+  arbitrumSepolia: BigInt('100000'), // 0.10 USDC
+  avalancheFuji: BigInt('100000'),   // 0.10 USDC
+};
+/** Smallest balance (USDC) that can be completed from a source = its max fee + a little margin. */
+export function minCompletableUsdc(source: GatewaySourceKey): number {
+  return Number(SOURCE_MAX_FEE[source]) / 1e6 + 0.05;
+}
 const MAX_UINT64 = BigInt('18446744073709551615');
 
 export type GatewaySourceKey = 'baseSepolia' | 'sepolia' | 'avalancheFuji' | 'arbitrumSepolia';
@@ -246,15 +256,17 @@ export async function transferGatewayToArc(input: {
   source: GatewaySourceKey; amountUsdc: number; recipient: Address; onStep?: (s: MoveStep) => void;
 }): Promise<StepResult<void>> {
   const src = GATEWAY_SOURCES[input.source];
+  const maxFee = SOURCE_MAX_FEE[input.source];
   // The caller passes the full available Gateway balance. The Gateway API enforces
-  // value + maxFee <= available, so we transfer (available - MAX_FEE) and let maxFee cover the
-  // actual (smaller) fee — otherwise moving the whole balance always fails "insufficient balance".
+  // value + maxFee <= available AND maxFee >= the source's per-chain minimum, so we transfer
+  // (available - maxFee). Otherwise moving the whole balance fails "insufficient balance" or the
+  // fee is rejected as below the minimum (Ethereum/Base Sepolia require >= 1 USDC).
   const requested = parseUnits(String(input.amountUsdc), 6);
-  const value = requested > MAX_FEE ? requested - MAX_FEE : BigInt(0);
+  const value = requested > maxFee ? requested - maxFee : BigInt(0);
   const recipient = input.recipient;
   let current: MoveStep = 'switching-source';
   if (value <= BigInt(0)) {
-    return { ok: false, error: `Amount too small — needs to exceed the ~${formatUnits(MAX_FEE, 6)} USDC Gateway fee.`, atStep: 'signing' };
+    return { ok: false, error: `Amount too small — needs to exceed the ~${formatUnits(maxFee, 6)} USDC ${src.label} Gateway fee.`, atStep: 'signing' };
   }
   try {
     const ethereum = getEthereum();
@@ -269,7 +281,7 @@ export async function transferGatewayToArc(input: {
     current = 'signing'; input.onStep?.(current);
     const burnIntent = {
       maxBlockHeight: MAX_UINT64.toString(),
-      maxFee: MAX_FEE.toString(),
+      maxFee: maxFee.toString(),
       spec: {
         version: 1,
         sourceDomain: src.domain,
