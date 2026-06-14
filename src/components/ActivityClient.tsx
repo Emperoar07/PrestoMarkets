@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAppState } from '@/lib/appState';
 import type { PortfolioActivity } from '@/lib/portfolio';
+import { readCompletedMoves, GATEWAY_SOURCES } from '@/lib/gatewayActions';
 import { ArrowDownLeft, Award, Coins, ExternalLink, Plus, RefreshCw } from 'lucide-react';
 
 type Filter = 'all' | 'create' | 'out' | 'win' | 'refund' | 'in';
@@ -89,7 +90,24 @@ export function ActivityClient() {
         throw new Error(data.error || 'Unable to load activity.');
       }
 
-      setActivity((current) => nextCursor ? [...current, ...(data.items ?? [])] : data.items ?? []);
+      const onchain = data.items ?? [];
+      if (nextCursor) {
+        setActivity((current) => [...current, ...onchain]);
+      } else {
+        // Prepend client-recorded Move-to-Arc credits (Gateway mints aren't Presto market events,
+        // so the on-chain feed never sees them). Newest first.
+        const moves: PortfolioActivity[] = readCompletedMoves(connectedWallet.address)
+          .map((m) => ({
+            label: 'Move to Arc',
+            market: `${GATEWAY_SOURCES[m.source]?.label ?? m.source} → Arc`,
+            detail: `$${m.amountUsdc.toFixed(2)}`,
+            status: 'Confirmed' as const,
+            time: new Date(m.at).toISOString(),
+            kind: 'in' as const,
+            txHash: m.txHash || undefined,
+          }));
+        setActivity([...moves, ...onchain]);
+      }
       setCursor(data.nextCursor ?? null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Unable to load activity.');

@@ -12,6 +12,7 @@ import {
   clearPendingMove,
   GATEWAY_SOURCES,
   minCompletableUsdc,
+  recordCompletedMove,
   type GatewaySourceKey,
   type GatewaySourceBalance,
   type MoveStep,
@@ -118,6 +119,8 @@ export function AddUsdcDrawer(input: {
     });
     setMove(null);
     if (result.ok) {
+      // Record the move so it shows on the Activity page (it isn't a Presto market event).
+      recordCompletedMove({ source: chainKey as GatewaySourceKey, amountUsdc: amount, txHash: result.txHash ?? '', at: Date.now(), recipient: input.wallet.address });
       if (depositTx) clearPendingMove(input.wallet.address, depositTx);
       window.dispatchEvent(new CustomEvent('presto:balances-refresh'));
       refreshGateway(input.wallet.address);

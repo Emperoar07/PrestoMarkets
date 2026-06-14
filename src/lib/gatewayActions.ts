@@ -201,6 +201,27 @@ function addPendingMove(move: PendingMove) {
     writePendingMoves([...all, move]);
   } catch { /* storage off */ }
 }
+// Completed Move-to-Arc records (so the Activity page can show them — they aren't Presto market
+// events, so the on-chain activity feed never sees them).
+export type CompletedMove = { source: GatewaySourceKey; amountUsdc: number; txHash: string; at: number; recipient: string };
+const COMPLETED_KEY = 'presto:completed-gateway-moves';
+
+export function recordCompletedMove(move: CompletedMove) {
+  if (typeof window === 'undefined') return;
+  try {
+    const all = JSON.parse(window.localStorage.getItem(COMPLETED_KEY) ?? '[]') as CompletedMove[];
+    window.localStorage.setItem(COMPLETED_KEY, JSON.stringify([move, ...all].slice(0, 50)));
+  } catch { /* storage off */ }
+}
+
+export function readCompletedMoves(recipient: string): CompletedMove[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const all = JSON.parse(window.localStorage.getItem(COMPLETED_KEY) ?? '[]') as CompletedMove[];
+    return all.filter((m) => m.recipient.toLowerCase() === recipient.toLowerCase());
+  } catch { return []; }
+}
+
 export function clearPendingMove(recipient: string, depositTx: string) {
   if (typeof window === 'undefined') return;
   try {
