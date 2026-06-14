@@ -26,16 +26,46 @@ async function fetchJsonWithTimeout(url: string, timeoutMs: number): Promise<Res
 }
 
 // Common countries → ISO 3166-1 alpha-2 (longest names first when matching).
+// Country/national-team → ISO 3166-1 alpha-2 (flagcdn) code. Broad coverage so BOTH teams in a
+// fixture resolve a real flag (the away team used to fall through to a letter badge for any nation
+// not listed). Multi-word names and aliases are fine — detectCountryFlagUrl matches longest-first.
 const COUNTRY_ISO: Record<string, string> = {
   'united states': 'us', usa: 'us', america: 'us',
-  'united kingdom': 'gb', britain: 'gb', uk: 'gb', england: 'gb',
+  'united kingdom': 'gb', britain: 'gb', uk: 'gb', england: 'gb-eng', scotland: 'gb-sct',
+  wales: 'gb-wls', 'northern ireland': 'gb-nir',
   'south korea': 'kr', 'north korea': 'kp', 'south africa': 'za', 'saudi arabia': 'sa',
+  'united arab emirates': 'ae', uae: 'ae', 'costa rica': 'cr', 'ivory coast': 'ci',
+  "cote d'ivoire": 'ci', 'cape verde': 'cv', 'czech republic': 'cz', czechia: 'cz',
+  'north macedonia': 'mk', macedonia: 'mk', 'new zealand': 'nz', 'bosnia and herzegovina': 'ba',
+  bosnia: 'ba', 'burkina faso': 'bf', 'el salvador': 'sv', 'dominican republic': 'do',
+  'trinidad and tobago': 'tt', 'dr congo': 'cd', 'democratic republic of congo': 'cd', congo: 'cg',
+  'equatorial guinea': 'gq', 'sierra leone': 'sl', 'guinea-bissau': 'gw', 'south sudan': 'ss',
+  'central african republic': 'cf', 'sri lanka': 'lk', 'hong kong': 'hk', 'papua new guinea': 'pg',
+  'new caledonia': 'nc', 'faroe islands': 'fo', 'saint lucia': 'lc', 'puerto rico': 'pr',
   peru: 'pe', france: 'fr', colombia: 'co', korea: 'kr', iran: 'ir', china: 'cn',
   japan: 'jp', india: 'in', brazil: 'br', germany: 'de', spain: 'es', italy: 'it',
   russia: 'ru', ukraine: 'ua', israel: 'il', mexico: 'mx', canada: 'ca', argentina: 'ar',
   nigeria: 'ng', venezuela: 've', turkey: 'tr', egypt: 'eg', poland: 'pl', netherlands: 'nl',
   australia: 'au', taiwan: 'tw', pakistan: 'pk', indonesia: 'id', philippines: 'ph',
   vietnam: 'vn', thailand: 'th', greece: 'gr', portugal: 'pt', sweden: 'se', norway: 'no',
+  // Expanded national-team coverage (football).
+  ecuador: 'ec', uruguay: 'uy', chile: 'cl', paraguay: 'py', bolivia: 'bo', curacao: 'cw',
+  jamaica: 'jm', panama: 'pa', honduras: 'hn', guatemala: 'gt', haiti: 'ht', cuba: 'cu',
+  suriname: 'sr', guyana: 'gy', nicaragua: 'ni', belize: 'bz', bermuda: 'bm', barbados: 'bb',
+  croatia: 'hr', serbia: 'rs', switzerland: 'ch', belgium: 'be', denmark: 'dk', austria: 'at',
+  hungary: 'hu', romania: 'ro', slovakia: 'sk', slovenia: 'si', ireland: 'ie', iceland: 'is',
+  finland: 'fi', albania: 'al', bulgaria: 'bg', georgia: 'ge', armenia: 'am', azerbaijan: 'az',
+  belarus: 'by', lithuania: 'lt', latvia: 'lv', estonia: 'ee', luxembourg: 'lu', malta: 'mt',
+  cyprus: 'cy', moldova: 'md', montenegro: 'me', kosovo: 'xk',
+  kazakhstan: 'kz', uzbekistan: 'uz', qatar: 'qa', iraq: 'iq', jordan: 'jo', oman: 'om',
+  kuwait: 'kw', bahrain: 'bh', lebanon: 'lb', syria: 'sy', yemen: 'ye', afghanistan: 'af',
+  morocco: 'ma', algeria: 'dz', tunisia: 'tn', libya: 'ly', senegal: 'sn', ghana: 'gh',
+  cameroon: 'cm', mali: 'ml', tanzania: 'tz', kenya: 'ke', uganda: 'ug', zambia: 'zm',
+  zimbabwe: 'zw', angola: 'ao', mozambique: 'mz', gabon: 'ga', togo: 'tg', benin: 'bj',
+  niger: 'ne', mauritania: 'mr', gambia: 'gm', namibia: 'na', botswana: 'bw', malawi: 'mw',
+  ethiopia: 'et', sudan: 'sd', somalia: 'so', rwanda: 'rw', madagascar: 'mg', comoros: 'km',
+  malaysia: 'my', singapore: 'sg', myanmar: 'mm', cambodia: 'kh', laos: 'la', nepal: 'np',
+  bangladesh: 'bd', mongolia: 'mn', palestine: 'ps', fiji: 'fj', tahiti: 'pf', vanuatu: 'vu',
 };
 
 const CRYPTO_LOGOS: Array<{ aliases: string[]; url: string }> = [
