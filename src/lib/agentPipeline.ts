@@ -852,12 +852,20 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
   return dedupeFixtureTrends([...batches.flat(), ...espn]);
 }
 
+// Normalized matchup key — strips diacritics first so "Curaçao" and "Curacao" (ESPN vs
+// TheSportsDB) collapse to the same key. Without this the two providers each create a market.
+export function fixtureMatchupKey(topic: string): string {
+  return topic
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // drop accents (ç->c, é->e, …)
+    .toLowerCase().replace(/[^a-z]/g, '');
+}
+
 // Dedupe fixture trends by normalized matchup (handles "A vs B" from both providers).
 function dedupeFixtureTrends(trends: TrendItem[]): TrendItem[] {
   const seen = new Set<string>();
   const out: TrendItem[] = [];
   for (const trend of trends) {
-    const key = trend.topic.toLowerCase().replace(/[^a-z]/g, '');
+    const key = fixtureMatchupKey(trend.topic);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(trend);

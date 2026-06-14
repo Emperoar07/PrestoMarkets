@@ -10,7 +10,26 @@ import { logger } from '@/lib/logger';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const MAX_BACKFILL_PER_RUN = 12;
+const MAX_BACKFILL_PER_RUN = 40;
+
+// Hosts we trust to serve a working image; anything else (or a branded fallback / empty) is a
+// candidate to re-resolve a real subject image.
+const TRUSTED_IMG_HOSTS = [
+  'assets.coingecko.com', 'coin-images.coingecko.com', 'flagcdn.com', 'upload.wikimedia.org',
+  'r2.thesportsdb.com', 'www.thesportsdb.com', 'thesportsdb.com', 'a.espncdn.com', 'a1.espncdn.com',
+];
+function hasGoodImage(uri: string | undefined): boolean {
+  if (!uri || uri.trim().length === 0) return false;
+  const v = uri.trim();
+  if (v.startsWith('data:image/svg+xml')) return false; // branded fallback — upgrade if possible
+  if (v.startsWith('data:')) return true; // a real data-image payload is fine
+  try {
+    const host = new URL(v).hostname.toLowerCase();
+    return TRUSTED_IMG_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -35,17 +54,25 @@ export async function GET(req: NextRequest) {
     // 1. Fetch current onchain markets
     const allMarkets = await fetchOnchainMarkets({ force: true });
 
-    // 2. Identify agent markets without images
+    // Markets we've already stored an override for — skip them so we don't reprocess every run
+    // (and so a stored branded fallback isn't endlessly re-resolved).
+    const overridden = new Set(
+      (await db.select({ id: marketMetadataOverrides.marketId }).from(marketMetadataOverrides))
+        .map((r) => r.id.toLowerCase()),
+    );
+
+    // 2. Identify agent markets that lack a GOOD image — empty, a branded SVG fallback, or a
+    //    non-trusted-host URL (likely stale/broken and showing the card placeholder).
     const targetMarkets = allMarkets.filter(
-      (m) =>
-        m.createdByType === 'agent' &&
-        (!m.imageURI || m.imageURI.trim().length === 0)
+      (m) => m.createdByType === 'agent'
+        && !hasGoodImage(m.imageURI)
+        && !overridden.has(m.id.toLowerCase()),
     );
 
     if (targetMarkets.length === 0) {
       return NextResponse.json({
         ok: true,
-        message: 'No agent markets without images found.',
+        message: 'No agent markets needing an image refresh.',
         processedCount: 0,
         updates: [],
       });
