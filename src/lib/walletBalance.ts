@@ -64,3 +64,11 @@ export async function fetchArcUsdcBalance(address: string): Promise<string | nul
 export async function fetchArcStableBalances(address: string): Promise<Record<StableSymbol, string | null>> {
   return { USDC: await fetchArcUsdcBalance(address) };
 }
+
+/** EURC balance on Arc (euro-denominated markets settle in EURC). Returns a formatted amount. */
+export async function fetchArcEurcBalance(address: string): Promise<string | null> {
+  const config = getArcConfig();
+  if (!config.eurcAddress) return null;
+  const raw = await fetchErc20Balance(address, config.eurcAddress as Address);
+  return raw === null ? null : formatAmount(Number(raw));
+}

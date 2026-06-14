@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Clock, ExternalLink, X } from 'lucide-react';
-import { fetchArcStableBalances, readCachedUsdcBalance } from '@/lib/walletBalance';
+import { fetchArcStableBalances, fetchArcEurcBalance, readCachedUsdcBalance } from '@/lib/walletBalance';
 import { fetchAvailableUsdc, formatAvailableUsdc, type AvailableUsdc } from '@/lib/unifiedBalance';
 import {
   depositToGateway,
@@ -44,6 +44,7 @@ export function AddUsdcDrawer(input: {
   variant?: 'modal' | 'dropdown';
 }) {
   const [balance, setBalance] = useState<string | null>(null);
+  const [eurcBalance, setEurcBalance] = useState<string | null>(null);
   const [unified, setUnified] = useState<AvailableUsdc | null>(null);
   const [move, setMove] = useState<{ key: string; step: MoveStep } | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
@@ -129,6 +130,9 @@ export function AddUsdcDrawer(input: {
       .catch(() => {
         if (!cancelled && !cached) setBalance(null);
       });
+    fetchArcEurcBalance(input.wallet.address)
+      .then((eurc) => { if (!cancelled) setEurcBalance(eurc); })
+      .catch(() => undefined);
     // Multichain Available USDC (read-only Phase 1 of the Gateway rails).
     fetchAvailableUsdc(input.wallet.address)
       .then((result) => { if (!cancelled) setUnified(result); })
@@ -185,9 +189,16 @@ export function AddUsdcDrawer(input: {
     <div className="flex flex-col gap-1 p-2 bg-[#090e1a]">
       {/* Balance Row */}
       <div className="flex items-center justify-between px-3 py-2 text-[12px] font-bold text-[#cbd5e1]">
-        <span className="text-[#8fa0b4]">Arc Testnet Balance</span>
+        <span className="text-[#8fa0b4]">Arc Testnet USDC</span>
         <span className="text-base font-black text-cyan">{balance ?? '--'}</span>
       </div>
+      {/* EURC balance — only shown once the wallet holds euro stablecoin (euro markets). */}
+      {eurcBalance && Number(eurcBalance.replace(/[^0-9.]/g, '')) > 0 ? (
+        <div className="flex items-center justify-between px-3 py-1 text-[12px] font-bold text-[#cbd5e1]">
+          <span className="text-[#8fa0b4]">Arc Testnet EURC</span>
+          <span className="text-base font-black text-amber-200">€{eurcBalance}</span>
+        </div>
+      ) : null}
 
       {/* Per-chain breakdown */}
       {unified && unified.chains.some((chain) => !chain.isArc && chain.amount !== null) && (
@@ -327,7 +338,7 @@ export function AddUsdcDrawer(input: {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
               <path d="M12 2.5s6 6.3 6 10.5a6 6 0 0 1-12 0c0-4.2 6-10.5 6-10.5Z" />
             </svg>
-            Circle Faucet
+            Circle Faucet (USDC / EURC)
           </span>
           <ExternalLink className="h-3.5 w-3.5 opacity-60" />
         </a>
