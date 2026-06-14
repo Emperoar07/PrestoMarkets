@@ -313,13 +313,15 @@ function MarketCardComponent({
           </div>
         ) : (
           /* ── Binary (YES/NO) Prediction or Opinion markets ── */
-          <div className="my-1.5 flex items-center justify-between gap-2">
-            <span className="text-[10.5px] font-bold text-[#94a3b8]">
-              {isOpinion ? 'Support' : 'YES'} <span className="font-black text-[#cbd5e1]">{yesOdds}%</span>
-            </span>
+          <div className="flex flex-col gap-1.5 my-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10.5px] font-bold text-[#94a3b8]">
+                {isOpinion ? 'Support' : 'YES'} <span className="font-black text-[#cbd5e1]">{yesOdds}%</span>
+              </span>
+            </div>
 
             {isLive ? (
-              <div className="flex items-center gap-1 shrink-0 bg-white/[0.02] border border-white/[0.06] rounded-[6px] p-[2px]">
+              <div className="grid grid-cols-2 gap-1.5">
                 <button
                   type="button"
                   onClick={(e) => {
@@ -331,7 +333,7 @@ function MarketCardComponent({
                       window.location.href = `/markets/${market.id}?buy=yes`;
                     }
                   }}
-                  className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-[#132d21] text-emerald-400 hover:bg-[#183929] hover:text-emerald-300 active:scale-95 transition-all"
+                  className="rounded-[8px] bg-[#1a2638]/40 border border-white/[0.05] py-1 text-[10px] font-black uppercase text-[#cbd5e1] transition-all hover:bg-[#22324a]/60 hover:text-cyan hover:border-cyan/20 active:scale-95 text-center"
                 >
                   {'YES'}
                 </button>
@@ -346,13 +348,15 @@ function MarketCardComponent({
                       window.location.href = `/markets/${market.id}?buy=no`;
                     }
                   }}
-                  className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-[#381515] text-rose-400 hover:bg-[#4c1c1c] hover:text-rose-300 active:scale-95 transition-all"
+                  className="rounded-[8px] bg-[#1a2638]/40 border border-white/[0.05] py-1 text-[10px] font-black uppercase text-[#cbd5e1] transition-all hover:bg-[#22324a]/60 hover:text-cyan hover:border-cyan/20 active:scale-95 text-center"
                 >
                   {'NO'}
                 </button>
               </div>
             ) : (
-              <span className="text-[10px] font-bold text-[#475569]">{'Closed'}</span>
+              <div className="rounded-[8px] border border-white/[0.06] py-1 text-center text-[10px] font-bold text-[#475569]">
+                {'Closed'}
+              </div>
             )}
           </div>
         )}
