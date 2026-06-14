@@ -100,7 +100,10 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
       <div className="rounded-[18px] border border-white/[0.06] bg-[#0d1520] p-6">
         <svg className="w-full overflow-visible" viewBox={`0 0 ${W} ${H}`} style={{ height: H }} role="img" aria-label="Market probability signal chart">
           <defs>
-            <filter id={`presto-glow-${uid}`} x="-20%" y="-20%" width="140%" height="140%">
+            {/* filterUnits=userSpaceOnUse so the region is absolute, not bounding-box-relative —
+                a flat horizontal line has a zero-height bbox, which collapsed the % region and
+                made the glowing (index-0) line vanish while its end dot still showed. */}
+            <filter id={`presto-glow-${uid}`} filterUnits="userSpaceOnUse" x="0" y="0" width={W} height={H}>
               <feGaussianBlur stdDeviation="2.4" result="blur" />
               <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
@@ -162,7 +165,10 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
           aria-label="Market probability signal chart"
         >
           <defs>
-            <filter id={`presto-glow-${uid}`} x="-20%" y="-20%" width="140%" height="140%">
+            {/* filterUnits=userSpaceOnUse so the region is absolute, not bounding-box-relative —
+                a flat horizontal line has a zero-height bbox, which collapsed the % region and
+                made the glowing (index-0) line vanish while its end dot still showed. */}
+            <filter id={`presto-glow-${uid}`} filterUnits="userSpaceOnUse" x="0" y="0" width={W} height={H}>
               <feGaussianBlur stdDeviation="2.4" result="blur" />
               <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
