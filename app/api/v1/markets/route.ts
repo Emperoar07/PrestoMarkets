@@ -8,11 +8,15 @@ import {
 } from '@/lib/publicApi';
 import { getPublicMarkets } from '@/lib/publicMarketSource';
 import { toMarketV1 } from '@/lib/apiContracts';
+import { requireX402Payment } from '@/lib/x402Server';
 
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 const cacheSeconds = 30;
 
 export async function GET(request: NextRequest) {
+  const paywall = await requireX402Payment(request);
+  if (paywall) return paywall;
+
   const ip = getClientIp(request.headers);
   const headers = getPublicApiHeaders(cacheSeconds);
   if (!checkFixedWindowRateLimit(rateLimitStore, ip, { max: 120, windowMs: 60_000, maxEntries: 5_000 })) {

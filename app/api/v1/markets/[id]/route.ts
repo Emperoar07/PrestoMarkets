@@ -3,11 +3,15 @@ import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
 import { getPublicApiHeaders, publicOptionsResponse } from '@/lib/publicApi';
 import { getPublicMarket } from '@/lib/publicMarketSource';
 import { toMarketV1 } from '@/lib/apiContracts';
+import { requireX402Payment } from '@/lib/x402Server';
 
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 const cacheSeconds = 30;
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const paywall = await requireX402Payment(request);
+  if (paywall) return paywall;
+
   const headers = getPublicApiHeaders(cacheSeconds);
   const ip = getClientIp(request.headers);
   if (!checkFixedWindowRateLimit(rateLimitStore, ip, { max: 180, windowMs: 60_000, maxEntries: 5_000 })) {

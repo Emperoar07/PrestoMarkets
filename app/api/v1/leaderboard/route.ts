@@ -4,11 +4,15 @@ import { getPublicApiHeaders, publicOptionsResponse } from '@/lib/publicApi';
 import { listLeaderboard } from '@/lib/socialDb';
 import { parseLeaderboardQuery } from '@/lib/socialValidation';
 import { toLeaderboardRowV1 } from '@/lib/apiContracts';
+import { requireX402Payment } from '@/lib/x402Server';
 
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 const cacheSeconds = 60;
 
 export async function GET(request: NextRequest) {
+  const paywall = await requireX402Payment(request);
+  if (paywall) return paywall;
+
   const headers = getPublicApiHeaders(cacheSeconds);
   const ip = getClientIp(request.headers);
   if (!checkFixedWindowRateLimit(rateLimitStore, ip, { max: 120, windowMs: 60_000, maxEntries: 5_000 })) {
