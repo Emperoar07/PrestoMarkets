@@ -649,9 +649,90 @@ function formatSportsDbDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+// Free, no-key fallback: ESPN's public scoreboard API. Covers global soccer incl. the World Cup
+// and qualifiers, with team logos — so sports markets keep being created even without a
+// TheSportsDB key. Same TrendItem shape (guaranteed lane for World Cup / international fixtures).
+const ESPN_LEAGUES: Array<{ slug: string; label: string; guaranteed: boolean }> = [
+  { slug: 'fifa.world', label: 'FIFA World Cup', guaranteed: true },
+  { slug: 'fifa.worldq.uefa', label: 'World Cup Qualifying - UEFA', guaranteed: true },
+  { slug: 'fifa.worldq.conmebol', label: 'World Cup Qualifying - CONMEBOL', guaranteed: true },
+  { slug: 'fifa.worldq.concacaf', label: 'World Cup Qualifying - CONCACAF', guaranteed: true },
+  { slug: 'fifa.friendly', label: 'International Friendly', guaranteed: true },
+  { slug: 'uefa.champions', label: 'UEFA Champions League', guaranteed: false },
+  { slug: 'eng.1', label: 'English Premier League', guaranteed: false },
+  { slug: 'esp.1', label: 'Spanish La Liga', guaranteed: false },
+  { slug: 'ita.1', label: 'Italian Serie A', guaranteed: false },
+  { slug: 'ger.1', label: 'German Bundesliga', guaranteed: false },
+  { slug: 'fra.1', label: 'French Ligue 1', guaranteed: false },
+  { slug: 'usa.1', label: 'American Major League Soccer', guaranteed: false },
+];
+
+async function fetchEspnSoccerSignals(): Promise<TrendItem[]> {
+  const today = new Date();
+  const requests = ESPN_LEAGUES.flatMap((league) => {
+    // World Cup / international lanes scan a week ahead; club leagues only today + tomorrow.
+    const days = league.guaranteed ? 7 : 2;
+    return Array.from({ length: days }, (_, i) => new Date(today.getTime() + i * 86_400_000)).map(async (date) => {
+      const ymd = date.toISOString().slice(0, 10).replace(/-/g, '');
+      const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${league.slug}/scoreboard?dates=${ymd}`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      try {
+        const res = await fetch(url, { next: { revalidate: 900 }, signal: controller.signal });
+        if (!res.ok) return [] as TrendItem[];
+        const data = await res.json() as {
+          events?: Array<{
+            id?: string; date?: string;
+            status?: { type?: { state?: string } };
+            competitions?: Array<{ competitors?: Array<{ homeAway?: string; team?: { displayName?: string; shortDisplayName?: string; logo?: string } }> }>;
+          }>;
+        };
+        return (data.events ?? []).slice(0, 20).flatMap((event): TrendItem[] => {
+          const competitors = event.competitions?.[0]?.competitors ?? [];
+          const homeC = competitors.find((c) => c.homeAway === 'home');
+          const awayC = competitors.find((c) => c.homeAway === 'away');
+          const home = sanitizeFeedText(homeC?.team?.displayName || homeC?.team?.shortDisplayName || '');
+          const away = sanitizeFeedText(awayC?.team?.displayName || awayC?.team?.shortDisplayName || '');
+          if (!home || !away) return [];
+
+          // Only upcoming matches (ESPN state 'pre'); skip in-play ('in') and finished ('post').
+          if ((event.status?.type?.state ?? 'pre') !== 'pre') return [];
+
+          const kickoff = event.date ? new Date(event.date) : null;
+          const kickoffMs = kickoff && !Number.isNaN(kickoff.getTime()) ? kickoff.getTime() : null;
+          if (kickoffMs !== null && kickoffMs <= Date.now()) return [];
+          const closeMs = kickoffMs !== null ? kickoffMs + 3 * 60 * 60 * 1000 : null;
+
+          const isGuaranteed = league.guaranteed
+            || (Boolean(detectCountryFlagUrl(home)) && Boolean(detectCountryFlagUrl(away)));
+          const fixtureImage = homeC?.team?.logo || detectCountryFlagUrl(home) || detectCountryFlagUrl(away) || undefined;
+
+          return [{
+            topic: `${home} vs ${away}`,
+            query: `${home} (Football) vs ${away}. ${league.label} fixture. Football fixtures must use Home / Draw / Away outcomes.${league.slug === 'fifa.world' ? ' FIFA World Cup fixture.' : ''}`,
+            source: 'thesportsdb-football',
+            url: event.id ? `https://www.espn.com/soccer/match/_/gameId/${event.id}` : 'https://www.espn.com/soccer/',
+            imageUrl: fixtureImage,
+            ...(closeMs !== null ? { closeDate: new Date(closeMs).toISOString() } : {}),
+            ...(isGuaranteed ? { guaranteedFixture: true } : {}),
+            ...(kickoff && !Number.isNaN(kickoff.getTime()) ? { kickoffTime: kickoff.toISOString() } : {}),
+          }];
+        });
+      } catch {
+        return [] as TrendItem[];
+      } finally {
+        clearTimeout(timeout);
+      }
+    });
+  });
+  const batches = await Promise.all(requests);
+  return batches.flat();
+}
+
 async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
   const apiKey = getSportsDbApiKey();
-  if (!apiKey) return [];
+  // No TheSportsDB key → fall back to ESPN's free public scoreboard so sports markets keep flowing.
+  if (!apiKey) return fetchEspnSoccerSignals();
   const dates = [new Date(), new Date(Date.now() + 24 * 60 * 60 * 1000)];
   // World Cup priority: scan Soccer a full WEEK ahead so every World Cup fixture in the coming
   // week gets its market days before kickoff — a few missed ticks can never miss a match.
