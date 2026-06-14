@@ -36,6 +36,8 @@ const MOVE_STEP_LABEL: Record<MoveStep, string> = {
 const GATEWAY_SOURCE_KEYS = new Set<string>(['baseSepolia', 'sepolia', 'avalancheFuji', 'arbitrumSepolia']);
 // Sepolia-class testnets take up to ~20 min for Gateway deposit finality; Avalanche Fuji ~8s.
 const FINALITY_MINUTES: Record<string, number> = { baseSepolia: 19, sepolia: 19, arbitrumSepolia: 19, avalancheFuji: 1 };
+// Don't list a source chain in "Across chains" unless it holds at least this much USDC.
+const MIN_LISTED_USDC = 1;
 
 export function AddUsdcDrawer(input: {
   open: boolean;
@@ -207,13 +209,14 @@ export function AddUsdcDrawer(input: {
       ) : null}
 
       {/* Per-chain breakdown */}
-      {unified && unified.chains.some((chain) => !chain.isArc && chain.amount !== null) && (
+      {unified && unified.chains.some((chain) => !chain.isArc && (chain.amount ?? 0) >= MIN_LISTED_USDC) && (
         <div className="flex flex-col gap-0.5 border-t border-white/[0.06] pt-1.5 mt-0.5">
           <div className="flex items-center justify-between px-3 py-1">
             <span className="text-[9.5px] font-bold uppercase tracking-[0.18em] text-cyan/70">Across chains</span>
             <span className="text-[11px] font-black text-white">{formatAvailableUsdc(unified.total)} total</span>
           </div>
-          {unified.chains.filter((chain) => !chain.isArc).map((chain) => {
+          {/* Only list source chains that actually hold a usable balance (>= 1 USDC). */}
+          {unified.chains.filter((chain) => !chain.isArc && (chain.amount ?? 0) >= MIN_LISTED_USDC).map((chain) => {
             const movable = GATEWAY_SOURCE_KEYS.has(chain.key) && (chain.amount ?? 0) > 0 && isExternalWallet;
             const moving = move?.key === chain.key;
             return (

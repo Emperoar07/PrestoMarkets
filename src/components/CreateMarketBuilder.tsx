@@ -10,6 +10,7 @@ import { useAppState } from '@/lib/appState';
 import { createMarketCategories } from '@/lib/categories';
 import { CloseDatePicker } from './CloseDatePicker';
 import { getResolveFeeUsdc } from '@/lib/resolveFee';
+import { getArcConfig } from '@/lib/arcConfig';
 import { 
   MessageSquare, 
   Scale, 
@@ -39,6 +40,9 @@ export function CreateMarketBuilder() {
   const [description, setDescription] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
   const category = categories[0] ?? '';
+  // Settlement collateral. EURC is only offered when its factory is deployed/configured.
+  const [collateral, setCollateral] = useState<'USDC' | 'EURC'>('USDC');
+  const eurcAvailable = Boolean(getArcConfig().eurcFactoryAddress);
   
   function toggleCategory(value: string) {
     setCategories((prev) => {
@@ -221,7 +225,7 @@ export function CreateMarketBuilder() {
       resolutionMode,
       imageURI: imageURI.trim() || undefined,
       outcomeOptions: outcomeStyle === 'poll' ? cleanOutcomeOptions : ['YES', 'NO'],
-      collateral: 'USDC',
+      collateral,
     });
 
     setIsSubmitting(false);
@@ -323,6 +327,34 @@ export function CreateMarketBuilder() {
             </div>
             
             <div className="space-y-5">
+              {eurcAvailable ? (
+                <div>
+                  <label className="text-[12px] font-bold uppercase tracking-wider text-[#94a3b8]">Settlement currency</label>
+                  <div className="mt-2.5 grid gap-3 sm:grid-cols-2">
+                    {([
+                      ['USDC', 'USDC', 'US-dollar stablecoin. The default for most markets.'],
+                      ['EURC', 'EURC', 'Euro stablecoin. Trades, odds, and payouts are euro-denominated.'],
+                    ] as const).map(([value, label, copy]) => {
+                      const isActive = collateral === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setCollateral(value)}
+                          className={`rounded-xl border p-4 text-left transition-all duration-200 outline-none ${
+                            isActive
+                              ? 'border-cyan/35 bg-cyan/[0.05] text-white ring-1 ring-cyan/30'
+                              : 'border-white/[0.06] bg-white/[0.01] text-[#94a3b8] hover:border-white/15 hover:bg-white/[0.02]'
+                          }`}
+                        >
+                          <span className="block text-[13.5px] font-black text-white">{value === 'EURC' ? '€ ' : '$ '}{label}</span>
+                          <span className="mt-1.5 block text-xs leading-relaxed text-[#94a3b8]">{copy}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
               <div>
                 <label className="text-[12px] font-bold uppercase tracking-wider text-[#94a3b8]">Outcome style</label>
                 <div className="mt-2.5 grid gap-3 sm:grid-cols-2">

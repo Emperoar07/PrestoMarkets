@@ -1053,7 +1053,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   <p className="rounded-[10px] border border-cyan/15 bg-cyan/[0.05] px-3 py-2 text-xs leading-5 text-muted">
                     The app splits your amount evenly across every outcome to start with balanced depth.
                   </p>
-                ) : null}
+                ) : (
+                  <p className="text-[11px] leading-4 text-[#64748b]">
+                    Pool-share odds: {unit}1 = 1 share. The % is each outcome&apos;s share of the pool, not an order-book price — payout is your share of the total pool if it wins.
+                  </p>
+                )}
               </div>
 
               {/* Buy button / Lock Indicator */}
