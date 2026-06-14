@@ -313,7 +313,7 @@ function MarketCardComponent({
           </div>
         ) : (
           /* ── Binary (YES/NO) Prediction or Opinion markets ── */
-          <div className="flex flex-col gap-1.5 my-1">
+          <div className="flex flex-col my-1">
             <div className="flex items-center justify-between">
               <span className="text-[10.5px] font-bold text-[#94a3b8]">
                 {isOpinion ? 'Support' : 'YES'} <span className="font-black text-[#cbd5e1]">{yesOdds}%</span>
@@ -321,7 +321,7 @@ function MarketCardComponent({
             </div>
 
             {isLive ? (
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={(e) => {
@@ -333,7 +333,7 @@ function MarketCardComponent({
                       window.location.href = `/markets/${market.id}?buy=yes`;
                     }
                   }}
-                  className="rounded-[8px] bg-[#132d21] border border-emerald-500/10 py-1 text-[10px] font-black uppercase text-[#2ff0a2] transition-all hover:bg-[#183929] hover:text-[#37ffb4] hover:border-emerald-500/20 active:scale-95 text-center"
+                  className="rounded-[8px] bg-[#132d21] border border-emerald-500/10 py-2 text-[11px] font-black uppercase text-[#2ff0a2] transition-all hover:bg-[#183929] hover:text-[#37ffb4] hover:border-emerald-500/20 active:scale-95 text-center"
                 >
                   {'YES'}
                 </button>
@@ -348,13 +348,13 @@ function MarketCardComponent({
                       window.location.href = `/markets/${market.id}?buy=no`;
                     }
                   }}
-                  className="rounded-[8px] bg-[#381515] border border-rose-500/10 py-1 text-[10px] font-black uppercase text-rose-400 transition-all hover:bg-[#4c1c1c] hover:text-rose-300 hover:border-rose-500/20 active:scale-95 text-center"
+                  className="rounded-[8px] bg-[#381515] border border-rose-500/10 py-2 text-[11px] font-black uppercase text-rose-400 transition-all hover:bg-[#4c1c1c] hover:text-rose-300 hover:border-rose-500/20 active:scale-95 text-center"
                 >
                   {'NO'}
                 </button>
               </div>
             ) : (
-              <div className="rounded-[8px] border border-white/[0.06] py-1 text-center text-[10px] font-bold text-[#475569]">
+              <div className="mt-3 rounded-[8px] border border-white/[0.06] py-2 text-center text-[10px] font-bold text-[#475569]">
                 {'Closed'}
               </div>
             )}
