@@ -20,7 +20,8 @@ import {
 } from '@/lib/walletProvider';
 import { arcTestnetChain, walletConnectProjectId } from '@/lib/rainbowConfig';
 import { useSocialSession } from '@/lib/socialSessionContext';
-import { isCirclePasskeyConfigured } from '@/lib/circlePasskey';
+import { isCirclePasskeyConfigured, signCirclePasskeyMessage } from '@/lib/circlePasskey';
+import { broadcastSocialChanged, signInCircleWallet, signInExternalWallet } from '@/lib/socialSignIn';
 
 export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceArrowState }: { showAvatar?: boolean; hideDropdown?: boolean; onClick?: () => void; forceArrowState?: boolean }) {
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -147,6 +148,23 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
       const connectedWallet = await connectOfficialWalletProvider(input);
       setWallet(connectedWallet);
       setStoredConnectedWallet(connectedWallet);
+      // Merge social/profile sign-in INTO the wallet sign-in, so commenting and profile edits work
+      // right away with no separate "Sign in to write" step. Passkey signs the nonce via WebAuthn
+      // (verified server-side with ERC-1271); Circle UCW verifies silently via its userToken. The
+      // session persists in a cookie, so later page loads never re-prompt. External wallets get the
+      // same merge through AutoSocialSignIn on their wagmi connect.
+      try {
+        if (connectedWallet.mode === 'circle-passkey') {
+          setStatus('Confirm sign-in with your passkey…');
+          await signInExternalWallet(connectedWallet.address, (m) => signCirclePasskeyMessage(m));
+          broadcastSocialChanged();
+        } else if (connectedWallet.mode === 'circle-user-controlled') {
+          await signInCircleWallet(connectedWallet.address);
+          broadcastSocialChanged();
+        }
+      } catch {
+        // Social session is optional — the manual "Sign in to write" prompt remains as a fallback.
+      }
       setStatus('');
       setShowConnectPanel(false);
     } catch (error) {
