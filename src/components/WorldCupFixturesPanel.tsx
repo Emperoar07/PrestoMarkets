@@ -74,13 +74,18 @@ export function WorldCupFixturesPanel({ markets, onQuickBuy }: {
   let lastDay = '';
 
   return (
-    <div className="sm:col-span-2 lg:col-span-3 xl:col-span-3 h-[156px] flex flex-col justify-between overflow-hidden rounded-[10px] border border-white/[0.05] bg-[#0c121d] hover:border-white/[0.09] hover:bg-[#101929] transition-all">
+    <div className="sm:col-span-2 lg:col-span-3 xl:col-span-3 h-[156px] flex flex-col justify-between overflow-hidden rounded-[10px] border border-white/[0.06] bg-[#0c121d]/90 hover:border-cyan/20 hover:bg-[#101929]/95 backdrop-blur-md transition-all duration-300 shadow-lg shadow-black/10">
       {/* Header ribbon */}
-      <div className="flex items-center justify-between gap-2.5 border-b border-white/[0.04] bg-white/[0.01] px-3.5 py-1.5 shrink-0">
+      <div className="flex items-center justify-between gap-2.5 border-b border-white/[0.06] bg-white/[0.01] px-3.5 py-1.5 shrink-0">
         <Link href="/world-cup" className="flex min-w-0 items-center gap-2 transition-opacity hover:opacity-85">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-cyan/15 text-cyan">
-            <Trophy className="h-3.5 w-3.5" />
-          </span>
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] overflow-hidden bg-cyan/5 border border-cyan/15">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img 
+              src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c7/FIFA_World_Cup_Trophy.png/120px-FIFA_World_Cup_Trophy.png" 
+              alt="World Cup" 
+              className="h-[18px] w-auto object-contain select-none filter drop-shadow-[0_0_3px_rgba(34,211,238,0.25)]"
+            />
+          </div>
           <div className="min-w-0">
             <p className="truncate text-xs font-black text-white">FIFA World Cup 2026</p>
             <p className="text-[9px] font-black uppercase tracking-[0.12em] text-cyan/70">Fixtures</p>
