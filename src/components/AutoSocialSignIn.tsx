@@ -27,6 +27,11 @@ export function AutoSocialSignIn() {
 
     const addr = walletAddress.toLowerCase();
     if (isSignedIn && sessionAddress?.toLowerCase() === addr) return; // already signed in as this wallet
+    // Passkey wallets are smart accounts with no ECDSA key, so plain SIWE can't verify them and
+    // there's no Circle userToken session to verify against either. Skip auto sign-in for them
+    // (social features need ERC-1271 verification — tracked separately) rather than firing a broken
+    // SIWE prompt. Trading/funding still work fully via the passkey bundler.
+    if (walletMode === 'circle-passkey') return;
     if (attempted.current.has(addr)) return; // only try once per address per page load
     attempted.current.add(addr);
 

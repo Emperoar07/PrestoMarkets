@@ -15,9 +15,11 @@ const clientUrl = process.env.NEXT_PUBLIC_CIRCLE_CLIENT_URL?.trim() || '';
 const placeholderValues = new Set(['', 'your_circle_client_key_here', 'your_circle_client_url_here']);
 const credentialStorageKey = 'presto.circle.passkeyCredential';
 
-type StoredCredential = {
-  credentialId: string;
-};
+// Persist the FULL WebAuthn credential (public key + id), per Circle's modular-wallets guidance,
+// so the wallet rehydrates on later page loads WITHOUT a biometric prompt — the passkey assertion
+// is only needed to *sign* a transaction, not to restore the account. The credential is public
+// data; the private key never leaves the device authenticator.
+type StoredCredential = Awaited<ReturnType<typeof toWebAuthnCredential>>;
 
 export type CirclePasskeyBundlerClient = {
   sendUserOperation: (args: {
@@ -139,15 +141,24 @@ function readStoredCredential(): StoredCredential | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(credentialStorageKey);
-    return raw ? JSON.parse(raw) as StoredCredential : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, unknown> | null;
+    // Reject the legacy {credentialId}-only shape (pre full-credential persistence): without a
+    // public key we can't rehydrate silently, so treat it as absent and force a one-time re-login.
+    if (!parsed || typeof parsed !== 'object' || !('publicKey' in parsed)) return null;
+    return parsed as unknown as StoredCredential;
   } catch {
     return null;
   }
 }
 
-function writeStoredCredential(credentialId: string) {
+function writeStoredCredential(credential: StoredCredential) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(credentialStorageKey, JSON.stringify({ credentialId }));
+  try {
+    window.localStorage.setItem(credentialStorageKey, JSON.stringify(credential));
+  } catch {
+    /* storage unavailable */
+  }
 }
 
 export async function connectCirclePasskeyWallet(): Promise<{ address: Address }> {
@@ -168,21 +179,24 @@ export async function connectCirclePasskeyWallet(): Promise<{ address: Address }
   }
 
   const address = await initializePasskeyAccount(credential);
-  writeStoredCredential(credential.id);
+  writeStoredCredential(credential);
   return { address };
 }
 
 export async function restoreCirclePasskeyWallet(): Promise<{ address: Address } | null> {
   if (!isCirclePasskeyConfigured()) return null;
-  const stored = readStoredCredential();
-  if (!stored?.credentialId) return null;
+
+  // Already connected this session — module state survives client-side navigation, so there's
+  // nothing to do (and nothing to prompt).
+  if (addressRef && bundlerClientRef) return { address: addressRef };
+
+  const credential = readStoredCredential();
+  if (!credential) return null;
 
   try {
-    const credential = await toWebAuthnCredential({
-      transport: getPasskeyTransport(),
-      mode: WebAuthnMode.Login,
-      credentialId: stored.credentialId,
-    });
+    // Rehydrate the smart account straight from the stored credential. Crucially this does NOT
+    // call toWebAuthnCredential(Login), so it never triggers a biometric prompt: restoring the
+    // wallet on each page is silent, and the passkey is only invoked to SIGN a transaction.
     const address = await initializePasskeyAccount(credential);
     return { address };
   } catch {

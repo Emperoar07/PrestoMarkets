@@ -20,6 +20,7 @@ import {
 } from '@/lib/gatewayActions';
 import { useTransactions } from '@/lib/transactions';
 import { mintGatewayViaCircle } from '@/lib/circleActions';
+import { mintGatewayViaPasskey } from '@/lib/passkeyActions';
 import { type ConnectedWallet } from '@/lib/walletProvider';
 import type { Address } from 'viem';
 
@@ -141,9 +142,15 @@ export function AddUsdcDrawer(input: {
         source: chainKey as GatewaySourceKey, amountUsdc: amount,
         recipient: depositorAddress as Address,
         arcRecipient: arcRecipient as Address,
-        // Circle wallets submit the Arc mint themselves (they hold Arc gas), so the external EOA
-        // that signed the burn intent never needs Arc gas — it only deposits on the source chain.
-        ...(isCircleWallet ? { mintWith: mintGatewayViaCircle } : {}),
+        // Circle/passkey wallets submit the Arc mint themselves (gasless via their own session/
+        // paymaster), so the external EOA that signed the burn intent never needs Arc gas — it only
+        // deposits on the source chain. Passkey wallets have no Circle userToken session, so they
+        // must mint through the passkey bundler rather than mintGatewayViaCircle.
+        ...(input.wallet?.mode === 'circle-user-controlled'
+          ? { mintWith: mintGatewayViaCircle }
+          : input.wallet?.mode === 'circle-passkey'
+            ? { mintWith: mintGatewayViaPasskey }
+            : {}),
         onStep: (step) => setMove({ key: `complete-${chainKey}`, step }),
       });
       return r.ok

@@ -17,6 +17,13 @@ export function SocialSignInButton({ onSignedIn }: { onSignedIn?: () => void }) 
       return;
     }
 
+    // Passkey wallets can't do SIWE (smart account, no ECDSA key) and have no Circle userToken
+    // session — social write features need ERC-1271 verification, which isn't wired yet.
+    if (connectedWallet.mode === 'circle-passkey') {
+      setMessage('Commenting from a passkey wallet is coming soon. Use the app wallet (Email/PIN) or an external wallet to post.');
+      return;
+    }
+
     setIsSigning(true);
     setMessage('Preparing sign-in...');
     try {

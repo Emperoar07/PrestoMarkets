@@ -2,6 +2,7 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  encodeFunctionData,
   formatUnits,
   isAddress,
   parseEventLogs,
@@ -27,8 +28,10 @@ import {
   buyPasskeyShares,
   cancelPasskeyMarket,
   claimPasskeyMarket,
+  disputePasskeyMarket,
   refundPasskeyMarket,
   resolvePasskeyMarket,
+  runPasskeyCalls,
 } from './passkeyActions';
 import type { StableSymbol } from './walletBalance';
 import { getAgentResolverSelectionError, getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
@@ -267,10 +270,72 @@ async function assertMarketOpenForTrading(
 export async function createLiveMarket(input: CreateLiveMarketInput): Promise<LiveActionResult> {
   if (isCircleWallet()) return createCircleMarket(input);
   if (isPasskeyWallet()) {
-    return {
-      ok: false,
-      message: 'Passkey market creation is not enabled yet. Use the app wallet PIN flow or an external wallet to create markets.',
-    };
+    try {
+      if (!isAddress(input.resolver)) throw new Error('Resolver must be a valid wallet address.');
+      const agentResolverError = getAgentResolverSelectionError(input);
+      if (agentResolverError) throw new Error(agentResolverError);
+
+      const config = getArcConfig();
+      if (!config.usdcAddress || !isAddress(config.usdcAddress)) {
+        throw new Error('NEXT_PUBLIC_USDC_ADDRESS must be a valid USDC address.');
+      }
+      const readClient = getReadClient();
+      const owner = getStoredConnectedWallet()?.address;
+      if (!owner || !isAddress(owner)) throw new Error('Passkey wallet address is missing. Sign in again.');
+
+      const feeAmount = isAgentResolutionMode(input.resolutionMode) ? parseUnits(getResolveFeeUsdc(), 6) : BigInt(0);
+      if (feeAmount > BigInt(0)) {
+        const balance = await withRetry(() => readClient.readContract({
+          address: config.usdcAddress as Address, abi: erc20Abi, functionName: 'balanceOf', args: [owner as Address],
+        }));
+        if (balance < feeAmount) {
+          throw new Error(`Need at least $${getResolveFeeUsdc()} USDC to fund automatic resolution. You have $${Number(formatUnits(balance, 6)).toFixed(2)}.`);
+        }
+      }
+
+      const outcomeOptions = cleanOutcomeOptions(input);
+      const useMultiOutcome = shouldUseMultiOutcomeFactory(input);
+      const isEurc = input.collateral === 'EURC';
+      const factoryAddress = (isEurc
+        ? (useMultiOutcome ? config.eurcMultiOutcomeFactoryAddress : config.eurcFactoryAddress)
+        : (useMultiOutcome ? config.multiOutcomeFactoryAddress : config.factoryAddress)) as Address | undefined;
+      const factoryAbi = useMultiOutcome ? prestoMultiOutcomeMarketFactoryAbi : prestoMarketFactoryAbi;
+      if (!factoryAddress) {
+        throw new Error(isEurc
+          ? 'EURC factory is not configured. Set NEXT_PUBLIC_EURC_MARKET_FACTORY_ADDRESS.'
+          : 'Set NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS before launching poll markets.');
+      }
+
+      // Batch createMarket + (optional) resolve-fee transfer into ONE gasless passkey user op.
+      const calls: Array<{ to: Address; data: Hex }> = [{
+        to: factoryAddress,
+        data: encodeFunctionData({
+          abi: factoryAbi,
+          functionName: 'createMarket',
+          args: useMultiOutcome
+            ? [input.resolver as Address, getCloseTimestamp(input.closeDate), buildMarketMetadataURI({ ...input, outcomeOptions }), getMarketKind(input.type), outcomeOptions.length]
+            : [input.resolver as Address, getCloseTimestamp(input.closeDate), buildMarketMetadataURI({ ...input, outcomeOptions }), getMarketKind(input.type)],
+        }),
+      }];
+      if (feeAmount > BigInt(0)) {
+        calls.push({
+          to: config.usdcAddress as Address,
+          data: encodeFunctionData({ abi: erc20Abi, functionName: 'transfer', args: [input.resolver as Address, feeAmount] }),
+        });
+      }
+
+      const txHash = await runPasskeyCalls(calls);
+      const receipt = await withRetry(() => readClient.getTransactionReceipt({ hash: txHash as Hex }));
+      const created = parseEventLogs({ abi: factoryAbi, eventName: 'MarketCreated', logs: receipt.logs })[0];
+      return {
+        ok: true,
+        message: feeAmount > BigInt(0) ? 'Live market created with passkey. Automatic resolution funded.' : 'Live market created with passkey.',
+        txHash,
+        marketAddress: created?.args.market,
+      };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : 'Passkey market creation failed.' };
+    }
   }
   try {
     const { account, config, publicClient, walletClient } = await getClients();
@@ -611,7 +676,7 @@ export async function refundLiveMarket(marketAddress: string, payWith?: StableSy
 export async function disputeLiveResolution(marketAddress: string, reason: string): Promise<LiveActionResult> {
   if (isCircleWallet()) return disputeCircleResolution(marketAddress, reason);
   if (isPasskeyWallet()) {
-    return { ok: false, message: 'Disputing from a passkey wallet is coming soon — connect an external wallet to dispute this proposal.' };
+    return disputePasskeyMarket(marketAddress, reason);
   }
   if (!isAddress(marketAddress)) {
     return { ok: false, message: 'Market address is invalid.' };

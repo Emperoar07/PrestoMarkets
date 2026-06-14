@@ -12,6 +12,7 @@ import { getArcConfig } from './arcConfig';
 import { ARC_READ_BATCH, arcReadTransport, withRpcRetry } from './arcClient';
 import { erc20Abi, prestoMarketAbi } from './contracts';
 import { getCirclePasskeyBundlerClient } from './circlePasskey';
+import { GATEWAY_MINTER } from './gatewayActions';
 import type { LiveActionResult } from './liveActions';
 
 const minTradeUsdc = 0.01;
@@ -85,7 +86,7 @@ async function assertMarketOpenForTrading(publicClient: ReturnType<typeof getPub
   }
 }
 
-async function runPasskeyCalls(calls: Array<{ to: Address; data: Hex }>) {
+export async function runPasskeyCalls(calls: Array<{ to: Address; data: Hex }>) {
   const { bundlerClient } = getCirclePasskeyBundlerClient();
   const userOpHash = await bundlerClient.sendUserOperation({
     calls: calls.map((call) => ({ ...call, to: call.to as Hex })),
@@ -93,6 +94,28 @@ async function runPasskeyCalls(calls: Array<{ to: Address; data: Hex }>) {
   });
   const { receipt } = await bundlerClient.waitForUserOperationReceipt({ hash: userOpHash });
   return receipt.transactionHash;
+}
+
+const gatewayMinterAbi = [{
+  type: 'function',
+  name: 'gatewayMint',
+  inputs: [{ name: 'attestationPayload', type: 'bytes' }, { name: 'signature', type: 'bytes' }],
+  outputs: [],
+  stateMutability: 'nonpayable',
+}] as const;
+
+// Submit the Arc mint leg of a Move-to-Arc from the passkey smart account (gasless via the Circle
+// paymaster), so the external EOA that signed the burn intent never needs Arc gas. Mirrors
+// mintGatewayViaCircle for the user-controlled wallet. Returns the Arc mint tx hash.
+export async function mintGatewayViaPasskey(attestation: string, apiSignature: string): Promise<string> {
+  return runPasskeyCalls([{
+    to: GATEWAY_MINTER,
+    data: encodeFunctionData({
+      abi: gatewayMinterAbi,
+      functionName: 'gatewayMint',
+      args: [attestation as Hex, apiSignature as Hex],
+    }),
+  }]);
 }
 
 export async function buyPasskeyShares(input: {
@@ -203,6 +226,25 @@ export function claimPasskeyMarket(marketAddress: string) {
 
 export function refundPasskeyMarket(marketAddress: string) {
   return callPasskeyMarket(marketAddress, 'refund', 'Refund settled in USDC with passkey.');
+}
+
+export async function disputePasskeyMarket(marketAddress: string, reason: string): Promise<LiveActionResult> {
+  try {
+    if (!isAddress(marketAddress)) {
+      throw new Error('Market address is invalid.');
+    }
+    const txHash = await runPasskeyCalls([{
+      to: marketAddress as Address,
+      data: encodeFunctionData({ abi: prestoMarketAbi, functionName: 'disputeResolution', args: [reason] }),
+    }]);
+    return {
+      ok: true,
+      message: 'Dispute submitted with passkey — automatic settlement is blocked; the resolver must settle directly with evidence.',
+      txHash,
+    };
+  } catch (error) {
+    return { ok: false, message: normalizeError(error, 'Passkey dispute failed.') };
+  }
 }
 
 export async function resolvePasskeyMarket(input: {
