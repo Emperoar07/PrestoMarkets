@@ -76,7 +76,7 @@ type CreateMarketInput = {
   resolutionMode: ResolutionMode;
   imageURI?: string;
   outcomeOptions?: string[];
-  collateral?: 'USDC';
+  collateral?: 'USDC' | 'EURC';
 };
 
 type AppStateValue = {

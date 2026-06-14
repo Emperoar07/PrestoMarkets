@@ -36,14 +36,14 @@ export type MarketMetadata = AgentMarketMetadata & {
   rules: string;
   sourceOfTruth: string;
   resolutionMode: ResolutionMode;
-  collateral?: 'USDC';
+  collateral?: 'USDC' | 'EURC';
   rulesSchema?: {
     type: MarketType;
     outcomes: string[];
     sourceOfTruth: string;
     resolverMode: string;
     closeRule: string;
-    settlementAsset: 'USDC';
+    settlementAsset: 'USDC' | 'EURC';
   };
 };
 
@@ -58,7 +58,7 @@ export type BuildMarketMetadataInput = {
   resolutionMode: ResolutionMode | string;
   imageURI?: string;
   outcomeOptions?: string[];
-  collateral?: 'USDC';
+  collateral?: 'USDC' | 'EURC';
   agent?: AgentMarketMetadata;
 };
 
@@ -190,14 +190,14 @@ export function buildMarketMetadata(input: BuildMarketMetadataInput): MarketMeta
     rules: trunc(input.rules, MAX.rules) ?? input.rules,
     sourceOfTruth: trunc(input.sourceOfTruth, MAX.sourceOfTruth) ?? input.sourceOfTruth,
     resolutionMode: input.resolutionMode as ResolutionMode,
-    collateral: 'USDC',
+    collateral: input.collateral ?? 'USDC',
     rulesSchema: {
       type: input.type,
       outcomes: outcomeOptions && outcomeOptions.length > 0 ? outcomeOptions : ['YES', 'NO'],
       sourceOfTruth: trunc(input.sourceOfTruth, MAX.sourceOfTruth) ?? input.sourceOfTruth,
       resolverMode: input.resolutionMode,
       closeRule: 'Market closes at the onchain closeTime. Resolver settles against the written rules and source of truth.',
-      settlementAsset: 'USDC',
+      settlementAsset: input.collateral ?? 'USDC',
     },
     createdByType: input.agent?.createdByType ?? 'user',
     agentName: input.agent?.agentName,
@@ -236,8 +236,8 @@ export function parseMarketMetadata(metadataURI: string): Partial<MarketMetadata
   if (parsed.displayType && !DISPLAY_TYPES.has(parsed.displayType)) parsed.displayType = undefined;
   if (parsed.createdAt && !Number.isFinite(Date.parse(parsed.createdAt))) parsed.createdAt = undefined;
   if (parsed.kickoffTime && !Number.isFinite(Date.parse(parsed.kickoffTime))) parsed.kickoffTime = undefined;
-  parsed.collateral = 'USDC';
-  if (parsed.rulesSchema) parsed.rulesSchema.settlementAsset = 'USDC';
+  parsed.collateral = parsed.collateral ?? 'USDC';
+  if (parsed.rulesSchema) parsed.rulesSchema.settlementAsset = parsed.rulesSchema.settlementAsset ?? 'USDC';
   if (parsed.categories) {
     parsed.categories = parsed.categories
       .filter((c): c is string => typeof c === 'string')

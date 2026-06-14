@@ -166,9 +166,9 @@ export function AddUsdcDrawer(input: {
 
   if (!input.open) return null;
   const header = (
-    <div className="px-4 pb-3 pt-4">
+    <div className="px-3 pb-2.5 pt-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-cyan/70">
+        <p className="text-[9.5px] font-bold uppercase tracking-[0.18em] text-cyan/70">
           USDC
         </p>
         {!isDropdown && (
@@ -188,37 +188,37 @@ export function AddUsdcDrawer(input: {
   const content = (
     <div className="flex flex-col gap-1 p-2 bg-[#090e1a]">
       {/* Balance Row */}
-      <div className="flex items-center justify-between px-3 py-2 text-[12px] font-bold text-[#cbd5e1]">
+      <div className="flex items-center justify-between px-3 py-1.5 text-[11px] font-bold text-[#cbd5e1]">
         <span className="text-[#8fa0b4]">Arc Testnet USDC</span>
-        <span className="text-base font-black text-cyan">{balance ?? '--'}</span>
+        <span className="text-sm font-black text-cyan">{balance ?? '--'}</span>
       </div>
       {/* EURC balance — only shown once the wallet holds euro stablecoin (euro markets). */}
       {eurcBalance && Number(eurcBalance.replace(/[^0-9.]/g, '')) > 0 ? (
-        <div className="flex items-center justify-between px-3 py-1 text-[12px] font-bold text-[#cbd5e1]">
+        <div className="flex items-center justify-between px-3 py-1 text-[11px] font-bold text-[#cbd5e1]">
           <span className="text-[#8fa0b4]">Arc Testnet EURC</span>
-          <span className="text-base font-black text-amber-200">€{eurcBalance}</span>
+          <span className="text-sm font-black text-amber-200">€{eurcBalance}</span>
         </div>
       ) : null}
 
       {/* Per-chain breakdown */}
       {unified && unified.chains.some((chain) => !chain.isArc && chain.amount !== null) && (
-        <div className="flex flex-col gap-1 border-t border-white/[0.06] pt-2 mt-1">
-          <div className="flex items-center justify-between px-3 py-1.5">
-            <span className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-cyan/70">Across chains</span>
-            <span className="text-[12px] font-black text-white">{formatAvailableUsdc(unified.total)} total</span>
+        <div className="flex flex-col gap-0.5 border-t border-white/[0.06] pt-1.5 mt-0.5">
+          <div className="flex items-center justify-between px-3 py-1">
+            <span className="text-[9.5px] font-bold uppercase tracking-[0.18em] text-cyan/70">Across chains</span>
+            <span className="text-[11px] font-black text-white">{formatAvailableUsdc(unified.total)} total</span>
           </div>
           {unified.chains.filter((chain) => !chain.isArc).map((chain) => {
             const movable = GATEWAY_SOURCE_KEYS.has(chain.key) && (chain.amount ?? 0) > 0 && isExternalWallet;
             const moving = move?.key === chain.key;
             return (
-              <div key={chain.key} className="flex items-center justify-between gap-2 px-3 py-1 text-[11px] font-bold text-[#8fa0b4]">
+              <div key={chain.key} className="flex items-center justify-between gap-2 px-3 py-0.5 text-[10px] font-bold text-[#8fa0b4]">
                 <span>{chain.label}</span>
-                <span className="flex items-center gap-2">
+                <span className="flex items-center gap-1.5">
                   <span className="font-black text-[#cbd5e1]">
                     {chain.amount === null ? '—' : formatAvailableUsdc(chain.amount)}
                   </span>
                   {moving ? (
-                    <span className="rounded-full border border-cyan/15 bg-cyan/5 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-cyan animate-pulse">
+                    <span className="rounded-full border border-cyan/15 bg-cyan/5 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-cyan animate-pulse">
                       {MOVE_STEP_LABEL[move.step]}
                     </span>
                   ) : movable ? (
@@ -226,7 +226,7 @@ export function AddUsdcDrawer(input: {
                       type="button"
                       onClick={() => void handleDeposit(chain.key, chain.amount as number)}
                       disabled={Boolean(move)}
-                      className="rounded-full border border-white/[0.08] bg-white/[0.02] px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-[#9fb0c8] transition-all hover:text-cyan hover:border-cyan/30 hover:bg-cyan/5 disabled:opacity-40"
+                      className="rounded-full border border-white/[0.08] bg-white/[0.02] px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-[#9fb0c8] transition-all hover:text-cyan hover:border-cyan/30 hover:bg-cyan/5 disabled:opacity-40"
                     >
                       Move to Arc
                     </button>
@@ -236,21 +236,21 @@ export function AddUsdcDrawer(input: {
             );
           })}
           {moveError ? (
-            <p className="px-3 py-1 text-[10px] leading-relaxed text-red-300">{moveError}</p>
+            <p className="px-3 py-0.5 text-[9px] leading-relaxed text-red-300">{moveError}</p>
           ) : isExternalWallet ? (
-            <p className="px-3 py-1 text-[10px] leading-relaxed text-[#64748b]">
+            <p className="px-3 py-0.5 text-[9px] leading-relaxed text-[#64748b]">
               Move to Arc deposits into Circle Gateway, then completes once the deposit finalizes (up to ~20 min on Sepolia chains).
             </p>
           ) : isCircleWallet ? (
-            <p className="px-3 py-1 text-[10px] leading-relaxed text-[#64748b]">
+            <p className="px-3 py-0.5 text-[9px] leading-relaxed text-[#64748b]">
               Your Circle wallet lives on Arc and already holds its USDC here. Top up with the Circle faucet below — cross-chain Move to Arc is for external wallets holding USDC on another chain.
             </p>
           ) : (
-            <p className="px-3 py-1 text-[10px] leading-relaxed text-[#64748b]">
+            <p className="px-3 py-0.5 text-[9px] leading-relaxed text-[#64748b]">
               Connect an external wallet to move USDC across chains; or bridge via the links below.
             </p>
           )}
-          <p className="px-3 pb-1 text-[9px] font-bold uppercase tracking-[0.18em] text-[#46586f]">
+          <p className="px-3 pb-0.5 text-[8px] font-bold uppercase tracking-[0.14em] text-[#46586f]">
             Powered by Circle Gateway
           </p>
         </div>
@@ -258,31 +258,31 @@ export function AddUsdcDrawer(input: {
 
       {/* Step 2 / recovery: funds sitting in Gateway, ready (or pending) to finish onto Arc. */}
       {isExternalWallet && (gatewayBalance > 0 || pending.length > 0) && (
-        <div className="border border-white/[0.06] bg-[#0d1626]/20 rounded-xl p-3 mt-2 mx-1 flex flex-col gap-2">
+        <div className="border border-white/[0.06] bg-[#0d1626]/20 rounded-xl p-2.5 mt-1.5 mx-1 flex flex-col gap-1.5">
           {/* Title & Status Bar */}
-          <div className="flex items-center justify-between pb-2 border-b border-white/[0.04]">
-            <div className="flex items-center gap-2">
-              <span className="flex h-2 w-2 relative shrink-0">
+          <div className="flex items-center justify-between pb-1.5 border-b border-white/[0.04]">
+            <div className="flex items-center gap-1.5">
+              <span className="flex h-1.5 w-1.5 relative shrink-0">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
               </span>
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#8fa0b4]">In Gateway</span>
+              <span className="text-[9px] font-black uppercase tracking-[0.16em] text-[#8fa0b4]">In Gateway</span>
             </div>
-            <span className="text-[11.5px] font-black text-cyan">{formatAvailableUsdc(gatewayBalance)} ready</span>
+            <span className="text-[10.5px] font-black text-cyan">{formatAvailableUsdc(gatewayBalance)} ready</span>
           </div>
 
           {/* List items */}
           <div className="flex flex-col divide-y divide-white/[0.04]">
             {/* Finalized balances */}
             {gatewayBySource.map((s) => (
-              <div key={s.source} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+              <div key={s.source} className="flex items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
                 <div className="flex flex-col">
-                  <span className="text-xs font-black text-white">{formatAvailableUsdc(s.amount)}</span>
-                  <span className="text-[9.5px] font-bold text-[#64748b]">{GATEWAY_SOURCES[s.source].label}</span>
+                  <span className="text-[11px] font-black text-white">{formatAvailableUsdc(s.amount)}</span>
+                  <span className="text-[8.5px] font-bold text-[#64748b]">{GATEWAY_SOURCES[s.source].label}</span>
                 </div>
                 {move?.key === `complete-${s.source}` ? (
-                  <span className="flex items-center gap-1.5 rounded-lg border border-cyan/20 bg-cyan/5 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-cyan animate-pulse">
-                    <svg className="animate-spin h-3 w-3 text-cyan shrink-0" fill="none" viewBox="0 0 24 24">
+                  <span className="flex items-center gap-1 rounded-md border border-cyan/20 bg-cyan/5 px-2 py-1 text-[8px] font-black uppercase tracking-wider text-cyan animate-pulse">
+                    <svg className="animate-spin h-2.5 w-2.5 text-cyan shrink-0" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
@@ -293,7 +293,7 @@ export function AddUsdcDrawer(input: {
                     type="button"
                     onClick={() => void handleComplete(s.source, s.amount)}
                     disabled={Boolean(move)}
-                    className="rounded-lg bg-cyan text-[#07111f] hover:bg-cyan-300 active:scale-95 disabled:opacity-40 disabled:pointer-events-none px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all duration-150 shadow-md shadow-cyan/5"
+                    className="rounded-md bg-cyan text-[#07111f] hover:bg-cyan-300 active:scale-95 disabled:opacity-40 disabled:pointer-events-none px-2 py-1 text-[8.5px] font-black uppercase tracking-wider transition-all duration-150 shadow-md shadow-cyan/5"
                   >
                     Complete → Arc
                   </button>
@@ -305,13 +305,13 @@ export function AddUsdcDrawer(input: {
             {pending.filter((p) => !gatewayBySource.some((s) => s.source === p.source)).map((p) => {
               const minsLeft = Math.max(0, Math.ceil((FINALITY_MINUTES[p.source] ?? 19) - (Date.now() - p.depositedAt) / 60_000));
               return (
-                <div key={p.depositTx} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                <div key={p.depositTx} className="flex items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
                   <div className="flex flex-col">
-                    <span className="text-xs font-black text-[#cbd5e1]/60">{formatAvailableUsdc(p.amountUsdc)}</span>
-                    <span className="text-[9.5px] font-bold text-[#64748b]">{GATEWAY_SOURCES[p.source].label}</span>
+                    <span className="text-[11px] font-black text-[#cbd5e1]/60">{formatAvailableUsdc(p.amountUsdc)}</span>
+                    <span className="text-[8.5px] font-bold text-[#64748b]">{GATEWAY_SOURCES[p.source].label}</span>
                   </div>
-                  <span className="flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.01] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-[#64748b]">
-                    <Clock className="h-3 w-3 shrink-0" />
+                  <span className="flex items-center gap-1 rounded-md border border-white/[0.06] bg-white/[0.01] px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-[#64748b]">
+                    <Clock className="h-2.5 w-2.5 shrink-0" />
                     {minsLeft === 0 ? 'finalizing…' : `~${minsLeft} min`}
                   </span>
                 </div>
@@ -320,46 +320,46 @@ export function AddUsdcDrawer(input: {
           </div>
 
           {/* Alert subtitle description */}
-          <p className="mt-1 text-[9.5px] leading-relaxed text-[#64748b] px-0.5">
+          <p className="mt-0.5 text-[8.5px] leading-relaxed text-[#64748b] px-0.5">
             Deposited USDC is held in your Gateway balance and is safe. Complete the move once it finalizes.
           </p>
         </div>
       )}
 
       {/* Actions and Faucets styled like profile links */}
-      <div className="flex flex-col gap-1 border-t border-white/[0.06] pt-2 mt-1">
+      <div className="flex flex-col gap-0.5 border-t border-white/[0.06] pt-1.5 mt-0.5">
         <a
           href="https://faucet.circle.com"
           target="_blank"
           rel="noreferrer"
-          className="w-full flex items-center justify-between px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
+          className="w-full flex items-center justify-between px-2.5 py-1.5 text-[11px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
         >
-          <span className="flex items-center gap-2.5">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
+          <span className="flex items-center gap-2">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
               <path d="M12 2.5s6 6.3 6 10.5a6 6 0 0 1-12 0c0-4.2 6-10.5 6-10.5Z" />
             </svg>
             Circle Faucet (USDC / EURC)
           </span>
-          <ExternalLink className="h-3.5 w-3.5 opacity-60" />
+          <ExternalLink className="h-3 w-3 opacity-60" />
         </a>
 
         <a
           href={dexUrl}
           target="_blank"
           rel="noreferrer"
-          className="w-full flex items-center justify-between px-3 py-2 text-[12px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
+          className="w-full flex items-center justify-between px-2.5 py-1.5 text-[11px] font-bold text-[#94a3b8] transition-colors hover:text-white hover:bg-white/[0.04] rounded-lg"
         >
-          <span className="flex items-center gap-2.5">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
+          <span className="flex items-center gap-2">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-75">
               <path d="m17 2 4 4-4 4" /><path d="M3 6h18" /><path d="m7 22-4-4 4-4" /><path d="M21 18H3" />
             </svg>
             Bridge or Swap USDC
           </span>
-          <ExternalLink className="h-3.5 w-3.5 opacity-60" />
+          <ExternalLink className="h-3 w-3 opacity-60" />
         </a>
       </div>
 
-      <p className="px-3 py-2 text-[10px] leading-relaxed text-[#64748b]">
+      <p className="px-3 py-1.5 text-[9px] leading-relaxed text-[#64748b]">
         Presto spends Arc Testnet USDC only. Every transfer happens as an explicit user action.
       </p>
     </div>
@@ -369,7 +369,7 @@ export function AddUsdcDrawer(input: {
     return (
       <div
         ref={panelRef}
-        className="absolute right-0 mt-3 z-50 w-[360px] overflow-hidden rounded-[14px] border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/40"
+        className="absolute right-0 mt-3 z-50 w-[288px] overflow-hidden rounded-[14px] border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/40"
       >
         {header}
         <div className="h-px bg-white/[0.06]" />
@@ -380,7 +380,7 @@ export function AddUsdcDrawer(input: {
 
   return (
     <div className="fixed inset-0 z-[9998] flex items-end justify-center bg-[#050b14]/70 px-3 pb-3 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="w-full max-w-[380px] overflow-hidden rounded-[14px] border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/60">
+      <div className="w-full max-w-[304px] overflow-hidden rounded-[14px] border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/60">
         {header}
         <div className="h-px bg-white/[0.06]" />
         {content}

@@ -55,8 +55,10 @@ async function isFactoryDeployedMarket(marketAddress: Address, config: ReturnTyp
       }
     }
 
-    // Legacy factories: markets created before a factory upgrade stay tradable.
+    // EURC-collateral factories + legacy factories: their markets are also tradable.
     for (const legacy of [
+      ...(config.eurcFactoryAddress ? [{ address: config.eurcFactoryAddress, abi: prestoMarketFactoryAbi }] : []),
+      ...(config.eurcMultiOutcomeFactoryAddress ? [{ address: config.eurcMultiOutcomeFactoryAddress, abi: prestoMultiOutcomeMarketFactoryAbi }] : []),
       ...config.legacyFactoryAddresses.map((address) => ({ address, abi: prestoMarketFactoryAbi })),
       ...config.legacyMultiOutcomeFactoryAddresses.map((address) => ({ address, abi: prestoMultiOutcomeMarketFactoryAbi })),
     ]) {
@@ -215,17 +217,20 @@ export async function isAllowedContractExecution(input: CircleContractExecutionP
   const contract = input.contractAddress.toLowerCase();
   const factory = config.factoryAddress?.toLowerCase();
   const multiOutcomeFactory = config.multiOutcomeFactoryAddress?.toLowerCase();
+  // EURC-collateral factories are also valid create targets (euro markets).
+  const eurcFactory = config.eurcFactoryAddress?.toLowerCase();
+  const eurcMultiOutcomeFactory = config.eurcMultiOutcomeFactoryAddress?.toLowerCase();
   const usdc = config.usdcAddress?.toLowerCase();
 
   if (input.abiFunctionSignature === BATCH_SIGNATURE) {
     return validateBatchExecution(input, config);
   }
 
-  if (factory && contract === factory) {
+  if ((factory && contract === factory) || (eurcFactory && contract === eurcFactory)) {
     return input.abiFunctionSignature === 'createMarket(address,uint256,string,uint8)';
   }
 
-  if (multiOutcomeFactory && contract === multiOutcomeFactory) {
+  if ((multiOutcomeFactory && contract === multiOutcomeFactory) || (eurcMultiOutcomeFactory && contract === eurcMultiOutcomeFactory)) {
     return input.abiFunctionSignature === 'createMarket(address,uint256,string,uint8,uint8)';
   }
 

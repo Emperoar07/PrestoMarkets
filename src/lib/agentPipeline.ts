@@ -106,6 +106,20 @@ function getConsumerMarketPriorityBoost(trend: TrendItem): number {
   return CONSUMER_PRIORITY_TERMS.some((term) => haystack.includes(term)) ? 7 : 0;
 }
 
+// Euro-denominated topics that should settle in EURC rather than USDC. Gated behind
+// PRESTO_AGENT_EURC (default off) so the agent only creates euro markets once it's funded with
+// EURC to seed them — otherwise they'd sit unseeded.
+const AGENT_EURC_ENABLED = process.env.PRESTO_AGENT_EURC === 'true';
+const EURO_TERMS = [
+  'ecb', 'european central bank', 'eur/usd', 'eurusd', 'euro area', 'eurozone', 'euro zone',
+  'european union', 'european parliament', 'euro stoxx', 'european election', 'german election',
+  'french election', 'italian election', 'lagarde', 'euro to dollar', 'euribor',
+];
+function isEuroDenominatedTrend(trend: TrendItem, draft: GeminiDraft): boolean {
+  const haystack = `${trend.source} ${trend.topic} ${trend.query} ${draft.title}`.toLowerCase();
+  return EURO_TERMS.some((term) => haystack.includes(term));
+}
+
 function agentTrendPriorityBoost(trend: TrendItem): number {
   return (isFootballBasketballTrend(trend) ? 8 : 0)
     + getArcEcosystemPriorityBoost(trend)
@@ -2107,6 +2121,8 @@ async function createOnchain(
     resolutionMode: 'Agent assisted',
     imageURI,
     outcomeOptions: draft.outcomeOptions,
+    // Euro-denominated topics settle in EURC (only when the EURC factory + agent flag are set).
+    collateral: AGENT_EURC_ENABLED && isEuroDenominatedTrend(trend, draft) ? 'EURC' : 'USDC',
     agent: {
       createdByType: 'agent',
       agentName: 'Presto Agent',

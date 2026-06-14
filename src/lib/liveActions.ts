@@ -113,7 +113,7 @@ export type CreateLiveMarketInput = {
   resolutionMode: string;
   imageURI?: string;
   outcomeOptions?: string[];
-  collateral?: 'USDC';
+  collateral?: 'USDC' | 'EURC';
   agent?: AgentMarketMetadata;
 };
 
@@ -300,11 +300,17 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
 
     const outcomeOptions = cleanOutcomeOptions(input);
     const useMultiOutcome = shouldUseMultiOutcomeFactory(input);
-    const factoryAddress = useMultiOutcome ? config.multiOutcomeFactoryAddress : config.factoryAddress;
+    // Euro markets are created through the EURC-collateral factories; everything else through USDC.
+    const isEurc = input.collateral === 'EURC';
+    const factoryAddress = (isEurc
+      ? (useMultiOutcome ? config.eurcMultiOutcomeFactoryAddress : config.eurcFactoryAddress)
+      : (useMultiOutcome ? config.multiOutcomeFactoryAddress : config.factoryAddress)) as Address | undefined;
     const factoryAbi = useMultiOutcome ? prestoMultiOutcomeMarketFactoryAbi : prestoMarketFactoryAbi;
 
     if (!factoryAddress) {
-      throw new Error('Set NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS before launching poll markets.');
+      throw new Error(isEurc
+        ? 'EURC factory is not configured. Set NEXT_PUBLIC_EURC_MARKET_FACTORY_ADDRESS.'
+        : 'Set NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS before launching poll markets.');
     }
 
     const hash = await walletClient.writeContract({
