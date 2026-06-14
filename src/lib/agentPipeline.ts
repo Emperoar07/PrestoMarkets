@@ -846,7 +846,23 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
   }));
 
   const batches = await Promise.all(requests);
-  return batches.flat();
+  // Run ESPN alongside TheSportsDB and merge — they cover different competitions, so together
+  // they catch more fixtures. Dedupe by normalized "home vs away" so one match isn't doubled.
+  const espn = await fetchEspnSoccerSignals().catch(() => [] as TrendItem[]);
+  return dedupeFixtureTrends([...batches.flat(), ...espn]);
+}
+
+// Dedupe fixture trends by normalized matchup (handles "A vs B" from both providers).
+function dedupeFixtureTrends(trends: TrendItem[]): TrendItem[] {
+  const seen = new Set<string>();
+  const out: TrendItem[] = [];
+  for (const trend of trends) {
+    const key = trend.topic.toLowerCase().replace(/[^a-z]/g, '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trend);
+  }
+  return out;
 }
 
 // Removed: fetchLiveScoreFootballSignals() and fetchSportDbSignals().
