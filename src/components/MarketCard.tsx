@@ -333,7 +333,7 @@ function MarketCardComponent({
                       window.location.href = `/markets/${market.id}?buy=yes`;
                     }
                   }}
-                  className="rounded-[8px] bg-[#1a2638]/40 border border-white/[0.05] py-1 text-[10px] font-black uppercase text-[#cbd5e1] transition-all hover:bg-[#22324a]/60 hover:text-cyan hover:border-cyan/20 active:scale-95 text-center"
+                  className="rounded-[8px] bg-[#132d21] border border-emerald-500/10 py-1 text-[10px] font-black uppercase text-[#2ff0a2] transition-all hover:bg-[#183929] hover:text-[#37ffb4] hover:border-emerald-500/20 active:scale-95 text-center"
                 >
                   {'YES'}
                 </button>
@@ -348,7 +348,7 @@ function MarketCardComponent({
                       window.location.href = `/markets/${market.id}?buy=no`;
                     }
                   }}
-                  className="rounded-[8px] bg-[#1a2638]/40 border border-white/[0.05] py-1 text-[10px] font-black uppercase text-[#cbd5e1] transition-all hover:bg-[#22324a]/60 hover:text-cyan hover:border-cyan/20 active:scale-95 text-center"
+                  className="rounded-[8px] bg-[#381515] border border-rose-500/10 py-1 text-[10px] font-black uppercase text-rose-400 transition-all hover:bg-[#4c1c1c] hover:text-rose-300 hover:border-rose-500/20 active:scale-95 text-center"
                 >
                   {'NO'}
                 </button>
