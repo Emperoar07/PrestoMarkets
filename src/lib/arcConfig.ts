@@ -61,6 +61,10 @@ export function getArcConfig() {
   const usdcAddress = publicEnv(process.env.NEXT_PUBLIC_USDC_ADDRESS);
   // EURC on Arc Testnet (Circle docs) — euro-denominated market collateral. 6 decimals like USDC.
   const eurcAddress = publicEnv(process.env.NEXT_PUBLIC_EURC_ADDRESS) || DEFAULT_ARC_EURC_ADDRESS;
+  // EURC-collateral factories (euro markets). Read alongside the USDC factories so euro markets
+  // appear in the explorer; absent until the EURC factory is deployed.
+  const eurcFactoryAddress = publicEnv(process.env.NEXT_PUBLIC_EURC_MARKET_FACTORY_ADDRESS);
+  const eurcMultiOutcomeFactoryAddress = publicEnv(process.env.NEXT_PUBLIC_EURC_MULTI_OUTCOME_FACTORY_ADDRESS);
   const factoryAddress = publicEnv(process.env.NEXT_PUBLIC_MARKET_FACTORY_ADDRESS) || DEFAULT_MARKET_FACTORY_ADDRESS;
   const multiOutcomeFactoryAddress = publicEnv(process.env.NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS) || DEFAULT_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS;
   // Retired factories whose markets must stay readable (positions, claims, history) after a
@@ -81,6 +85,8 @@ export function getArcConfig() {
     rpcUrls,
     usdcAddress,
     eurcAddress,
+    eurcFactoryAddress,
+    eurcMultiOutcomeFactoryAddress,
     factoryAddress,
     multiOutcomeFactoryAddress,
     legacyFactoryAddresses,

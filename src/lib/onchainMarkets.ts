@@ -348,6 +348,9 @@ async function readOnchainMarkets() {
   const factories = [
     config.factoryAddress ? { address: config.factoryAddress as Address, abi: prestoMarketFactoryAbi } : null,
     config.multiOutcomeFactoryAddress ? { address: config.multiOutcomeFactoryAddress as Address, abi: prestoMultiOutcomeMarketFactoryAbi } : null,
+    // EURC-collateral factories — euro markets read alongside USDC ones (collateral() tags each).
+    config.eurcFactoryAddress ? { address: config.eurcFactoryAddress as Address, abi: prestoMarketFactoryAbi } : null,
+    config.eurcMultiOutcomeFactoryAddress ? { address: config.eurcMultiOutcomeFactoryAddress as Address, abi: prestoMultiOutcomeMarketFactoryAbi } : null,
     // Retired factories: their markets stay readable so positions and claims never disappear.
     ...config.legacyFactoryAddresses.map((address) => ({ address: address as Address, abi: prestoMarketFactoryAbi })),
     ...config.legacyMultiOutcomeFactoryAddresses.map((address) => ({ address: address as Address, abi: prestoMultiOutcomeMarketFactoryAbi })),
