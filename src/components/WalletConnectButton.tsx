@@ -45,7 +45,8 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const { unreadCount, notifications, markNotificationsRead } = useSocialSession();
-  const isPending = status === 'Connecting...' || status.startsWith('Opening Circle');
+  const isPending = status === 'Connecting...' || status.startsWith('Opening');
+  const isInfo = status === 'Connecting...' || status.startsWith('Opening');
 
   useEffect(() => {
     if (!isOpen) {
@@ -579,8 +580,12 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
                 </span>
               </div>
 
-              {status && !isPending && (
-                <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3.5 text-xs text-red-300 font-bold leading-normal animate-pulse">
+              {status && (
+                <div className={`rounded-xl border p-3.5 text-xs font-bold leading-normal ${
+                  isInfo
+                    ? 'border-cyan/25 bg-cyan/5 text-cyan animate-pulse'
+                    : 'border-red-500/20 bg-red-500/5 text-red-300'
+                }`}>
                   {status}
                 </div>
               )}

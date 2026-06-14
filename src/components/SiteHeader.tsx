@@ -348,7 +348,10 @@ export function SiteHeader() {
               <div className="relative">
                 <button
                   type="button"
-                  onClick={() => setFundingDropdownOpen((open) => !open)}
+                  onClick={() => {
+                    setFundingDropdownOpen((open) => !open);
+                    setMenuOpen(false);
+                  }}
                   className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#0b1322]/80 px-3 py-1 text-[12px] font-black text-[#dbeafe] transition-colors hover:border-cyan/25 hover:text-white"
                   aria-label="Open Add USDC dropdown"
                 >
@@ -380,7 +383,10 @@ export function SiteHeader() {
               <WalletConnectButton
                 showAvatar={true}
                 hideDropdown={true}
-                onClick={() => setMenuOpen((open) => !open)}
+                onClick={() => {
+                  setMenuOpen((open) => !open);
+                  setFundingDropdownOpen(false);
+                }}
                 forceArrowState={menuOpen}
               />
 
