@@ -20,10 +20,15 @@ import {
 } from '@/lib/walletProvider';
 import { arcTestnetChain, walletConnectProjectId } from '@/lib/rainbowConfig';
 import { useSocialSession } from '@/lib/socialSessionContext';
+import { isCirclePasskeyConfigured } from '@/lib/circlePasskey';
 
 export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceArrowState }: { showAvatar?: boolean; hideDropdown?: boolean; onClick?: () => void; forceArrowState?: boolean }) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  // Passkey sign-in only works once the Circle Modular Wallets client key/URL are configured for
+  // this domain. Until then, present a friendly "coming soon" state instead of letting the user
+  // click through to a raw env-var error.
+  const passkeyReady = isCirclePasskeyConfigured();
   const { address: rainbowAddress, isConnected: isRainbowConnected } = useAccount();
   const { disconnect } = useDisconnect();
   const [wallet, setWallet] = useState<ConnectedWallet | null>(null);
@@ -534,6 +539,11 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
                       <p className="mt-1.5 text-xs leading-5 text-[#94a3b8]">
                         Circle creates a smart account on Arc Testnet and sponsors passkey-signed trades through its bundler.
                       </p>
+                      {!passkeyReady ? (
+                        <p className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/[0.06] px-2.5 py-1.5 text-[11px] font-bold leading-5 text-amber-200/90">
+                          Passkey sign-in is coming soon to this domain. Use Email or PIN for now.
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -544,13 +554,13 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
               <button
                 type="button"
                 onClick={() => continueWithCircleMethod()}
-                disabled={isPending}
+                disabled={isPending || (circleMethod === 'passkey' && !passkeyReady)}
                 className="w-full rounded-xl bg-cyan py-3 text-xs font-black uppercase tracking-wider text-[#07111f] transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50 shadow-lg shadow-cyan/10"
               >
                 {circleMethod === 'pin'
                   ? 'Continue with PIN'
                   : circleMethod === 'passkey'
-                    ? 'Continue with Passkey'
+                    ? (passkeyReady ? 'Continue with Passkey' : 'Passkey coming soon')
                   : authMode === 'signup' ? 'Sign up' : 'Log in'}
               </button>
 
