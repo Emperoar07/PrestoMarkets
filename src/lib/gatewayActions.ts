@@ -68,7 +68,7 @@ export const GATEWAY_SOURCES: Record<GatewaySourceKey, SourceChain> = {
 // Canonical EIP-3085 add-chain params. Arc's are taken from Arc docs (viem's chain object can
 // lack a usable explorer/rpc for wallet add). Source chains build from their viem object.
 const ARC_ADD_PARAMS = {
-  chainId: '0x4cf4b2', // 5042002
+  chainId: '0x4cef52', // 5042002
   chainName: 'Arc Testnet',
   nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
   rpcUrls: ['https://rpc.testnet.arc.network'],
