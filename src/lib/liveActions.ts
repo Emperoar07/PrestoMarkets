@@ -118,6 +118,8 @@ export type CreateLiveMarketInput = {
   resolutionMode: string;
   imageURI?: string;
   outcomeOptions?: string[];
+  /** Optional image per outcome, aligned to outcomeOptions (blank entries allowed). */
+  outcomeImages?: (string | undefined)[];
   collateral?: 'USDC' | 'EURC';
   agent?: AgentMarketMetadata;
 };

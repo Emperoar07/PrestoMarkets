@@ -60,6 +60,8 @@ export function CreateMarketBuilder() {
   const [imageURI, setImageURI] = useState('');
   const [outcomeStyle, setOutcomeStyle] = useState<'binary' | 'poll'>('binary');
   const [outcomeOptions, setOutcomeOptions] = useState(['YES', 'NO']);
+  // Optional image per outcome (team crest, candidate photo…), index-aligned to outcomeOptions.
+  const [outcomeImages, setOutcomeImages] = useState<string[]>(['', '']);
   const [agentAddress, setAgentAddress] = useState<string | null>(null);
   const [showReview, setShowReview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -157,10 +159,40 @@ export function CreateMarketBuilder() {
 
   function addOutcomeOption() {
     setOutcomeOptions((current) => [...current, `Option ${current.length + 1}`].slice(0, 12));
+    setOutcomeImages((current) => [...current, ''].slice(0, 12));
   }
 
   function removeOutcomeOption(index: number) {
     setOutcomeOptions((current) => current.filter((_, i) => i !== index));
+    setOutcomeImages((current) => current.filter((_, i) => i !== index));
+  }
+
+  function handleOutcomeImageFile(index: number, file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setStatusMessage('Choose an image file for the outcome.');
+      return;
+    }
+    if (file.size > maxInlineImageBytes) {
+      setStatusMessage('Outcome image must be under 300 KB or use a hosted image URL.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setOutcomeImages((current) => {
+        const next = [...current];
+        while (next.length <= index) next.push('');
+        next[index] = String(reader.result ?? '');
+        return next;
+      });
+      setStatusMessage('');
+    };
+    reader.onerror = () => setStatusMessage('Unable to read that image file.');
+    reader.readAsDataURL(file);
+  }
+
+  function clearOutcomeImage(index: number) {
+    setOutcomeImages((current) => current.map((img, i) => (i === index ? '' : img)));
   }
 
   function getCloseDateLabel() {
@@ -201,7 +233,12 @@ export function CreateMarketBuilder() {
       return;
     }
 
-    const cleanOutcomeOptions = outcomeOptions.map((option) => option.trim()).filter(Boolean);
+    // Pair options with their images, then drop blank options so the two stay index-aligned.
+    const optionPairs = outcomeOptions
+      .map((option, i) => ({ option: option.trim(), image: outcomeImages[i] ?? '' }))
+      .filter((pair) => pair.option);
+    const cleanOutcomeOptions = optionPairs.map((pair) => pair.option);
+    const cleanOutcomeImages = optionPairs.map((pair) => pair.image);
     if (outcomeStyle === 'poll' && cleanOutcomeOptions.length < 3) {
       setStatusMessage('Add at least three poll options to launch through the V2 factory.');
       return;
@@ -225,6 +262,7 @@ export function CreateMarketBuilder() {
       resolutionMode,
       imageURI: imageURI.trim() || undefined,
       outcomeOptions: outcomeStyle === 'poll' ? cleanOutcomeOptions : ['YES', 'NO'],
+      outcomeImages: outcomeStyle === 'poll' && cleanOutcomeImages.some(Boolean) ? cleanOutcomeImages : undefined,
       collateral,
     });
 
@@ -405,6 +443,30 @@ export function CreateMarketBuilder() {
                             className="flex-1 rounded-lg border border-white/[0.06] bg-[#0a1120] px-3.5 py-2 text-sm text-white outline-none transition-colors placeholder:text-[#3d4a63] focus:border-cyan/40"
                             placeholder={`Option ${index + 1}`}
                           />
+                          {/* Optional per-outcome image (team crest, candidate photo…). */}
+                          {outcomeImages[index] ? (
+                            <button
+                              type="button"
+                              onClick={() => clearOutcomeImage(index)}
+                              title="Remove outcome image"
+                              className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-cyan/30 bg-[#0a1120]"
+                            >
+                              <img src={outcomeImages[index]} alt="" className="h-full w-full object-cover" />
+                            </button>
+                          ) : (
+                            <label
+                              title="Add an image for this outcome"
+                              className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-white/[0.06] text-muted transition hover:border-cyan/30 hover:text-cyan"
+                            >
+                              <ImageIcon className="h-4 w-4" />
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="sr-only"
+                                onChange={(event) => handleOutcomeImageFile(index, event.target.files?.[0])}
+                              />
+                            </label>
+                          )}
                           {outcomeOptions.length > 2 ? (
                             <button
                               type="button"
