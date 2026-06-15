@@ -128,6 +128,44 @@ export async function fetchAssetUsdPrice(assetId: string): Promise<number | null
 }
 
 /**
+ * Historical USD price of an asset at (approximately) a given time — used to snapshot the price at
+ * a price market's close so the settlement view shows the value that decided the outcome rather
+ * than a drifting live price. Pulls a ±2h window from CoinGecko and returns the closest reading.
+ */
+export async function fetchAssetUsdPriceAt(assetId: string, atMs: number): Promise<number | null> {
+  const apiKey = process.env.COINGECKO_API_KEY;
+  const headers: HeadersInit = apiKey ? { 'x-cg-demo-api-key': apiKey } : {};
+  const atSec = Math.floor(atMs / 1000);
+  const from = atSec - 2 * 3600;
+  const to = atSec + 2 * 3600;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/coins/${assetId}/market_chart/range?vs_currency=usd&from=${from}&to=${to}`,
+      { headers, signal: controller.signal },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as { prices?: Array<[number, number]> };
+    const prices = data.prices ?? [];
+    if (prices.length === 0) return null;
+    let best = prices[0];
+    for (const point of prices) {
+      if (Math.abs(point[0] - atMs) < Math.abs(best[0] - atMs)) best = point;
+    }
+    const price = best[1];
+    return typeof price === 'number' && Number.isFinite(price) && price > 0 ? price : null;
+  } catch (error) {
+    logger.warn('price-resolution', `CoinGecko historical price fetch failed for ${assetId}`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
  * Try to settle a crypto price market deterministically. Returns the winning
  * outcome or null (caller falls back to the LLM evidence pipeline).
  */

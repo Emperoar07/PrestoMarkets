@@ -39,7 +39,7 @@ import { collateralUnit } from '@/lib/arcConfig';
 import { identifyAsset } from '@/lib/priceResolution';
 import { detectCountryFlagUrl } from '@/lib/marketSubjectImage';
 import Link from 'next/link';
-import { ChevronDown, Loader2, AlertCircle } from 'lucide-react';
+import { ChevronDown, Loader2, AlertCircle, Lock } from 'lucide-react';
 
 const statusStyle: Record<MarketStatus, string> = {
   Open: 'border-mint/25 bg-mint/10 text-mint',
@@ -194,6 +194,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   // Identify if this is a crypto asset market
   const cryptoAsset = market ? identifyAsset(market) : null;
 
+  // Once a price market closes/resolves, freeze the price at its close time (the value that decided
+  // the outcome) instead of polling a drifting live price.
+  const priceSettled = market?.status === 'Closed' || market?.status === 'Resolved';
+  const priceCloseMs = market?.closeDate ? new Date(market.closeDate).getTime() : null;
+
   useEffect(() => {
     if (!cryptoAsset) return;
 
@@ -204,7 +209,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
       if (!cryptoAsset || !active) return;
       setIsFetchingPrice(true);
       try {
-        const res = await fetch(`/api/crypto/price?assetId=${cryptoAsset.id}`);
+        const url = priceSettled && priceCloseMs
+          ? `/api/crypto/price?assetId=${cryptoAsset.id}&at=${priceCloseMs}`
+          : `/api/crypto/price?assetId=${cryptoAsset.id}`;
+        const res = await fetch(url);
         if (!res.ok) throw new Error('Failed to fetch price');
         const data = await res.json();
         if (active && typeof data.price === 'number') {
@@ -240,18 +248,20 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
       }
     };
 
-    if (document.visibilityState === 'visible') {
+    // Settled markets show a one-time snapshot at close — no polling, no visibility re-fetch.
+    if (!priceSettled && document.visibilityState === 'visible') {
       setupInterval();
     }
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    if (!priceSettled) document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       active = false;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (timer) clearInterval(timer);
     };
-  }, [cryptoAsset?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cryptoAsset?.id, priceSettled, priceCloseMs]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -396,9 +406,13 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
   useEffect(() => {
     const haveTeams = Boolean(homeTeamName && awayTeamName);
-    if ((!idEvent && !haveTeams) || kickoffMs === null || now < kickoffMs || market?.status === 'Resolved' || market?.status === 'Closed') {
+    // Fetch once the match has kicked off — including after the market closes / resolves, so the
+    // FINAL score is shown at the settlement stage (ESPN keeps recent finished scores). We only
+    // *poll* while the market is still open for trading; closed/resolved markets fetch once.
+    if ((!idEvent && !haveTeams) || kickoffMs === null || now < kickoffMs) {
       return;
     }
+    const shouldPoll = market?.status === 'Open' || market?.status === 'Closing soon';
 
     let cancelled = false;
     let interval: ReturnType<typeof setInterval> | undefined;
@@ -426,7 +440,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     }
 
     void fetchLiveScore();
-    interval = setInterval(fetchLiveScore, 30000);
+    if (shouldPoll) interval = setInterval(fetchLiveScore, 30000);
     return () => {
       cancelled = true;
       if (interval) clearInterval(interval);
@@ -648,12 +662,12 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             {cryptoAsset && (
               <div className="mt-6 flex items-center gap-3.5 rounded-2xl border border-white/[0.06] bg-white/[0.03] backdrop-blur-md px-5 py-4 max-w-[340px] shadow-lg shadow-black/10">
                 <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-mint opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-mint"></span>
+                  {!priceSettled && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-mint opacity-75"></span>}
+                  <span className={`relative inline-flex rounded-full h-3 w-3 ${priceSettled ? 'bg-[#64748b]' : 'bg-mint'}`}></span>
                 </span>
                 <div className="flex flex-col gap-0.5">
                   <span className="text-[11px] font-black uppercase tracking-wider text-[#8fa0b4]">
-                    Current {cryptoAsset.symbol} Price
+                    {priceSettled ? `${cryptoAsset.symbol} Price at close` : `Current ${cryptoAsset.symbol} Price`}
                   </span>
                   <div className="flex items-baseline gap-2">
                     <span className="text-2xl font-black text-white leading-none">
@@ -661,7 +675,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                         ? `$${livePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                         : 'Loading...'}
                     </span>
-                    <span className="text-[10px] font-bold text-mint uppercase tracking-wider">USD (Live)</span>
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${priceSettled ? 'text-[#8fa0b4]' : 'text-mint'}`}>
+                      {priceSettled ? 'USD · snapshot' : 'USD (Live)'}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1064,12 +1080,13 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
               {/* Buy button / Lock Indicator */}
               {isTradingLocked ? (
-                <div className="mt-5 rounded-[12px] border border-red-500/25 bg-red-500/10 p-4 text-center">
-                  <p className="text-xs font-black uppercase tracking-wider text-red-400">
+                <div className="mt-5 flex w-full items-center justify-center gap-2 rounded-[12px] border border-red-500/20 bg-red-500/[0.04] px-3 py-4 text-center">
+                  <Lock className="h-4 w-4 text-red-400/80 shrink-0" />
+                  <span className="text-[12.5px] font-black uppercase tracking-wider text-red-400">
                     {now < (kickoffMs ?? 0)
                       ? `Trading closed (match begins in ${Math.max(0, Math.ceil(((kickoffMs ?? 0) - now) / 1000))}s)`
                       : 'Trading closed (match is live)'}
-                  </p>
+                  </span>
                 </div>
               ) : (
                 <button
