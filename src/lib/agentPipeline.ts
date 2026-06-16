@@ -1361,10 +1361,27 @@ function tokenSimilarity(a: Set<string>, b: Set<string>): number {
 // presidential election?") that exact/substring matching misses.
 const DUPLICATE_SIMILARITY_THRESHOLD = 0.6;
 
+// Order-independent two-team key from a fixture title/topic. "Who will win Iraq vs Norway?" and
+// "Iraq vs Norway — who advances?" both collapse to "iraq|norway", so the agent never opens a
+// second market for a fixture it already has, no matter how the winner question is phrased (the
+// title token-similarity check misses differently-worded fixture questions). Returns null when the
+// text isn't an "A vs B" fixture.
+function fixturePairKey(text: string): string | null {
+  const m = text.match(/\b([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*)*)\s+vs?\.?\s+([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*)*)/);
+  if (!m) return null;
+  const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z]/g, '');
+  const a = norm(m[1]);
+  const b = norm(m[2]);
+  if (a.length < 2 || b.length < 2) return null;
+  return [a, b].sort().join('|');
+}
+
 function isDuplicateMarket(draft: GeminiDraft, trend: TrendItem, existingMarkets: AppMarket[]) {
   const draftTitle = normalizeText(draft.title);
   const draftTokens = titleTokens(draft.title);
   const trendUrl = normalizeUrl(trend.url);
+  // The bare trend topic ("Iraq vs Norway") is the most reliable place to read the matchup from.
+  const draftPair = fixturePairKey(draft.title) ?? fixturePairKey(trend.topic ?? '');
 
   return existingMarkets.some((market) => {
     if (market.status === 'Resolved' || market.status === 'Canceled') return false;
@@ -1375,6 +1392,9 @@ function isDuplicateMarket(draft: GeminiDraft, trend: TrendItem, existingMarkets
 
     // Near-duplicate by token overlap (reworded same question).
     if (tokenSimilarity(draftTokens, titleTokens(market.title)) >= DUPLICATE_SIMILARITY_THRESHOLD) return true;
+
+    // Same fixture (same two teams) — one winner market per match, regardless of phrasing.
+    if (draftPair && fixturePairKey(market.title) === draftPair) return true;
 
     const existingTrendUrl = normalizeUrl(market.trendUrl);
     if (trendUrl && existingTrendUrl && trendUrl === existingTrendUrl) return true;
@@ -2326,7 +2346,9 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   const trends = input.trends?.length ? input.trends : await fetchTrends();
   let existingMarkets: AppMarket[];
   try {
-    existingMarkets = await fetchOnchainMarkets();
+    // Force a fresh read so a market created on a recent tick (or by the seed cron) is always in
+    // the dedup set — a stale 60s cache here is how the same fixture slips through as a duplicate.
+    existingMarkets = await fetchOnchainMarkets({ force: true });
   } catch (error) {
     return [{
       ok: false,
