@@ -39,7 +39,7 @@ import { collateralUnit } from '@/lib/arcConfig';
 import { identifyAsset } from '@/lib/priceResolution';
 import { detectCountryFlagUrl } from '@/lib/marketSubjectImage';
 import Link from 'next/link';
-import { ChevronDown, Loader2, AlertCircle, Lock } from 'lucide-react';
+import { ChevronDown, Loader2, AlertCircle, Lock, CheckCircle, Clock, XCircle } from 'lucide-react';
 
 const statusStyle: Record<MarketStatus, string> = {
   Open: 'border-mint/25 bg-mint/10 text-mint',
@@ -1078,8 +1078,35 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 )}
               </div>
 
-              {/* Buy button / Lock Indicator */}
-              {isTradingLocked ? (
+              {/* Buy button / Status Indicator / Lock Indicator */}
+              {market.status === 'Resolved' ? (
+                <div className="mt-5 flex w-full items-center justify-center gap-2 rounded-[12px] border border-cyan-500/20 bg-cyan-500/[0.04] px-3 py-4 text-center">
+                  <CheckCircle className="h-4 w-4 text-cyan-400/80 shrink-0" />
+                  <span className="text-[12.5px] font-black uppercase tracking-wider text-cyan-400">
+                    Market Resolved
+                  </span>
+                </div>
+              ) : market.status === 'Closed' ? (
+                <div className="mt-5 flex w-full items-center justify-center gap-2 rounded-[12px] border border-orange-500/20 bg-orange-500/[0.04] px-3 py-4 text-center">
+                  <Clock className="h-4 w-4 text-orange-400/80 shrink-0" />
+                  <span className="text-[12.5px] font-black uppercase tracking-wider text-orange-400">
+                    Market Closed
+                  </span>
+                </div>
+              ) : market.status === 'Canceled' ? (
+                <div className="mt-5 flex w-full items-center justify-center gap-2 rounded-[12px] border border-red-500/20 bg-red-500/[0.04] px-3 py-4 text-center">
+                  <XCircle className="h-4 w-4 text-red-400/80 shrink-0" />
+                  <span className="text-[12.5px] font-black uppercase tracking-wider text-red-400">
+                    Market Canceled
+                  </span>
+                </div>
+              ) : market.status === 'Draft' ? (
+                <div className="mt-5 flex w-full items-center justify-center gap-2 rounded-[12px] border border-slate-500/20 bg-slate-500/[0.04] px-3 py-4 text-center">
+                  <span className="text-[12.5px] font-black uppercase tracking-wider text-slate-400">
+                    Market Draft
+                  </span>
+                </div>
+              ) : isTradingLocked ? (
                 <div className="mt-5 flex w-full items-center justify-center gap-2 rounded-[12px] border border-red-500/20 bg-red-500/[0.04] px-3 py-4 text-center">
                   <Lock className="h-4 w-4 text-red-400/80 shrink-0" />
                   <span className="text-[12.5px] font-black uppercase tracking-wider text-red-400">

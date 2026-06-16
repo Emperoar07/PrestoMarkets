@@ -297,7 +297,12 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
           style={canTrade && amountValue > 0 ? { backgroundColor: activeOutcomeColor } : undefined}
           className={`mt-4 w-full rounded-[12px] py-3.5 text-center text-xs font-black uppercase tracking-wider text-ink transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[#1a2436] disabled:text-[#475569]`}
         >
-          {!canTrade ? (isTradingLocked ? 'Match Live · Trading Locked' : 'Market Closed')
+          {!canTrade ? (
+            isTradingLocked ? 'Match Live · Trading Locked'
+            : market.status === 'Resolved' ? 'Market Resolved'
+            : market.status === 'Canceled' ? 'Market Canceled'
+            : 'Market Closed'
+          )
             : isSubmitting ? 'Confirming…'
             : amountValue <= 0 ? 'Enter Amount'
             : `Buy ${selectedOutcome} · ${unit}${amountValue}`}

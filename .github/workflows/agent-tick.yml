@@ -37,13 +37,8 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -w "\nHTTP %{http_code}\n" --max-time 290
 
-      - name: Trigger auto-resolve cron
-        if: ${{ always() }}
-        continue-on-error: true
-        run: |
-          curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/auto-resolve" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -w "\nHTTP %{http_code}\n" --max-time 290
+      # auto-resolve now runs on its own fast 15-minute cadence
+      # (.github/workflows/auto-resolve.yml) so settlement isn't bottlenecked on this 2-hour tick.
 
       - name: Backfill seed any unseeded open markets
         if: ${{ always() }}

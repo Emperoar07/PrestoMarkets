@@ -1,0 +1,34 @@
+name: Auto-resolve markets
+
+# Dedicated fast-cadence settlement cron, separate from the 2-hour agent-tick. Closed markets used
+# to wait up to 2h just to be *proposed*, then up to 2h more to *settle* after the challenge window
+# — so a market could take well over 2h to resolve. Running every 15 minutes cuts that latency to
+# minutes on each side. The 2-hour RESOLUTION_CHALLENGE_WINDOW itself is enforced on-chain by the
+# contract, so this controls the propose + post-window settle timing, not the window length.
+#
+# auto-resolve is idempotent and cheap on empty ticks (no newly-closed markets -> just a market
+# read), and the endpoint is bearer-gated by CRON_SECRET.
+#
+# Required GitHub Actions secrets: APP_URL, CRON_SECRET (same as agent-tick).
+
+on:
+  schedule:
+    # Every 15 minutes
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+# Never overlap runs — a slow tick should not stack on the next schedule.
+concurrency:
+  group: auto-resolve
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger auto-resolve cron
+        run: |
+          curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/auto-resolve" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n" --max-time 290

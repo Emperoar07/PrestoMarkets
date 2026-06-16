@@ -1,5 +1,20 @@
 import { privateKeyToAccount } from 'viem/accounts';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('viem', async (importOriginal) => {
+  const original = await importOriginal<typeof import('viem')>();
+  return {
+    ...original,
+    createPublicClient: vi.fn().mockImplementation((args) => {
+      const originalClient = original.createPublicClient(args);
+      return {
+        ...originalClient,
+        verifyMessage: vi.fn().mockResolvedValue(false),
+      };
+    }),
+  };
+});
+
 import {
   ARC_SIGN_IN_CHAIN_ID,
   buildSiweMessage,

@@ -169,8 +169,12 @@ function MarketCardComponent({
       >
         <div className="space-y-1.5">
           {[
-            { label: homeLabel, odds: homeOutcome?.odds ?? 0, image: market.imageURI },
-            { label: awayLabel, odds: awayOutcome?.odds ?? 0, image: undefined },
+            // Use each team's own outcome image (usually none → TeamBadge resolves the country
+            // flag). Previously the home row used market.imageURI, which for fixtures is the home
+            // team's football-federation crest — so the home side showed a logo while the away side
+            // showed its flag. Both now resolve to the country flag for national-team fixtures.
+            { label: homeLabel, odds: homeOutcome?.odds ?? 0, image: homeOutcome?.image },
+            { label: awayLabel, odds: awayOutcome?.odds ?? 0, image: awayOutcome?.image },
           ].map((team) => (
             <div key={team.label} className="flex items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-2">
