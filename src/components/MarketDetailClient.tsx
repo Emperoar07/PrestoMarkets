@@ -87,12 +87,36 @@ const renderEvidenceBlock = (uri?: string) => {
             <span className="font-extrabold text-white">{parsed.outcome}</span>
           </div>
         )}
-        {parsed.evidenceSummary && (
+        {parsed.evidenceSummary ? (
           <div>
-            <span className="text-[10px] font-black uppercase text-muted block mb-1">Evidence Summary:</span>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="text-[10px] font-black uppercase text-muted">Evidence Summary:</span>
+              <details className="group relative">
+                <summary className="flex cursor-pointer items-center gap-1 text-[10px] font-bold text-cyan select-none hover:opacity-85">
+                  <span>View raw data URI</span>
+                  <ChevronDown className="h-3 w-3 text-muted transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="absolute right-0 mt-1.5 z-20 w-72 max-h-[150px] overflow-y-auto rounded-lg bg-[#070e17] border border-white/[0.08] p-3 text-[11px] font-mono break-all text-muted leading-relaxed shadow-xl">
+                  {uri}
+                </div>
+              </details>
+            </div>
             <p className="leading-relaxed text-[#94a3b8] text-xs bg-white/[0.02] p-2.5 rounded-lg border border-white/[0.04]">
               {parsed.evidenceSummary}
             </p>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2 mt-2">
+            <span className="text-[10px] font-black uppercase text-muted">Evidence Details:</span>
+            <details className="group relative">
+              <summary className="flex cursor-pointer items-center gap-1 text-[10px] font-bold text-cyan select-none hover:opacity-85">
+                <span>View raw data URI</span>
+                <ChevronDown className="h-3 w-3 text-muted transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="absolute right-0 mt-1.5 z-20 w-72 max-h-[150px] overflow-y-auto rounded-lg bg-[#070e17] border border-white/[0.08] p-3 text-[11px] font-mono break-all text-muted leading-relaxed shadow-xl">
+                {uri}
+              </div>
+            </details>
           </div>
         )}
         {parsed.confidence !== undefined && (
@@ -101,15 +125,6 @@ const renderEvidenceBlock = (uri?: string) => {
             <span className="font-extrabold text-cyan">{Math.round(parsed.confidence * 100)}%</span>
           </div>
         )}
-        <details className="group mt-2">
-          <summary className="flex cursor-pointer items-center justify-between text-[10px] font-bold text-cyan select-none hover:opacity-85">
-            <span>View raw data URI</span>
-            <ChevronDown className="h-3.5 w-3.5 text-muted transition-transform group-open:rotate-180" />
-          </summary>
-          <div className="mt-2 max-h-[120px] overflow-y-auto rounded-lg bg-[#070e17] border border-white/[0.04] p-3 text-[11px] font-mono break-all text-muted leading-relaxed">
-            {uri}
-          </div>
-        </details>
       </div>
     );
   }
@@ -781,7 +796,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               </div>
             </div>
 
-            <MarketQualityPanel market={market} />
+            <MarketQualityPanel market={market} isLive={isMatchLive} />
 
             {isAgentMarket && isResolver ? (
               <details className="group mt-6 rounded-[14px] border border-cyan/20 bg-cyan/[0.06]">
