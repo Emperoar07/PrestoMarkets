@@ -216,11 +216,16 @@ async function readMarket(
       closeRule: 'Market closes at the onchain closeTime. Resolver settles against the written rules and source of truth.',
       settlementAsset: 'USDC',
     },
-    rules: resolutionURI && isSafeResolutionUri(resolutionURI)
-      ? `Resolved with evidence: ${resolutionURI}. Winning outcome: ${winningLabel}.`
-      : resolutionURI
-        ? `Resolved. Winning outcome: ${winningLabel}. Evidence URI was rejected as unsafe.`
-        : metadata?.rules || 'Rules live in the market metadata URI. Resolver evidence is published after settlement.',
+    rules: (() => {
+      const baseRules = metadata?.rules || 'Rules live in the market metadata URI. Resolver evidence is published after settlement.';
+      if (status === 'Resolved') {
+        return `${baseRules}\n\nThis market has been resolved. Winning outcome: ${winningLabel}.`;
+      }
+      if (status === 'Canceled') {
+        return `${baseRules}\n\nThis market has been canceled and all trades have been refunded.`;
+      }
+      return baseRules;
+    })(),
     winningOutcomeLabel: status === 'Resolved' ? winningLabel : undefined,
     resolutionURI: isSafeResolutionUri(resolutionURI) ? resolutionURI : undefined,
     collateralAddress: typeof collateralToken === 'string' ? collateralToken : undefined,
