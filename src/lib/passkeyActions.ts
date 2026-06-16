@@ -102,21 +102,33 @@ async function assertMarketOpenForTrading(publicClient: ReturnType<typeof getPub
 }
 
 const PASSKEY_RECEIPT_TIMEOUT_MS = 150_000;
-const PASSKEY_RECEIPT_POLL_MS = 3_000;
+const PASSKEY_RECEIPT_POLL_MS = 1_500;
 
-export async function runPasskeyCalls(calls: Array<{ to: Address; data: Hex }>) {
+export async function runPasskeyCalls(
+  calls: Array<{ to: Address; data: Hex }>,
+  // Optional Arc-direct confirmation: resolves true once the op's on-chain effect is observed
+  // (e.g. the buyer's shares increased). When provided, success is detected from Arc — which
+  // finalizes sub-second — instead of waiting tens of seconds for Circle's bundler to surface the
+  // userOp receipt. This is what makes the passkey progress modal flip to success promptly.
+  opts: { confirmOnchain?: () => Promise<boolean> } = {},
+) {
   const { bundlerClient } = getCirclePasskeyBundlerClient();
   const userOpHash = await bundlerClient.sendUserOperation({
     calls: calls.map((call) => ({ ...call, to: call.to as Hex })),
     paymaster: true,
   });
 
-  // Poll the receipt ourselves with a generous window. viem's waitForUserOperationReceipt defaults
-  // to ~24s (6 retries × 4s), but Circle's Arc bundler routinely takes longer to surface the
-  // receipt — so every passkey op was timing out even though it had landed. Arc finalizes fast, so
-  // once the bundler exposes the receipt we return immediately.
+  // Generous window because Circle's Arc bundler can take much longer than viem's ~24s default to
+  // expose the receipt. We return early the moment EITHER the on-chain effect is visible (fast
+  // path) OR the bundler returns the receipt.
   const deadline = Date.now() + PASSKEY_RECEIPT_TIMEOUT_MS;
   while (Date.now() < deadline) {
+    if (opts.confirmOnchain && await opts.confirmOnchain().catch(() => false)) {
+      // Confirmed on Arc. Best-effort tx hash for the explorer link — never block success on the
+      // slow indexer; an empty hash just means "no link yet".
+      const quick = await bundlerClient.getUserOperationReceipt({ hash: userOpHash }).catch(() => null);
+      return quick?.receipt?.transactionHash ?? '';
+    }
     const received = await bundlerClient.getUserOperationReceipt({ hash: userOpHash }).catch(() => null);
     if (received?.receipt?.transactionHash) {
       if (received.success === false) {
@@ -198,6 +210,7 @@ export async function buyPasskeyShares(input: {
       throw new Error(`Insufficient USDC balance. You have $${have} but the trade needs $${input.amount}.`);
     }
 
+    const buyOutcomeIndex = input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1);
     const calls: Array<{ to: Address; data: Hex }> = [];
     if (allowance < amount) {
       calls.push({
@@ -214,15 +227,24 @@ export async function buyPasskeyShares(input: {
       data: encodeFunctionData({
         abi: prestoMarketAbi,
         functionName: 'buy',
-        args: [input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1), amount],
+        args: [buyOutcomeIndex, amount],
       }),
     });
 
-    const txHash = await runPasskeyCalls(calls);
+    // Snapshot the buyer's shares so we can confirm the trade directly from Arc (sub-second) the
+    // moment they increase, instead of spinning on Circle's slower bundler receipt.
+    const readShares = () => publicClient.readContract({
+      address: marketAddress, abi: prestoMarketAbi, functionName: 'sharesOf', args: [buyOutcomeIndex, address],
+    }) as Promise<bigint>;
+    const sharesBefore = await readShares().catch(() => BigInt(0));
+
+    const txHash = await runPasskeyCalls(calls, {
+      confirmOnchain: async () => (await readShares().catch(() => sharesBefore)) > sharesBefore,
+    });
     return {
       ok: true,
       message: calls.length > 1 ? `Bought ${input.outcome} shares with one passkey approve + buy.` : `Bought ${input.outcome} shares with passkey.`,
-      txHash,
+      txHash: txHash ? txHash as Hex : undefined,
     };
   } catch (error) {
     return passkeyPendingResult(error, `Buy ${input.outcome}`) ?? { ok: false, message: normalizeError(error, 'Passkey buy failed.') };
@@ -238,14 +260,28 @@ async function callPasskeyMarket(
     if (!isAddress(marketAddress)) {
       throw new Error('Market address is invalid.');
     }
+    // claim/refund pay USDC out to the caller — confirm from Arc the moment their balance rises
+    // (sub-second) rather than waiting on Circle's bundler receipt. cancel moves no funds to the
+    // caller, so it keeps the plain receipt wait.
+    let confirmOnchain: (() => Promise<boolean>) | undefined;
+    if (functionName === 'claim' || functionName === 'refund') {
+      const config = requireConfig();
+      const publicClient = getPublicClient();
+      const { address } = getCirclePasskeyBundlerClient();
+      const readBalance = () => publicClient.readContract({
+        address: config.usdcAddress, abi: erc20Abi, functionName: 'balanceOf', args: [address],
+      }) as Promise<bigint>;
+      const balanceBefore = await readBalance().catch(() => BigInt(0));
+      confirmOnchain = async () => (await readBalance().catch(() => balanceBefore)) > balanceBefore;
+    }
     const txHash = await runPasskeyCalls([{
       to: marketAddress as Address,
       data: encodeFunctionData({
         abi: prestoMarketAbi,
         functionName,
       }),
-    }]);
-    return { ok: true, message: success, txHash };
+    }], { confirmOnchain });
+    return { ok: true, message: success, txHash: txHash ? txHash as `0x${string}` : undefined };
   } catch (error) {
     return passkeyPendingResult(error, success) ?? { ok: false, message: normalizeError(error, `${success} failed.`) };
   }
@@ -275,7 +311,7 @@ export async function disputePasskeyMarket(marketAddress: string, reason: string
     return {
       ok: true,
       message: 'Dispute submitted with passkey — automatic settlement is blocked; the resolver must settle directly with evidence.',
-      txHash,
+      txHash: txHash ? txHash as `0x${string}` : undefined,
     };
   } catch (error) {
     return passkeyPendingResult(error, 'Dispute') ?? { ok: false, message: normalizeError(error, 'Passkey dispute failed.') };
@@ -300,7 +336,7 @@ export async function resolvePasskeyMarket(input: {
         args: [input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1), input.resolutionURI],
       }),
     }]);
-    return { ok: true, message: 'Market resolved with passkey.', txHash };
+    return { ok: true, message: 'Market resolved with passkey.', txHash: txHash ? txHash as `0x${string}` : undefined };
   } catch (error) {
     return passkeyPendingResult(error, 'Resolve') ?? { ok: false, message: normalizeError(error, 'Passkey resolve failed.') };
   }
