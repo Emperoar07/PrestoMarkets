@@ -2295,10 +2295,11 @@ const CONFIDENCE_THRESHOLD = 0.8;
 // Up to 10 regular markets per tick (was 6) — the signal gates stay the quality filter, the cap
 // just stops a single run from flooding. World Cup fixtures don't count against this.
 const AGENT_PER_RUN_CAP = Math.max(1, Number(process.env.PRESTO_AGENT_PER_RUN_CAP ?? 10));
-// Cap the number of *active* agent-created markets (Open or Closing soon). Once a market
-// resolves or cancels, a slot frees up. Tunable via env so we can raise it once we trust the
-// pipeline more. Default 2 for safety while we're early.
-const AGENT_ACTIVE_MARKET_CAP = Math.max(0, Number(process.env.PRESTO_AGENT_ACTIVE_MARKET_CAP ?? 2));
+// Cap the number of *active* NON-FIXTURE agent markets (Open or Closing soon) — i.e. the regular
+// trend lane (crypto, politics, culture…). Sports fixtures are counted and capped separately (see
+// WORLD_CUP_CAP_RESERVE) so a busy match day never crowds out diverse markets, and vice-versa.
+// Raised from 2 so the agent keeps a varied open book instead of only fixtures.
+const AGENT_ACTIVE_MARKET_CAP = Math.max(0, Number(process.env.PRESTO_AGENT_ACTIVE_MARKET_CAP ?? 15));
 // Reserved headroom above the active cap purely for World Cup fixtures, so a full week of
 // matches (group stage can be ~16) all get markets without crowding out regular trend markets.
 const WORLD_CUP_CAP_RESERVE = Math.max(0, Number(process.env.PRESTO_WORLD_CUP_FIXTURE_RESERVE ?? 40));
@@ -2316,6 +2317,17 @@ function countAgentMarketTypeMix(markets: AppMarket[]): { Prediction: number; Op
 function countActiveAgentMarkets(markets: AppMarket[]): number {
   return markets.filter((m) =>
     m.createdByType === 'agent' && (m.status === 'Open' || m.status === 'Closing soon')
+  ).length;
+}
+
+// Active agent markets that are NOT sports fixtures (the regular trend lane). Fixtures carry the
+// sports_live display type; counting them separately keeps the regular cap honest so World Cup
+// matches don't consume the diversity budget.
+function countActiveNonFixtureAgentMarkets(markets: AppMarket[]): number {
+  return markets.filter((m) =>
+    m.createdByType === 'agent'
+    && (m.status === 'Open' || m.status === 'Closing soon')
+    && m.displayType !== 'sports_live'
   ).length;
 }
 
@@ -2360,6 +2372,7 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   const results: PipelineResult[] = [];
 
   const activeAgentMarkets = countActiveAgentMarkets(existingMarkets);
+  const activeNonFixtureMarkets = countActiveNonFixtureAgentMarkets(existingMarkets);
   const typeMix = countAgentMarketTypeMix(existingMarkets);
   // The deterministic fixture lane covers every recognized football/basketball match (objectively
   // settleable from the official result), not just the World Cup. They skip the LLM classify/draft
@@ -2369,15 +2382,17 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
     .sort((a, b) =>
       (a.guaranteedFixture === b.guaranteedFixture ? 0 : a.guaranteedFixture ? -1 : 1)
       || Date.parse(a.kickoffTime ?? '') - Date.parse(b.kickoffTime ?? ''));
+  // Bail only when there's genuinely nothing to create: the regular (non-fixture) lane is at its
+  // cap AND either there are no fixtures to add or the total is past the fixture reserve ceiling.
   if (
-    activeAgentMarkets >= AGENT_ACTIVE_MARKET_CAP
+    activeNonFixtureMarkets >= AGENT_ACTIVE_MARKET_CAP
     && (fixtureTrends.length === 0 || activeAgentMarkets >= AGENT_ACTIVE_MARKET_CAP + WORLD_CUP_CAP_RESERVE)
   ) {
     return [{
       ok: false,
       topic: '(pipeline)',
       stage: 'cap',
-      reason: `Agent active-market cap reached (${activeAgentMarkets}/${AGENT_ACTIVE_MARKET_CAP}). Waiting for an existing market to resolve before creating more.`,
+      reason: `Agent caps reached (regular ${activeNonFixtureMarkets}/${AGENT_ACTIVE_MARKET_CAP}, total ${activeAgentMarkets}). Waiting for a market to resolve before creating more.`,
     }];
   }
 
@@ -2525,11 +2540,14 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   const topPool = scored.slice(0, Math.max(3, Math.ceil(scored.length / 2)));
 
   // Try candidates in pulled-from-pool order until one passes draft + safety + onchain.
-  // Per-run cap still applies so we create at most AGENT_PER_RUN_CAP markets per tick.
+  // Per-run cap still applies so we create at most AGENT_PER_RUN_CAP markets per tick. The active
+  // ceiling here is the NON-FIXTURE count — fixtures created above don't consume this lane's budget,
+  // which is what lets the agent keep making diverse markets alongside a full slate of matches.
   let createdThisRun = 0;
+  let liveNonFixtureActive = activeNonFixtureMarkets;
   const pool = [...topPool];
 
-  while (createdThisRun < AGENT_PER_RUN_CAP && liveActive < AGENT_ACTIVE_MARKET_CAP && pool.length > 0) {
+  while (createdThisRun < AGENT_PER_RUN_CAP && liveNonFixtureActive < AGENT_ACTIVE_MARKET_CAP && pool.length > 0) {
     const picked = weightedRandomPick(pool.map((s) => ({
       item: s,
       weight: s.classification.momentumScore + agentTrendPriorityBoost(s.trend) / 100,
@@ -2618,6 +2636,7 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
       results.push(result);
       if (result.ok) {
         liveActive += 1;
+        liveNonFixtureActive += 1;
         createdThisRun += 1;
         // Reflect the new market in the type mix so subsequent picks (when per-run cap > 1)
         // see the updated distribution.
