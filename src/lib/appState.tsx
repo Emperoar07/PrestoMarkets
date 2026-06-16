@@ -143,8 +143,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     try {
+      // Normal loads pull the pre-computed list from the cached server endpoint: the ~13s cold
+      // on-chain read runs once on the server (shared via its 60s cache + the CDN) instead of in
+      // every browser, so the grid paints in well under a second on a warm cache. `force` (used
+      // after a trade/settlement, when freshness matters) reads on-chain directly to skip the cache.
+      let nextMarkets: AppMarket[] | null = null;
+      if (!options.force) {
+        try {
+          const res = await fetch('/api/markets');
+          if (res.ok) {
+            const data = await res.json() as { markets?: AppMarket[] };
+            if (Array.isArray(data.markets) && data.markets.length > 0) nextMarkets = data.markets;
+          }
+        } catch {
+          // endpoint unavailable — fall through to a direct client-side read
+        }
+      }
       // fetchOnchainMarkets already merges image overrides at the source, so markets are stable.
-      const nextMarkets = await fetchOnchainMarkets(options);
+      if (!nextMarkets) nextMarkets = await fetchOnchainMarkets(options);
       marketsRef.current = nextMarkets;
       setMarkets(nextMarkets);
       return nextMarkets;
