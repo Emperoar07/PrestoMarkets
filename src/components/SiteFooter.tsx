@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 export function SiteFooter() {
   return (
-    <footer className="border-t border-white/[0.06] py-9">
+    <footer className="border-t border-white/[0.06] py-6">
       <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-4 px-4 md:px-7">
         <div>
           <p className="text-[11.5px] text-[#4b6280]">&copy; 2026 Presto. All rights reserved.</p>

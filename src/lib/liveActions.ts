@@ -333,7 +333,7 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
       return {
         ok: true,
         message: feeAmount > BigInt(0) ? 'Live market created with passkey. Automatic resolution funded.' : 'Live market created with passkey.',
-        txHash,
+        txHash: txHash ? txHash as `0x${string}` : undefined,
         marketAddress: created?.args.market,
       };
     } catch (error) {

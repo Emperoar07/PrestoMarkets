@@ -866,9 +866,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             ) : null}
 
             {hasSettlementRecord ? (
-              <div className="mt-4 rounded-[14px] border border-white/[0.06] bg-[#141e30] p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
+              <details className="group mt-4 rounded-[14px] border border-white/[0.06] bg-[#141e30] [&_summary::-webkit-details-marker]:hidden">
+                <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-white/[0.02]">
+                  <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-widest text-cyan">Settlement record</p>
                     <h2 className="mt-1.5 text-base font-black text-white">
                       {market.status === 'Resolved'
@@ -876,34 +876,41 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                         : 'Market canceled'}
                     </h2>
                   </div>
-                  <span className={`rounded-full border px-3 py-1 text-xs font-black ${statusStyle[market.status]}`}>
-                    {market.status}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className={`rounded-full border px-3 py-1 text-xs font-black ${statusStyle[market.status]}`}>
+                      {market.status}
+                    </span>
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-white/[0.06] bg-white/[0.03] text-muted transition-colors group-open:border-cyan/20 group-open:bg-cyan/10 group-open:text-cyan">
+                      <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                    </span>
+                  </div>
+                </summary>
+                <div className="px-5 pb-5">
+                  <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted">Evidence URI</p>
+                      {renderEvidenceBlock(market.resolutionURI)}
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted">Your settlement</p>
+                      <p className="mt-1.5 text-sm leading-6 text-white">
+                        {connectedWallet
+                          ? accountPreview?.hasClaimed ? 'Already claimed or refunded.'
+                            : canClaim ? `${accountPreview?.claimable} claimable`
+                            : canRefund ? `${accountPreview?.refundable} refundable`
+                            : 'No settlement available.'
+                          : 'Connect wallet to check.'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted">Audit trail</p>
+                      <p className="mt-1.5 text-sm leading-6 text-muted">
+                        Outcome, evidence, claim and refund previews are read directly from the Arc market contract.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-3">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Evidence URI</p>
-                    {renderEvidenceBlock(market.resolutionURI)}
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Your settlement</p>
-                    <p className="mt-1.5 text-sm leading-6 text-white">
-                      {connectedWallet
-                        ? accountPreview?.hasClaimed ? 'Already claimed or refunded.'
-                          : canClaim ? `${accountPreview?.claimable} claimable`
-                          : canRefund ? `${accountPreview?.refundable} refundable`
-                          : 'No settlement available.'
-                        : 'Connect wallet to check.'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Audit trail</p>
-                    <p className="mt-1.5 text-sm leading-6 text-muted">
-                      Outcome, evidence, claim and refund previews are read directly from the Arc market contract.
-                    </p>
-                  </div>
-                </div>
-              </div>
+              </details>
             ) : null}
 
             <MarketComments marketId={marketId} />
