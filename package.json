@@ -61,6 +61,11 @@
     "vitest": "^4.1.7"
   },
   "overrides": {
-    "undici": "6.25.0"
+    "undici": "6.25.0",
+    "ws": "^8.18.3",
+    "bn.js": "^4.12.3",
+    "cookie": "^0.7.2",
+    "tmp": "^0.2.5",
+    "serialize-javascript": "^6.0.2"
   }
 }
