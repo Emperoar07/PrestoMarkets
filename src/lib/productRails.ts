@@ -12,7 +12,13 @@ export const productRails: ProductRail[] = [
     name: 'USDC',
     status: 'Current',
     purpose: 'Market collateral',
-    note: 'V1 markets use USDC so every position, payout, and fee remains dollar-denominated.',
+    note: 'Markets settle in USDC so every position, payout, and fee stays dollar denominated.',
+  },
+  {
+    name: 'EURC',
+    status: 'Current',
+    purpose: 'Euro market collateral',
+    note: 'Euro markets settle in EURC through dedicated factories, so dollar and euro questions live side by side on the same engine.',
   },
   {
     name: 'Contracts',
@@ -34,9 +40,21 @@ export const productRails: ProductRail[] = [
   },
   {
     name: 'Paymaster',
-    status: 'Planned',
-    purpose: 'Gas paid in USDC',
-    note: 'Useful after smart-account support so users can interact without sourcing native gas.',
+    status: 'Current',
+    purpose: 'Gasless signing',
+    note: 'Passkey and app wallet trades are sponsored through the Circle bundler, so users transact on Arc without sourcing native gas.',
+  },
+  {
+    name: 'Passkeys',
+    status: 'Current',
+    purpose: 'Device sign-in',
+    note: 'Circle Modular Wallets let users sign in with a device passkey and confirm trades with biometrics, backed by a Circle smart account on Arc.',
+  },
+  {
+    name: 'x402',
+    status: 'Current',
+    purpose: 'Paid agent API',
+    note: 'The public /api/v1 data endpoints can require a small USDC payment per call, so other agents pay to read the Presto book.',
   },
   {
     name: 'Wallets',
@@ -58,9 +76,9 @@ export const productRails: ProductRail[] = [
   },
   {
     name: 'Gateway',
-    status: 'Later',
-    purpose: 'Unified USDC balance',
-    note: 'Gateway is a strong fit once Presto Markets needs instant multi-chain balance access.',
+    status: 'Current',
+    purpose: 'Cross-chain USDC funding',
+    note: 'Move to Arc uses Circle Gateway so users top up their Arc balance from Base, Ethereum, Arbitrum, or Avalanche right inside the wallet panel.',
   },
 ];
 
