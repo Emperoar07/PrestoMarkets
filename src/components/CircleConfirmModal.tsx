@@ -24,7 +24,7 @@ export function CircleConfirmModal() {
     <div className="fixed inset-0 z-[10000] grid place-items-center bg-[#050b14]/90 px-4 py-8 backdrop-blur-md">
       <section className="relative w-full max-w-[460px] overflow-hidden rounded-[16px] border border-cyan/15 bg-[#0b1322] shadow-2xl shadow-black/50">
         <div className="bg-cyan/[0.04] px-6 pb-5 pt-7 text-center">
-          <p className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-cyan/80">Confirm with Circle</p>
+          <p className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-cyan/80">{details.heading ?? 'Confirm with Circle'}</p>
           <h2 className="mt-3 text-[18px] font-black leading-tight text-white">{details.label}</h2>
           {details.action ? (
             <p className="mx-auto mt-2 max-w-[340px] text-[13px] leading-6 text-muted">{details.action}</p>
@@ -76,7 +76,7 @@ export function CircleConfirmModal() {
         </dl>
 
         <p className="border-t border-white/[0.06] px-6 py-3 text-[11px] leading-5 text-muted/80">
-          Circle will open its PIN prompt next. Network fees are paid in USDC and shown in that prompt.
+          {details.footnote ?? 'Circle will open its PIN prompt next. Network fees are paid in USDC and shown in that prompt.'}
         </p>
 
         <div className="flex border-t border-white/[0.06]">
@@ -92,7 +92,7 @@ export function CircleConfirmModal() {
             onClick={() => resolve(true)}
             className="flex-1 border-l border-white/[0.06] bg-cyan py-3.5 text-[13px] font-black text-ink transition-opacity hover:opacity-90"
           >
-            Continue to PIN
+            {details.proceedLabel ?? 'Continue to PIN'}
           </button>
         </div>
       </section>

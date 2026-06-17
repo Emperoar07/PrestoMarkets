@@ -22,6 +22,12 @@ export type CircleConfirmDetails = {
   contractExplorerUrl?: string;
   /** Optional gas estimate display (e.g. '~$0.01 USDC' for Arc). Defaults are populated downstream. */
   gasDisplay?: string;
+  /** Header eyebrow. Defaults to 'Confirm with Circle'; passkey flows pass 'Confirm with passkey'. */
+  heading?: string;
+  /** Footnote about what happens next (PIN prompt vs device biometric). */
+  footnote?: string;
+  /** Primary button label. Defaults to 'Continue to PIN'. */
+  proceedLabel?: string;
 };
 
 type PendingRequest = {

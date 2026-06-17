@@ -2294,15 +2294,15 @@ const CONFIDENCE_THRESHOLD = 0.8;
 // at most 1 new market per day; if you upgrade to sub-daily cron it caps the burst per tick.
 // Up to 10 regular markets per tick (was 6) — the signal gates stay the quality filter, the cap
 // just stops a single run from flooding. World Cup fixtures don't count against this.
-const AGENT_PER_RUN_CAP = Math.max(1, Number(process.env.PRESTO_AGENT_PER_RUN_CAP ?? 10));
+const AGENT_PER_RUN_CAP = Math.max(1, Number(process.env.PRESTO_AGENT_PER_RUN_CAP ?? 20));
 // Cap the number of *active* NON-FIXTURE agent markets (Open or Closing soon) — i.e. the regular
 // trend lane (crypto, politics, culture…). Sports fixtures are counted and capped separately (see
 // WORLD_CUP_CAP_RESERVE) so a busy match day never crowds out diverse markets, and vice-versa.
 // Raised from 2 so the agent keeps a varied open book instead of only fixtures.
-const AGENT_ACTIVE_MARKET_CAP = Math.max(0, Number(process.env.PRESTO_AGENT_ACTIVE_MARKET_CAP ?? 24));
+const AGENT_ACTIVE_MARKET_CAP = Math.max(0, Number(process.env.PRESTO_AGENT_ACTIVE_MARKET_CAP ?? 48));
 // Reserved headroom above the active cap purely for World Cup fixtures, so a full week of
 // matches (group stage can be ~16) all get markets without crowding out regular trend markets.
-const WORLD_CUP_CAP_RESERVE = Math.max(0, Number(process.env.PRESTO_WORLD_CUP_FIXTURE_RESERVE ?? 40));
+const WORLD_CUP_CAP_RESERVE = Math.max(0, Number(process.env.PRESTO_WORLD_CUP_FIXTURE_RESERVE ?? 80));
 
 function countAgentMarketTypeMix(markets: AppMarket[]): { Prediction: number; Opinion: number } {
   const out = { Prediction: 0, Opinion: 0 };
@@ -2458,8 +2458,8 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   // pool. So we do the cheap (no-LLM) research pass first, rank by source quality
   // then recency, and spend a bounded classify budget on the strongest, freshest
   // candidates. Override the budget with PRESTO_AGENT_CLASSIFY_CAP.
-  const CLASSIFY_CAP = Math.max(6, Number(process.env.PRESTO_AGENT_CLASSIFY_CAP ?? 16));
-  const EXA_RESEARCH_CAP = Math.max(0, Number(process.env.PRESTO_AGENT_EXA_RESEARCH_CAP ?? 6));
+  const CLASSIFY_CAP = Math.max(6, Number(process.env.PRESTO_AGENT_CLASSIFY_CAP ?? 32));
+  const EXA_RESEARCH_CAP = Math.max(0, Number(process.env.PRESTO_AGENT_EXA_RESEARCH_CAP ?? 12));
   type Scored = { trend: TrendItem; classification: GroqClassification };
   const scored: Scored[] = [];
 

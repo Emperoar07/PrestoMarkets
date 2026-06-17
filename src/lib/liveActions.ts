@@ -327,7 +327,17 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
         });
       }
 
-      const txHash = await runPasskeyCalls(calls);
+      const txHash = await runPasskeyCalls(calls, {
+        preview: {
+          label: `Launch "${input.title.slice(0, 48)}${input.title.length > 48 ? '…' : ''}"`,
+          action: feeAmount > BigInt(0)
+            ? 'Deploy this market and fund automatic resolution in a single passkey signature.'
+            : 'Deploy this market with your passkey.',
+          functionSignature: 'createMarket(...)',
+          contractAddress: factoryAddress,
+          ...(feeAmount > BigInt(0) ? { amountDisplay: `$${getResolveFeeUsdc()} USDC resolve fee` } : {}),
+        },
+      });
       const receipt = await withRetry(() => readClient.getTransactionReceipt({ hash: txHash as Hex }));
       const created = parseEventLogs({ abi: factoryAbi, eventName: 'MarketCreated', logs: receipt.logs })[0];
       return {

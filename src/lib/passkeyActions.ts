@@ -13,6 +13,7 @@ import { ARC_READ_BATCH, arcReadTransport, withRpcRetry } from './arcClient';
 import { erc20Abi, prestoMarketAbi } from './contracts';
 import { getCirclePasskeyBundlerClient } from './circlePasskey';
 import { GATEWAY_MINTER } from './gatewayActions';
+import { requestCircleConfirmation, type CircleConfirmDetails } from './circleConfirm';
 import type { LiveActionResult } from './liveActions';
 
 const minTradeUsdc = 0.01;
@@ -106,12 +107,33 @@ const PASSKEY_RECEIPT_POLL_MS = 1_500;
 
 export async function runPasskeyCalls(
   calls: Array<{ to: Address; data: Hex }>,
-  // Optional Arc-direct confirmation: resolves true once the op's on-chain effect is observed
-  // (e.g. the buyer's shares increased). When provided, success is detected from Arc — which
-  // finalizes sub-second — instead of waiting tens of seconds for Circle's bundler to surface the
-  // userOp receipt. This is what makes the passkey progress modal flip to success promptly.
-  opts: { confirmOnchain?: () => Promise<boolean> } = {},
+  // confirmOnchain: optional Arc-direct confirmation that resolves true once the op's on-chain
+  // effect is observed (e.g. the buyer's shares increased), so the progress modal flips to success
+  // promptly instead of waiting on Circle's slower bundler receipt.
+  // preview: optional details for a confirmation modal shown BEFORE the passkey prompt, so the user
+  // reviews exactly what they are signing (same modal the Circle wallet flow uses).
+  opts: { confirmOnchain?: () => Promise<boolean>; preview?: Partial<CircleConfirmDetails> } = {},
 ) {
+  if (opts.preview) {
+    const last = calls[calls.length - 1]?.to ?? '';
+    const approved = await requestCircleConfirmation({
+      label: opts.preview.label ?? 'Confirm with passkey',
+      action: opts.preview.action ?? 'You are about to sign this on Arc Testnet with your passkey.',
+      contractAddress: opts.preview.contractAddress ?? last,
+      functionSignature: opts.preview.functionSignature ?? '',
+      amountDisplay: opts.preview.amountDisplay,
+      parameters: opts.preview.parameters,
+      contractExplorerUrl: opts.preview.contractExplorerUrl ?? (last ? `https://testnet.arcscan.app/address/${last}` : undefined),
+      gasDisplay: opts.preview.gasDisplay ?? 'Sponsored, gasless',
+      heading: 'Confirm with passkey',
+      footnote: 'Your device will ask for Face ID or a fingerprint next. Gas is sponsored, so there is no network fee.',
+      proceedLabel: 'Continue with passkey',
+    });
+    if (!approved) {
+      throw new Error('You cancelled the passkey signing request.');
+    }
+  }
+
   const { bundlerClient } = getCirclePasskeyBundlerClient();
   const userOpHash = await bundlerClient.sendUserOperation({
     calls: calls.map((call) => ({ ...call, to: call.to as Hex })),
@@ -240,6 +262,20 @@ export async function buyPasskeyShares(input: {
 
     const txHash = await runPasskeyCalls(calls, {
       confirmOnchain: async () => (await readShares().catch(() => sharesBefore)) > sharesBefore,
+      preview: {
+        label: `Buy ${input.outcome} · $${Number(input.amount).toFixed(2)}`,
+        action: calls.length > 1
+          ? `Approve USDC and buy ${input.outcome} shares in a single passkey signature.`
+          : `Buy ${input.outcome} shares in this market with your passkey.`,
+        amountDisplay: `$${Number(input.amount).toFixed(2)} USDC`,
+        functionSignature: 'buy(uint8,uint256)',
+        contractAddress: marketAddress,
+        parameters: [
+          `outcome: ${input.outcome} (${buyOutcomeIndex})`,
+          `amount: $${Number(input.amount).toFixed(2)} USDC`,
+          calls.length > 1 ? 'one signature: approve + buy' : 'approval already set',
+        ],
+      },
     });
     return {
       ok: true,
@@ -280,7 +316,15 @@ async function callPasskeyMarket(
         abi: prestoMarketAbi,
         functionName,
       }),
-    }], { confirmOnchain });
+    }], {
+      confirmOnchain,
+      preview: {
+        label: success,
+        action: `Sign ${functionName}() on this market with your passkey.`,
+        functionSignature: `${functionName}()`,
+        contractAddress: marketAddress,
+      },
+    });
     return { ok: true, message: success, txHash: txHash ? txHash as `0x${string}` : undefined };
   } catch (error) {
     return passkeyPendingResult(error, success) ?? { ok: false, message: normalizeError(error, `${success} failed.`) };
@@ -307,7 +351,14 @@ export async function disputePasskeyMarket(marketAddress: string, reason: string
     const txHash = await runPasskeyCalls([{
       to: marketAddress as Address,
       data: encodeFunctionData({ abi: prestoMarketAbi, functionName: 'disputeResolution', args: [reason] }),
-    }]);
+    }], {
+      preview: {
+        label: 'Dispute the proposed result',
+        action: 'Sign a dispute with your passkey. This blocks the unchallenged settle, and the resolver must then settle directly with evidence.',
+        functionSignature: 'disputeResolution(string)',
+        contractAddress: marketAddress,
+      },
+    });
     return {
       ok: true,
       message: 'Dispute submitted with passkey — automatic settlement is blocked; the resolver must settle directly with evidence.',
@@ -335,7 +386,15 @@ export async function resolvePasskeyMarket(input: {
         functionName: 'resolve',
         args: [input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1), input.resolutionURI],
       }),
-    }]);
+    }], {
+      preview: {
+        label: `Resolve as ${input.outcome}`,
+        action: 'Sign the final outcome with your passkey. The evidence URI is recorded on the contract.',
+        functionSignature: 'resolve(uint8,string)',
+        contractAddress: input.marketAddress,
+        parameters: [`outcome: ${input.outcome} (${input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1)})`],
+      },
+    });
     return { ok: true, message: 'Market resolved with passkey.', txHash: txHash ? txHash as `0x${string}` : undefined };
   } catch (error) {
     return passkeyPendingResult(error, 'Resolve') ?? { ok: false, message: normalizeError(error, 'Passkey resolve failed.') };
