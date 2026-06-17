@@ -667,6 +667,13 @@ const ESPN_LEAGUES: Array<{ slug: string; label: string; guaranteed: boolean }> 
   { slug: 'usa.1', label: 'American Major League Soccer', guaranteed: false },
 ];
 
+// Close a fixture market 10 minutes after the match ends. A football match runs roughly 120 min of
+// wall-clock from kickoff to the final whistle (90 of play plus the halftime break and stoppage), so
+// close = kickoff + 120 + 10 = 130 minutes. The exact end is unknown at creation, so this is the
+// on-chain-fixed estimate; a knockout tie that runs to extra time may close a touch early, and the
+// resolver still waits for the official final result before settling.
+const FIXTURE_CLOSE_AFTER_KICKOFF_MS = (120 + 10) * 60 * 1000;
+
 async function fetchEspnSoccerSignals(): Promise<TrendItem[]> {
   const today = new Date();
   const requests = ESPN_LEAGUES.flatMap((league) => {
@@ -701,7 +708,7 @@ async function fetchEspnSoccerSignals(): Promise<TrendItem[]> {
           const kickoff = event.date ? new Date(event.date) : null;
           const kickoffMs = kickoff && !Number.isNaN(kickoff.getTime()) ? kickoff.getTime() : null;
           if (kickoffMs !== null && kickoffMs <= Date.now()) return [];
-          const closeMs = kickoffMs !== null ? kickoffMs + 3 * 60 * 60 * 1000 : null;
+          const closeMs = kickoffMs !== null ? kickoffMs + FIXTURE_CLOSE_AFTER_KICKOFF_MS : null;
 
           const isGuaranteed = league.guaranteed
             || (Boolean(detectCountryFlagUrl(home)) && Boolean(detectCountryFlagUrl(away)));
@@ -812,10 +819,7 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
         const kickoffMs = kickoff && !Number.isNaN(kickoff.getTime()) ? kickoff.getTime() : null;
         if (kickoffMs !== null && kickoffMs <= Date.now()) return [];
 
-        // Close ~1h after the match ends (kickoff + ~3h) so the market resolves the same day,
-        // right after the result is known — with headroom for extra time and penalties in
-        // knockout games, which would outrun a 2.5h window.
-        const closeMs = kickoffMs !== null ? kickoffMs + 3 * 60 * 60 * 1000 : null;
+        const closeMs = kickoffMs !== null ? kickoffMs + FIXTURE_CLOSE_AFTER_KICKOFF_MS : null;
 
         // Fixtures must always carry a real image: prefer the match thumbnail, else the home
         // team's country flag (World Cup teams are countries), so a fixture never falls back to
