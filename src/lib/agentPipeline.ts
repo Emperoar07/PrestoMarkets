@@ -2299,7 +2299,7 @@ const AGENT_PER_RUN_CAP = Math.max(1, Number(process.env.PRESTO_AGENT_PER_RUN_CA
 // trend lane (crypto, politics, culture…). Sports fixtures are counted and capped separately (see
 // WORLD_CUP_CAP_RESERVE) so a busy match day never crowds out diverse markets, and vice-versa.
 // Raised from 2 so the agent keeps a varied open book instead of only fixtures.
-const AGENT_ACTIVE_MARKET_CAP = Math.max(0, Number(process.env.PRESTO_AGENT_ACTIVE_MARKET_CAP ?? 15));
+const AGENT_ACTIVE_MARKET_CAP = Math.max(0, Number(process.env.PRESTO_AGENT_ACTIVE_MARKET_CAP ?? 24));
 // Reserved headroom above the active cap purely for World Cup fixtures, so a full week of
 // matches (group stage can be ~16) all get markets without crowding out regular trend markets.
 const WORLD_CUP_CAP_RESERVE = Math.max(0, Number(process.env.PRESTO_WORLD_CUP_FIXTURE_RESERVE ?? 40));
@@ -2458,7 +2458,7 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   // pool. So we do the cheap (no-LLM) research pass first, rank by source quality
   // then recency, and spend a bounded classify budget on the strongest, freshest
   // candidates. Override the budget with PRESTO_AGENT_CLASSIFY_CAP.
-  const CLASSIFY_CAP = Math.max(6, Number(process.env.PRESTO_AGENT_CLASSIFY_CAP ?? 10));
+  const CLASSIFY_CAP = Math.max(6, Number(process.env.PRESTO_AGENT_CLASSIFY_CAP ?? 16));
   const EXA_RESEARCH_CAP = Math.max(0, Number(process.env.PRESTO_AGENT_EXA_RESEARCH_CAP ?? 6));
   type Scored = { trend: TrendItem; classification: GroqClassification };
   const scored: Scored[] = [];
@@ -2537,7 +2537,11 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
     (b.classification.momentumScore + agentTrendPriorityBoost(b.trend) / 100)
     - (a.classification.momentumScore + agentTrendPriorityBoost(a.trend) / 100)
   ));
-  const topPool = scored.slice(0, Math.max(3, Math.ceil(scored.length / 2)));
+  // Use the full classified pool, not just the top half, so the loop has enough candidates to open
+  // a real slate per tick. The weighted-random pick still favors the strongest trends, and the
+  // per-run cap, composite-signal gate, and safety check keep quality. The old top-half cut left
+  // only ~3 candidates after gate failures, which is why quiet ticks produced a single market.
+  const topPool = scored;
 
   // Try candidates in pulled-from-pool order until one passes draft + safety + onchain.
   // Per-run cap still applies so we create at most AGENT_PER_RUN_CAP markets per tick. The active
