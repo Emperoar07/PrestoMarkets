@@ -11,7 +11,7 @@ contract PrestoMarket is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint16 public constant MAX_PROTOCOL_FEE_BPS = 500;
-    uint256 public constant RESOLUTION_CHALLENGE_WINDOW = 2 hours;
+    uint256 public constant RESOLUTION_CHALLENGE_WINDOW = 30 minutes;
     /// @notice After closeTime + this timeout, anyone may cancel an unresolved market so a
     /// lost or dead resolver key can never strand participant funds.
     uint256 public constant RESOLUTION_TIMEOUT = 14 days;

@@ -23,7 +23,7 @@ type ResolutionResult =
   | { ok: true; action: 'canceled'; marketId: string; title: string; outcome: string; txHash: string | Hex; confidence: number; reason: string }
   | { ok: false; action: 'skipped'; marketId: string; title: string; reason: string };
 
-const DISPUTE_WINDOW_MS = 2 * 60 * 60 * 1000;
+const DISPUTE_WINDOW_MS = 30 * 60 * 1000;
 
 // V2 markets get the optimistic path: publish a proposal anyone can dispute for 2 hours, then
 // settle on a later tick. V1 markets lack proposeResolution and revert, so we fall back to the
