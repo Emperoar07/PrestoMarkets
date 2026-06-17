@@ -20,17 +20,21 @@ const guide = [
     p: 'The portfolio and activity pages show your positions, cost basis, claim and refund previews, and the full creation and resolve history, read directly from Arc.',
   },
   {
+    h: 'Follow a live match',
+    p: 'Sports markets show both team flags, the kickoff time, and the live score once the match starts, pulled from a keyless feed. The final score stays with the market through settlement.',
+  },
+  {
     h: 'Cover institutional workflows',
-    p: 'Beyond consumer questions, the agent favors event-driven and operational markets: macro releases like CPI, central bank rate decisions, GDP and labor data, plus geopolitical and operational risk. Each one is bound to an official or measurable source, never a marketing post, so it stays settleable.',
+    p: 'Beyond consumer questions, the agent favors event driven and operational markets: macro releases like CPI, central bank rate decisions, GDP and labor data, plus geopolitical and operational risk. Each one is bound to an official or measurable source, never a marketing post, so it stays settleable.',
   },
 ];
 
 const buildRails = [
-  { h: 'Arc Testnet, USDC as gas', p: 'Every market is its own contract from the Presto factory, and settlement is in USDC.' },
+  { h: 'Arc Testnet, USDC as gas', p: 'Every market is its own contract from the Presto factory. Trades and payouts settle in USDC, or in EURC for euro markets.' },
   { h: 'Next.js 16 and viem', p: 'Server components handle trend ingestion and onchain reads. Client components own the trading flow, wallet state, and live odds.' },
-  { h: 'Circle wallets', p: 'Email, Google, and PIN onboarding for new users, external EVM wallets for everyone else, and sessions that refresh on their own so traders are never interrupted.' },
-  { h: 'Model rotation', p: 'Claude leads, with Groq, OpenRouter, Cerebras, and Together standing by, so the agent keeps running through any single provider hiccup.' },
-  { h: 'Trend ingestion', p: 'Cointelegraph, Decrypt, The Block, CoinDesk, BBC, TechCrunch, Hacker News, ESPN, TheSportsDB, LiveScore, X via Grok, and live CoinGecko prices feed the agent.' },
+  { h: 'Sign in your way', p: 'Use a device passkey, an app wallet PIN, email, or Google, or connect an external EVM wallet. Passkey and app wallet trades are sponsored through the Circle bundler, so you never need gas, and sessions refresh on their own so traders are never interrupted.' },
+  { h: 'Fund from any chain', p: 'Move USDC to your Arc balance from Base, Ethereum, Arbitrum, or Avalanche through Circle Gateway, right inside the wallet panel.' },
+  { h: 'Public agent API', p: 'Read markets, the leaderboard, and the agent profile at /api/v1. The data endpoints can accept tiny USDC payments through x402, so other agents can pay per call.' },
   { h: 'Verifiable identity', p: 'The agent has its own ERC-8004 identity and wallet on Arc, so every market it opens is signed against a track record anyone can check.' },
 ];
 
@@ -68,7 +72,7 @@ export default function DocsPage() {
         <p className="mt-6 text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Docs</p>
         <h1 className="mt-3 text-[clamp(32px,4vw,46px)] font-black tracking-tight text-white">Presto Markets guide.</h1>
         <p className="mt-4 text-[15px] leading-7 text-muted">
-          Presto Markets is an institutional-grade prediction market on Arc, Circle&apos;s stablecoin native L1. USDC is both the unit of account and the gas, every trade is final in under a second, Circle wallets handle onboarding, and a live agent opens fresh markets every day, from consumer questions to event-driven and operational ones like macro releases, rate decisions, and geopolitical risk. The surface stays calm and readable so public signals can be created, traded, and settled with confidence.
+          Presto Markets is an institutional grade prediction market on Arc, Circle&apos;s stablecoin native L1. USDC is both the unit of account and the gas, every trade is final in under a second, Circle wallets handle onboarding, and a live agent opens fresh markets every day, from consumer questions to event driven and operational ones like macro releases, rate decisions, and geopolitical risk. The surface stays calm and readable so public signals can be created, traded, and settled with confidence.
         </p>
 
         <section className="mt-12 border-t border-white/[0.06] pt-8">

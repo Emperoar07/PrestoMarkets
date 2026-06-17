@@ -4,13 +4,15 @@ import { SiteHeader } from '@/components/SiteHeader';
 import { currentRails } from '@/lib/productRails';
 
 const live = [
-  'Live Arc factory: reads, market creation, buy, resolve, claim, and refund.',
-  'Circle wallets sign live Arc transactions through contract execution challenges.',
-  'External EVM wallets like MetaMask and WalletConnect work inline through RainbowKit.',
-  'The agent runs on an ERC-8004 identity (ID 16339) and drafts markets on a schedule.',
-  'USDC settlement on every market contract.',
-  'Crypto price markets settle straight from the live CoinGecko price.',
-  'A browser cost basis indexer keeps portfolio reads fast.',
+  'Live Arc factory: reads, market creation, buy, resolve, claim, refund, plus propose and dispute settlement.',
+  'Sign in with a device passkey, an app wallet PIN, or an external EVM wallet. Passkey and app wallet trades are gasless through the Circle bundler.',
+  'Markets settle in USDC or EURC, so you can run dollar or euro questions.',
+  'Move USDC to your Arc balance from other chains through Circle Gateway, right in the wallet panel.',
+  'The agent runs on an ERC-8004 identity (ID 16339). It opens every World Cup fixture and keeps a varied book of crypto, macro, and culture markets.',
+  'Sports markets carry a live fixture header with both team flags and live scores from a keyless feed.',
+  'Crypto price markets settle straight from the live price, frozen at close.',
+  'A public agent API at /api/v1, with optional USDC nanopayments through x402.',
+  'A browser cost basis indexer and a cached market list keep pages fast.',
 ];
 
 export default function BuildRailsPage() {
@@ -24,7 +26,7 @@ export default function BuildRailsPage() {
         <p className="mt-6 text-[10.5px] font-bold uppercase tracking-[0.12em] text-cyan">Build rails</p>
         <h1 className="mt-3 text-[clamp(32px,4vw,46px)] font-black tracking-tight text-white">Built on Circle and Arc.</h1>
         <p className="mt-4 text-[15px] leading-7 text-muted">
-          Presto reads from the deployed Arc factory and submits live transactions through whichever wallet you sign in with, Circle or an external EVM wallet. USDC is the unit of account and the gas from the first click, and Arc&apos;s sub-second deterministic finality settles every trade for good. These are the rails institutional-grade prediction markets need, from consumer questions to macro releases, rate decisions, and operational risk.
+          Presto reads from the deployed Arc factory and submits live transactions through whichever wallet you sign in with, Circle or an external EVM wallet. USDC is the unit of account and the gas from the first click, and Arc&apos;s deterministic finality under a second settles every trade for good. These are the rails institutional grade prediction markets need, from consumer questions to macro releases, rate decisions, and operational risk.
         </p>
 
         <section className="mt-12 border-t border-white/[0.06] pt-8">
