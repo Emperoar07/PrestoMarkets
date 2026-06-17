@@ -66,7 +66,8 @@ export async function GET(req: NextRequest) {
     //    agent and user-created markets, so a user market launched without a picture still gets a
     //    resolved subject image (BTC logo, team flag, …) or a clean branded banner instead of blank.
     const targetMarkets = allMarkets.filter(
-      (m) => !hasGoodImage(m.imageURI)
+      (m) => (m.status === 'Open' || m.status === 'Closing soon') // live markets only — no point fixing closed/resolved ones
+        && !hasGoodImage(m.imageURI)
         && !overridden.has(m.id.toLowerCase()),
     );
 
