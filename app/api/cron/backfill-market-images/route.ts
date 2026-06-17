@@ -61,11 +61,12 @@ export async function GET(req: NextRequest) {
         .map((r) => r.id.toLowerCase()),
     );
 
-    // 2. Identify agent markets that lack a GOOD image — empty, a branded SVG fallback, or a
-    //    non-trusted-host URL (likely stale/broken and showing the card placeholder).
+    // 2. Identify ANY market that lacks a GOOD image — empty, a branded SVG fallback, or a
+    //    non-trusted-host URL (likely stale/broken and showing the card placeholder). Covers both
+    //    agent and user-created markets, so a user market launched without a picture still gets a
+    //    resolved subject image (BTC logo, team flag, …) or a clean branded banner instead of blank.
     const targetMarkets = allMarkets.filter(
-      (m) => m.createdByType === 'agent'
-        && !hasGoodImage(m.imageURI)
+      (m) => !hasGoodImage(m.imageURI)
         && !overridden.has(m.id.toLowerCase()),
     );
 
