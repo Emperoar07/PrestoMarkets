@@ -8,6 +8,7 @@ import { MarketQualityPanel } from './MarketQualityPanel';
 import { Countdown } from './Countdown';
 import { AlertPrefsControl } from './AlertPrefsControl';
 import { AddUsdcDrawer } from './AddUsdcDrawer';
+import { BrandLoader } from './BrandLoader';
 
 // Heavy, below-the-fold pieces — lazy-load so the market page shell (title, odds, trade panel)
 // paints immediately instead of waiting on the chart's history fetch and the comments list.
@@ -315,61 +316,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     writePayWith(connectedWallet?.address, marketId, symbol);
   }
 
-  if (!market) {
-    // On a cold load/refresh the onchain markets are still being fetched, so `market` is
-    // momentarily undefined. Show a loading state until the fetch settles, and only then
-    // fall back to "not found" — otherwise a hard refresh of a real market flashes an error.
-    const stillLoading = isLoadingMarkets;
-    return (
-      <>
-        <SiteHeader />
-        <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-28 md:px-7 md:pt-28 flex flex-col justify-center items-center min-h-[75vh]">
-          {stillLoading ? (
-            <div className="flex flex-col items-center justify-center text-center">
-              <div className="relative flex items-center justify-center w-16 h-16 mb-4">
-                <div className="absolute inset-0 rounded-full bg-cyan/10 blur-xl animate-pulse" />
-                <Loader2 className="h-9 w-9 animate-spin text-cyan relative z-10" />
-              </div>
-              <h1 className="text-2xl font-black text-white tracking-tight">Loading market…</h1>
-              <p className="mt-2 text-sm text-[#8fa0b4]">Fetching this market from Arc.</p>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center text-center">
-              <div className="relative flex items-center justify-center w-16 h-16 mb-4">
-                <div className="absolute inset-0 rounded-full bg-amber-500/10 blur-xl" />
-                <AlertCircle className="h-9 w-9 text-amber-400 relative z-10" />
-              </div>
-              <h1 className="text-2xl font-black text-white tracking-tight">Market not found</h1>
-              <p className="mt-2 text-sm text-[#8fa0b4]">This market was not returned by the deployed Arc factory.</p>
-              <Link
-                href="/markets"
-                className="mt-6 inline-flex items-center justify-center rounded-lg bg-cyan px-4 py-2 text-xs font-black uppercase tracking-wider text-[#07111f] transition-all duration-150 hover:bg-cyan-300 active:scale-95 shadow-md shadow-cyan/5"
-              >
-                Back to Explorer
-              </Link>
-            </div>
-          )}
-        </main>
-        <SiteFooter />
-      </>
-    );
-  }
-
-  const yesOutcome = market.outcomes.find((o) => o.label === 'YES') ?? market.outcomes[0];
-  const noOutcome = market.outcomes.find((o) => o.label === 'NO') ?? market.outcomes[1] ?? yesOutcome;
-  const activeOutcomeIndex = Math.max(0, market.outcomes.findIndex((outcome) => outcome.label === selectedOutcome));
-  const activeOutcome = market.outcomes[activeOutcomeIndex] ?? yesOutcome;
-  const activeOutcomeColor = getOutcomeColor(activeOutcomeIndex);
-  const isBinaryMarket = market.outcomes.length <= 2;
-  const amountValue = Number(amount) || 0;
-  const isLimitOrder = tradeMode === 'buy' && orderMode === 'limit';
-  // Fixed-share parimutuel: 1 USDC = 1 share. Payout if this outcome wins is an estimate derived from current implied odds, not a priced-share quote.
-  const fixedShareQuote = buildFixedShareQuote({
-    amountUsdc: amountValue,
-    oddsPercent: isLimitOrder ? Number(limitPrice) : Number(activeOutcome.odds),
-  });
-  const liquiditySideAmount = amountValue > 0 ? amountValue / market.outcomes.length : 0;
-
+  // NOTE: every hook below uses optional chaining on `market` and MUST stay above the `if (!market)`
+  // early return — React requires the same hooks on every render, and a cold/direct market load
+  // renders the loading state (market undefined) before the data arrives. Declaring these after the
+  // guard changed the hook count between renders and crashed the page ("couldn't load").
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -463,6 +413,61 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idEvent, homeTeamName, awayTeamName, matchDateYmd, kickoffMs, market?.status]);
 
+  if (!market) {
+    // On a cold load/refresh the onchain markets are still being fetched, so `market` is
+    // momentarily undefined. Show a loading state until the fetch settles, and only then
+    // fall back to "not found" — otherwise a hard refresh of a real market flashes an error.
+    const stillLoading = isLoadingMarkets;
+    return (
+      <div className="flex min-h-screen flex-col">
+        <SiteHeader />
+        <main className="mx-auto max-w-[1400px] flex-1 px-4 pb-16 pt-28 md:px-7 md:pt-28 flex flex-col justify-center items-center w-full">
+          {stillLoading ? (
+            <div className="w-full max-w-[380px] rounded-[16px] border border-white/[0.08] bg-[#0c121d]/90 backdrop-blur-md p-8 shadow-2xl shadow-black/80 flex flex-col items-center justify-center text-center">
+              <div className="relative flex items-center justify-center w-20 h-20 mb-5">
+                <div className="absolute inset-0 rounded-full bg-cyan/10 blur-2xl animate-pulse" />
+                <BrandLoader />
+              </div>
+              <h1 className="text-xl font-black text-white tracking-tight">Loading market…</h1>
+              <p className="mt-2 text-sm text-[#8fa0b4]">Fetching this market from Arc.</p>
+            </div>
+          ) : (
+            <div className="w-full max-w-[380px] rounded-[16px] border border-white/[0.08] bg-[#0c121d]/90 backdrop-blur-md p-8 shadow-2xl shadow-black/80 flex flex-col items-center justify-center text-center">
+              <div className="relative flex items-center justify-center w-16 h-16 mb-5">
+                <div className="absolute inset-0 rounded-full bg-amber-500/10 blur-2xl animate-pulse" />
+                <AlertCircle className="h-9 w-9 text-amber-400 relative z-10" />
+              </div>
+              <h1 className="text-xl font-black text-white tracking-tight">Market not found</h1>
+              <p className="mt-2 text-sm text-[#8fa0b4]">This market was not returned by the deployed Arc factory.</p>
+              <Link
+                href="/markets"
+                className="mt-6 inline-flex items-center justify-center rounded-lg bg-cyan px-4 py-2 text-xs font-black uppercase tracking-wider text-[#07111f] transition-all duration-150 hover:bg-cyan-300 active:scale-95 shadow-md shadow-cyan/5"
+              >
+                Back to Explorer
+              </Link>
+            </div>
+          )}
+        </main>
+        <SiteFooter />
+      </div>
+    );
+  }
+
+  const yesOutcome = market.outcomes.find((o) => o.label === 'YES') ?? market.outcomes[0];
+  const noOutcome = market.outcomes.find((o) => o.label === 'NO') ?? market.outcomes[1] ?? yesOutcome;
+  const activeOutcomeIndex = Math.max(0, market.outcomes.findIndex((outcome) => outcome.label === selectedOutcome));
+  const activeOutcome = market.outcomes[activeOutcomeIndex] ?? yesOutcome;
+  const activeOutcomeColor = getOutcomeColor(activeOutcomeIndex);
+  const isBinaryMarket = market.outcomes.length <= 2;
+  const amountValue = Number(amount) || 0;
+  const isLimitOrder = tradeMode === 'buy' && orderMode === 'limit';
+  // Fixed-share parimutuel: 1 USDC = 1 share. Payout if this outcome wins is an estimate derived from current implied odds, not a priced-share quote.
+  const fixedShareQuote = buildFixedShareQuote({
+    amountUsdc: amountValue,
+    oddsPercent: isLimitOrder ? Number(limitPrice) : Number(activeOutcome.odds),
+  });
+  const liquiditySideAmount = amountValue > 0 ? amountValue / market.outcomes.length : 0;
+
   const canTrade = (market.status === 'Open' || market.status === 'Closing soon') && !isTradingLocked;
   
   const groundingUrl = [market.trendUrl, market.sourceOfTruth].find((u) => typeof u === 'string' && /^https?:\/\//i.test(u));
@@ -544,9 +549,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   }
 
   return (
-    <>
+    <div className="flex min-h-screen flex-col">
       <SiteHeader />
-      <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-28 md:px-7 md:pt-28">
+      <main className="mx-auto max-w-[1400px] flex-1 px-4 pb-16 pt-28 md:px-7 md:pt-28 w-full">
         <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[1fr_380px]">
 
           <section className="min-w-0 order-1 lg:order-none lg:col-start-1 lg:row-start-1">
@@ -1405,7 +1410,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
       </main>
       <AddUsdcDrawer open={fundingOpen} onClose={() => setFundingOpen(false)} wallet={connectedWallet} />
       <SiteFooter />
-    </>
+    </div>
   );
 }
 
