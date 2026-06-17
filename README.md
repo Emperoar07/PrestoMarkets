@@ -1,36 +1,25 @@
 # Presto Markets
 
-Presto Markets is a trust first prediction market built on Arc, Circle's stablecoin native Layer 1, currently live on Arc Testnet. You can open a public market in a couple of clicks, trade outcome shares settled in USDC, and follow the same signals the platform itself reads from. Every market is its own onchain contract, every settlement is published with evidence, and every market the agent opens carries a visible trail, so you always know what you are looking at.
+A prediction market that puts trust first, built on Arc, Circle's stablecoin native Layer 1, and live on Arc Testnet. Open a market in a couple of clicks, trade outcome shares in USDC or EURC, and watch an onchain agent open fresh markets every day. Every market is its own contract and every settlement is published with evidence, so you always know what you are looking at.
 
-The idea is simple. Prediction markets work best when the rails feel native, when stablecoins are the unit of account, and when the path from an interesting question to a live, tradable market takes under a minute. They get most useful as they move past entertainment into financial and operational workflows, where people need a live read on how outcomes are being priced. Arc gives us that foundation, with USDC as both the unit of account and the gas, and deterministic finality under a second that settles every trade for good. Presto adds a calm, readable surface on top, with an agent that watches global trends and opens fresh markets every day.
+## Features
 
-## What you can do
-
-**Open a market in two flavors.** Prediction markets resolve from an external source of truth. Opinion markets capture sentiment and settle through their named resolver (community vote settlement is on the roadmap, not live yet). Each one takes a close date, up to four categories, a description, an image, optional poll options, and a resolver of your choosing.
-
-**Trade in USDC or EURC.** Buy YES or NO on a binary market, or any option on a poll. Orders execute against the live share contract, and the panel shows your shares and a payout estimate before you sign. Euro markets settle in EURC, so dollar and euro questions sit side by side. Sports markets add a live header with both team flags, the kickoff time, and the score once the match starts.
-
-**Fund in a tap.** Sign in with a device passkey or an app wallet and trade gas free, sponsored through the Circle bundler. Already hold USDC on another chain? Move it to your Arc balance from Base, Ethereum, Arbitrum, or Avalanche through Circle Gateway, right inside the wallet panel.
-
-**Settle with confidence.** Resolvers post evidence that the contract keeps for good. Crypto price markets settle straight from the live price, frozen at close. Other markets settle from their declared sources once the evidence is clear. A two hour challenge window lets anyone dispute a proposed outcome before it lands, and anything that stays uncertain past a grace window is canceled and every participant is refunded in full.
-
-**Watch the agent work.** The Presto agent reads live trends from a dozen sources, ranks them by how many outlets are covering the same story, and opens the few that clear its bar. It has its own onchain identity, its own wallet, and its own activity feed in the app. What the agent sees, you see.
-
-**Cover institutional workflows.** Beyond consumer questions, the agent favors event driven and operational markets: macro releases like CPI, central bank rate decisions, GDP and labor data, plus geopolitical and operational risk. Each one is bound to an official or measurable source, never a marketing post, so the question stays settleable.
+- **Two market types.** Prediction markets resolve from an external source of truth. Opinion markets capture sentiment and settle through their named resolver. Each is binary YES or NO, or a poll of up to twelve options, with a close date, up to four categories, an image, and a resolver of your choosing.
+- **Trade in USDC or EURC.** Buy any outcome against the live share contract. The panel shows your shares and a payout estimate before you sign. Euro markets settle in EURC, so dollar and euro questions sit side by side.
+- **Sign in your way.** A device passkey, an app wallet PIN, email, or Google through Circle wallets, or an external EVM wallet through RainbowKit. Passkey and app wallet trades are gasless, sponsored through the Circle bundler.
+- **Fund from any chain.** Move USDC to your Arc balance from Base, Ethereum, Arbitrum, or Avalanche through Circle Gateway, right inside the wallet panel.
+- **Settle with evidence.** Resolvers post evidence the contract keeps for good. Crypto price markets settle from the live price, frozen at close. Optimistic markets propose an outcome, open a two hour public challenge window, then settle. Anything still uncertain past a grace window is canceled and refunded in full.
+- **Live sports.** Fixture markets show both team flags, the kickoff time, and the live score once a match starts, from a keyless feed, held through settlement.
+- **An onchain agent.** It reads live trends, opens every World Cup fixture, and keeps a varied book of crypto, macro, and culture markets. It has its own ERC-8004 identity, wallet, and activity feed. What the agent sees, you see.
+- **Public API.** Read markets, the leaderboard, and the agent profile at `/api/v1`. The data endpoints can take a small USDC payment per call through x402, so other agents can pay to read the book.
 
 ## How it is built
 
-**Arc Testnet, USDC as gas.** Every market is its own contract from the Presto factory. Trades and payouts settle in USDC, or in EURC for euro markets.
-
-**Next.js 16 and viem.** Server components do the reading. Client components own the trading flow, wallet state, and live odds.
-
-**Circle wallets.** New users onboard with a device passkey, an app wallet PIN, email, or Google. Anyone already holding an EVM wallet connects through the same surface. Passkey and app wallet transactions are sponsored, so trading stays gas free, and sessions refresh on their own so a working trader is never interrupted.
-
-**A public agent API.** Read markets, the leaderboard, and the agent profile at /api/v1. The data endpoints can accept tiny USDC payments through x402, so other agents can pay per call.
-
-**An autonomous agent.** It reads trends, classifies each one, drafts a market with a close date that fits the event, runs a safety pass, seeds every outcome so the market can always settle, and opens it onchain. The model rotation runs Claude first with a seven provider fallback chain (Gemini, Groq, Mistral, OpenRouter, Cerebras, Together, Hugging Face), so one provider hiccup never silences it.
-
-**Verifiable identity.** The agent is registered with an ERC-8004 identity on Arc, so its track record can be checked onchain.
+- **Arc Testnet.** USDC is the unit of account and the gas. Deterministic finality under a second settles every trade for good.
+- **Contracts.** Each market is its own contract from the Presto factory, in USDC or EURC. Create, buy, resolve, propose, dispute, claim, and refund, with an optimistic challenge window for trustworthy settlement.
+- **Next.js 16 and viem.** The server reads the chain through a cached endpoint so pages stay fast. The client owns the trading flow, wallet state, and live odds.
+- **Circle.** User controlled wallets for email, Google, and PIN. Modular Wallets for device passkeys, backed by a sponsored smart account on Arc. Gateway for cross chain funding.
+- **The agent.** It reads trends, classifies each one, drafts a fitting close date, runs a safety pass, seeds every outcome so the market can always settle, and opens it onchain. Claude leads a seven provider fallback chain, so one outage never silences it. Registered with an ERC-8004 identity on Arc.
 
 ## Running locally
 
@@ -40,7 +29,7 @@ cp .env.example .env.local   # fill in the keys you have
 npm run dev
 ```
 
-Testnet USDC is available from the Circle faucet. The app boots with a minimal env, and you can add keys as you wire each rail.
+Testnet USDC and EURC are available from the Circle faucet. The app boots with a minimal env, so you can add keys as you wire each rail.
 
 ## License
 
