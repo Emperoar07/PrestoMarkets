@@ -228,6 +228,11 @@ export function CreateMarketBuilder() {
       setStatusMessage('Choose a category before launching.');
       return;
     }
+    if (!imageURI.trim()) {
+      setFieldErrors((prev) => ({ ...prev, imageURI: 'A market image is required.' }));
+      setStatusMessage('Add a market image before launching.');
+      return;
+    }
     if (isAgentAssisted && !agentAddress) {
       setStatusMessage('Agent assisted resolution is unavailable until the Presto agent wallet is configured.');
       return;
@@ -295,8 +300,12 @@ export function CreateMarketBuilder() {
       const error = validateField(name, value);
       if (error) errors[name] = error;
     }
+    if (!imageURI.trim()) {
+      errors.imageURI = 'A market image is required.';
+    }
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
+      if (errors.imageURI && Object.keys(errors).length === 1) setStatusMessage('Add a market image before launching.');
       return;
     }
     if (isAgentAssisted && !agentAddress) {
@@ -644,13 +653,13 @@ export function CreateMarketBuilder() {
             </div>
             
             <div>
-              <label className="text-[12px] font-bold uppercase tracking-wider text-[#94a3b8]">Market Image Link <span className="text-[#64748b] normal-case">(optional)</span></label>
+              <label className="text-[12px] font-bold uppercase tracking-wider text-[#94a3b8]">Market Image <span className="text-rose-400 normal-case">(required)</span></label>
               <div className="mt-2.5 flex items-center gap-3">
                 <input
                   value={imageURI}
-                  onChange={(event) => setImageURI(event.target.value)}
+                  onChange={(event) => { setImageURI(event.target.value); if (event.target.value.trim()) setFieldErrors((p) => ({ ...p, imageURI: '' })); }}
                   placeholder="Paste cover image hosted URL (HTTPS)"
-                  className={`flex-1 ${inputClass()}`}
+                  className={`flex-1 ${inputClass(fieldErrors.imageURI)}`}
                 />
                 <label className="shrink-0 cursor-pointer rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-xs font-black text-cyan hover:bg-white/[0.04] hover:border-white/[0.1] transition-all">
                   Upload file
@@ -663,6 +672,9 @@ export function CreateMarketBuilder() {
                 </label>
               </div>
               
+              {fieldErrors.imageURI ? <p className="mt-2 text-[11px] font-bold text-red-400">{fieldErrors.imageURI}</p> : null}
+              <p className="mt-2 text-[11px] text-[#64748b]">Every market needs a cover image so cards never render blank. Paste an HTTPS link or upload a file.</p>
+
               {imageURI ? (
                 <div className="mt-4 overflow-hidden rounded-xl border border-white/[0.06]">
                   <img src={imageURI} alt="Market preview" loading="lazy" decoding="async" className="h-44 w-full object-cover" />
