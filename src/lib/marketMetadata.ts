@@ -159,6 +159,12 @@ export function validateMetadataInputs(input: BuildMarketMetadataInput): void {
   assertMinLength(input.description, MIN.description, 'Description');
   assertMinLength(input.rules, MIN.rules, 'Rules');
   assertMinLength(input.sourceOfTruth, MIN.sourceOfTruth, 'Source of truth');
+  // Every market must carry an image. Enforced here at the single build chokepoint so no path
+  // (the create form, a stale client bundle, the agent, or a direct API call) can ship a blank
+  // market. The agent always resolves a real image before this point, so it is unaffected.
+  if (!input.imageURI || !input.imageURI.trim()) {
+    throw new Error('A market image is required.');
+  }
   assertSafeImage(input.imageURI);
   assertSafeUrl(input.agent?.trendUrl, 'Agent trend URL');
   if (input.outcomeOptions) {
