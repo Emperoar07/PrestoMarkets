@@ -53,3 +53,27 @@ describe('PrestoLmsrMarket pricing', () => {
     expect(await market.state()).to.equal(0); // Open
   });
 });
+
+describe('PrestoLmsrMarket buy', () => {
+  it('buying outcome 0 raises its price and pulls cost+fee', async () => {
+    const { usdc, market, alice } = await deployMarket({ outcomes: 2, feeBps: 150 });
+    const shares = USDC(50);
+    const cost = await market.buyCost(0, shares);
+    await usdc.connect(alice).approve(await market.getAddress(), cost * 2n);
+    const before = await usdc.balanceOf(alice.address);
+    await market.connect(alice).buy(0, shares, cost * 2n);
+    const after = await usdc.balanceOf(alice.address);
+    expect(before - after).to.be.greaterThan(cost); // cost + fee
+    expect(await market.price(0)).to.be.greaterThan(WAD / 2n);
+    expect(await market.sharesOf(0, alice.address)).to.equal(shares);
+    expect(await market.accruedFees6()).to.equal((cost * 150n) / 10_000n);
+  });
+
+  it('reverts on slippage and after close', async () => {
+    const { usdc, market, alice } = await deployMarket({ outcomes: 2 });
+    const shares = USDC(50);
+    const cost = await market.buyCost(0, shares);
+    await usdc.connect(alice).approve(await market.getAddress(), cost * 2n);
+    await expect(market.connect(alice).buy(0, shares, cost)).to.be.revertedWithCustomError(market, 'SlippageExceeded');
+  });
+});

@@ -31,10 +31,21 @@ contract PrestoLmsrMarket is ReentrancyGuard {
 
     State public state;
     bool public seeded;
+    uint256 public accruedFees6;
+
+    event SharesBought(address indexed buyer, uint8 indexed outcome, uint256 shares6, uint256 cost6);
 
     error WrongOutcome();
     error NotSeeded();
     error AlreadySeeded();
+    error MarketClosed();
+    error SlippageExceeded();
+
+    modifier onlyOpen() {
+        if (state != State.Open) revert MarketClosed();
+        if (block.timestamp >= closeTime) revert MarketClosed();
+        _;
+    }
 
     constructor(
         address collateral_,
@@ -122,6 +133,25 @@ contract PrestoLmsrMarket is ReentrancyGuard {
         int256 costWad = afterCost - before;
         if (costWad < 0) costWad = 0;
         return (uint256(costWad) + 1e12 - 1) / 1e12; // round 6dp up
+    }
+
+    function _fee6(uint256 amount6) internal view returns (uint256) {
+        return (amount6 * feeBps) / 10_000;
+    }
+
+    /// @notice Buy `shares6` of `outcome`, paying LMSR cost + fee, guarded by `maxCost6`.
+    function buy(uint8 outcome, uint256 shares6, uint256 maxCost6) external nonReentrant onlyOpen {
+        if (!seeded) revert NotSeeded();
+        if (outcome >= outcomeCount) revert WrongOutcome();
+        uint256 cost = buyCost(outcome, shares6);
+        uint256 fee = _fee6(cost);
+        uint256 total = cost + fee;
+        if (total > maxCost6) revert SlippageExceeded();
+        q[outcome] += int256(shares6) * 1e12;
+        userShares6[outcome][msg.sender] += shares6;
+        accruedFees6 += fee;
+        collateralToken.safeTransferFrom(msg.sender, address(this), total);
+        emit SharesBought(msg.sender, outcome, shares6, cost);
     }
 
     function collateral() external view returns (address) {
