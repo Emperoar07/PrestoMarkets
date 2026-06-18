@@ -77,3 +77,25 @@ describe('PrestoLmsrMarket buy', () => {
     await expect(market.connect(alice).buy(0, shares, cost)).to.be.revertedWithCustomError(market, 'SlippageExceeded');
   });
 });
+
+describe('PrestoLmsrMarket sell', () => {
+  it('buy then sell returns the refund minus fee and restores price', async () => {
+    const { usdc, market, alice } = await deployMarket({ outcomes: 2 });
+    const shares = USDC(50);
+    const cost = await market.buyCost(0, shares);
+    await usdc.connect(alice).approve(await market.getAddress(), cost * 2n);
+    await market.connect(alice).buy(0, shares, cost * 2n);
+    const refund = await market.sellRefund(0, shares);
+    const before = await usdc.balanceOf(alice.address);
+    await market.connect(alice).sell(0, shares, 0);
+    const after = await usdc.balanceOf(alice.address);
+    expect(after - before).to.equal(refund - (refund * 150n) / 10_000n);
+    expect(await market.sharesOf(0, alice.address)).to.equal(0n);
+    expect(await market.price(0)).to.equal(WAD / 2n);
+  });
+
+  it('reverts selling more shares than held', async () => {
+    const { market, alice } = await deployMarket({ outcomes: 2 });
+    await expect(market.connect(alice).sell(0, USDC(1), 0)).to.be.revertedWithCustomError(market, 'InsufficientShares');
+  });
+});

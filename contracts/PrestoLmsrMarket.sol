@@ -34,12 +34,14 @@ contract PrestoLmsrMarket is ReentrancyGuard {
     uint256 public accruedFees6;
 
     event SharesBought(address indexed buyer, uint8 indexed outcome, uint256 shares6, uint256 cost6);
+    event SharesSold(address indexed seller, uint8 indexed outcome, uint256 shares6, uint256 refund6);
 
     error WrongOutcome();
     error NotSeeded();
     error AlreadySeeded();
     error MarketClosed();
     error SlippageExceeded();
+    error InsufficientShares();
 
     modifier onlyOpen() {
         if (state != State.Open) revert MarketClosed();
@@ -152,6 +154,32 @@ contract PrestoLmsrMarket is ReentrancyGuard {
         accruedFees6 += fee;
         collateralToken.safeTransferFrom(msg.sender, address(this), total);
         emit SharesBought(msg.sender, outcome, shares6, cost);
+    }
+
+    /// @notice Collateral (6dp) returned for selling `shares6` of `outcome`, fee excluded. Rounds down.
+    function sellRefund(uint8 outcome, uint256 shares6) public view returns (uint256) {
+        if (outcome >= outcomeCount) revert WrongOutcome();
+        int256[] memory q2 = q;
+        int256 before = _cost(q2);
+        q2[outcome] -= int256(shares6) * 1e12;
+        int256 afterCost = _cost(q2);
+        int256 refundWad = before - afterCost;
+        if (refundWad < 0) refundWad = 0;
+        return uint256(refundWad) / 1e12; // round 6dp down
+    }
+
+    /// @notice Sell `shares6` of `outcome` back to the maker for the LMSR refund minus fee.
+    function sell(uint8 outcome, uint256 shares6, uint256 minRefund6) external nonReentrant onlyOpen {
+        if (shares6 > userShares6[outcome][msg.sender]) revert InsufficientShares();
+        uint256 refund = sellRefund(outcome, shares6);
+        uint256 fee = _fee6(refund);
+        uint256 net = refund - fee;
+        if (net < minRefund6) revert SlippageExceeded();
+        q[outcome] -= int256(shares6) * 1e12;
+        userShares6[outcome][msg.sender] -= shares6;
+        accruedFees6 += fee;
+        collateralToken.safeTransfer(msg.sender, net);
+        emit SharesSold(msg.sender, outcome, shares6, net);
     }
 
     function collateral() external view returns (address) {
