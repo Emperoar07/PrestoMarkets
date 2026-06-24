@@ -2,7 +2,7 @@ import { decodeFunctionData, isAddress, toFunctionSelector, type Address } from 
 import { createArcReadClient } from './arcClient';
 import { getArcConfig } from './arcConfig';
 import { fetchOnchainMarkets } from './onchainMarkets';
-import { erc20Abi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
+import { erc20Abi, prestoLmsrMarketFactoryAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 
 export type CircleContractExecutionPolicyInput = {
   contractAddress?: string;
@@ -17,6 +17,15 @@ const allowedMarketSignatures = new Set([
   'cancel()',
   'claim()',
   'refund()',
+  // V3 LMSR markets: share-denominated buy/sell + bonded optimistic resolution.
+  'buy(uint8,uint256,uint256)',
+  'sell(uint8,uint256,uint256)',
+  'propose(uint8,string)',
+  'dispute(string)',
+  'settle()',
+  'resolveDisputed(uint8,string)',
+  'payWinners(address[])',
+  'timeoutCancel()',
 ]);
 
 const DEFAULT_MAX_USDC_TRANSFER_BASE_UNITS = BigInt(5_000_000);
@@ -63,10 +72,12 @@ async function isFactoryDeployedMarket(marketAddress: Address, config: ReturnTyp
       }
     }
 
-    // EURC-collateral factories + legacy factories: their markets are also tradable.
+    // EURC-collateral factories, V3 LMSR factories, and legacy factories: their markets are also tradable.
     for (const legacy of [
       ...(config.eurcFactoryAddress ? [{ address: config.eurcFactoryAddress, abi: prestoMarketFactoryAbi }] : []),
       ...(config.eurcMultiOutcomeFactoryAddress ? [{ address: config.eurcMultiOutcomeFactoryAddress, abi: prestoMultiOutcomeMarketFactoryAbi }] : []),
+      ...(config.lmsrFactoryAddress ? [{ address: config.lmsrFactoryAddress, abi: prestoLmsrMarketFactoryAbi }] : []),
+      ...(config.eurcLmsrFactoryAddress ? [{ address: config.eurcLmsrFactoryAddress, abi: prestoLmsrMarketFactoryAbi }] : []),
       ...config.legacyFactoryAddresses.map((address) => ({ address, abi: prestoMarketFactoryAbi })),
       ...config.legacyMultiOutcomeFactoryAddresses.map((address) => ({ address, abi: prestoMultiOutcomeMarketFactoryAbi })),
     ]) {
@@ -141,6 +152,7 @@ async function validateUsdcExecution(input: CircleContractExecutionPolicyInput, 
 const BATCH_SIGNATURE = 'executeBatch((address, uint256, bytes)[])';
 const APPROVE_SELECTOR = toFunctionSelector('approve(address,uint256)');
 const BUY_SELECTOR = toFunctionSelector('buy(uint8,uint256)');
+const BUY_LMSR_SELECTOR = toFunctionSelector('buy(uint8,uint256,uint256)'); // V3 slippage-guarded buy
 const MAX_BATCH_LEGS = 4;
 
 type BatchOp =
@@ -180,7 +192,7 @@ export function inspectBatch(abiParameters: unknown[] | undefined): { ok: true; 
       const [spender, amount] = decoded.args as readonly [string, bigint];
       if (typeof spender !== 'string' || typeof amount !== 'bigint') return { ok: false };
       ops.push({ kind: 'approve', usdcTarget: target.toLowerCase(), spender: spender.toLowerCase(), amount });
-    } else if (selector === BUY_SELECTOR) {
+    } else if (selector === BUY_SELECTOR || selector === BUY_LMSR_SELECTOR) {
       ops.push({ kind: 'buy', market: target.toLowerCase() });
     } else {
       return { ok: false };
@@ -228,10 +240,17 @@ export async function isAllowedContractExecution(input: CircleContractExecutionP
   // EURC-collateral factories are also valid create targets (euro markets).
   const eurcFactory = config.eurcFactoryAddress?.toLowerCase();
   const eurcMultiOutcomeFactory = config.eurcMultiOutcomeFactoryAddress?.toLowerCase();
+  const lmsrFactory = config.lmsrFactoryAddress?.toLowerCase();
+  const eurcLmsrFactory = config.eurcLmsrFactoryAddress?.toLowerCase();
   const usdc = config.usdcAddress?.toLowerCase();
 
   if (input.abiFunctionSignature === BATCH_SIGNATURE) {
     return validateBatchExecution(input, config);
+  }
+
+  // V3 LMSR factories (USDC + EURC) deploy share-based markets with a seed subsidy.
+  if ((lmsrFactory && contract === lmsrFactory) || (eurcLmsrFactory && contract === eurcLmsrFactory)) {
+    return input.abiFunctionSignature === 'createMarket(address,uint64,string,uint8,uint8,uint256)';
   }
 
   // Receiving a Move-to-Arc: the Circle wallet submits the Gateway-attested mint to itself.
