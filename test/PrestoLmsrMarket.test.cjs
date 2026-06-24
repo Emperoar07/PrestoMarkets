@@ -13,7 +13,7 @@ async function deployMarket({ outcomes = 2, seed = 100, feeBps = 150, bond = 10 
   const Market = await ethers.getContractFactory('PrestoLmsrMarket');
   const market = await Market.deploy(
     await usdc.getAddress(), resolver.address, close, 0, 'data:application/json,{}',
-    outcomes, USDC(seed), feeBps, treasury.address, deployer.address, USDC(bond),
+    outcomes, USDC(seed), feeBps, treasury.address, deployer.address, USDC(bond), deployer.address,
   );
   await usdc.approve(await market.getAddress(), USDC(seed));
   await market.seed();
@@ -222,5 +222,50 @@ describe('PrestoLmsrMarket resolution', () => {
     const treasuryBefore = await usdc.balanceOf(treasury.address);
     await market.withdrawFees();
     expect((await usdc.balanceOf(treasury.address)) - treasuryBefore).to.equal(fees);
+  });
+});
+
+describe('PrestoLmsrMarket pause and cancel', () => {
+  it('guardian can pause, blocking buys but not claims', async () => {
+    const { usdc, market, deployer, alice } = await deployMarket({ outcomes: 2 });
+    // deployer is the guardian (passed as guardian_ in the helper).
+    await market.connect(deployer).pause();
+    const shares = USDC(10);
+    const cost = await market.buyCost(0, shares);
+    await usdc.connect(alice).approve(await market.getAddress(), cost * 2n);
+    await expect(market.connect(alice).buy(0, shares, cost * 2n)).to.be.revertedWithCustomError(market, 'EnforcedPause');
+    await market.connect(deployer).unpause();
+    await market.connect(alice).buy(0, shares, cost * 2n); // works again
+    expect(await market.sharesOf(0, alice.address)).to.equal(shares);
+  });
+
+  it('non-guardian cannot pause', async () => {
+    const { market, alice } = await deployMarket({ outcomes: 2 });
+    await expect(market.connect(alice).pause()).to.be.revertedWithCustomError(market, 'NotGuardian');
+  });
+
+  it('resolver cancel lets holders refund their LMSR value', async () => {
+    const { usdc, market, resolver, alice } = await deployMarket({ outcomes: 2 });
+    await buyShares(usdc, market, alice, 0, USDC(30));
+    const refundQuote = await market.sellRefund(0, USDC(30));
+    await market.connect(resolver).cancel();
+    expect(await market.state()).to.equal(4); // Canceled
+    const before = await usdc.balanceOf(alice.address);
+    await market.connect(alice).refund();
+    // Refund is the full (fee-free) LMSR unwind value of the position.
+    expect((await usdc.balanceOf(alice.address)) - before).to.equal(refundQuote);
+    expect(await market.sharesOf(0, alice.address)).to.equal(0n);
+  });
+
+  it('timeoutCancel only fires after the resolution timeout', async () => {
+    const { usdc, market, alice, close } = await deployMarket({ outcomes: 2 });
+    await buyShares(usdc, market, alice, 0, USDC(15));
+    await advancePastClose(close);
+    await expect(market.timeoutCancel()).to.be.revertedWithCustomError(market, 'TimeoutNotReached');
+    await advanceSeconds(7 * 24 * 60 * 60 + 60);
+    await market.timeoutCancel();
+    expect(await market.state()).to.equal(4); // Canceled
+    await market.connect(alice).refund();
+    expect(await market.sharesOf(0, alice.address)).to.equal(0n);
   });
 });

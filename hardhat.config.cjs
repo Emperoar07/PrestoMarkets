@@ -10,6 +10,8 @@ module.exports = {
         enabled: true,
         runs: 200,
       },
+      // LMSR market's wide constructor + LMSR math need the IR pipeline to avoid "stack too deep".
+      viaIR: true,
     },
   },
   paths: {

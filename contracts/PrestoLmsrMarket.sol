@@ -4,12 +4,13 @@ pragma solidity ^0.8.24;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {wadExp, wadLn, wadMul, wadDiv} from "solmate/src/utils/SignedWadMath.sol";
 
 /// @notice LMSR prediction market. Collateral-agnostic (USDC or EURC, 6 decimals).
 /// @dev Shares are tracked in 18-decimal WAD; 1 winning share redeems for 1 collateral unit.
 /// Pricing uses the logarithmic market scoring rule: C(q) = b * ln(sum exp(q_i / b)).
-contract PrestoLmsrMarket is ReentrancyGuard {
+contract PrestoLmsrMarket is ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
     enum State { Open, Proposed, Disputed, Resolved, Canceled }
@@ -24,6 +25,7 @@ contract PrestoLmsrMarket is ReentrancyGuard {
     string public metadataURI;
     uint16 public immutable feeBps;
     address public immutable protocolFeeRecipient;
+    address public immutable guardian; // can pause/unpause in an emergency
 
     int256 public immutable b; // liquidity parameter, WAD
     int256[] internal q;       // per-outcome net shares, WAD
@@ -31,6 +33,7 @@ contract PrestoLmsrMarket is ReentrancyGuard {
 
     uint256 public immutable bond6; // proposer/disputer bond (6dp)
     uint256 public constant RESOLUTION_CHALLENGE_WINDOW = 30 minutes;
+    uint256 public constant RESOLUTION_TIMEOUT = 7 days; // after close, anyone can cancel a stuck market
 
     State public state;
     bool public seeded;
@@ -50,6 +53,8 @@ contract PrestoLmsrMarket is ReentrancyGuard {
     event Resolved(uint8 indexed outcome);
     event WinnerPaid(address indexed winner, uint256 amount6);
     event FeesWithdrawn(address indexed to, uint256 amount6);
+    event MarketCanceled();
+    event Refunded(address indexed holder, uint256 amount6);
 
     error WrongOutcome();
     error NotSeeded();
@@ -65,6 +70,10 @@ contract PrestoLmsrMarket is ReentrancyGuard {
     error ChallengeWindowOpen();
     error ChallengeWindowClosed();
     error NoPosition();
+    error NotGuardian();
+    error NotCancelable();
+    error TimeoutNotReached();
+    error NotCanceled();
 
     modifier onlyOpen() {
         if (state != State.Open) revert MarketClosed();
@@ -83,7 +92,8 @@ contract PrestoLmsrMarket is ReentrancyGuard {
         uint16 feeBps_,
         address protocolFeeRecipient_,
         address creator_,
-        uint256 bond6_
+        uint256 bond6_,
+        address guardian_
     ) {
         require(outcomeCount_ >= 2 && outcomeCount_ <= 12, "outcomes");
         require(collateral_ != address(0) && resolver_ != address(0), "zero");
@@ -99,6 +109,7 @@ contract PrestoLmsrMarket is ReentrancyGuard {
         protocolFeeRecipient = protocolFeeRecipient_;
         creator = creator_;
         bond6 = bond6_;
+        guardian = guardian_ == address(0) ? msg.sender : guardian_;
         factory = msg.sender;
         q = new int256[](outcomeCount_);
         // b = S / ln(n), so the maximum maker loss b*ln(n) equals the seed S exactly.
@@ -167,7 +178,7 @@ contract PrestoLmsrMarket is ReentrancyGuard {
     }
 
     /// @notice Buy `shares6` of `outcome`, paying LMSR cost + fee, guarded by `maxCost6`.
-    function buy(uint8 outcome, uint256 shares6, uint256 maxCost6) external nonReentrant onlyOpen {
+    function buy(uint8 outcome, uint256 shares6, uint256 maxCost6) external nonReentrant whenNotPaused onlyOpen {
         if (!seeded) revert NotSeeded();
         if (outcome >= outcomeCount) revert WrongOutcome();
         uint256 cost = buyCost(outcome, shares6);
@@ -194,11 +205,11 @@ contract PrestoLmsrMarket is ReentrancyGuard {
     }
 
     /// @notice Sell `shares6` of `outcome` back to the maker for the LMSR refund minus fee.
-    function sell(uint8 outcome, uint256 shares6, uint256 minRefund6) external nonReentrant onlyOpen {
+    function sell(uint8 outcome, uint256 shares6, uint256 minRefund6) external nonReentrant whenNotPaused onlyOpen {
         if (shares6 > userShares6[outcome][msg.sender]) revert InsufficientShares();
-        uint256 refund = sellRefund(outcome, shares6);
-        uint256 fee = _fee6(refund);
-        uint256 net = refund - fee;
+        uint256 refund6 = sellRefund(outcome, shares6);
+        uint256 fee = _fee6(refund6);
+        uint256 net = refund6 - fee;
         if (net < minRefund6) revert SlippageExceeded();
         q[outcome] -= int256(shares6) * 1e12;
         userShares6[outcome][msg.sender] -= shares6;
@@ -217,7 +228,7 @@ contract PrestoLmsrMarket is ReentrancyGuard {
     }
 
     /// @notice Resolver proposes the winning outcome after close, posting a bond.
-    function propose(uint8 outcome, string calldata evidenceURI) external nonReentrant {
+    function propose(uint8 outcome, string calldata evidenceURI) external nonReentrant whenNotPaused {
         if (msg.sender != resolver) revert NotResolver();
         if (state != State.Open) revert MarketClosed();
         if (block.timestamp < closeTime) revert MarketNotClosed();
@@ -294,6 +305,61 @@ contract PrestoLmsrMarket is ReentrancyGuard {
             collateralToken.safeTransfer(w, amount);
             emit WinnerPaid(w, amount);
         }
+    }
+
+    // ----------------------------------------------------------------------
+    // Emergency pause + cancel / refund
+    // ----------------------------------------------------------------------
+
+    /// @notice Halt trading and proposals in an emergency. Claims and refunds stay open.
+    function pause() external {
+        if (msg.sender != guardian) revert NotGuardian();
+        _pause();
+    }
+
+    function unpause() external {
+        if (msg.sender != guardian) revert NotGuardian();
+        _unpause();
+    }
+
+    /// @notice Resolver voids the market before close; holders then refund at LMSR value.
+    function cancel() external nonReentrant {
+        if (msg.sender != resolver) revert NotResolver();
+        if (state != State.Open) revert NotCancelable();
+        state = State.Canceled;
+        emit MarketCanceled();
+    }
+
+    /// @notice Anyone may void a market the resolver abandoned past the timeout.
+    function timeoutCancel() external nonReentrant {
+        if (state != State.Open && state != State.Proposed) revert NotCancelable();
+        if (block.timestamp < closeTime + RESOLUTION_TIMEOUT) revert TimeoutNotReached();
+        state = State.Canceled;
+        emit MarketCanceled();
+    }
+
+    /// @notice After cancellation, unwind the caller's entire position back to the maker at LMSR
+    /// value (no fee). Sequential refunds are collateral-conserving: the pool always covers them
+    /// and what remains once every position is unwound is the original seed subsidy.
+    function refund() external nonReentrant {
+        if (state != State.Canceled) revert NotCanceled();
+        int256[] memory q2 = q; // mutate a memory copy, then write back
+        uint256 payout6;
+        bool any;
+        for (uint8 i = 0; i < outcomeCount; i++) {
+            uint256 held = userShares6[i][msg.sender];
+            if (held == 0) continue;
+            any = true;
+            int256 before = _cost(q2);
+            q2[i] -= int256(held) * 1e12;
+            int256 refundWad = before - _cost(q2);
+            if (refundWad > 0) payout6 += uint256(refundWad) / 1e12;
+            userShares6[i][msg.sender] = 0;
+        }
+        if (!any) revert NoPosition();
+        for (uint8 i = 0; i < outcomeCount; i++) q[i] = q2[i];
+        if (payout6 > 0) collateralToken.safeTransfer(msg.sender, payout6);
+        emit Refunded(msg.sender, payout6);
     }
 
     /// @notice Sweep accrued trading fees to the protocol recipient. Fees are surplus to the
