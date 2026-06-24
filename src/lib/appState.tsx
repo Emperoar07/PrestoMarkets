@@ -51,6 +51,8 @@ export type AppMarket = Market & {
   /** Collateral token the market settles in (USDC default; EURC for euro markets). */
   collateralAddress?: string;
   collateralSymbol?: 'USDC' | 'EURC';
+  /** True for V3 LMSR markets: live AMM pricing, positions can be sold back any time. */
+  amm?: boolean;
   /** Optimistic-resolution proposal state (V2 markets only; absent on V1 contracts). */
   proposal?: {
     outcome: number;

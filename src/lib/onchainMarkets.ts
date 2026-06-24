@@ -1,7 +1,7 @@
-import { createPublicClient, fallback, formatUnits, http, type Address } from 'viem';
+import { createPublicClient, fallback, formatUnits, http, isAddress, type Address } from 'viem';
 import { getArcConfig, getArcChainId, collateralSymbolForAddress } from './arcConfig';
 import { createArcChain } from './arcClient';
-import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
+import { erc20Abi, prestoLmsrMarketAbi, prestoLmsrMarketFactoryAbi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { isSafeResolutionUri, parseMarketMetadata } from './marketMetadata';
 import { stripSourceFromDescription } from './sourcePrivacy';
 import { normalizeOutcomeOdds } from './marketUtils';
@@ -102,6 +102,21 @@ function getOutcomeOdds(shares: bigint[]) {
   if (total === BigInt(0)) return normalizeOutcomeOdds(shares.map(() => 0));
   const totalUsdc = Number(formatUnits(total, 6));
   return normalizeOutcomeOdds(shares.map((item) => (Number(formatUnits(item, 6)) / totalUsdc) * 100));
+}
+
+// LMSR price(i) is WAD (1e18 == 100%). Convert to percent and renormalize so the displayed
+// odds sum cleanly to 100 despite per-outcome rounding.
+export function getLmsrOdds(prices: bigint[]) {
+  return normalizeOutcomeOdds(prices.map((p) => Number(p) / 1e16));
+}
+
+// V3 State enum is { Open:0, Proposed:1, Disputed:2, Resolved:3, Canceled:4 } — different from V1/V2
+// (where 1==Resolved, 2==Canceled), so LMSR markets need their own status mapping.
+function getLmsrStatus(state: number, closeTime: bigint): MarketStatus {
+  if (state === 3) return 'Resolved';
+  if (state === 4) return 'Canceled';
+  if (state === 1 || state === 2) return 'Closed'; // proposed/disputed — closed, awaiting settlement
+  return getStatus(0, closeTime); // Open: fall back to the time-based Open/Closing soon/Closed logic
 }
 
 type MarketCreationInfo = {
@@ -275,9 +290,149 @@ async function readMarket(
   };
 }
 
+// V3 LMSR markets expose a different surface than V1/V2 (live price(i), feeBps, a 5-state enum,
+// no totalCollateral). Read them on their own path so the V1/V2 reader stays untouched, then shape
+// the same AppMarket so every consumer (cards, detail, agent) is collateral- and version-agnostic.
+async function readLmsrMarket(
+  client: ReturnType<typeof createPublicClient>,
+  address: Address,
+  index: number,
+  creationInfo?: MarketCreationInfo,
+): Promise<AppMarket> {
+  const [creator, resolver, closeTime, marketKind, metadataURI, state, outcomeCountRaw, feeBps, winningOutcome, collateralToken] =
+    await Promise.all([
+      client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'creator' }),
+      client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'resolver' }),
+      client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'closeTime' }),
+      client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'marketKind' }),
+      client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'metadataURI' }),
+      client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'state' }),
+      client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'outcomeCount' }),
+      client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'feeBps' }),
+      client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'winningOutcome' }),
+      client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'collateral' }),
+    ]);
+
+  const metadata = parseMarketMetadata(metadataURI as string);
+  const outcomeLabels = metadata?.outcomeOptions && metadata.outcomeOptions.length >= 2 ? metadata.outcomeOptions : ['YES', 'NO'];
+  const cappedOutcomeCount = Math.max(2, Math.min(Number(outcomeCountRaw), 12));
+  const labels = Array.from({ length: cappedOutcomeCount }, (_, i) => outcomeLabels[i] ?? `Outcome ${i + 1}`);
+
+  // Live LMSR prices = the market's current odds. Pool collateral balance is the liquidity figure.
+  const [prices, poolBalance, proposer, proposedOutcomeRaw, challengeEndsAtRaw] = await Promise.all([
+    Promise.all(labels.map((_, i) => client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'price', args: [i] }))),
+    client.readContract({ address: collateralToken as Address, abi: erc20Abi, functionName: 'balanceOf', args: [address] }).catch(() => BigInt(0)),
+    client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'proposer' }).catch(() => null),
+    client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'proposedOutcome' }).catch(() => null),
+    client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'proposalChallengeEndsAt' }).catch(() => null),
+  ]);
+
+  const kind = Number(marketKind);
+  const stateNum = Number(state);
+  const status = getLmsrStatus(stateNum, closeTime as bigint);
+  const odds = getLmsrOdds(prices as bigint[]);
+  const marketType = getMarketType(kind);
+  const titleSource = (metadataURI as string).trim().length > 0 ? (metadataURI as string) : `Market ${index + 1}`;
+  const winningLabel = labels[Number(winningOutcome)] ?? `Outcome ${Number(winningOutcome) + 1}`;
+  const poolValue = poolBalance as bigint;
+  const rawDescription = metadata?.description || `Onchain ${marketType.toLowerCase()} market created from metadata ${titleSource}.`;
+  const collateralSymbol = collateralSymbolForAddress(typeof collateralToken === 'string' ? collateralToken : undefined);
+
+  const isProposalLive = typeof proposer === 'string'
+    && proposer !== '0x0000000000000000000000000000000000000000'
+    && (stateNum === 1 || stateNum === 2);
+
+  return {
+    id: address.toLowerCase(),
+    type: marketType,
+    title: metadata?.name || `Arc market ${index + 1}`,
+    description: stripSourceFromDescription(rawDescription),
+    imageURI: metadata?.imageURI || metadata?.image,
+    pollOptions: labels.length > 2 ? labels : metadata?.outcomeOptions,
+    category: metadata?.categories?.[0] || metadata?.category || 'Onchain',
+    categories: metadata?.categories && metadata.categories.length > 0
+      ? metadata.categories
+      : (metadata?.category ? [metadata.category] : undefined),
+    volume: formatOnchainUsd(poolValue),
+    liquidity: formatOnchainUsd(poolValue),
+    closeLabel: getCloseLabel(status, closeTime as bigint),
+    status,
+    collateral: 'USDC',
+    chain: 'Arc Testnet',
+    resolver: truncateAddress(resolver as string),
+    resolverAddress: resolver as string,
+    resolverVerified: isVerifiedResolver(resolver as string),
+    resolutionMode: metadata?.resolutionMode || getResolutionMode(kind),
+    sourceOfTruth: metadata?.sourceOfTruth || (metadataURI as string) || 'Metadata URI was not set at creation.',
+    rulesSchema: metadata?.rulesSchema ? {
+      ...metadata.rulesSchema,
+      settlementAsset: 'USDC',
+    } : {
+      type: marketType,
+      outcomes: labels,
+      sourceOfTruth: metadata?.sourceOfTruth || (metadataURI as string) || 'Metadata URI was not set at creation.',
+      resolverMode: metadata?.resolutionMode || getResolutionMode(kind),
+      closeRule: 'Market closes at the onchain closeTime. Resolver proposes a result, then a 30-minute challenge window before settlement.',
+      settlementAsset: 'USDC',
+    },
+    rules: (() => {
+      const baseRules = metadata?.rules || 'Rules live in the market metadata URI. Resolver evidence is published after settlement.';
+      if (status === 'Resolved') return `${baseRules}\n\nThis market has been resolved. Winning outcome: ${winningLabel}.`;
+      if (status === 'Canceled') return `${baseRules}\n\nThis market has been canceled and all positions can be refunded at their LMSR value.`;
+      return baseRules;
+    })(),
+    winningOutcomeLabel: status === 'Resolved' ? winningLabel : undefined,
+    collateralAddress: typeof collateralToken === 'string' ? collateralToken : undefined,
+    collateralSymbol,
+    amm: true,
+    proposal: isProposalLive
+      ? {
+          outcome: Number(proposedOutcomeRaw ?? 0),
+          outcomeLabel: labels[Number(proposedOutcomeRaw ?? 0)] ?? `Outcome ${Number(proposedOutcomeRaw ?? 0) + 1}`,
+          proposer: proposer as string,
+          proposedAtMs: challengeEndsAtRaw != null ? (Number(challengeEndsAtRaw) - 30 * 60) * 1000 : 0,
+          disputed: stateNum === 2,
+          evidenceURI: undefined,
+        }
+      : undefined,
+    createdBy: truncateAddress(creator as string),
+    createdByType: metadata?.createdByType,
+    displayType: metadata?.displayType,
+    creatorAddress: creator as string,
+    agentName: metadata?.agentName,
+    agentSource: metadata?.agentSource,
+    agentModel: metadata?.agentModel,
+    agentReason: metadata?.agentReason,
+    agentConfidence: metadata?.agentConfidence,
+    trendSource: metadata?.trendSource,
+    trendUrl: metadata?.trendUrl,
+    momentumScore: metadata?.momentumScore,
+    safetyScore: metadata?.safetyScore,
+    kickoffTime: metadata?.kickoffTime,
+    feeMode: Number(feeBps) > 0 ? `${feeBps} bps trading fee` : 'No trading fee',
+    outcomes: labels.map((label, outcomeIndex) => ({
+      label,
+      odds: odds[outcomeIndex] ?? 0,
+      liquidity: formatOnchainUsd(poolValue),
+      image: metadata?.outcomeImages?.[outcomeIndex] || undefined,
+    })) as AppMarket['outcomes'],
+    activity: [
+      ...labels.slice(0, 4).map((label, outcomeIndex) => ({
+        label: `${label} price`,
+        value: `${(odds[outcomeIndex] ?? 0).toFixed(0)}%`,
+      })),
+      { label: 'Liquidity', value: formatOnchainUsd(poolValue) },
+    ],
+    source: 'onchain',
+    closeDate: new Date(Number(closeTime) * 1000).toISOString(),
+    createdAt: metadata?.createdAt ?? creationInfo?.createdAt ?? '',
+    createdSortKey: creationInfo?.sortKey ?? index,
+  };
+}
+
 async function readCreationInfo(
   client: ReturnType<typeof createPublicClient>,
-  factories: { address: Address; abi: typeof prestoMarketFactoryAbi | typeof prestoMultiOutcomeMarketFactoryAbi }[],
+  factories: { address: Address; abi: typeof prestoMarketFactoryAbi | typeof prestoMultiOutcomeMarketFactoryAbi | typeof prestoLmsrMarketFactoryAbi; lmsr?: boolean }[],
   fallbackOrder: Map<string, number>,
 ): Promise<Map<string, MarketCreationInfo>> {
   const entries = new Map<string, { blockNumber: bigint; logIndex: number; sortKey: number }>();
@@ -357,11 +512,15 @@ async function readOnchainMarkets() {
     // EURC-collateral factories — euro markets read alongside USDC ones (collateral() tags each).
     config.eurcFactoryAddress ? { address: config.eurcFactoryAddress as Address, abi: prestoMarketFactoryAbi } : null,
     config.eurcMultiOutcomeFactoryAddress ? { address: config.eurcMultiOutcomeFactoryAddress as Address, abi: prestoMultiOutcomeMarketFactoryAbi } : null,
+    // V3 LMSR factories (USDC + EURC). Their markets read on the LMSR path (live price as odds).
+    config.lmsrFactoryAddress && isAddress(config.lmsrFactoryAddress) ? { address: config.lmsrFactoryAddress as Address, abi: prestoLmsrMarketFactoryAbi, lmsr: true } : null,
+    config.eurcLmsrFactoryAddress && isAddress(config.eurcLmsrFactoryAddress) ? { address: config.eurcLmsrFactoryAddress as Address, abi: prestoLmsrMarketFactoryAbi, lmsr: true } : null,
     // Retired factories: their markets stay readable so positions and claims never disappear.
     ...config.legacyFactoryAddresses.map((address) => ({ address: address as Address, abi: prestoMarketFactoryAbi })),
     ...config.legacyMultiOutcomeFactoryAddresses.map((address) => ({ address: address as Address, abi: prestoMultiOutcomeMarketFactoryAbi })),
-  ].filter(Boolean) as { address: Address; abi: typeof prestoMarketFactoryAbi | typeof prestoMultiOutcomeMarketFactoryAbi }[];
+  ].filter(Boolean) as { address: Address; abi: typeof prestoMarketFactoryAbi | typeof prestoMultiOutcomeMarketFactoryAbi | typeof prestoLmsrMarketFactoryAbi; lmsr?: boolean }[];
   const marketAddresses: Address[] = [];
+  const lmsrMarkets = new Set<string>();
   const fallbackOrder = new Map<string, number>();
 
   for (const factory of factories) {
@@ -387,6 +546,7 @@ async function readOnchainMarkets() {
       marketAddresses.push(...batchAddresses);
       for (const address of batchAddresses) {
         fallbackOrder.set(address.toLowerCase(), fallbackOrder.size + 1);
+        if (factory.lmsr) lmsrMarkets.add(address.toLowerCase());
       }
     }
   }
@@ -397,7 +557,7 @@ async function readOnchainMarkets() {
   for (let i = 0; i < marketAddresses.length; i += MARKET_HYDRATION_BATCH_SIZE) {
     const batch = marketAddresses.slice(i, i + MARKET_HYDRATION_BATCH_SIZE);
     const batchMarkets = await Promise.all(
-      batch.map((address, batchIndex) => withRetry(() => readMarket(
+      batch.map((address, batchIndex) => withRetry(() => (lmsrMarkets.has(address.toLowerCase()) ? readLmsrMarket : readMarket)(
         client,
         address,
         i + batchIndex,
