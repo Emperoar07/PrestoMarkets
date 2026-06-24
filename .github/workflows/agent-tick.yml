@@ -48,13 +48,9 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -w "\nHTTP %{http_code}\n" --max-time 290
 
-      - name: Backfill missing market images
-        if: ${{ always() }}
-        continue-on-error: true
-        run: |
-          curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/backfill-market-images" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -w "\nHTTP %{http_code}\n" --max-time 290
+      # Image backfill now runs on its own faster 30-minute cadence
+      # (.github/workflows/image-backfill.yml) so new agent markets get a real image promptly
+      # instead of waiting up to 2 hours for this tick.
 
       - name: Record market odds snapshots
         if: ${{ always() }}

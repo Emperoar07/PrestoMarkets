@@ -54,22 +54,28 @@ export async function GET(req: NextRequest) {
     // 1. Fetch current onchain markets
     const allMarkets = await fetchOnchainMarkets({ force: true });
 
-    // Markets we've already stored an override for — skip them so we don't reprocess every run
-    // (and so a stored branded fallback isn't endlessly re-resolved).
-    const overridden = new Set(
-      (await db.select({ id: marketMetadataOverrides.marketId }).from(marketMetadataOverrides))
-        .map((r) => r.id.toLowerCase()),
-    );
+    // Markets whose stored override is ALREADY a good image — skip these so we don't reprocess
+    // them every run. Crucially, a market whose override is only a branded-SVG fallback stays
+    // eligible, so we keep retrying for a real subject image instead of freezing it on the banner.
+    const overrideRows = await db
+      .select({ id: marketMetadataOverrides.marketId, imageUri: marketMetadataOverrides.imageUri })
+      .from(marketMetadataOverrides);
+    const settled = new Set(overrideRows.filter((r) => hasGoodImage(r.imageUri)).map((r) => r.id.toLowerCase()));
+    const everAttempted = new Set(overrideRows.map((r) => r.id.toLowerCase()));
 
     // 2. Identify ANY market that lacks a GOOD image — empty, a branded SVG fallback, or a
     //    non-trusted-host URL (likely stale/broken and showing the card placeholder). Covers both
     //    agent and user-created markets, so a user market launched without a picture still gets a
     //    resolved subject image (BTC logo, team flag, …) or a clean branded banner instead of blank.
-    const targetMarkets = allMarkets.filter(
-      (m) => (m.status === 'Open' || m.status === 'Closing soon') // live markets only — no point fixing closed/resolved ones
-        && !hasGoodImage(m.imageURI)
-        && !overridden.has(m.id.toLowerCase()),
-    );
+    const targetMarkets = allMarkets
+      .filter(
+        (m) => (m.status === 'Open' || m.status === 'Closing soon') // live markets only — no point fixing closed/resolved ones
+          && !hasGoodImage(m.imageURI)
+          && !settled.has(m.id.toLowerCase()),
+      )
+      // Newly created markets (never attempted) come first so they always get a slot under the
+      // per-run cap; branded-fallback retries fill whatever budget remains.
+      .sort((a, b) => Number(everAttempted.has(a.id.toLowerCase())) - Number(everAttempted.has(b.id.toLowerCase())));
 
     if (targetMarkets.length === 0) {
       return NextResponse.json({

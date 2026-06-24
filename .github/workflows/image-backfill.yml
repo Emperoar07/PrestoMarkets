@@ -1,0 +1,28 @@
+name: Image backfill
+
+# Keeps every live market imaged. Agent-created and legacy markets that lack a real subject image
+# (or only have a branded fallback) get a resolved image within ~30 minutes, instead of waiting on
+# the 2-hour agent tick. User-created markets already require an image at creation, so this lane is
+# mostly about agent and legacy markets.
+#
+# Required GitHub Actions secrets:
+#   APP_URL       - production base URL, e.g. https://presto-markets.vercel.app
+#   CRON_SECRET   - matches the CRON_SECRET env var set in Vercel
+
+on:
+  schedule:
+    # Every 30 minutes
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Backfill missing market images
+        run: |
+          curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/backfill-market-images" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n" \
+            --max-time 290 --fail-with-body

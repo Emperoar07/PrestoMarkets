@@ -424,7 +424,10 @@ async function readOnchainMarkets() {
     }
     for (const m of markets) {
       const overrideImage = overridesMap.get(m.id.toLowerCase());
-      if (overrideImage && !m.imageURI) m.imageURI = overrideImage;
+      // Prefer a stored override when the on-chain image is missing or only a branded SVG fallback,
+      // so a backfilled real subject image actually displays. Never downgrade a real on-chain image.
+      const onchainIsWeak = !m.imageURI || m.imageURI.startsWith('data:image/svg+xml');
+      if (overrideImage && onchainIsWeak) m.imageURI = overrideImage;
     }
   } catch (err) {
     logger.warn('onchain-markets', 'Failed to load metadata overrides', { error: String(err) });
