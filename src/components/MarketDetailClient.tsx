@@ -1165,7 +1165,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </button>
               )}
 
-              {message ? (
+              {/* The in-progress "Waiting for wallet confirmation…" status is conveyed by the
+                  button label ("Confirming…") while submitting, so the separate status box only
+                  renders for terminal results (success / error / validation) — keeps the panel compact. */}
+              {message && !isSubmitting ? (
                 <div className={`mt-4 rounded-[10px] border px-3 py-2 text-xs leading-5 ${
                     message.toLowerCase().includes('fail') || message.toLowerCase().includes('error') || message.toLowerCase().includes('insufficient') || message.toLowerCase().includes('expired')
                       ? 'border-red-400/25 bg-red-400/10 text-red-200'
