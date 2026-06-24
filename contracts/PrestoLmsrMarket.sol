@@ -29,19 +29,42 @@ contract PrestoLmsrMarket is ReentrancyGuard {
     int256[] internal q;       // per-outcome net shares, WAD
     mapping(uint8 => mapping(address => uint256)) public userShares6; // outcome => holder => shares (6dp)
 
+    uint256 public immutable bond6; // proposer/disputer bond (6dp)
+    uint256 public constant RESOLUTION_CHALLENGE_WINDOW = 30 minutes;
+
     State public state;
     bool public seeded;
     uint256 public accruedFees6;
 
+    // Optimistic resolution.
+    address public proposer;
+    uint8 public proposedOutcome;
+    uint64 public proposalTime;
+    address public disputer;
+    uint8 public winningOutcome;
+
     event SharesBought(address indexed buyer, uint8 indexed outcome, uint256 shares6, uint256 cost6);
     event SharesSold(address indexed seller, uint8 indexed outcome, uint256 shares6, uint256 refund6);
+    event ResolutionProposed(uint8 indexed outcome, address indexed proposer, string evidenceURI);
+    event ResolutionDisputed(address indexed disputer, string reason);
+    event Resolved(uint8 indexed outcome);
+    event WinnerPaid(address indexed winner, uint256 amount6);
+    event FeesWithdrawn(address indexed to, uint256 amount6);
 
     error WrongOutcome();
     error NotSeeded();
     error AlreadySeeded();
     error MarketClosed();
+    error MarketNotClosed();
     error SlippageExceeded();
     error InsufficientShares();
+    error NotResolver();
+    error NotProposed();
+    error NotDisputed();
+    error NotResolved();
+    error ChallengeWindowOpen();
+    error ChallengeWindowClosed();
+    error NoPosition();
 
     modifier onlyOpen() {
         if (state != State.Open) revert MarketClosed();
@@ -59,7 +82,8 @@ contract PrestoLmsrMarket is ReentrancyGuard {
         uint256 seed6_,
         uint16 feeBps_,
         address protocolFeeRecipient_,
-        address creator_
+        address creator_,
+        uint256 bond6_
     ) {
         require(outcomeCount_ >= 2 && outcomeCount_ <= 12, "outcomes");
         require(collateral_ != address(0) && resolver_ != address(0), "zero");
@@ -74,6 +98,7 @@ contract PrestoLmsrMarket is ReentrancyGuard {
         feeBps = feeBps_;
         protocolFeeRecipient = protocolFeeRecipient_;
         creator = creator_;
+        bond6 = bond6_;
         factory = msg.sender;
         q = new int256[](outcomeCount_);
         // b = S / ln(n), so the maximum maker loss b*ln(n) equals the seed S exactly.
@@ -180,6 +205,105 @@ contract PrestoLmsrMarket is ReentrancyGuard {
         accruedFees6 += fee;
         collateralToken.safeTransfer(msg.sender, net);
         emit SharesSold(msg.sender, outcome, shares6, net);
+    }
+
+    // ----------------------------------------------------------------------
+    // Optimistic resolution
+    // ----------------------------------------------------------------------
+
+    /// @notice Timestamp after which an unchallenged proposal can be settled.
+    function proposalChallengeEndsAt() public view returns (uint64) {
+        return proposalTime + uint64(RESOLUTION_CHALLENGE_WINDOW);
+    }
+
+    /// @notice Resolver proposes the winning outcome after close, posting a bond.
+    function propose(uint8 outcome, string calldata evidenceURI) external nonReentrant {
+        if (msg.sender != resolver) revert NotResolver();
+        if (state != State.Open) revert MarketClosed();
+        if (block.timestamp < closeTime) revert MarketNotClosed();
+        if (outcome >= outcomeCount) revert WrongOutcome();
+        proposer = msg.sender;
+        proposedOutcome = outcome;
+        proposalTime = uint64(block.timestamp);
+        state = State.Proposed;
+        collateralToken.safeTransferFrom(msg.sender, address(this), bond6);
+        emit ResolutionProposed(outcome, msg.sender, evidenceURI);
+    }
+
+    /// @notice A position holder disputes the proposal within the challenge window, posting a bond.
+    function dispute(string calldata reason) external nonReentrant {
+        if (state != State.Proposed) revert NotProposed();
+        if (block.timestamp >= proposalChallengeEndsAt()) revert ChallengeWindowClosed();
+        if (!_hasPosition(msg.sender)) revert NoPosition();
+        disputer = msg.sender;
+        state = State.Disputed;
+        collateralToken.safeTransferFrom(msg.sender, address(this), bond6);
+        emit ResolutionDisputed(msg.sender, reason);
+    }
+
+    /// @notice Settle an unchallenged proposal once the window closes; returns the proposer bond.
+    function settle() external nonReentrant {
+        if (state != State.Proposed) revert NotProposed();
+        if (block.timestamp < proposalChallengeEndsAt()) revert ChallengeWindowOpen();
+        state = State.Resolved;
+        winningOutcome = proposedOutcome;
+        if (bond6 > 0) collateralToken.safeTransfer(proposer, bond6);
+        emit Resolved(winningOutcome);
+    }
+
+    /// @notice Resolver adjudicates a disputed proposal. The bond loser is slashed to the winner.
+    function resolveDisputed(uint8 finalOutcome, string calldata evidenceURI) external nonReentrant {
+        if (msg.sender != resolver) revert NotResolver();
+        if (state != State.Disputed) revert NotDisputed();
+        if (finalOutcome >= outcomeCount) revert WrongOutcome();
+        state = State.Resolved;
+        winningOutcome = finalOutcome;
+        // If the proposal stood, the dispute was frivolous: proposer takes both bonds.
+        // Otherwise the dispute was upheld: disputer takes both bonds.
+        address bondWinner = finalOutcome == proposedOutcome ? proposer : disputer;
+        if (bond6 > 0) collateralToken.safeTransfer(bondWinner, bond6 * 2);
+        emit Resolved(finalOutcome);
+        evidenceURI; // retained in calldata/logs by the caller; not stored on-chain
+    }
+
+    function _hasPosition(address who) internal view returns (bool) {
+        for (uint8 i = 0; i < outcomeCount; i++) {
+            if (userShares6[i][who] > 0) return true;
+        }
+        return false;
+    }
+
+    /// @notice Redeem the caller's winning shares 1:1 for collateral.
+    function claim() external nonReentrant {
+        if (state != State.Resolved) revert NotResolved();
+        uint256 amount = userShares6[winningOutcome][msg.sender];
+        if (amount == 0) revert NoPosition();
+        userShares6[winningOutcome][msg.sender] = 0;
+        collateralToken.safeTransfer(msg.sender, amount);
+        emit WinnerPaid(msg.sender, amount);
+    }
+
+    /// @notice Push payouts to a batch of winners (idempotent; skips empty positions).
+    function payWinners(address[] calldata winners) external nonReentrant {
+        if (state != State.Resolved) revert NotResolved();
+        for (uint256 i = 0; i < winners.length; i++) {
+            address w = winners[i];
+            uint256 amount = userShares6[winningOutcome][w];
+            if (amount == 0) continue;
+            userShares6[winningOutcome][w] = 0;
+            collateralToken.safeTransfer(w, amount);
+            emit WinnerPaid(w, amount);
+        }
+    }
+
+    /// @notice Sweep accrued trading fees to the protocol recipient. Fees are surplus to the
+    /// LMSR pool, so this never touches winner collateral.
+    function withdrawFees() external nonReentrant {
+        uint256 amount = accruedFees6;
+        if (amount == 0) return;
+        accruedFees6 = 0;
+        collateralToken.safeTransfer(protocolFeeRecipient, amount);
+        emit FeesWithdrawn(protocolFeeRecipient, amount);
     }
 
     function collateral() external view returns (address) {

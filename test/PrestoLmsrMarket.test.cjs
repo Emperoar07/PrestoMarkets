@@ -4,20 +4,30 @@ const { ethers } = require('hardhat');
 const WAD = 10n ** 18n;
 const USDC = (n) => BigInt(Math.round(n * 1e6)); // 6dp helper
 
-async function deployMarket({ outcomes = 2, seed = 100, feeBps = 150 } = {}) {
+async function deployMarket({ outcomes = 2, seed = 100, feeBps = 150, bond = 10 } = {}) {
   const [deployer, resolver, alice, bob, treasury] = await ethers.getSigners();
   const Mock = await ethers.getContractFactory('MockUSDC');
   const usdc = await Mock.deploy();
-  for (const who of [deployer, alice, bob]) await usdc.mint(who.address, USDC(1_000_000));
+  for (const who of [deployer, resolver, alice, bob]) await usdc.mint(who.address, USDC(1_000_000));
   const close = BigInt((await ethers.provider.getBlock('latest')).timestamp + 3600);
   const Market = await ethers.getContractFactory('PrestoLmsrMarket');
   const market = await Market.deploy(
     await usdc.getAddress(), resolver.address, close, 0, 'data:application/json,{}',
-    outcomes, USDC(seed), feeBps, treasury.address, deployer.address,
+    outcomes, USDC(seed), feeBps, treasury.address, deployer.address, USDC(bond),
   );
   await usdc.approve(await market.getAddress(), USDC(seed));
   await market.seed();
-  return { usdc, market, deployer, resolver, alice, bob, treasury, close };
+  return { usdc, market, deployer, resolver, alice, bob, treasury, close, bond6: USDC(bond) };
+}
+
+// Advance the chain past the close time and the 30-minute challenge window.
+async function advancePastClose(close, extraSeconds = 0) {
+  await ethers.provider.send('evm_setNextBlockTimestamp', [Number(close) + 1 + extraSeconds]);
+  await ethers.provider.send('evm_mine', []);
+}
+async function advanceSeconds(seconds) {
+  await ethers.provider.send('evm_increaseTime', [seconds]);
+  await ethers.provider.send('evm_mine', []);
 }
 
 module.exports.deployMarket = deployMarket;
@@ -97,5 +107,120 @@ describe('PrestoLmsrMarket sell', () => {
   it('reverts selling more shares than held', async () => {
     const { market, alice } = await deployMarket({ outcomes: 2 });
     await expect(market.connect(alice).sell(0, USDC(1), 0)).to.be.revertedWithCustomError(market, 'InsufficientShares');
+  });
+});
+
+async function buyShares(usdc, market, who, outcome, shares6) {
+  const cost = await market.buyCost(outcome, shares6);
+  await usdc.connect(who).approve(await market.getAddress(), cost * 2n);
+  await market.connect(who).buy(outcome, shares6, cost * 2n);
+}
+
+describe('PrestoLmsrMarket resolution', () => {
+  it('propose then settle after the window pays winners 1:1 and returns the proposer bond', async () => {
+    const { usdc, market, resolver, alice, bob, close, bond6 } = await deployMarket({ outcomes: 2 });
+    await buyShares(usdc, market, alice, 0, USDC(40)); // winner
+    await buyShares(usdc, market, bob, 1, USDC(40));   // loser
+    await advancePastClose(close);
+
+    await usdc.connect(resolver).approve(await market.getAddress(), bond6);
+    const resolverBefore = await usdc.balanceOf(resolver.address);
+    await market.connect(resolver).propose(0, 'ipfs://evidence');
+    expect(await market.state()).to.equal(1); // Proposed
+
+    // Cannot settle while the window is open.
+    await expect(market.settle()).to.be.revertedWithCustomError(market, 'ChallengeWindowOpen');
+    await advanceSeconds(31 * 60);
+    await market.settle();
+    expect(await market.state()).to.equal(3); // Resolved
+    expect(await market.winningOutcome()).to.equal(0);
+    // Proposer bond returned in full.
+    expect(await usdc.balanceOf(resolver.address)).to.equal(resolverBefore);
+
+    const aliceBefore = await usdc.balanceOf(alice.address);
+    await market.connect(alice).claim();
+    expect((await usdc.balanceOf(alice.address)) - aliceBefore).to.equal(USDC(40));
+    // Losing side cannot claim.
+    await expect(market.connect(bob).claim()).to.be.revertedWithCustomError(market, 'NoPosition');
+  });
+
+  it('a frivolous dispute is slashed to the proposer', async () => {
+    const { usdc, market, resolver, bob, close, bond6 } = await deployMarket({ outcomes: 2 });
+    await buyShares(usdc, market, bob, 1, USDC(20)); // bob holds a position so he can dispute
+    await advancePastClose(close);
+
+    await usdc.connect(resolver).approve(await market.getAddress(), bond6);
+    const resolverBefore = await usdc.balanceOf(resolver.address);
+    await market.connect(resolver).propose(0, 'ipfs://evidence');
+
+    await usdc.connect(bob).approve(await market.getAddress(), bond6);
+    await market.connect(bob).dispute('i disagree');
+    expect(await market.state()).to.equal(2); // Disputed
+
+    // Resolver upholds the original proposal: dispute was frivolous.
+    await market.connect(resolver).resolveDisputed(0, 'ipfs://final');
+    expect(await market.state()).to.equal(3);
+    expect(await market.winningOutcome()).to.equal(0);
+    // Proposer recovers their bond plus the disputer's bond.
+    expect((await usdc.balanceOf(resolver.address)) - resolverBefore).to.equal(bond6);
+  });
+
+  it('an upheld dispute slashes the proposer to the disputer and flips the outcome', async () => {
+    const { usdc, market, resolver, bob, close, bond6 } = await deployMarket({ outcomes: 2 });
+    await buyShares(usdc, market, bob, 1, USDC(20)); // bob disputes and ends up the winner
+    await advancePastClose(close);
+
+    await usdc.connect(resolver).approve(await market.getAddress(), bond6);
+    await market.connect(resolver).propose(0, 'ipfs://evidence');
+    await usdc.connect(bob).approve(await market.getAddress(), bond6);
+    const bobAfterBond = await usdc.balanceOf(bob.address);
+    await market.connect(bob).dispute('outcome 1 actually won');
+
+    await market.connect(resolver).resolveDisputed(1, 'ipfs://final');
+    expect(await market.winningOutcome()).to.equal(1);
+    // bobAfterBond is captured before the dispute pulls bond6; the payout returns 2*bond6,
+    // so the net gain versus that snapshot is the slashed proposer bond (+bond6).
+    expect((await usdc.balanceOf(bob.address)) - bobAfterBond).to.equal(bond6);
+  });
+
+  it('rejects disputes from non-holders', async () => {
+    const { usdc, market, resolver, alice, close, bond6 } = await deployMarket({ outcomes: 2 });
+    await advancePastClose(close);
+    await usdc.connect(resolver).approve(await market.getAddress(), bond6);
+    await market.connect(resolver).propose(0, 'ipfs://evidence');
+    // alice holds no shares.
+    await usdc.connect(alice).approve(await market.getAddress(), bond6);
+    await expect(market.connect(alice).dispute('x')).to.be.revertedWithCustomError(market, 'NoPosition');
+  });
+
+  it('only the resolver can propose, and only after close', async () => {
+    const { market, resolver, alice } = await deployMarket({ outcomes: 2 });
+    await expect(market.connect(alice).propose(0, 'x')).to.be.revertedWithCustomError(market, 'NotResolver');
+    await expect(market.connect(resolver).propose(0, 'x')).to.be.revertedWithCustomError(market, 'MarketNotClosed');
+  });
+
+  it('stays solvent across a full lifecycle and pays fees out of surplus', async () => {
+    const { usdc, market, resolver, alice, bob, treasury, close, bond6 } = await deployMarket({ outcomes: 3 });
+    await buyShares(usdc, market, alice, 0, USDC(70));
+    await buyShares(usdc, market, bob, 0, USDC(30)); // both on the winning outcome
+    await buyShares(usdc, market, bob, 1, USDC(25));
+    await advancePastClose(close);
+
+    await usdc.connect(resolver).approve(await market.getAddress(), bond6);
+    await market.connect(resolver).propose(0, 'x');
+    await advanceSeconds(31 * 60);
+    await market.settle();
+
+    const fees = await market.accruedFees6();
+    await market.payWinners([alice.address, bob.address]);
+    // Winners on outcome 0 are fully paid 1:1; the contract still holds at least the accrued fees.
+    expect(await market.sharesOf(0, alice.address)).to.equal(0n);
+    expect(await market.sharesOf(0, bob.address)).to.equal(0n);
+    const balAfterPayout = await usdc.balanceOf(await market.getAddress());
+    expect(balAfterPayout).to.be.greaterThanOrEqual(fees);
+
+    const treasuryBefore = await usdc.balanceOf(treasury.address);
+    await market.withdrawFees();
+    expect((await usdc.balanceOf(treasury.address)) - treasuryBefore).to.equal(fees);
   });
 });
