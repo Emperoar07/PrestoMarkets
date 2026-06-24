@@ -69,6 +69,11 @@ export function getArcConfig() {
   // appear in the explorer; absent until the EURC factory is deployed.
   const eurcFactoryAddress = publicEnv(process.env.NEXT_PUBLIC_EURC_MARKET_FACTORY_ADDRESS);
   const eurcMultiOutcomeFactoryAddress = publicEnv(process.env.NEXT_PUBLIC_EURC_MULTI_OUTCOME_FACTORY_ADDRESS);
+  // V3 LMSR factories (one per collateral handles both binary and multi via outcomeCount). Read
+  // alongside the V1/V2 factories so LMSR markets appear in the explorer; absent until deployed.
+  // New market creation cuts over to these once the env is set (see the create + agent paths).
+  const lmsrFactoryAddress = publicEnv(process.env.NEXT_PUBLIC_LMSR_MARKET_FACTORY_ADDRESS);
+  const eurcLmsrFactoryAddress = publicEnv(process.env.NEXT_PUBLIC_EURC_LMSR_MARKET_FACTORY_ADDRESS);
   const factoryAddress = publicEnv(process.env.NEXT_PUBLIC_MARKET_FACTORY_ADDRESS) || DEFAULT_MARKET_FACTORY_ADDRESS;
   const multiOutcomeFactoryAddress = publicEnv(process.env.NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS) || DEFAULT_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS;
   // Retired factories whose markets must stay readable (positions, claims, history) after a
@@ -91,6 +96,8 @@ export function getArcConfig() {
     eurcAddress,
     eurcFactoryAddress,
     eurcMultiOutcomeFactoryAddress,
+    lmsrFactoryAddress,
+    eurcLmsrFactoryAddress,
     factoryAddress,
     multiOutcomeFactoryAddress,
     legacyFactoryAddresses,

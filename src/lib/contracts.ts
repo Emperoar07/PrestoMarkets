@@ -403,6 +403,236 @@ export const prestoMarketAbi = [
   },
 ] as const;
 
+export const prestoLmsrMarketFactoryAbi = [
+  {
+    type: 'function',
+    name: 'marketCount',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'markets',
+    stateMutability: 'view',
+    inputs: [{ name: '', type: 'uint256' }],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    type: 'function',
+    name: 'createMarket',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'resolver', type: 'address' },
+      { name: 'closeTime', type: 'uint64' },
+      { name: 'metadataURI', type: 'string' },
+      { name: 'marketKind', type: 'uint8' },
+      { name: 'outcomeCount', type: 'uint8' },
+      { name: 'seed6', type: 'uint256' },
+    ],
+    outputs: [{ name: 'market', type: 'address' }],
+  },
+  {
+    type: 'event',
+    name: 'MarketCreated',
+    inputs: [
+      { name: 'market', type: 'address', indexed: true },
+      { name: 'creator', type: 'address', indexed: true },
+      { name: 'resolver', type: 'address', indexed: true },
+      { name: 'marketKind', type: 'uint8', indexed: false },
+      { name: 'closeTime', type: 'uint256', indexed: false },
+      { name: 'metadataURI', type: 'string', indexed: false },
+    ],
+  },
+] as const;
+
+// LMSR (V3) market: live per-outcome pricing, buy/sell early exit, bonded optimistic resolution.
+export const prestoLmsrMarketAbi = [
+  { type: 'function', name: 'creator', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'address' }] },
+  { type: 'function', name: 'resolver', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'address' }] },
+  { type: 'function', name: 'collateral', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'address' }] },
+  { type: 'function', name: 'closeTime', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint64' }] },
+  { type: 'function', name: 'marketKind', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint8' }] },
+  { type: 'function', name: 'outcomeCount', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint8' }] },
+  { type: 'function', name: 'metadataURI', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'string' }] },
+  { type: 'function', name: 'state', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint8' }] },
+  { type: 'function', name: 'winningOutcome', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint8' }] },
+  { type: 'function', name: 'feeBps', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint16' }] },
+  { type: 'function', name: 'bond6', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+  { type: 'function', name: 'accruedFees6', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+  { type: 'function', name: 'seeded', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'bool' }] },
+  { type: 'function', name: 'proposedOutcome', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint8' }] },
+  { type: 'function', name: 'proposer', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'address' }] },
+  { type: 'function', name: 'disputer', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'address' }] },
+  { type: 'function', name: 'proposalChallengeEndsAt', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint64' }] },
+  {
+    type: 'function',
+    name: 'price',
+    stateMutability: 'view',
+    inputs: [{ name: 'outcome', type: 'uint8' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'buyCost',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'outcome', type: 'uint8' },
+      { name: 'shares6', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'sellRefund',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'outcome', type: 'uint8' },
+      { name: 'shares6', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'totalShares',
+    stateMutability: 'view',
+    inputs: [{ name: 'outcome', type: 'uint8' }],
+    outputs: [{ name: '', type: 'int256' }],
+  },
+  {
+    type: 'function',
+    name: 'sharesOf',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'outcome', type: 'uint8' },
+      { name: 'who', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  { type: 'function', name: 'seed', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  {
+    type: 'function',
+    name: 'buy',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'outcome', type: 'uint8' },
+      { name: 'shares6', type: 'uint256' },
+      { name: 'maxCost6', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'sell',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'outcome', type: 'uint8' },
+      { name: 'shares6', type: 'uint256' },
+      { name: 'minRefund6', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'propose',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'outcome', type: 'uint8' },
+      { name: 'evidenceURI', type: 'string' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'dispute',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'reason', type: 'string' }],
+    outputs: [],
+  },
+  { type: 'function', name: 'settle', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  {
+    type: 'function',
+    name: 'resolveDisputed',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'finalOutcome', type: 'uint8' },
+      { name: 'evidenceURI', type: 'string' },
+    ],
+    outputs: [],
+  },
+  { type: 'function', name: 'claim', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  {
+    type: 'function',
+    name: 'payWinners',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'winners', type: 'address[]' }],
+    outputs: [],
+  },
+  { type: 'function', name: 'refund', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  { type: 'function', name: 'cancel', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  { type: 'function', name: 'timeoutCancel', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  { type: 'function', name: 'withdrawFees', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  {
+    type: 'event',
+    name: 'SharesBought',
+    inputs: [
+      { name: 'buyer', type: 'address', indexed: true },
+      { name: 'outcome', type: 'uint8', indexed: true },
+      { name: 'shares6', type: 'uint256', indexed: false },
+      { name: 'cost6', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'SharesSold',
+    inputs: [
+      { name: 'seller', type: 'address', indexed: true },
+      { name: 'outcome', type: 'uint8', indexed: true },
+      { name: 'shares6', type: 'uint256', indexed: false },
+      { name: 'refund6', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'ResolutionProposed',
+    inputs: [
+      { name: 'outcome', type: 'uint8', indexed: true },
+      { name: 'proposer', type: 'address', indexed: true },
+      { name: 'evidenceURI', type: 'string', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'ResolutionDisputed',
+    inputs: [
+      { name: 'disputer', type: 'address', indexed: true },
+      { name: 'reason', type: 'string', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'Resolved',
+    inputs: [{ name: 'outcome', type: 'uint8', indexed: true }],
+  },
+  {
+    type: 'event',
+    name: 'WinnerPaid',
+    inputs: [
+      { name: 'winner', type: 'address', indexed: true },
+      { name: 'amount6', type: 'uint256', indexed: false },
+    ],
+  },
+  { type: 'event', name: 'MarketCanceled', inputs: [] },
+  {
+    type: 'event',
+    name: 'Refunded',
+    inputs: [
+      { name: 'holder', type: 'address', indexed: true },
+      { name: 'amount6', type: 'uint256', indexed: false },
+    ],
+  },
+] as const;
+
 export const erc20Abi = [
   {
     type: 'function',
