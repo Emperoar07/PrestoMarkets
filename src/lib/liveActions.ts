@@ -37,6 +37,7 @@ import {
 import type { StableSymbol } from './walletBalance';
 import { getAgentResolverSelectionError, getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
 import { ARC_READ_BATCH, arcReadTransport, withRpcRetry } from './arcClient';
+import { encodeMemoWrappedCall, type PrestoMemoAction } from './arcMemos';
 
 function isCircleWallet(): boolean {
   return getStoredConnectedWallet()?.mode === 'circle-user-controlled';
@@ -227,6 +228,41 @@ async function getClients() {
   return { account, config, publicClient, walletClient };
 }
 
+async function sendMemoWrappedTransaction(input: {
+  walletClient: ReturnType<typeof createWalletClient>;
+  account: Address;
+  target: Address;
+  data: Hex;
+  action: PrestoMemoAction;
+  marketId?: Address;
+  outcome?: string;
+  outcomeIndex?: number;
+  amount6?: string;
+  collateral?: string;
+  ref?: string;
+}): Promise<Hex> {
+  const wrapped = encodeMemoWrappedCall({
+    target: input.target,
+    data: input.data,
+    memo: {
+      action: input.action,
+      target: input.target,
+      marketId: input.marketId,
+      outcome: input.outcome,
+      outcomeIndex: input.outcomeIndex,
+      amount6: input.amount6,
+      collateral: input.collateral,
+      ref: input.ref,
+    },
+  });
+  return input.walletClient.sendTransaction({
+    account: input.account,
+    chain: undefined,
+    to: wrapped.to,
+    data: wrapped.data,
+  });
+}
+
 async function assertMarketOpenForTrading(
   publicClient: ReturnType<typeof createPublicClient>,
   marketAddress: Address,
@@ -392,23 +428,26 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
         : 'Set NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS before launching poll markets.');
     }
 
-    const hash = await walletClient.writeContract({
+    const metadataURI = buildMarketMetadataURI({ ...input, outcomeOptions });
+    const closeTimestamp = getCloseTimestamp(input.closeDate);
+    const createMarketData = useMultiOutcome
+      ? encodeFunctionData({
+        abi: prestoMultiOutcomeMarketFactoryAbi,
+        functionName: 'createMarket',
+        args: [input.resolver as Address, closeTimestamp, metadataURI, getMarketKind(input.type), outcomeOptions.length],
+      })
+      : encodeFunctionData({
+        abi: prestoMarketFactoryAbi,
+        functionName: 'createMarket',
+        args: [input.resolver as Address, closeTimestamp, metadataURI, getMarketKind(input.type)],
+      });
+    const hash = await sendMemoWrappedTransaction({
+      walletClient,
       account,
-      address: factoryAddress,
-      abi: factoryAbi,
-      functionName: 'createMarket',
-      args: useMultiOutcome ? [
-        input.resolver as Address,
-        getCloseTimestamp(input.closeDate),
-        buildMarketMetadataURI({ ...input, outcomeOptions }),
-        getMarketKind(input.type),
-        outcomeOptions.length,
-      ] : [
-        input.resolver as Address,
-        getCloseTimestamp(input.closeDate),
-        buildMarketMetadataURI({ ...input, outcomeOptions }),
-        getMarketKind(input.type),
-      ],
+      target: factoryAddress,
+      data: createMarketData,
+      action: 'market_create',
+      ref: input.agent?.trendUrl ?? input.title.slice(0, 80),
     });
 
     const receipt = await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
@@ -423,12 +462,20 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
     // Fund only after creation succeeds so an abandoned launch cannot charge the fee.
     if (feeAmount > BigInt(0)) {
       try {
-        const feeTx = await walletClient.writeContract({
+        const feeTx = await sendMemoWrappedTransaction({
+          walletClient,
           account,
-          address: config.usdcAddress,
-          abi: erc20Abi,
-          functionName: 'transfer',
-          args: [input.resolver as Address, feeAmount],
+          target: config.usdcAddress,
+          data: encodeFunctionData({
+            abi: erc20Abi,
+            functionName: 'transfer',
+            args: [input.resolver as Address, feeAmount],
+          }),
+          action: 'resolution_fee',
+          marketId: marketAddress,
+          amount6: feeAmount.toString(),
+          collateral: 'USDC',
+          ref: input.agent?.trendUrl,
         });
         await withRetry(() => publicClient.waitForTransactionReceipt({ hash: feeTx }));
         message = 'Live market created on Arc. Automatic resolution funded.';
@@ -507,24 +554,44 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
     }
 
     if (allowance < amount) {
-      const approveHash = await walletClient.writeContract({
+      const approveHash = await sendMemoWrappedTransaction({
+        walletClient,
         account,
-        address: collateralToken,
-        abi: erc20Abi,
-        functionName: 'approve',
-        // Exact-amount by default so the allowance matches the stated trade; max approval is opt-in
-        // (NEXT_PUBLIC_BATCH_APPROVAL=true) to let repeat buys skip the approve step.
-        args: [marketAddress, approvalAmount(amount)],
+        target: collateralToken,
+        data: encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'approve',
+          // Exact-amount by default so the allowance matches the stated trade; max approval is opt-in
+          // (NEXT_PUBLIC_BATCH_APPROVAL=true) to let repeat buys skip the approve step.
+          args: [marketAddress, approvalAmount(amount)],
+        }),
+        action: 'buy',
+        marketId: marketAddress,
+        outcome: input.outcome,
+        outcomeIndex: input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1),
+        amount6: amount.toString(),
+        collateral: collateralSymbol,
+        ref: 'approve',
       });
       await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash }));
     }
 
-    const hash = await walletClient.writeContract({
+    const buyOutcomeIndex = input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1);
+    const hash = await sendMemoWrappedTransaction({
+      walletClient,
       account,
-      address: marketAddress,
-      abi: prestoMarketAbi,
-      functionName: 'buy',
-      args: [input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1), amount],
+      target: marketAddress,
+      data: encodeFunctionData({
+        abi: prestoMarketAbi,
+        functionName: 'buy',
+        args: [buyOutcomeIndex, amount],
+      }),
+      action: 'buy',
+      marketId: marketAddress,
+      outcome: input.outcome,
+      outcomeIndex: buyOutcomeIndex,
+      amount6: amount.toString(),
+      collateral: collateralSymbol,
     });
 
     await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
@@ -588,12 +655,21 @@ export async function resolveLiveMarket(input: { marketAddress: string; outcome:
       throw new Error('Market address is invalid.');
     }
 
-    const hash = await walletClient.writeContract({
+    const outcomeIndex = input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1);
+    const hash = await sendMemoWrappedTransaction({
+      walletClient,
       account,
-      address: input.marketAddress as Address,
-      abi: prestoMarketAbi,
-      functionName: 'resolve',
-      args: [input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1), input.resolutionURI],
+      target: input.marketAddress as Address,
+      data: encodeFunctionData({
+        abi: prestoMarketAbi,
+        functionName: 'resolve',
+        args: [outcomeIndex, input.resolutionURI],
+      }),
+      action: 'resolve',
+      marketId: input.marketAddress as Address,
+      outcome: input.outcome,
+      outcomeIndex,
+      ref: input.resolutionURI.slice(0, 120),
     });
 
     await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
@@ -614,11 +690,16 @@ export async function cancelLiveMarket(marketAddress: string): Promise<LiveActio
       throw new Error('Market address is invalid.');
     }
 
-    const hash = await walletClient.writeContract({
+    const hash = await sendMemoWrappedTransaction({
+      walletClient,
       account,
-      address: marketAddress as Address,
-      abi: prestoMarketAbi,
-      functionName: 'cancel',
+      target: marketAddress as Address,
+      data: encodeFunctionData({
+        abi: prestoMarketAbi,
+        functionName: 'cancel',
+      }),
+      action: 'cancel',
+      marketId: marketAddress as Address,
     });
 
     await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
@@ -640,11 +721,16 @@ async function settleInUsdc(input: {
 }): Promise<LiveActionResult> {
   const { account, publicClient, walletClient } = await getClients();
 
-  const hash = await walletClient.writeContract({
+  const hash = await sendMemoWrappedTransaction({
+    walletClient,
     account,
-    address: input.marketAddress,
-    abi: prestoMarketAbi,
-    functionName: input.functionName,
+    target: input.marketAddress,
+    data: encodeFunctionData({
+      abi: prestoMarketAbi,
+      functionName: input.functionName,
+    }),
+    action: input.functionName,
+    marketId: input.marketAddress,
   });
   await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
 
@@ -696,12 +782,18 @@ export async function disputeLiveResolution(marketAddress: string, reason: strin
   }
   try {
     const { account, publicClient, walletClient } = await getClients();
-    const hash = await walletClient.writeContract({
+    const hash = await sendMemoWrappedTransaction({
+      walletClient,
       account,
-      address: marketAddress as Address,
-      abi: prestoMarketAbi,
-      functionName: 'disputeResolution',
-      args: [reason],
+      target: marketAddress as Address,
+      data: encodeFunctionData({
+        abi: prestoMarketAbi,
+        functionName: 'disputeResolution',
+        args: [reason],
+      }),
+      action: 'dispute',
+      marketId: marketAddress as Address,
+      ref: reason.slice(0, 120),
     });
     await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
     return { ok: true, message: 'Dispute submitted — automatic settlement is blocked and the resolver must settle directly with evidence.', txHash: hash };

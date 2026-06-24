@@ -21,6 +21,7 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  encodeFunctionData,
   erc20Abi,
   http,
   pad,
@@ -32,6 +33,7 @@ import {
   type Hex,
 } from 'viem';
 import { baseSepolia, sepolia, avalancheFuji, arbitrumSepolia, arcTestnet } from 'viem/chains';
+import { encodeMemoWrappedCall } from './arcMemos';
 
 const GATEWAY_API_TESTNET = 'https://gateway-api-testnet.circle.com/v1';
 const GATEWAY_WALLET = '0x0077777d7EBA4688BDeF3E311b846F25870A19B9' as Address;
@@ -368,7 +370,24 @@ export async function transferGatewayToArc(input: {
       current = 'minting'; input.onStep?.(current);
       const arcWallet = createWalletClient({ account: recipient, chain: arcTestnet, transport: custom(ethereum) });
       const arcPublic = createPublicClient({ chain: arcTestnet, transport: http() });
-      mintHash = await arcWallet.writeContract({ address: GATEWAY_MINTER, abi: gatewayMinterAbi, functionName: 'gatewayMint', args: [attestation, apiSignature], chain: arcTestnet, account: recipient });
+      const mintData = encodeFunctionData({
+        abi: gatewayMinterAbi,
+        functionName: 'gatewayMint',
+        args: [attestation, apiSignature],
+      });
+      const wrapped = encodeMemoWrappedCall({
+        target: GATEWAY_MINTER,
+        data: mintData,
+        memo: {
+          action: 'gateway_mint',
+          target: GATEWAY_MINTER,
+          amount6: value.toString(),
+          sourceDomain: src.domain,
+          destinationDomain: ARC_DOMAIN,
+          ref: `${input.source}:${arcRecipient.toLowerCase()}`,
+        },
+      });
+      mintHash = await arcWallet.sendTransaction({ to: wrapped.to, data: wrapped.data, chain: arcTestnet, account: recipient });
       await arcPublic.waitForTransactionReceipt({ hash: mintHash });
     }
 

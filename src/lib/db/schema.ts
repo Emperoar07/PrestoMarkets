@@ -157,3 +157,18 @@ export const webhookSubscriptions = pgTable('webhook_subscriptions', {
 }, (table) => ({
   ownerIdx: index('webhook_subscriptions_owner_idx').on(table.owner),
 }));
+
+export const circleGatewayEvents = pgTable('circle_gateway_events', {
+  notificationId: text('notification_id').primaryKey(),
+  subscriptionId: text('subscription_id'),
+  notificationType: text('notification_type').notNull(),
+  eventType: text('event_type').notNull(),
+  txHash: text('tx_hash'),
+  walletAddress: text('wallet_address'),
+  payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+}, (table) => ({
+  typeIdx: index('circle_gateway_events_type_idx').on(table.eventType),
+  walletIdx: index('circle_gateway_events_wallet_idx').on(table.walletAddress),
+}));
