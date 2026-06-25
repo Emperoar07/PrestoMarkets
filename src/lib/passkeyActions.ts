@@ -134,6 +134,27 @@ async function assertMarketOpenForTrading(publicClient: ReturnType<typeof getPub
 const PASSKEY_RECEIPT_TIMEOUT_MS = 150_000;
 const PASSKEY_RECEIPT_POLL_MS = 1_500;
 
+// The Circle paymaster sometimes can't sponsor (policy limit, transient outage), surfacing as an
+// AA-prefixed paymaster error. When that persists we retry the user op WITHOUT the paymaster so the
+// passkey smart account pays its own gas — Arc's gas token is USDC, which the wallet holds.
+function isPaymasterError(error: unknown): boolean {
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return msg.includes('paymaster') || msg.includes('sponsor') || msg.includes('aa21')
+    || msg.includes('aa31') || msg.includes('aa33') || msg.includes('aa34') || msg.includes('aa40');
+}
+
+// Circle's bundler + paymaster + their modular RPC fail transiently ("unavailable for a moment",
+// estimation errors, RPC blips) and the op usually succeeds on a retry — which is exactly the
+// "goes through after some time" the user sees. Treat these as retryable.
+function isTransientOpError(error: unknown): boolean {
+  if (isPaymasterError(error)) return true;
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return msg.includes('estimation') || msg.includes('rpc') || msg.includes('timeout')
+    || msg.includes('timed out') || msg.includes('429') || msg.includes('rate limit')
+    || msg.includes('fetch failed') || msg.includes('failed to fetch') || msg.includes('network')
+    || msg.includes('econn') || msg.includes('temporar') || msg.includes('try again');
+}
+
 export async function runPasskeyCalls(
   calls: Array<{ to: Address; data: Hex }>,
   // confirmOnchain: optional Arc-direct confirmation that resolves true once the op's on-chain
@@ -164,10 +185,24 @@ export async function runPasskeyCalls(
   }
 
   const { bundlerClient } = getCirclePasskeyBundlerClient();
-  const userOpHash = await bundlerClient.sendUserOperation({
-    calls: calls.map((call) => ({ ...call, to: call.to as Hex })),
-    paymaster: true,
-  });
+  const userOpCalls = calls.map((call) => ({ ...call, to: call.to as Hex }));
+  // Circle's bundler + paymaster + modular RPC fail transiently ("sponsorship unavailable for a
+  // moment", estimation errors, RPC blips) and the op usually succeeds on a retry — exactly the
+  // "goes through after some time" behavior. Retry transient failures with backoff. (Circle Modular
+  // Wallets require paymaster sponsorship at the bundler, so self-funded gas is not an option here.)
+  const userOpHash: Hex = await (async (): Promise<Hex> => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await bundlerClient.sendUserOperation({ calls: userOpCalls, paymaster: true });
+      } catch (error) {
+        if (attempt < 3 && isTransientOpError(error)) {
+          await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
+          continue;
+        }
+        throw error;
+      }
+    }
+  })();
 
   // Generous window because Circle's Arc bundler can take much longer than viem's ~24s default to
   // expose the receipt. We return early the moment EITHER the on-chain effect is visible (fast

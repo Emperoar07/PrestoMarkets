@@ -218,6 +218,16 @@ async function waitForTx(
   return { txHash: lastTxHash, pending: true };
 }
 
+// Transient Circle/RPC failures (gas estimation, node blips, rate limits) that are worth retrying.
+function isTransientCircleError(error: unknown): boolean {
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return msg.includes('estimation') || msg.includes('rpc') || msg.includes('429')
+    || msg.includes('rate limit') || msg.includes('timeout') || msg.includes('timed out')
+    || msg.includes('fetch failed') || msg.includes('failed to fetch') || msg.includes('network')
+    || msg.includes('econn') || msg.includes('temporar') || msg.includes('try again')
+    || msg.includes('unavailable') || msg.includes('502') || msg.includes('503') || msg.includes('504');
+}
+
 async function runContractExecution(input: {
   session: CircleSession;
   contractAddress: string;
@@ -255,16 +265,31 @@ async function runContractExecution(input: {
   // its response, so we time-anchor: record now() right before POSTing, then after the PIN
   // challenge resolves, pick the most recent transaction whose createDate is after our anchor.
   const anchor = Date.now() - 2_000; // 2s skew tolerance
-  const { challengeId } = await callProvider<{ challengeId: string }>({
-    action: 'contractExecution',
-    userToken: input.session.userToken,
-    walletId: input.session.walletId,
-    contractAddress: input.contractAddress,
-    abiFunctionSignature: input.abiFunctionSignature,
-    abiParameters: input.abiParameters,
-    ...(input.amount ? { amount: input.amount } : {}),
-    ...(input.refId ? { refId: input.refId } : {}),
-  });
+  // Circle's gas estimation / node connection fails transiently (ESTIMATION_ERROR, RPC blips) and
+  // the same call usually succeeds on a retry — matching the "goes through after some time" the
+  // user reported. Retry transient failures with backoff before surfacing the error.
+  const { challengeId } = await (async (): Promise<{ challengeId: string }> => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await callProvider<{ challengeId: string }>({
+          action: 'contractExecution',
+          userToken: input.session.userToken,
+          walletId: input.session.walletId,
+          contractAddress: input.contractAddress,
+          abiFunctionSignature: input.abiFunctionSignature,
+          abiParameters: input.abiParameters,
+          ...(input.amount ? { amount: input.amount } : {}),
+          ...(input.refId ? { refId: input.refId } : {}),
+        });
+      } catch (error) {
+        if (attempt < 2 && isTransientCircleError(error)) {
+          await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
+          continue;
+        }
+        throw error;
+      }
+    }
+  })();
 
   if (!challengeId) {
     throw new Error('Circle did not return a challenge id.');

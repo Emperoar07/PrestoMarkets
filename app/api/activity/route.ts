@@ -154,23 +154,28 @@ async function fetchRowsInRange(input: {
   marketAddresses: Address[];
   fromBlock: bigint;
   toBlock: bigint;
+  onError: () => void;
 }) {
-  const { client, account, factoryAddresses, marketAddresses, fromBlock, toBlock } = input;
+  const { client, account, factoryAddresses, marketAddresses, fromBlock, toBlock, onError } = input;
+  // Record (don't swallow silently) RPC failures so the caller can tell a throttled/failed fetch
+  // apart from a genuinely empty range — otherwise a 429 looks like "no activity" and the page is
+  // blank with no error.
+  const guarded = <T>(p: Promise<T[]>): Promise<T[]> => p.catch(() => { onError(); return [] as T[]; });
 
   const [buys, claims, refunds, createdGroups] = await Promise.all([
     marketAddresses.length
-      ? client.getLogs({ address: marketAddresses, event: sharesBoughtEvent, args: { recipient: account }, fromBlock, toBlock }).catch(() => [])
+      ? guarded(client.getLogs({ address: marketAddresses, event: sharesBoughtEvent, args: { recipient: account }, fromBlock, toBlock }))
       : Promise.resolve([]),
     marketAddresses.length
-      ? client.getLogs({ address: marketAddresses, event: claimedEvent, args: { user: account }, fromBlock, toBlock }).catch(() => [])
+      ? guarded(client.getLogs({ address: marketAddresses, event: claimedEvent, args: { user: account }, fromBlock, toBlock }))
       : Promise.resolve([]),
     marketAddresses.length
-      ? client.getLogs({ address: marketAddresses, event: refundedEvent, args: { user: account }, fromBlock, toBlock }).catch(() => [])
+      ? guarded(client.getLogs({ address: marketAddresses, event: refundedEvent, args: { user: account }, fromBlock, toBlock }))
       : Promise.resolve([]),
     Promise.all(factoryAddresses.map((factory) => (
       factory.multiOutcome
-        ? client.getLogs({ address: factory.address, event: multiOutcomeMarketCreatedEvent, args: { creator: account }, fromBlock, toBlock }).catch(() => [])
-        : client.getLogs({ address: factory.address, event: marketCreatedEvent, args: { creator: account }, fromBlock, toBlock }).catch(() => [])
+        ? guarded(client.getLogs({ address: factory.address, event: multiOutcomeMarketCreatedEvent, args: { creator: account }, fromBlock, toBlock }))
+        : guarded(client.getLogs({ address: factory.address, event: marketCreatedEvent, args: { creator: account }, fromBlock, toBlock }))
     ))),
   ]);
   const created = createdGroups.flat();
@@ -280,6 +285,7 @@ export async function GET(request: NextRequest) {
     fetchFactoryMarkets(client, factory.address, factory.multiOutcome)
   )))).flat();
   const collected: ActivityRow[] = [];
+  let rpcFailures = 0;
 
   let toBlock = cursor ? cursor.blockNumber : latestBlock;
   let chunksScanned = 0;
@@ -295,6 +301,7 @@ export async function GET(request: NextRequest) {
       marketAddresses,
       fromBlock,
       toBlock,
+      onError: () => { rpcFailures += 1; },
     });
 
     collected.push(...rows.filter((row) => isBeforeCursor(row, cursor)));
@@ -303,6 +310,15 @@ export async function GET(request: NextRequest) {
     if (collected.length > limit || fromBlock === BigInt(0)) break;
     toBlock = fromBlock - BigInt(1);
     chunksScanned += 1;
+  }
+
+  // Distinguish a throttled/failed RPC from a genuinely empty history: if we collected nothing but
+  // log queries were failing, surface a retryable error instead of a misleading empty page.
+  if (collected.length === 0 && rpcFailures > 0) {
+    return NextResponse.json(
+      { ok: false, error: 'Arc RPC is busy right now — activity could not load. Try again shortly.' },
+      { status: 503 },
+    );
   }
 
   const pageRows = (await hydrateTitles(client, collected.slice(0, limit))).sort(sortRows);
