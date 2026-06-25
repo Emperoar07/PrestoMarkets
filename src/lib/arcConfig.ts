@@ -57,9 +57,10 @@ export function getArcConfig() {
   // the public endpoint in front. The public RPC is now the LAST-RESORT fallback: viem only reaches
   // it when every dedicated provider is unavailable, so a dead dedicated key still degrades to public
   // (reads keep working) without sending normal load to the throttled endpoint.
+  const alchemy = publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_ALCHEMY);
   const drpc = publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_DRPC);
   const quiknode = publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_QUIKNODE);
-  const rpcUrls = uniqueValues([drpc, quiknode, configuredRpcUrl, DEFAULT_ARC_RPC_URL].filter(Boolean));
+  const rpcUrls = uniqueValues([alchemy, drpc, quiknode, configuredRpcUrl, DEFAULT_ARC_RPC_URL].filter(Boolean));
   const rpcUrl = rpcUrls[0] ?? DEFAULT_ARC_RPC_URL;
   const usdcAddress = publicEnv(process.env.NEXT_PUBLIC_USDC_ADDRESS);
   // EURC on Arc Testnet (Circle docs) — euro-denominated market collateral. 6 decimals like USDC.
