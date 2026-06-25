@@ -1,5 +1,5 @@
 import { createBundlerClient, toWebAuthnAccount } from 'viem/account-abstraction';
-import { createPublicClient, http, parseGwei, type Address, type CustomTransport, type Hex, type PublicClient } from 'viem';
+import { createPublicClient, parseGwei, type Address, type CustomTransport, type Hex, type PublicClient } from 'viem';
 import { arcTestnet } from 'viem/chains';
 import {
   toCircleSmartAccount,
@@ -9,6 +9,7 @@ import {
   WebAuthnMode,
 } from '@circle-fin/modular-wallets-core';
 import { getArcConfig } from './arcConfig';
+import { arcReadTransport, ARC_READ_BATCH } from './arcClient';
 
 const clientKey = process.env.NEXT_PUBLIC_CIRCLE_CLIENT_KEY?.trim() || '';
 const clientUrl = process.env.NEXT_PUBLIC_CIRCLE_CLIENT_URL?.trim() || '';
@@ -80,7 +81,10 @@ function getDirectPublicClient() {
   if (!directPublicClientRef) {
     directPublicClientRef = createPublicClient({
       chain: arcTestnet,
-      transport: http(getArcConfig().rpcUrl || 'https://rpc.testnet.arc.network'),
+      // Fail over across Arc RPCs (dedicated first, public last) so a 429 on the public endpoint
+      // doesn't break passkey reads.
+      transport: arcReadTransport(getArcConfig().rpcUrl || undefined),
+      batch: ARC_READ_BATCH,
     });
   }
   return directPublicClientRef;
