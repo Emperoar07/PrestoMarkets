@@ -15,7 +15,12 @@ function safeEqual(a: string, b: string): boolean {
 
 function verifyWebhookSecret(request: NextRequest, rawBody: string): boolean {
   const secret = process.env.CIRCLE_GATEWAY_WEBHOOK_SECRET;
-  if (!secret) return true;
+  // Fail closed: without a configured secret we cannot authenticate the sender, so reject rather
+  // than accept attacker-supplied payloads into the DB. Set CIRCLE_GATEWAY_WEBHOOK_SECRET to enable.
+  if (!secret) {
+    console.error('CIRCLE_GATEWAY_WEBHOOK_SECRET not configured; rejecting unauthenticated webhook');
+    return false;
+  }
 
   const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim();
   if (bearer && safeEqual(bearer, secret)) return true;
