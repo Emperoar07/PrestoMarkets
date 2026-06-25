@@ -126,6 +126,24 @@ async function waitForArcReceipt(txHash: string): Promise<boolean> {
   return false;
 }
 
+async function hasSuccessfulArcReceipt(txHash: string): Promise<boolean> {
+  if (!txHash) return false;
+  const receipt = await getPublicClient()
+    .getTransactionReceipt({ hash: txHash as Hex })
+    .catch(() => null);
+  if (!receipt) return false;
+  if (receipt.status === 'success') return true;
+  throw new Error('Arc transaction reverted.');
+}
+
+function isCircleTxSuccess(tx: CircleTransaction): boolean {
+  return tx.state === 'CONFIRMED' || tx.state === 'COMPLETE';
+}
+
+function isCircleTxFailure(tx: CircleTransaction): boolean {
+  return tx.state === 'FAILED' || tx.state === 'CANCELLED' || tx.state === 'DENIED';
+}
+
 function isErrorResponse(value: unknown): value is { error?: string } {
   return isRecord(value) && (typeof (value as Record<string, unknown>).error === 'string' || !('error' in value));
 }
@@ -163,6 +181,14 @@ async function executeChallenge(session: CircleSession, challengeId: string): Pr
   });
 }
 
+async function getCircleTransaction(session: CircleSession, transactionId: string): Promise<CircleTransaction> {
+  return callProvider<CircleTransaction>({
+    action: 'getTransaction',
+    userToken: session.userToken,
+    transactionId,
+  });
+}
+
 async function waitForTx(
   session: CircleSession,
   transactionId: string,
@@ -171,21 +197,17 @@ async function waitForTx(
   const started = Date.now();
   let lastTxHash = '';
   while (Date.now() - started < timeoutMs) {
-    const tx = await callProvider<CircleTransaction>({
-      action: 'getTransaction',
-      userToken: session.userToken,
-      transactionId,
-    });
+    const tx = await getCircleTransaction(session, transactionId);
     if (tx.txHash) {
       lastTxHash = tx.txHash;
       if (await waitForArcReceipt(tx.txHash)) {
         return { txHash: tx.txHash, pending: false };
       }
     }
-    if (tx.state === 'CONFIRMED' || tx.state === 'COMPLETE') {
+    if (isCircleTxSuccess(tx)) {
       return { txHash: tx.txHash ?? '', pending: false };
     }
-    if (tx.state === 'FAILED' || tx.state === 'CANCELLED' || tx.state === 'DENIED') {
+    if (isCircleTxFailure(tx)) {
       throw new Error(`Circle transaction ${tx.state.toLowerCase()}: ${tx.errorReason ?? 'no reason given'}`);
     }
     await new Promise((r) => setTimeout(r, TX_POLL_INTERVAL_MS));
@@ -250,6 +272,8 @@ async function runContractExecution(input: {
 
   await executeChallenge(input.session, challengeId);
   const waitForConfirmation = input.waitForConfirmation ?? true;
+  let observedTransactionId = '';
+  let observedTxHash = '';
 
   // Fast path: confirm from Arc directly when the caller can observe the on-chain effect.
   // Arc finalizes sub-second, so this flips the UI to success promptly instead of spinning
@@ -257,10 +281,19 @@ async function runContractExecution(input: {
   if (waitForConfirmation && input.confirmOnchain) {
     const deadline = Date.now() + ONCHAIN_CONFIRM_TIMEOUT_MS;
     while (Date.now() < deadline) {
+      if (!observedTransactionId) {
+        observedTransactionId = await findRecentTransactionIdOnce(input.session, anchor).catch(() => '');
+      }
+      if (observedTransactionId) {
+        const status = await checkCircleTransactionOnce(input.session, observedTransactionId)
+          .catch(() => ({ confirmed: false, txHash: observedTxHash }));
+        observedTxHash = status.txHash || observedTxHash;
+        if (status.confirmed) return status.txHash;
+      }
       if (await input.confirmOnchain().catch(() => false)) {
         // Confirmed on Arc. Best-effort: fetch Circle's tx hash for the explorer link, but do
         // not block success on the indexer — an empty hash just means "no link yet".
-        return await quickCircleTxHash(input.session, anchor).catch(() => '');
+        return observedTxHash || await quickCircleTxHash(input.session, anchor).catch(() => '');
       }
       await new Promise((r) => setTimeout(r, ONCHAIN_CONFIRM_POLL_MS));
     }
@@ -270,7 +303,7 @@ async function runContractExecution(input: {
 
   let transactionId = '';
   try {
-    transactionId = await findRecentTransactionId(
+    transactionId = observedTransactionId || await findRecentTransactionId(
       input.session,
       anchor,
       waitForConfirmation ? 30_000 : TX_SUBMIT_LOOKUP_TIMEOUT_MS,
@@ -322,28 +355,47 @@ type ListedTransaction = {
 // '' if Circle has not indexed the transaction record yet.
 async function quickCircleTxHash(session: CircleSession, anchorMs: number): Promise<string> {
   const transactionId = await findRecentTransactionId(session, anchorMs, QUICK_TXHASH_LOOKUP_MS);
-  const tx = await callProvider<CircleTransaction>({
-    action: 'getTransaction',
-    userToken: session.userToken,
-    transactionId,
-  });
+  const tx = await getCircleTransaction(session, transactionId);
   return tx.txHash ?? '';
+}
+
+async function checkCircleTransactionOnce(
+  session: CircleSession,
+  transactionId: string,
+): Promise<{ confirmed: boolean; txHash: string }> {
+  const tx = await getCircleTransaction(session, transactionId);
+  const txHash = tx.txHash ?? '';
+  if (txHash && await hasSuccessfulArcReceipt(txHash)) {
+    return { confirmed: true, txHash };
+  }
+  if (isCircleTxSuccess(tx)) {
+    return { confirmed: true, txHash };
+  }
+  if (isCircleTxFailure(tx)) {
+    throw new Error(`Circle transaction ${tx.state.toLowerCase()}: ${tx.errorReason ?? 'no reason given'}`);
+  }
+  return { confirmed: false, txHash };
+}
+
+async function findRecentTransactionIdOnce(session: CircleSession, anchorMs: number): Promise<string> {
+  const list = await callProvider<{ transactions?: ListedTransaction[] }>({
+    action: 'findTransactionByChallenge',
+    userToken: session.userToken,
+    walletId: session.walletId,
+  });
+  const candidates = (list.transactions ?? [])
+    .filter((t) => t.id && t.createDate)
+    .filter((t) => new Date(t.createDate!).getTime() >= anchorMs)
+    .sort((a, b) => new Date(b.createDate!).getTime() - new Date(a.createDate!).getTime());
+  return candidates[0]?.id ?? '';
 }
 
 async function findRecentTransactionId(session: CircleSession, anchorMs: number, timeoutMs = 30_000): Promise<string> {
   // Poll briefly: Circle may not have indexed the transaction the instant the challenge resolves.
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const list = await callProvider<{ transactions?: ListedTransaction[] }>({
-      action: 'findTransactionByChallenge',
-      userToken: session.userToken,
-      walletId: session.walletId,
-    });
-    const candidates = (list.transactions ?? [])
-      .filter((t) => t.id && t.createDate)
-      .filter((t) => new Date(t.createDate!).getTime() >= anchorMs)
-      .sort((a, b) => new Date(b.createDate!).getTime() - new Date(a.createDate!).getTime());
-    if (candidates[0]?.id) return candidates[0].id;
+    const transactionId = await findRecentTransactionIdOnce(session, anchorMs);
+    if (transactionId) return transactionId;
     await new Promise((r) => setTimeout(r, 1_500));
   }
   throw new Error('Could not locate the transaction after challenge approval.');

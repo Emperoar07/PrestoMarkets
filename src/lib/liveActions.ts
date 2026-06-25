@@ -53,6 +53,8 @@ function isPasskeyWallet(): boolean {
 
 const ARC_CHAIN_HEX = '0x4cef52';
 const MIN_TRADE_USDC = 0.01;
+const SUBMITTED_TX_CONFIRM_TIMEOUT_MS = 30_000;
+const SUBMITTED_TX_CONFIRM_POLL_MS = 800;
 
 // Approval amount: by DEFAULT we approve exactly the trade amount, so the on-chain allowance never
 // exceeds what the user is buying (trust-first — a $5 buy approves $5). Opt into a max/unlimited
@@ -108,7 +110,7 @@ export type LiveActionResult = {
   message: string;
   txHash?: Hex;
   marketAddress?: Address;
-  /** True when submitted and finalized on Arc but Circle's indexer is still catching up. */
+  /** True when submitted but the wallet/provider indexer is still catching up. */
   pending?: boolean;
 };
 
@@ -270,6 +272,39 @@ async function sendMemoWrappedTransaction(input: {
     to: wrapped.to,
     data: wrapped.data,
   });
+}
+
+// Exported for unit testing the confirmation logic.
+export async function waitForSubmittedTransaction(
+  publicClient: ReturnType<typeof createPublicClient>,
+  hash: Hex,
+  confirmOnchain?: () => Promise<boolean>,
+): Promise<boolean> {
+  const deadline = Date.now() + SUBMITTED_TX_CONFIRM_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (confirmOnchain && await confirmOnchain().catch(() => false)) {
+      return true;
+    }
+    const receipt = await publicClient.getTransactionReceipt({ hash }).catch(() => null);
+    if (receipt) {
+      if (receipt.status === 'success') return true;
+      throw new Error('Arc transaction reverted.');
+    }
+    await new Promise((resolve) => setTimeout(resolve, SUBMITTED_TX_CONFIRM_POLL_MS));
+  }
+  if (confirmOnchain && await confirmOnchain().catch(() => false)) {
+    return true;
+  }
+  return false;
+}
+
+function submittedPendingResult(label: string, txHash: Hex): LiveActionResult {
+  return {
+    ok: true,
+    pending: true,
+    message: `${label} submitted. Arc confirmation is updating in the background.`,
+    txHash,
+  };
 }
 
 async function assertMarketOpenForTrading(
@@ -477,7 +512,15 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
       ref: input.agent?.trendUrl ?? input.title.slice(0, 80),
     });
 
-    const receipt = await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    // Bound the wait so a lagging read RPC can't trap the launcher in a spinner: if the receipt
+    // doesn't surface in time, return a soft "submitted" result (the market may still have been
+    // created) instead of hanging.
+    let receipt;
+    try {
+      receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: SUBMITTED_TX_CONFIRM_TIMEOUT_MS });
+    } catch {
+      return submittedPendingResult('Market creation', hash);
+    }
     const created = parseEventLogs({
       abi: factoryAbi,
       eventName: 'MarketCreated',
@@ -504,7 +547,7 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
           collateral: 'USDC',
           ref: input.agent?.trendUrl,
         });
-        await withRetry(() => publicClient.waitForTransactionReceipt({ hash: feeTx }));
+        await publicClient.waitForTransactionReceipt({ hash: feeTx, timeout: SUBMITTED_TX_CONFIRM_TIMEOUT_MS });
         message = 'Live market created on Arc. Automatic resolution funded.';
       } catch {
         message = 'Live market created on Arc, but automatic resolution funding was not completed. Fund the agent resolver before this market closes.';
@@ -580,6 +623,15 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
       throw new Error(`Insufficient ${collateralSymbol} balance. You have ${unit}${have} but the trade needs ${unit}${input.amount}.`);
     }
 
+    const buyOutcomeIndex = input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1);
+    const readShares = () => publicClient.readContract({
+      address: marketAddress,
+      abi: prestoMarketAbi,
+      functionName: 'sharesOf',
+      args: [buyOutcomeIndex, account],
+    }) as Promise<bigint>;
+    const sharesBefore = await withRetry(readShares).catch(() => BigInt(0));
+
     if (allowance < amount) {
       const approveHash = await sendMemoWrappedTransaction({
         walletClient,
@@ -595,15 +647,17 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
         action: 'buy',
         marketId: marketAddress,
         outcome: input.outcome,
-        outcomeIndex: input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1),
+        outcomeIndex: buyOutcomeIndex,
         amount6: amount.toString(),
         collateral: collateralSymbol,
         ref: 'approve',
       });
-      await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash }));
+      const approved = await waitForSubmittedTransaction(publicClient, approveHash);
+      if (!approved) {
+        return submittedPendingResult('Approval', approveHash);
+      }
     }
 
-    const buyOutcomeIndex = input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1);
     const hash = await sendMemoWrappedTransaction({
       walletClient,
       account,
@@ -621,7 +675,14 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
       collateral: collateralSymbol,
     });
 
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    const confirmed = await waitForSubmittedTransaction(
+      publicClient,
+      hash,
+      async () => (await readShares().catch(() => sharesBefore)) > sharesBefore,
+    );
+    if (!confirmed) {
+      return submittedPendingResult(`Buy ${input.outcome}`, hash);
+    }
 
     return { ok: true, message: `Bought ${input.outcome} shares on Arc.`, txHash: hash };
   } catch (error) {
@@ -667,6 +728,14 @@ export async function buyLmsrShares(input: LmsrBuyInput): Promise<LiveActionResu
     if (balance < maxCost6) {
       throw new Error(`Insufficient ${collateralSymbol} balance. You have ${unit}${Number(formatUnits(balance, 6)).toFixed(2)} but this buy may cost up to ${unit}${input.maxCost}.`);
     }
+    const readShares = () => publicClient.readContract({
+      address: marketAddress,
+      abi: prestoLmsrMarketAbi,
+      functionName: 'sharesOf',
+      args: [input.outcomeIndex, account],
+    }) as Promise<bigint>;
+    const sharesBefore = await withRetry(readShares).catch(() => BigInt(0));
+
     if (allowance < maxCost6) {
       const approveHash = await sendMemoWrappedTransaction({
         walletClient, account, target: collateralToken,
@@ -674,7 +743,10 @@ export async function buyLmsrShares(input: LmsrBuyInput): Promise<LiveActionResu
         action: 'buy', marketId: marketAddress, outcome: input.outcome, outcomeIndex: input.outcomeIndex,
         amount6: maxCost6.toString(), collateral: collateralSymbol, ref: 'approve',
       });
-      await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash }));
+      const approved = await waitForSubmittedTransaction(publicClient, approveHash);
+      if (!approved) {
+        return submittedPendingResult('Approval', approveHash);
+      }
     }
     const hash = await sendMemoWrappedTransaction({
       walletClient, account, target: marketAddress,
@@ -682,7 +754,14 @@ export async function buyLmsrShares(input: LmsrBuyInput): Promise<LiveActionResu
       action: 'buy', marketId: marketAddress, outcome: input.outcome, outcomeIndex: input.outcomeIndex,
       amount6: shares6.toString(), collateral: collateralSymbol,
     });
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    const confirmed = await waitForSubmittedTransaction(
+      publicClient,
+      hash,
+      async () => (await readShares().catch(() => sharesBefore)) > sharesBefore,
+    );
+    if (!confirmed) {
+      return submittedPendingResult(`Buy ${input.outcome}`, hash);
+    }
     return { ok: true, message: `Bought ${input.shares} ${input.outcome} shares on Arc.`, txHash: hash };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Buy transaction failed.' };
@@ -706,7 +785,8 @@ export async function sellLmsrShares(input: LmsrSellInput): Promise<LiveActionRe
       action: 'sell', marketId: marketAddress, outcome: input.outcome, outcomeIndex: input.outcomeIndex,
       amount6: shares6.toString(),
     });
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    const confirmed = await waitForSubmittedTransaction(publicClient, hash);
+    if (!confirmed) return submittedPendingResult(`Sell ${input.outcome}`, hash);
     return { ok: true, message: `Sold ${input.shares} ${input.outcome} shares on Arc.`, txHash: hash };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Sell transaction failed.' };
@@ -783,7 +863,8 @@ export async function resolveLiveMarket(input: { marketAddress: string; outcome:
       ref: input.resolutionURI.slice(0, 120),
     });
 
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    const confirmed = await waitForSubmittedTransaction(publicClient, hash);
+    if (!confirmed) return submittedPendingResult('Resolve', hash);
 
     return { ok: true, message: 'Market resolved on Arc.', txHash: hash };
   } catch (error) {
@@ -813,7 +894,8 @@ export async function cancelLiveMarket(marketAddress: string): Promise<LiveActio
       marketId: marketAddress as Address,
     });
 
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    const confirmed = await waitForSubmittedTransaction(publicClient, hash);
+    if (!confirmed) return submittedPendingResult('Cancel', hash);
 
     return { ok: true, message: 'Market canceled on Arc.', txHash: hash };
   } catch (error) {
@@ -830,7 +912,13 @@ async function settleInUsdc(input: {
   functionName: 'claim' | 'refund';
   label: string;
 }): Promise<LiveActionResult> {
-  const { account, publicClient, walletClient } = await getClients();
+  const { account, config, publicClient, walletClient } = await getClients();
+
+  // Claim/refund pay collateral to the caller — confirm directly from the balance rise so a slow
+  // receipt read can't trap the UI in a spinner.
+  const usdc = config.usdcAddress;
+  const readBalance = () => publicClient.readContract({ address: usdc, abi: erc20Abi, functionName: 'balanceOf', args: [account] }) as Promise<bigint>;
+  const balanceBefore = await readBalance().catch(() => BigInt(0));
 
   const hash = await sendMemoWrappedTransaction({
     walletClient,
@@ -843,7 +931,12 @@ async function settleInUsdc(input: {
     action: input.functionName,
     marketId: input.marketAddress,
   });
-  await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+  const confirmed = await waitForSubmittedTransaction(
+    publicClient,
+    hash,
+    async () => (await readBalance().catch(() => balanceBefore)) > balanceBefore,
+  );
+  if (!confirmed) return submittedPendingResult(input.label, hash);
 
   return { ok: true, message: `${input.label} settled in USDC.`, txHash: hash };
 }
@@ -906,7 +999,8 @@ export async function disputeLiveResolution(marketAddress: string, reason: strin
       marketId: marketAddress as Address,
       ref: reason.slice(0, 120),
     });
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    const confirmed = await waitForSubmittedTransaction(publicClient, hash);
+    if (!confirmed) return submittedPendingResult('Dispute', hash);
     return { ok: true, message: 'Dispute submitted — automatic settlement is blocked and the resolver must settle directly with evidence.', txHash: hash };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Dispute transaction failed.' };
