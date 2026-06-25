@@ -52,15 +52,14 @@ function uniqueValues(values: string[]) {
 export function getArcConfig() {
   const chainId = publicEnv(process.env.NEXT_PUBLIC_ARC_CHAIN_ID);
   const configuredRpcUrl = publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_URL) || publicEnv(process.env.ARC_RPC_URL);
-  // Ordered RPC fallback: the public Arc RPC leads as a reliable, unmetered anchor; dedicated
-  // providers (dRPC, QuikNode) follow as extra capacity. We used to lead with the env-provided
-  // dedicated key, but free-tier dedicated keys exhaust (HTTP 403/429) and — as the sole primary —
-  // took the entire client read path down when they died (markets stopped loading). Public-first
-  // keeps reads working even when every dedicated key is rate-limited; the dedicated providers
-  // still absorb load whenever they're healthy (viem only falls through to them if public fails).
+  // Ordered RPC fallback: dedicated providers (dRPC, QuikNode) lead because the public Arc RPC is
+  // hard rate-limited (HTTP 429) and was throttling trades — eth_sendRawTransaction died on 429 with
+  // the public endpoint in front. The public RPC is now the LAST-RESORT fallback: viem only reaches
+  // it when every dedicated provider is unavailable, so a dead dedicated key still degrades to public
+  // (reads keep working) without sending normal load to the throttled endpoint.
   const drpc = publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_DRPC);
   const quiknode = publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_QUIKNODE);
-  const rpcUrls = uniqueValues([DEFAULT_ARC_RPC_URL, configuredRpcUrl, drpc, quiknode].filter(Boolean));
+  const rpcUrls = uniqueValues([drpc, quiknode, configuredRpcUrl, DEFAULT_ARC_RPC_URL].filter(Boolean));
   const rpcUrl = rpcUrls[0] ?? DEFAULT_ARC_RPC_URL;
   const usdcAddress = publicEnv(process.env.NEXT_PUBLIC_USDC_ADDRESS);
   // EURC on Arc Testnet (Circle docs) — euro-denominated market collateral. 6 decimals like USDC.

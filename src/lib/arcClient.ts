@@ -42,7 +42,9 @@ const ARC_PUBLIC_RPC = 'https://rpc.testnet.arc.network';
 export function arcRpcUrls(override?: string): string[] {
   const drpc = process.env.NEXT_PUBLIC_ARC_RPC_DRPC?.trim();
   const quiknode = process.env.NEXT_PUBLIC_ARC_RPC_QUIKNODE?.trim();
-  const ordered = [override?.trim(), drpc, quiknode, ARC_PUBLIC_RPC].filter(
+  // Dedicated providers first; the rate-limited public RPC is the last-resort fallback so normal
+  // read/write load goes to the high-limit endpoints and only degrades to public if they all fail.
+  const ordered = [drpc, quiknode, override?.trim(), ARC_PUBLIC_RPC].filter(
     (url): url is string => Boolean(url),
   );
   return Array.from(new Set(ordered));
