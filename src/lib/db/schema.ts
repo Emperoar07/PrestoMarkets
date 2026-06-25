@@ -158,6 +158,31 @@ export const webhookSubscriptions = pgTable('webhook_subscriptions', {
   ownerIdx: index('webhook_subscriptions_owner_idx').on(table.owner),
 }));
 
+// Client-watched limit orders for V3 LMSR markets. The server only stores intent; a client-side
+// watcher polls the live price and fires the trade through the user's wallet when the limit is hit.
+export const limitOrderStatusEnum = pgEnum('limit_order_status', ['open', 'filled', 'canceled', 'expired', 'failed']);
+
+export const limitOrders = pgTable('limit_orders', {
+  id: text('id').primaryKey(), // uuid (client-generated)
+  owner: text('owner').notNull(), // lowercased wallet address
+  marketId: text('market_id').notNull(), // lowercased market contract address
+  outcomeIndex: integer('outcome_index').notNull(),
+  outcomeLabel: text('outcome_label').notNull(),
+  side: text('side').notNull(), // 'buy' | 'sell'
+  limitPriceBps: integer('limit_price_bps').notNull(), // 0..10000 (e.g. 4500 = 45c)
+  shares: numeric('shares', { precision: 24, scale: 6 }).notNull(),
+  slippageBps: integer('slippage_bps').notNull().default(200),
+  status: limitOrderStatusEnum('status').notNull().default('open'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  filledAt: timestamp('filled_at', { withTimezone: true }),
+  txHash: text('tx_hash'),
+  lastError: text('last_error'),
+}, (table) => ({
+  ownerStatusIdx: index('limit_orders_owner_status_idx').on(table.owner, table.status),
+  marketStatusIdx: index('limit_orders_market_status_idx').on(table.marketId, table.status),
+}));
+
 export const circleGatewayEvents = pgTable('circle_gateway_events', {
   notificationId: text('notification_id').primaryKey(),
   subscriptionId: text('subscription_id'),
