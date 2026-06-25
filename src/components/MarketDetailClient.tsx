@@ -38,6 +38,7 @@ import { buildResolutionTrustState } from '@/lib/resolutionTrust';
 import { disputeLiveResolution, buyLmsrShares, sellLmsrShares } from '@/lib/liveActions';
 import { createArcReadClient } from '@/lib/arcClient';
 import { prestoLmsrMarketAbi } from '@/lib/contracts';
+import { LimitOrderPanel } from './LimitOrderPanel';
 import { parseUnits, formatUnits, type Address } from 'viem';
 import { collateralUnit } from '@/lib/arcConfig';
 import { identifyAsset } from '@/lib/priceResolution';
@@ -1474,6 +1475,13 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </p>
               ) : null}
             </div>
+
+            {isAmm && canTrade ? (
+              <LimitOrderPanel
+                marketId={marketId}
+                outcomes={market.outcomes.map((o, i) => ({ label: o.label, index: i }))}
+              />
+            ) : null}
           </aside>
 
         </div>

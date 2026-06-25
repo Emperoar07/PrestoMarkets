@@ -6,6 +6,7 @@ import { AppStateProvider } from '@/lib/appState';
 import { SocialSessionProvider } from '@/lib/socialSessionContext';
 import { TransactionProvider } from '@/lib/transactions';
 import { ToastStack } from '@/components/ToastStack';
+import { LimitOrderWatcher } from '@/components/LimitOrderWatcher';
 import { RainbowKitProviders } from '@/components/RainbowKitProviders';
 import { CircleConfirmModal } from '@/components/CircleConfirmModal';
 import { SignInModal } from '@/components/SignInModal';
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <TransactionProvider>
                 {children}
                 <ToastStack />
+                <LimitOrderWatcher />
               </TransactionProvider>
               <SignInModal />
               <AutoSocialSignIn />
