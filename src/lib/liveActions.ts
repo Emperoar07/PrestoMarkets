@@ -307,6 +307,46 @@ function submittedPendingResult(label: string, txHash: Hex): LiveActionResult {
   };
 }
 
+// An EOA can't natively bundle approve+buy, so it would prompt twice. EIP-5792 (wallet_sendCalls)
+// lets modern wallets (MetaMask, Coinbase, …) execute the batch in ONE prompt. We try it first and
+// return null only when the wallet doesn't support batching — the caller then falls back to the
+// exact sequential flow, so a wallet without 5792 still works (just two prompts). We never fall back
+// after submission, so there's no risk of double-executing.
+function isUnsupportedBatchError(error: unknown): boolean {
+  const code = (error as { code?: number } | null)?.code;
+  if (code === -32601 || code === 4200 || code === 4100) return true;
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return msg.includes('sendcalls') || msg.includes('method not') || msg.includes('not support')
+    || msg.includes('unsupported') || msg.includes('does not exist') || msg.includes('not available')
+    || msg.includes('unknown rpc');
+}
+
+async function trySendBatchedCalls(
+  walletClient: ReturnType<typeof createWalletClient>,
+  account: Address,
+  calls: Array<{ to: Address; data: Hex }>,
+): Promise<Hex | null> {
+  try {
+    const wc = walletClient as unknown as {
+      sendCalls: (args: { account: Address; calls: Array<{ to: Address; data: Hex }>; chain?: unknown; forceAtomic?: boolean }) => Promise<{ id: string } | string>;
+      waitForCallsStatus: (args: { id: string }) => Promise<{ status?: string; receipts?: Array<{ transactionHash: Hex; status?: string }> }>;
+    };
+    if (typeof wc.sendCalls !== 'function') return null;
+    // forceAtomic: require a single atomic batch (one prompt) or fail → fall back. Avoids a wallet
+    // silently splitting the batch back into two prompts.
+    const sent = await wc.sendCalls({ account, calls, chain: undefined, forceAtomic: true });
+    const id = typeof sent === 'string' ? sent : sent.id;
+    const status = await wc.waitForCallsStatus({ id });
+    const receipts = status.receipts ?? [];
+    const last = receipts[receipts.length - 1];
+    if (last?.status === 'reverted') throw new Error('Batched transaction reverted on-chain.');
+    return (last?.transactionHash ?? '0x') as Hex;
+  } catch (error) {
+    if (isUnsupportedBatchError(error)) return null;
+    throw error;
+  }
+}
+
 async function assertMarketOpenForTrading(
   publicClient: ReturnType<typeof createPublicClient>,
   marketAddress: Address,
@@ -633,6 +673,28 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
     const sharesBefore = await withRetry(readShares).catch(() => BigInt(0));
 
     if (allowance < amount) {
+      // One-prompt path: try to bundle approve + buy atomically (EIP-5792). Falls through to the
+      // sequential two-tx flow below if the wallet doesn't support batching.
+      const approveCall = encodeMemoWrappedCall({
+        target: collateralToken,
+        data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [marketAddress, approvalAmount(amount)] }),
+        memo: { action: 'buy', target: collateralToken, marketId: marketAddress, outcome: input.outcome, outcomeIndex: buyOutcomeIndex, amount6: amount.toString(), collateral: collateralSymbol, ref: 'approve' },
+      });
+      const buyCall = encodeMemoWrappedCall({
+        target: marketAddress,
+        data: encodeFunctionData({ abi: prestoMarketAbi, functionName: 'buy', args: [buyOutcomeIndex, amount] }),
+        memo: { action: 'buy', target: marketAddress, marketId: marketAddress, outcome: input.outcome, outcomeIndex: buyOutcomeIndex, amount6: amount.toString(), collateral: collateralSymbol },
+      });
+      const batchHash = await trySendBatchedCalls(walletClient, account, [
+        { to: approveCall.to, data: approveCall.data },
+        { to: buyCall.to, data: buyCall.data },
+      ]);
+      if (batchHash !== null) {
+        const confirmed = await waitForSubmittedTransaction(publicClient, batchHash, async () => (await readShares().catch(() => sharesBefore)) > sharesBefore);
+        if (!confirmed) return submittedPendingResult(`Buy ${input.outcome}`, batchHash);
+        return { ok: true, message: `Bought ${input.outcome} shares on Arc.`, txHash: batchHash };
+      }
+
       const approveHash = await sendMemoWrappedTransaction({
         walletClient,
         account,
@@ -737,6 +799,28 @@ export async function buyLmsrShares(input: LmsrBuyInput): Promise<LiveActionResu
     const sharesBefore = await withRetry(readShares).catch(() => BigInt(0));
 
     if (allowance < maxCost6) {
+      // One-prompt path: bundle approve + buy atomically (EIP-5792); fall through to two txs if
+      // the wallet doesn't support batching.
+      const approveCall = encodeMemoWrappedCall({
+        target: collateralToken,
+        data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [marketAddress, approvalAmount(maxCost6)] }),
+        memo: { action: 'buy', target: collateralToken, marketId: marketAddress, outcome: input.outcome, outcomeIndex: input.outcomeIndex, amount6: maxCost6.toString(), collateral: collateralSymbol, ref: 'approve' },
+      });
+      const buyCall = encodeMemoWrappedCall({
+        target: marketAddress,
+        data: encodeFunctionData({ abi: prestoLmsrMarketAbi, functionName: 'buy', args: [input.outcomeIndex, shares6, maxCost6] }),
+        memo: { action: 'buy', target: marketAddress, marketId: marketAddress, outcome: input.outcome, outcomeIndex: input.outcomeIndex, amount6: shares6.toString(), collateral: collateralSymbol },
+      });
+      const batchHash = await trySendBatchedCalls(walletClient, account, [
+        { to: approveCall.to, data: approveCall.data },
+        { to: buyCall.to, data: buyCall.data },
+      ]);
+      if (batchHash !== null) {
+        const confirmed = await waitForSubmittedTransaction(publicClient, batchHash, async () => (await readShares().catch(() => sharesBefore)) > sharesBefore);
+        if (!confirmed) return submittedPendingResult(`Buy ${input.outcome}`, batchHash);
+        return { ok: true, message: `Bought ${input.shares} ${input.outcome} shares on Arc.`, txHash: batchHash };
+      }
+
       const approveHash = await sendMemoWrappedTransaction({
         walletClient, account, target: collateralToken,
         data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [marketAddress, approvalAmount(maxCost6)] }),
