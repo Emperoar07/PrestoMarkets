@@ -35,8 +35,11 @@ import type { MarketStatus } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
 import { buildFixedShareQuote } from '@/lib/marketUtils';
 import { buildResolutionTrustState } from '@/lib/resolutionTrust';
-import { disputeLiveResolution } from '@/lib/liveActions';
+import { disputeLiveResolution, buyLmsrShares, sellLmsrShares } from '@/lib/liveActions';
 import { humanizeTxError } from '@/lib/txErrors';
+import { createArcReadClient } from '@/lib/arcClient';
+import { prestoLmsrMarketAbi } from '@/lib/contracts';
+import { parseUnits, formatUnits, type Address } from 'viem';
 import { collateralUnit } from '@/lib/arcConfig';
 import { identifyAsset } from '@/lib/priceResolution';
 import { detectCountryFlagUrl } from '@/lib/marketSubjectImage';
@@ -182,7 +185,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const { track } = useTransactions();
   const market = getMarket(marketId);
   const [selectedOutcome, setSelectedOutcome] = useState('YES');
-  const [tradeMode, setTradeMode] = useState<'buy' | 'liquidity'>('buy');
+  const [tradeMode, setTradeMode] = useState<'buy' | 'sell' | 'liquidity'>('buy');
   const [orderMode, setOrderMode] = useState<'market' | 'limit'>('market');
   const [amount, setAmount] = useState('1');
   const [limitPrice, setLimitPrice] = useState('50');
@@ -207,6 +210,37 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
   const [livePrice, setLivePrice] = useState<number | null>(null);
   const [isFetchingPrice, setIsFetchingPrice] = useState(false);
+
+  // V3 LMSR live quote: cost to buy (or refund to sell) the typed share quantity, read on-chain
+  // and debounced. `value` is in collateral units (6dp); `avgPrice` is value / shares.
+  const [lmsrQuote, setLmsrQuote] = useState<{ value: number; avgPrice: number } | null>(null);
+  useEffect(() => {
+    if (!market?.amm) { setLmsrQuote(null); return; }
+    const shares = Number(amount) || 0;
+    if (shares <= 0) { setLmsrQuote(null); return; }
+    const idx = Math.max(0, market.outcomes.findIndex((o) => o.label === selectedOutcome));
+    const sellMode = tradeMode === 'sell';
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const client = createArcReadClient();
+        if (!client) return;
+        const shares6 = parseUnits(String(shares), 6);
+        const out = await client.readContract({
+          address: market.id as Address,
+          abi: prestoLmsrMarketAbi,
+          functionName: sellMode ? 'sellRefund' : 'buyCost',
+          args: [idx, shares6],
+        }) as bigint;
+        if (!active) return;
+        const value = Number(formatUnits(out, 6));
+        setLmsrQuote({ value, avgPrice: shares > 0 ? value / shares : 0 });
+      } catch {
+        if (active) setLmsrQuote(null);
+      }
+    }, 350);
+    return () => { active = false; clearTimeout(timer); };
+  }, [market?.amm, market?.id, market?.outcomes, amount, selectedOutcome, tradeMode]);
 
   // Identify if this is a crypto asset market
   const cryptoAsset = market ? identifyAsset(market) : null;
@@ -461,7 +495,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const activeOutcomeColor = getOutcomeColor(activeOutcomeIndex);
   const isBinaryMarket = market.outcomes.length <= 2;
   const amountValue = Number(amount) || 0;
-  const isLimitOrder = tradeMode === 'buy' && orderMode === 'limit';
+  // V3 LMSR markets trade share quantities with a Buy/Sell toggle; the amount field is shares.
+  const isAmm = Boolean(market.amm);
+  const isSell = isAmm && tradeMode === 'sell';
+  const isLimitOrder = !isAmm && tradeMode === 'buy' && orderMode === 'limit';
   // Fixed-share parimutuel: 1 USDC = 1 share. Payout if this outcome wins is an estimate derived from current implied odds, not a priced-share quote.
   const fixedShareQuote = buildFixedShareQuote({
     amountUsdc: amountValue,
@@ -477,6 +514,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     try { return new URL(groundingUrl).hostname.replace(/^www\./, ''); } catch { return null; }
   })();
   const accountPreview = new Map(Object.entries(accountPreviews)).get(market.id);
+  // Shares the connected wallet holds in the selected outcome — the sell ceiling for V3 markets.
+  const activeOutcomeShares = Number(
+    accountPreview?.outcomeShares?.find((s) => s.label === activeOutcome.label)?.shares ?? 0,
+  );
 
   const claimableAmount = Number(accountPreview?.claimable.replace(/[$,]/g, '') || 0);
   const refundableAmount = Number(accountPreview?.refundable.replace(/[$,]/g, '') || 0);
@@ -925,6 +966,31 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
           <aside id="trade-panel" className="min-w-0 h-fit scroll-mt-28 order-2 lg:order-none lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:sticky lg:top-24">
             <div className="min-w-0 overflow-hidden rounded-[18px] border border-white/[0.06] bg-[#141e30] p-4 sm:p-5">
 
+              {isAmm ? (
+                // V3 LMSR: Buy / Sell positions at the live AMM price.
+                <div className="mb-4 grid grid-cols-2 rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-1">
+                  {([
+                    ['buy', 'Buy'],
+                    ['sell', 'Sell'],
+                  ] as const).map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setTradeMode(mode)}
+                      disabled={isTradingLocked}
+                      className={`rounded-[9px] py-2 text-sm font-black transition-all border ${
+                        tradeMode === mode
+                          ? mode === 'sell'
+                            ? 'border-red-400/70 text-red-200 bg-transparent shadow-sm'
+                            : 'border-mint/70 text-mint bg-transparent shadow-sm'
+                          : 'border-transparent text-muted hover:text-white bg-transparent'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
               <div className="mb-4 grid grid-cols-2 rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-1">
                   {([
                     ['market', 'Market'],
@@ -945,6 +1011,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     </button>
                   ))}
                 </div>
+              )}
 
               {isBinaryMarket ? (
               <div className={`grid grid-cols-2 gap-2 ${tradeMode === 'liquidity' ? 'opacity-70' : ''}`}>
@@ -958,7 +1025,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                       : 'border-white/[0.06] bg-[#0f172a] hover:border-white/10'
                   }`}
                 >
-                  <p className="text-xs font-black text-muted">Buy YES</p>
+                  <p className="text-xs font-black text-muted">{isSell ? 'Sell' : 'Buy'} YES</p>
                   <p className={`mt-1 text-2xl font-black ${selectedOutcome === 'YES' ? 'text-cyan' : 'text-white'}`}>
                     {yesOutcome.odds}{'\u00a2'}
                   </p>
@@ -973,7 +1040,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                       : 'border-white/[0.06] bg-[#0f172a] hover:border-white/10'
                   }`}
                 >
-                  <p className="text-xs font-black text-muted">Buy NO</p>
+                  <p className="text-xs font-black text-muted">{isSell ? 'Sell' : 'Buy'} NO</p>
                   <p className={`mt-1 text-2xl font-black ${selectedOutcome === 'NO' ? 'text-red-300' : 'text-white'}`}>
                     {noOutcome.odds}{'\u00a2'}
                   </p>
@@ -1000,7 +1067,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                           active ? '' : 'border-white/[0.06] bg-[#0f172a] hover:border-white/10'
                         }`}
                       >
-                        <p className="truncate text-xs font-black text-muted">Buy {outcome.label}</p>
+                        <p className="truncate text-xs font-black text-muted">{isSell ? 'Sell' : 'Buy'} {outcome.label}</p>
                         <p className={`mt-1 text-2xl font-black ${active ? '' : 'text-white'}`} style={active ? { color } : undefined}>
                           {outcome.odds}{'\u00a2'}
                         </p>
@@ -1012,15 +1079,26 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
               <div className="mt-5">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-muted">Amount</label>
-                  <button
-                    type="button"
-                    onClick={() => setFundingOpen(true)}
-                    disabled={isTradingLocked}
-                    className="text-[10px] font-black uppercase tracking-widest text-cyan transition hover:text-cyan/80 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Available {payWith}
-                  </button>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-muted">{isAmm ? 'Shares' : 'Amount'}</label>
+                  {isSell ? (
+                    <button
+                      type="button"
+                      onClick={() => setAmount(String(activeOutcomeShares))}
+                      disabled={isTradingLocked || activeOutcomeShares <= 0}
+                      className="text-[10px] font-black uppercase tracking-widest text-cyan transition hover:text-cyan/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Max {activeOutcomeShares.toFixed(2)} {activeOutcome.label}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setFundingOpen(true)}
+                      disabled={isTradingLocked}
+                      className="text-[10px] font-black uppercase tracking-widest text-cyan transition hover:text-cyan/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Available {payWith}
+                    </button>
+                  )}
                 </div>
                 <input
                   value={amount}
@@ -1043,7 +1121,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                           : 'border-white/[0.06] bg-[#0f172a] text-[#8fa0b4] hover:border-white/10 hover:text-white'
                       }`}
                     >
-                      {unit}{q}
+                      {isAmm ? `${q}` : `${unit}${q}`}
                     </button>
                   ))}
                 </div>
@@ -1071,6 +1149,29 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
               ) : null}
 
               <div className="mt-5 space-y-2.5 border-t border-white/[0.06] pt-5">
+                {isAmm ? (
+                  <>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted">Avg price / share</span>
+                      <span className="font-black text-white">
+                        {lmsrQuote ? `${unit}${lmsrQuote.avgPrice.toFixed(3)}` : `${activeOutcome.odds}%`}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-muted">{isSell ? 'Est. you receive' : 'Est. cost'}</span>
+                      <span className="min-w-0 break-words text-right font-black text-white [overflow-wrap:anywhere]">
+                        {lmsrQuote ? `${unit}${lmsrQuote.value.toFixed(2)}` : '—'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-muted">{isSell ? 'Min received (2% slip)' : 'Max you pay (2% slip)'}</span>
+                      <span className="min-w-0 break-words text-right font-black text-white [overflow-wrap:anywhere]">
+                        {lmsrQuote ? `${unit}${(isSell ? lmsrQuote.value * 0.98 : lmsrQuote.value * 1.03).toFixed(2)}` : '—'}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted">{tradeMode === 'liquidity' ? 'Liquidity method' : isLimitOrder ? 'Limit price' : 'Implied odds'}</span>
                   <span className="font-black text-white">
@@ -1095,6 +1196,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                       : fixedShareQuote.estimatedPayoutUsdc > 0 ? `${unit}${fixedShareQuote.estimatedPayoutUsdc.toFixed(2)}` : '—'}
                   </span>
                 </div>
+                  </>
+                )}
                 {tradeMode === 'liquidity' ? (
                   <p className="rounded-[10px] border border-cyan/15 bg-cyan/[0.05] px-3 py-2 text-xs leading-5 text-muted">
                     The app splits your amount evenly across every outcome to start with balanced depth.
@@ -1147,19 +1250,27 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 <button
                   type="button"
                   onClick={() => void runAction(() => (
-                    tradeMode === 'liquidity'
-                      ? addLiquidity({ marketId, amount: amountValue, payWith })
-                      : placeTrade({ marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, amount: amountValue, payWith })
-                  ), tradeMode === 'liquidity' ? `Add liquidity · ${unit}${amountValue}` : `Buy ${selectedOutcome} · ${unit}${amountValue}`)}
-                  disabled={!canTrade || isSubmitting || amountValue <= 0 || isLimitOrder}
-                  style={tradeMode === 'buy' ? { backgroundColor: activeOutcomeColor } : undefined}
+                    isAmm
+                      ? (isSell
+                          ? sellLmsrShares({ marketAddress: marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, shares: amountValue, minRefund: lmsrQuote ? lmsrQuote.value * 0.98 : 0 })
+                          : buyLmsrShares({ marketAddress: marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, shares: amountValue, maxCost: lmsrQuote ? lmsrQuote.value * 1.03 : amountValue * 1.05 }))
+                      : tradeMode === 'liquidity'
+                        ? addLiquidity({ marketId, amount: amountValue, payWith })
+                        : placeTrade({ marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, amount: amountValue, payWith })
+                  ), isAmm
+                    ? `${isSell ? 'Sell' : 'Buy'} ${amountValue} ${selectedOutcome} shares`
+                    : tradeMode === 'liquidity' ? `Add liquidity · ${unit}${amountValue}` : `Buy ${selectedOutcome} · ${unit}${amountValue}`)}
+                  disabled={!canTrade || isSubmitting || amountValue <= 0 || isLimitOrder || (isSell && amountValue > activeOutcomeShares)}
+                  style={!isSell && tradeMode !== 'liquidity' ? { backgroundColor: activeOutcomeColor } : undefined}
                   className={`mt-5 w-full min-w-0 rounded-[12px] px-3 py-4 font-black tracking-wide text-ink transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 ${
-                    tradeMode === 'liquidity' ? 'bg-cyan' : ''
+                    tradeMode === 'liquidity' ? 'bg-cyan' : isSell ? 'bg-red-400' : ''
                   }`}
                 >
                   {!canTrade ? 'Market not open'
                     : isSubmitting ? 'Confirming…'
-                    : amountValue <= 0 ? 'Enter an amount'
+                    : amountValue <= 0 ? (isAmm ? 'Enter shares' : 'Enter an amount')
+                    : isSell && amountValue > activeOutcomeShares ? 'Not enough shares'
+                    : isAmm ? `${isSell ? 'Sell' : 'Buy'} ${amountValue} ${selectedOutcome}${lmsrQuote ? ` · ${unit}${lmsrQuote.value.toFixed(2)}` : ''}`
                     : isLimitOrder ? 'Limit order book phase'
                     : tradeMode === 'liquidity' ? `Add liquidity · ${unit}${amountValue}`
                     : `Buy ${selectedOutcome} · ${unit}${amountValue}`}
