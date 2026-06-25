@@ -9,6 +9,7 @@ import type { AppMarket } from './appState';
 import type { MarketStatus, MarketType, ResolutionMode } from './markets';
 import { getDb, hasDatabaseUrl } from './db/client';
 import { marketMetadataOverrides } from './db/schema';
+import { hasGoodImage } from './imageQuality';
 import { logger } from './logger';
 const MARKET_ADDRESS_BATCH_SIZE = 50;
 const MARKET_HYDRATION_BATCH_SIZE = 32; // Increased from 8 for faster parallel hydration
@@ -584,10 +585,10 @@ async function readOnchainMarkets() {
     }
     for (const m of markets) {
       const overrideImage = overridesMap.get(m.id.toLowerCase());
-      // Prefer a stored override when the on-chain image is missing or only a branded SVG fallback,
-      // so a backfilled real subject image actually displays. Never downgrade a real on-chain image.
-      const onchainIsWeak = !m.imageURI || m.imageURI.startsWith('data:image/svg+xml');
-      if (overrideImage && onchainIsWeak) m.imageURI = overrideImage;
+      // Prefer a stored override whenever the on-chain image isn't render-reliable — empty, a branded
+      // SVG fallback, OR a broken/untrusted HTTP URL that loads as a blank letter tile. This is the
+      // same quality bar the backfill uses, so a backfilled image always wins over a bad on-chain one.
+      if (overrideImage && !hasGoodImage(m.imageURI)) m.imageURI = overrideImage;
     }
   } catch (err) {
     logger.warn('onchain-markets', 'Failed to load metadata overrides', { error: String(err) });

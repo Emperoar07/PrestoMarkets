@@ -5,31 +5,13 @@ import { resolveSubjectImageUrl, brandedMarketImage } from '@/lib/marketSubjectI
 import { validateImageUrl } from '@/lib/agentPipeline';
 import { getDb, hasDatabaseUrl } from '@/lib/db/client';
 import { marketMetadataOverrides } from '@/lib/db/schema';
+import { hasGoodImage } from '@/lib/imageQuality';
 import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 const MAX_BACKFILL_PER_RUN = 40;
-
-// Hosts we trust to serve a working image; anything else (or a branded fallback / empty) is a
-// candidate to re-resolve a real subject image.
-const TRUSTED_IMG_HOSTS = [
-  'assets.coingecko.com', 'coin-images.coingecko.com', 'flagcdn.com', 'upload.wikimedia.org',
-  'r2.thesportsdb.com', 'www.thesportsdb.com', 'thesportsdb.com', 'a.espncdn.com', 'a1.espncdn.com',
-];
-function hasGoodImage(uri: string | undefined): boolean {
-  if (!uri || uri.trim().length === 0) return false;
-  const v = uri.trim();
-  if (v.startsWith('data:image/svg+xml')) return false; // branded fallback — upgrade if possible
-  if (v.startsWith('data:')) return true; // a real data-image payload is fine
-  try {
-    const host = new URL(v).hostname.toLowerCase();
-    return TRUSTED_IMG_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
-  } catch {
-    return false;
-  }
-}
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
