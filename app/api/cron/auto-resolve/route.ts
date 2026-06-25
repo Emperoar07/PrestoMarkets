@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Hex, Address } from 'viem';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
-import { agentResolveMarket, agentCancelMarket, agentProposeResolution, agentSettleProposedResolution, agentReadTotalShares, getAgentAddress } from '@/lib/agentWallet';
+import { agentResolveMarket, agentCancelMarket, agentProposeResolution, agentSettleProposedResolution, agentReadTotalShares, getAgentAddress, agentProposeV3, agentSettleV3, agentPayWinners, agentReadLmsrBuyers } from '@/lib/agentWallet';
 import { verifyBearer } from '@/lib/authCompare';
 import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
 import { getAgentIdentityStatus, recordResolutionReputation } from '@/lib/agentIdentity';
@@ -33,7 +33,15 @@ async function proposeOrResolve(
   marketId: string,
   outcomeIndex: number,
   resolutionURI: string,
+  isAmm = false,
 ): Promise<{ ok: true; mode: 'proposed' | 'resolved'; txHash: string } | { ok: false; error?: string }> {
+  // V3 LMSR markets use the bonded optimistic flow: propose(), then settle() on a later tick once
+  // the 30-minute window closes. They have no direct resolve(), so there is no fallback here.
+  if (isAmm) {
+    const proposedV3 = await agentProposeV3(marketId, outcomeIndex, resolutionURI);
+    if (proposedV3.ok) return { ok: true, mode: 'proposed', txHash: assertNonEmptyString(proposedV3.txHash, 'txHash') };
+    return { ok: false, error: proposedV3.error };
+  }
   const proposed = await agentProposeResolution(marketId, outcomeIndex, resolutionURI);
   if (proposed.ok) return { ok: true, mode: 'proposed', txHash: assertNonEmptyString(proposed.txHash, 'txHash') };
   const resolved = await agentResolveMarket(marketId, outcomeIndex, resolutionURI);
@@ -244,7 +252,7 @@ async function resolveMarket(market: AppMarket): Promise<ResolutionResult> {
         autonomous: true,
       };
       const resolutionURI = `data:application/json,${encodeURIComponent(JSON.stringify(report))}`;
-      const result = await proposeOrResolve(market.id, derivedIndex, resolutionURI);
+      const result = await proposeOrResolve(market.id, derivedIndex, resolutionURI, Boolean(market.amm));
       if (result.ok) {
         return {
           ok: true,
@@ -461,6 +469,18 @@ export async function GET(req: NextRequest) {
               title: market.title,
               reason: `Proposal "${proposal.outcomeLabel}" pending — dispute window ends ${new Date(windowEndsAt).toISOString()}.`,
             };
+          } else if (market.amm) {
+            // V3 LMSR: settle the unchallenged proposal, then push winner payouts (best-effort;
+            // claim() remains the fallback for anyone a batch misses).
+            const settled = await agentSettleV3(market.id);
+            if (settled.ok) {
+              const buyers = await agentReadLmsrBuyers(market.id);
+              const paid = await agentPayWinners(market.id, buyers);
+              if (!paid.ok) console.warn('[auto-resolve] V3 payWinners failed (winners can still claim):', paid.error);
+              result = { ok: true, action: 'resolved', marketId: market.id, title: market.title, outcome: proposal.outcomeLabel, txHash: assertNonEmptyString(settled.txHash, 'txHash'), confidence: 1 };
+            } else {
+              result = { ok: false, action: 'skipped', marketId: market.id, title: market.title, reason: `V3 settle failed: ${settled.error ?? 'unknown error'}` };
+            }
           } else {
             const settled = await agentSettleProposedResolution(market.id);
             result = settled.ok

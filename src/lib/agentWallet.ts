@@ -11,6 +11,7 @@ import {
   parseEventLogs,
   parseUnits,
   type Address,
+  type AbiEvent,
   type Hex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
@@ -290,6 +291,117 @@ export async function agentSettleProposedResolution(marketAddress: string) {
     return { ok: true as const, txHash: hash };
   } catch (error) {
     return { ok: false as const, error: error instanceof Error ? error.message : 'Proposal settlement failed.' };
+  }
+}
+
+// ---- V3 LMSR resolution + payout ----
+
+// Propose the winning outcome on a V3 market (resolver only). Posts the market's bond if one is
+// configured (approve first). Starts the 30-minute challenge window.
+export async function agentProposeV3(marketAddress: string, outcomeIndex: number, evidenceURI: string) {
+  try {
+    if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
+    const { account, publicClient, walletClient } = getClients();
+    const config = getArcConfig();
+    const market = marketAddress as Address;
+
+    // If the market requires a proposer bond, approve it from the agent wallet first.
+    const bond6 = await publicClient.readContract({ address: market, abi: prestoLmsrMarketAbi, functionName: 'bond6' }).catch(() => BigInt(0)) as bigint;
+    if (bond6 > BigInt(0) && config.usdcAddress && isAddress(config.usdcAddress)) {
+      const usdc = config.usdcAddress as Address;
+      const allowance = await publicClient.readContract({ address: usdc, abi: erc20Abi, functionName: 'allowance', args: [account.address, market] }) as bigint;
+      if (allowance < bond6) {
+        const approveHash = await walletClient.writeContract({ account, address: usdc, abi: erc20Abi, functionName: 'approve', args: [market, bond6] });
+        await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash }));
+      }
+    }
+
+    const hash = await walletClient.writeContract({
+      account, address: market, abi: prestoLmsrMarketAbi, functionName: 'propose', args: [outcomeIndex, evidenceURI],
+    });
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    return { ok: true as const, txHash: hash };
+  } catch (error) {
+    return { ok: false as const, error: error instanceof Error ? error.message : 'V3 proposal failed.' };
+  }
+}
+
+// Settle an unchallenged V3 proposal once its challenge window closes (permissionless).
+export async function agentSettleV3(marketAddress: string) {
+  try {
+    if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
+    const { account, publicClient, walletClient } = getClients();
+    const hash = await walletClient.writeContract({
+      account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'settle',
+    });
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    return { ok: true as const, txHash: hash };
+  } catch (error) {
+    return { ok: false as const, error: error instanceof Error ? error.message : 'V3 settle failed.' };
+  }
+}
+
+// Adjudicate a disputed V3 proposal (resolver decides the final outcome).
+export async function agentResolveDisputedV3(marketAddress: string, finalOutcome: number, evidenceURI: string) {
+  try {
+    if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
+    const { account, publicClient, walletClient } = getClients();
+    const hash = await walletClient.writeContract({
+      account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'resolveDisputed', args: [finalOutcome, evidenceURI],
+    });
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    return { ok: true as const, txHash: hash };
+  } catch (error) {
+    return { ok: false as const, error: error instanceof Error ? error.message : 'V3 dispute resolution failed.' };
+  }
+}
+
+// Every address that ever bought shares in a V3 market (from SharesBought logs). payWinners is
+// idempotent and skips non-winners, so passing the full buyer set is safe.
+export async function agentReadLmsrBuyers(marketAddress: string): Promise<string[]> {
+  try {
+    if (!isAddress(marketAddress)) return [];
+    const { publicClient } = getClients();
+    const event = prestoLmsrMarketAbi.find((x) => x.type === 'event' && x.name === 'SharesBought');
+    if (!event) return [];
+    const logs = await publicClient.getLogs({
+      address: marketAddress as Address,
+      event: event as AbiEvent,
+      fromBlock: 'earliest',
+      toBlock: 'latest',
+    });
+    const buyers = new Set<string>();
+    for (const log of logs) {
+      const buyer = (log as { args?: { buyer?: unknown } }).args?.buyer;
+      if (typeof buyer === 'string' && isAddress(buyer)) buyers.add(buyer.toLowerCase());
+    }
+    return Array.from(buyers);
+  } catch (error) {
+    logger.warn('agent-wallet', 'Failed to read LMSR buyers', { marketAddress, error: error instanceof Error ? error.message : String(error) });
+    return [];
+  }
+}
+
+// Push winner payouts on a settled V3 market in chunks. Idempotent and permissionless.
+export async function agentPayWinners(marketAddress: string, winners: string[]) {
+  try {
+    if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
+    const valid = winners.filter((w) => isAddress(w)) as Address[];
+    if (valid.length === 0) return { ok: true as const, paid: 0 };
+    const { account, publicClient, walletClient } = getClients();
+    const CHUNK = 50;
+    let last: Hex | undefined;
+    for (let i = 0; i < valid.length; i += CHUNK) {
+      const batch = valid.slice(i, i + CHUNK);
+      const hash = await walletClient.writeContract({
+        account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'payWinners', args: [batch],
+      });
+      await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+      last = hash;
+    }
+    return { ok: true as const, paid: valid.length, txHash: last };
+  } catch (error) {
+    return { ok: false as const, error: error instanceof Error ? error.message : 'payWinners failed.' };
   }
 }
 
