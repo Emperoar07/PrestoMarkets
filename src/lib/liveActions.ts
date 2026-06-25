@@ -87,6 +87,9 @@ function getReadClient() {
     chain: getArcChain(),
     transport: arcReadTransport(config.rpcUrl || undefined),
     batch: ARC_READ_BATCH,
+    // Arc finalizes sub-second; poll fast so waitForTransactionReceipt confirms trades promptly
+    // instead of sitting on viem's 4s default.
+    pollingInterval: 800,
   });
 }
 
@@ -227,6 +230,8 @@ async function getClients() {
     chain,
     transport: arcReadTransport(config.rpcUrl),
     batch: ARC_READ_BATCH,
+    // Sub-second Arc finality: poll fast so trade/approve receipts confirm in the UI promptly.
+    pollingInterval: 800,
   });
 
   return { account, config, publicClient, walletClient };

@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
+import { humanizeTxError } from './txErrors';
 
 export type TxStage = 'confirming' | 'confirmed' | 'pending' | 'failed' | 'cancelled';
 
@@ -75,10 +76,10 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
     try {
       const result = await runner();
       const stage = reduceStage(result);
-      settle(id, stage, { txHash: result.txHash, error: stage === 'failed' ? result.message : undefined });
+      settle(id, stage, { txHash: result.txHash, error: stage === 'failed' ? humanizeTxError(result.message, result.message) : undefined });
       return result;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Transaction failed.';
+      const message = humanizeTxError(error, 'Transaction failed.');
       const stage: TxStage = /cancel/i.test(message) ? 'cancelled' : 'failed';
       settle(id, stage, { error: stage === 'failed' ? message : undefined });
       throw error;

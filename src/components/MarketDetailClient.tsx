@@ -36,6 +36,7 @@ import { getOutcomeColor } from '@/lib/outcomeColors';
 import { buildFixedShareQuote } from '@/lib/marketUtils';
 import { buildResolutionTrustState } from '@/lib/resolutionTrust';
 import { disputeLiveResolution } from '@/lib/liveActions';
+import { humanizeTxError } from '@/lib/txErrors';
 import { collateralUnit } from '@/lib/arcConfig';
 import { identifyAsset } from '@/lib/priceResolution';
 import { detectCountryFlagUrl } from '@/lib/marketSubjectImage';
@@ -517,9 +518,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     setMessage('Waiting for wallet confirmation...');
     try {
       const result = await track({ label }, action);
-      setMessage(result.message);
+      setMessage(result.ok ? result.message : humanizeTxError(result.message, result.message));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Transaction failed.');
+      setMessage(humanizeTxError(error, 'Transaction failed.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -1175,7 +1176,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                       : 'border-mint/25 bg-mint/10 text-mint'
                   }`}
                 >
-                  <p>{message}</p>
+                  <p className="max-h-28 overflow-y-auto break-words">{message}</p>
                   {needsFundingHelp ? (
                     <button
                       type="button"

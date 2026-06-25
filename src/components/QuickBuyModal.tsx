@@ -8,6 +8,7 @@ import { buildFixedShareQuote } from '@/lib/marketUtils';
 import type { StableSymbol } from '@/lib/walletBalance';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
 import { useTransactions } from '@/lib/transactions';
+import { humanizeTxError } from '@/lib/txErrors';
 import { AddUsdcDrawer } from './AddUsdcDrawer';
 
 interface QuickBuyModalProps {
@@ -102,7 +103,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
           payWith
         }),
       );
-      setMessage(result.message);
+      setMessage(result.ok ? result.message : humanizeTxError(result.message, result.message));
       if (result.ok) {
         // Auto close after 2 seconds on success
         setTimeout(() => {
@@ -110,7 +111,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
         }, 2000);
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Transaction failed.');
+      setMessage(humanizeTxError(error, 'Transaction failed.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -276,7 +277,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
               : 'border-mint/25 bg-mint/10 text-mint'
           }`}
           >
-            <p>{message}</p>
+            <p className="max-h-28 overflow-y-auto break-words">{message}</p>
             {needsFundingHelp ? (
               <button
                 type="button"

@@ -35,7 +35,7 @@ export function ToastStack() {
                   {entry.label}{entry.amountLabel ? ` · ${entry.amountLabel}` : ''}
                 </p>
                 {entry.error ? (
-                  <p className="mt-1 break-words text-[11px] leading-4 text-red-200/90">{entry.error}</p>
+                  <p className="mt-1 max-h-20 overflow-y-auto break-words text-[11px] leading-4 text-red-200/90">{entry.error}</p>
                 ) : null}
                 {entry.txHash ? (
                   <a
