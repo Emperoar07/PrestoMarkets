@@ -6,8 +6,9 @@ import { buildMarketMetadataURI } from './marketMetadata';
 import { executeCircleChallenge, getStoredConnectedWallet, refreshCircleSessionIfNeeded, type CircleSession } from './walletProvider';
 import { requestCircleConfirmation, type CircleConfirmDetails } from './circleConfirm';
 import { getAgentResolverSelectionError, getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
-import { erc20Abi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
+import { erc20Abi, prestoLmsrMarketAbi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { GATEWAY_MINTER, GATEWAY_MINT_SIGNATURE } from './gatewayActions';
+import { buildMemoContractExecution, encodeMemoWrappedCall, type PrestoMemoAction } from './arcMemos';
 import type { CreateLiveMarketInput, LiveActionResult } from './liveActions';
 import type { MarketType } from './markets';
 import { isRecord } from './typeGuards';
@@ -30,6 +31,61 @@ const ARC_RECEIPT_TIMEOUT_MS = 20_000;
 const ONCHAIN_CONFIRM_TIMEOUT_MS = 30_000;
 const ONCHAIN_CONFIRM_POLL_MS = 1_500;
 const QUICK_TXHASH_LOOKUP_MS = 3_000;
+
+function memoContractExecution(input: {
+  target: Address;
+  data: Hex;
+  action: PrestoMemoAction;
+  marketId?: Address;
+  outcome?: string;
+  outcomeIndex?: number;
+  amount6?: string;
+  collateral?: string;
+  ref?: string;
+}) {
+  return buildMemoContractExecution({
+    target: input.target,
+    data: input.data,
+    memo: {
+      action: input.action,
+      target: input.target,
+      marketId: input.marketId,
+      outcome: input.outcome,
+      outcomeIndex: input.outcomeIndex,
+      amount6: input.amount6,
+      collateral: input.collateral,
+      ref: input.ref,
+    },
+  });
+}
+
+function memoBatchLeg(input: {
+  target: Address;
+  data: Hex;
+  action: PrestoMemoAction;
+  marketId?: Address;
+  outcome?: string;
+  outcomeIndex?: number;
+  amount6?: string;
+  collateral?: string;
+  ref?: string;
+}): [Address, string, Hex] {
+  const wrapped = encodeMemoWrappedCall({
+    target: input.target,
+    data: input.data,
+    memo: {
+      action: input.action,
+      target: input.target,
+      marketId: input.marketId,
+      outcome: input.outcome,
+      outcomeIndex: input.outcomeIndex,
+      amount6: input.amount6,
+      collateral: input.collateral,
+      ref: input.ref,
+    },
+  });
+  return [wrapped.to, '0', wrapped.data];
+}
 
 type CircleTxStatus =
   | 'INITIATED'
@@ -161,8 +217,8 @@ async function runContractExecution(input: {
   const previewDetails: CircleConfirmDetails = {
     label: input.preview?.label ?? 'Sign with Circle wallet',
     action: input.preview?.action ?? 'You\'re about to sign a contract call on Arc Testnet.',
-    contractAddress: input.contractAddress,
-    functionSignature: input.abiFunctionSignature,
+    contractAddress: input.preview?.contractAddress ?? input.contractAddress,
+    functionSignature: input.preview?.functionSignature ?? input.abiFunctionSignature,
     amountDisplay: input.preview?.amountDisplay,
     parameters: input.preview?.parameters ?? input.abiParameters.map((p) => String(p)),
     contractExplorerUrl: input.preview?.contractExplorerUrl ?? `${ARC_EXPLORER_ADDRESS}${input.contractAddress}`,
@@ -449,28 +505,42 @@ export async function createCircleMarket(input: CreateLiveMarketInput): Promise<
         ? 'EURC factory is not configured. Set NEXT_PUBLIC_EURC_MARKET_FACTORY_ADDRESS.'
         : 'Set NEXT_PUBLIC_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS before launching poll markets.');
     }
+    const metadataURI = buildMarketMetadataURI({ ...input, outcomeOptions });
+    const createSignature = useMultiOutcome
+      ? 'createMarket(address,uint256,string,uint8,uint8)'
+      : 'createMarket(address,uint256,string,uint8)';
+    const createData = encodeFunctionData({
+      abi: useMultiOutcome ? prestoMultiOutcomeMarketFactoryAbi : prestoMarketFactoryAbi,
+      functionName: 'createMarket',
+      args: useMultiOutcome ? [
+        input.resolver as Address,
+        closeStamp,
+        metadataURI,
+        getMarketKind(input.type),
+        outcomeOptions.length,
+      ] : [
+        input.resolver as Address,
+        closeStamp,
+        metadataURI,
+        getMarketKind(input.type),
+      ],
+    });
+    const memoCreate = memoContractExecution({
+      target: factoryAddress as Address,
+      data: createData,
+      action: 'market_create',
+      ref: input.agent?.trendUrl ?? input.title.slice(0, 80),
+    });
     const txHash = await runContractExecution({
       session,
-      contractAddress: factoryAddress,
-      abiFunctionSignature: useMultiOutcome
-        ? 'createMarket(address,uint256,string,uint8,uint8)'
-        : 'createMarket(address,uint256,string,uint8)',
-      // Every Circle abiParameter scalar must be a string. Numbers cause error code 2.
-      abiParameters: useMultiOutcome ? [
-        input.resolver,
-        closeStamp.toString(),
-        buildMarketMetadataURI({ ...input, outcomeOptions }),
-        String(getMarketKind(input.type)),
-        String(outcomeOptions.length),
-      ] : [
-        input.resolver,
-        closeStamp.toString(),
-        buildMarketMetadataURI({ ...input, outcomeOptions }),
-        String(getMarketKind(input.type)),
-      ],
+      contractAddress: memoCreate.contractAddress,
+      abiFunctionSignature: memoCreate.abiFunctionSignature,
+      abiParameters: memoCreate.abiParameters,
       preview: {
         label: `Launch "${input.title.slice(0, 60)}${input.title.length > 60 ? '…' : ''}"`,
         action: `Deploys a new ${input.type} market via the Presto factory. The resolver address you picked will sign settlement.`,
+        contractAddress: factoryAddress,
+        functionSignature: createSignature,
         parameters: [
           `resolver: ${input.resolver.slice(0, 6)}…${input.resolver.slice(-4)}`,
           `closes: ${closeReadable}`,
@@ -483,15 +553,31 @@ export async function createCircleMarket(input: CreateLiveMarketInput): Promise<
     let message = 'Live market created via Circle wallet.';
     if (feeAmount > BigInt(0)) {
       try {
+        const feeData = encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'transfer',
+          args: [input.resolver as Address, feeAmount],
+        });
+        const memoFee = memoContractExecution({
+          target: config.usdcAddress as Address,
+          data: feeData,
+          action: 'resolution_fee',
+          marketId: marketAddress,
+          amount6: feeAmount.toString(),
+          collateral: 'USDC',
+          ref: input.agent?.trendUrl,
+        });
         await runContractExecution({
           session,
-          contractAddress: config.usdcAddress!,
-          abiFunctionSignature: 'transfer(address,uint256)',
-          abiParameters: [input.resolver, feeAmount.toString()],
+          contractAddress: memoFee.contractAddress,
+          abiFunctionSignature: memoFee.abiFunctionSignature,
+          abiParameters: memoFee.abiParameters,
           refId: `presto-resolve-fee-${Date.now()}`,
           preview: {
             label: `Fund automatic resolution - $${feeHuman} USDC`,
             action: `Funds the Presto agent to settle this market automatically after it closes. Sent directly to ${input.resolver.slice(0, 6)}...${input.resolver.slice(-4)}.`,
+            contractAddress: config.usdcAddress,
+            functionSignature: 'transfer(address,uint256)',
             amountDisplay: `$${feeHuman} USDC`,
             parameters: [
               `recipient: ${input.resolver.slice(0, 6)}...${input.resolver.slice(-4)} (agent wallet)`,
@@ -519,16 +605,35 @@ export async function createCircleMarket(input: CreateLiveMarketInput): Promise<
 // safe. Returns the Arc mint tx hash (throws on failure).
 export async function mintGatewayViaCircle(attestation: string, apiSignature: string): Promise<string> {
   const session = await requireSession();
+  const gatewayData = encodeFunctionData({
+    abi: [{
+      type: 'function',
+      name: 'gatewayMint',
+      inputs: [{ name: 'attestationPayload', type: 'bytes' }, { name: 'signature', type: 'bytes' }],
+      outputs: [],
+      stateMutability: 'nonpayable',
+    }] as const,
+    functionName: 'gatewayMint',
+    args: [attestation as Hex, apiSignature as Hex],
+  });
+  const memoMint = memoContractExecution({
+    target: GATEWAY_MINTER,
+    data: gatewayData,
+    action: 'gateway_mint',
+    ref: `presto-gateway-mint-${Date.now()}`,
+  });
   return runContractExecution({
     session,
-    contractAddress: GATEWAY_MINTER,
-    abiFunctionSignature: GATEWAY_MINT_SIGNATURE,
-    abiParameters: [attestation, apiSignature],
+    contractAddress: memoMint.contractAddress,
+    abiFunctionSignature: memoMint.abiFunctionSignature,
+    abiParameters: memoMint.abiParameters,
     refId: `presto-gateway-mint-${Date.now()}`,
     waitForConfirmation: true,
     preview: {
       label: 'Receive USDC on Arc',
       action: 'Completes your cross-chain move by minting the USDC into your Circle wallet on Arc.',
+      contractAddress: GATEWAY_MINTER,
+      functionSignature: GATEWAY_MINT_SIGNATURE,
       parameters: ['Circle Gateway attested transfer', 'destination: your Arc balance'],
     },
   });
@@ -583,7 +688,7 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: s
     // address; each leg is [target, nativeValue, calldata]. The proxy allowlist
     // (circleWalletPolicy.inspectBatch) validates every leg before signing. The signature
     // string must stay in sync with BATCH_SIGNATURE in circleWalletPolicy.ts.
-    const legs: Array<[string, string, string]> = [];
+    const legs: Array<[Address, string, Hex]> = [];
     if (funding.allowance < amountValue) {
       // Exact-amount approval by default so the allowance never exceeds the stated buy (trust-first).
       // The approve + buy are already batched into ONE signature here, so exact approval costs the
@@ -592,17 +697,28 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: s
       const approveValue = process.env.NEXT_PUBLIC_BATCH_APPROVAL === 'true'
         ? BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')
         : amountValue;
-      legs.push([
-        usdcAddress,
-        '0',
-        encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [marketAddress, approveValue] }),
-      ]);
+      legs.push(memoBatchLeg({
+        target: usdcAddress,
+        data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [marketAddress, approveValue] }),
+        action: 'buy',
+        marketId: marketAddress,
+        outcome: input.outcome,
+        outcomeIndex: buyOutcomeIndex,
+        amount6: amountValue.toString(),
+        collateral: collateralSymbol,
+        ref: 'approve',
+      }));
     }
-    legs.push([
-      marketAddress,
-      '0',
-      encodeFunctionData({ abi: prestoMarketAbi, functionName: 'buy', args: [buyOutcomeIndex, amountValue] }),
-    ]);
+    legs.push(memoBatchLeg({
+      target: marketAddress,
+      data: encodeFunctionData({ abi: prestoMarketAbi, functionName: 'buy', args: [buyOutcomeIndex, amountValue] }),
+      action: 'buy',
+      marketId: marketAddress,
+      outcome: input.outcome,
+      outcomeIndex: buyOutcomeIndex,
+      amount6: amountValue.toString(),
+      collateral: collateralSymbol,
+    }));
 
     const txHash = await runContractExecution({
       session,
@@ -633,16 +749,180 @@ export async function buyCircleShares(input: { marketAddress: string; outcome: s
   }
 }
 
+// ---- V3 LMSR share-denominated trading (Circle wallet) ----
+
+export async function buyCircleLmsrShares(input: { marketAddress: string; outcome: string; outcomeIndex: number; shares: number; maxCost: number }): Promise<LiveActionResult> {
+  try {
+    const session = await requireSession();
+    const config = requireArcConfig();
+    if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
+    const marketAddress = input.marketAddress as Address;
+    await assertMarketOpenForTrading(marketAddress);
+    const shares6 = parseUnits(String(input.shares), 6);
+    const maxCost6 = parseUnits(String(input.maxCost), 6);
+    if (shares6 <= BigInt(0)) throw new Error('Enter a share amount.');
+
+    const collateralToken = (await getPublicClient().readContract({
+      address: marketAddress, abi: prestoLmsrMarketAbi, functionName: 'collateral',
+    }).catch(() => config.usdcAddress!)) as Address;
+    const collateralSymbol = collateralSymbolForAddress(collateralToken);
+    const collUnit = collateralUnit(collateralSymbol);
+    const ownerAddress = getStoredConnectedWallet()?.address;
+    if (!ownerAddress || !isAddress(ownerAddress)) throw new Error('Circle wallet address is missing. Sign in again.');
+
+    const funding = await readCircleTradeFunding({ marketAddress, ownerAddress: ownerAddress as Address, usdcAddress: collateralToken, amount: maxCost6 });
+    const sharesClient = getPublicClient();
+    const readShares = () => sharesClient.readContract({
+      address: marketAddress, abi: prestoLmsrMarketAbi, functionName: 'sharesOf', args: [input.outcomeIndex, ownerAddress as Address],
+    }) as Promise<bigint>;
+    const sharesBefore = await readShares().catch(() => BigInt(0));
+
+    // Batch the (optional) approve + the slippage-guarded buy into one SCA user-op (one PIN).
+    const legs: Array<[Address, string, Hex]> = [];
+    if (funding.allowance < maxCost6) {
+      const approveValue = process.env.NEXT_PUBLIC_BATCH_APPROVAL === 'true'
+        ? BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')
+        : maxCost6;
+      legs.push(memoBatchLeg({
+        target: collateralToken,
+        data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [marketAddress, approveValue] }),
+        action: 'buy',
+        marketId: marketAddress,
+        outcome: input.outcome,
+        outcomeIndex: input.outcomeIndex,
+        amount6: maxCost6.toString(),
+        collateral: collateralSymbol,
+        ref: 'approve-lmsr',
+      }));
+    }
+    legs.push(memoBatchLeg({
+      target: marketAddress,
+      data: encodeFunctionData({ abi: prestoLmsrMarketAbi, functionName: 'buy', args: [input.outcomeIndex, shares6, maxCost6] }),
+      action: 'buy',
+      marketId: marketAddress,
+      outcome: input.outcome,
+      outcomeIndex: input.outcomeIndex,
+      amount6: shares6.toString(),
+      collateral: collateralSymbol,
+    }));
+
+    const humanCost = `${collUnit}${Number(input.maxCost).toFixed(2)} ${collateralSymbol}`;
+    const txHash = await runContractExecution({
+      session,
+      contractAddress: ownerAddress,
+      abiFunctionSignature: 'executeBatch((address, uint256, bytes)[])',
+      abiParameters: [legs],
+      refId: `presto-lmsrbuy-${input.marketAddress}-${Date.now()}`,
+      preview: {
+        label: `Buy ${input.shares} ${input.outcome} shares`,
+        action: legs.length > 1
+          ? `Approves ${collateralSymbol} and buys ${input.outcome} shares in a single signature. Max cost ${humanCost}.`
+          : `Buys ${input.outcome} shares against your approved ${collateralSymbol}. Max cost ${humanCost}.`,
+        amountDisplay: humanCost,
+        parameters: [`outcome: ${input.outcome} (${input.outcomeIndex})`, `shares: ${input.shares}`, `max cost: ${humanCost}`],
+      },
+      waitForConfirmation: true,
+      confirmOnchain: async () => (await readShares()) > sharesBefore,
+    });
+    return { ok: true, message: `Bought ${input.shares} ${input.outcome} shares via Circle wallet.`, txHash: txHash as `0x${string}` };
+  } catch (error) {
+    const pending = pendingResultFromError(error, `Buy ${input.outcome}`);
+    if (pending) return pending;
+    return { ok: false, message: error instanceof Error ? error.message : 'Buy transaction failed.' };
+  }
+}
+
+export async function sellCircleLmsrShares(input: { marketAddress: string; outcome: string; outcomeIndex: number; shares: number; minRefund: number }): Promise<LiveActionResult> {
+  try {
+    const session = await requireSession();
+    if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
+    const marketAddress = input.marketAddress as Address;
+    await assertMarketOpenForTrading(marketAddress);
+    const shares6 = parseUnits(String(input.shares), 6);
+    const minRefund6 = parseUnits(String(input.minRefund ?? 0), 6);
+    if (shares6 <= BigInt(0)) throw new Error('Enter a share amount to sell.');
+
+    // Selling returns collateral to the holder — confirm from Arc the moment their balance rises.
+    const owner = getStoredConnectedWallet()?.address;
+    const collateralToken = (await getPublicClient().readContract({
+      address: marketAddress, abi: prestoLmsrMarketAbi, functionName: 'collateral',
+    }).catch(() => getArcConfig().usdcAddress)) as Address | undefined;
+    let confirmOnchain: (() => Promise<boolean>) | undefined;
+    if (owner && isAddress(owner) && collateralToken && isAddress(collateralToken)) {
+      const client = getPublicClient();
+      const readBalance = () => client.readContract({ address: collateralToken, abi: erc20Abi, functionName: 'balanceOf', args: [owner as Address] }) as Promise<bigint>;
+      const before = await readBalance().catch(() => BigInt(0));
+      confirmOnchain = async () => (await readBalance().catch(() => before)) > before;
+    }
+
+    const sellData = encodeFunctionData({
+      abi: prestoLmsrMarketAbi,
+      functionName: 'sell',
+      args: [input.outcomeIndex, shares6, minRefund6],
+    });
+    const memoSell = memoContractExecution({
+      target: marketAddress,
+      data: sellData,
+      action: 'sell',
+      marketId: marketAddress,
+      outcome: input.outcome,
+      outcomeIndex: input.outcomeIndex,
+      amount6: shares6.toString(),
+    });
+    const txHash = await runContractExecution({
+      session,
+      contractAddress: memoSell.contractAddress,
+      abiFunctionSignature: memoSell.abiFunctionSignature,
+      abiParameters: memoSell.abiParameters,
+      refId: `presto-lmsrsell-${input.marketAddress}-${Date.now()}`,
+      preview: {
+        label: `Sell ${input.shares} ${input.outcome} shares`,
+        action: `Sells ${input.outcome} shares back to the market at the live price. You receive at least ${Number(input.minRefund).toFixed(2)} collateral.`,
+        contractAddress: marketAddress,
+        functionSignature: 'sell(uint8,uint256,uint256)',
+        parameters: [`outcome: ${input.outcome} (${input.outcomeIndex})`, `shares: ${input.shares}`, `min refund: ${Number(input.minRefund).toFixed(2)}`],
+      },
+      waitForConfirmation: true,
+      confirmOnchain,
+    });
+    return { ok: true, message: `Sold ${input.shares} ${input.outcome} shares via Circle wallet.`, txHash: txHash as `0x${string}` };
+  } catch (error) {
+    const pending = pendingResultFromError(error, `Sell ${input.outcome}`);
+    if (pending) return pending;
+    return { ok: false, message: error instanceof Error ? error.message : 'Sell transaction failed.' };
+  }
+}
+
 export async function resolveCircleMarket(input: { marketAddress: string; outcome: string; outcomeIndex?: number; resolutionURI: string }): Promise<LiveActionResult> {
   try {
     const session = await requireSession();
     if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
+    const outcomeIndex = input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1);
+    const data = encodeFunctionData({
+      abi: prestoMarketAbi,
+      functionName: 'resolve',
+      args: [outcomeIndex, input.resolutionURI],
+    });
+    const memoResolve = memoContractExecution({
+      target: input.marketAddress as Address,
+      data,
+      action: 'resolve',
+      marketId: input.marketAddress as Address,
+      outcome: input.outcome,
+      outcomeIndex,
+      ref: input.resolutionURI,
+    });
     const txHash = await runContractExecution({
       session,
-      contractAddress: input.marketAddress,
-      abiFunctionSignature: 'resolve(uint8,string)',
-      abiParameters: [String(input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1)), input.resolutionURI],
+      contractAddress: memoResolve.contractAddress,
+      abiFunctionSignature: memoResolve.abiFunctionSignature,
+      abiParameters: memoResolve.abiParameters,
       waitForConfirmation: true,
+      preview: {
+        contractAddress: input.marketAddress,
+        functionSignature: 'resolve(uint8,string)',
+        parameters: [`outcome: ${input.outcome} (${outcomeIndex})`],
+      },
     });
     return { ok: true, message: 'Market resolved via Circle wallet.', txHash: txHash as `0x${string}` };
   } catch (error) {
@@ -661,13 +941,28 @@ async function noArgAction(
   try {
     const session = await requireSession();
     if (!isAddress(marketAddress)) throw new Error('Market address is invalid.');
+    const functionName = signature.replace('()', '') as 'cancel' | 'claim' | 'refund';
+    const data = encodeFunctionData({
+      abi: prestoMarketAbi,
+      functionName,
+    });
+    const memoCall = memoContractExecution({
+      target: marketAddress as Address,
+      data,
+      action: functionName,
+      marketId: marketAddress as Address,
+    });
     const txHash = await runContractExecution({
       session,
-      contractAddress: marketAddress,
-      abiFunctionSignature: signature,
-      abiParameters: [],
+      contractAddress: memoCall.contractAddress,
+      abiFunctionSignature: memoCall.abiFunctionSignature,
+      abiParameters: memoCall.abiParameters,
       waitForConfirmation: true,
       confirmOnchain,
+      preview: {
+        contractAddress: marketAddress,
+        functionSignature: signature,
+      },
     });
     return { ok: true, message: `${label} via Circle wallet.`, txHash: txHash as `0x${string}` };
   } catch (error) {
@@ -678,7 +973,7 @@ async function noArgAction(
 }
 
 // Claim and refund pay USDC out to the caller's own wallet, so we confirm directly from Arc
-// the moment the wallet's USDC balance rises — the same fast-path used for buys — instead of
+// the moment the wallet's USDC balance rises - the same fast-path used for buys - instead of
 // waiting on Circle's slower transaction indexer. (Cancel moves no funds to the caller, so it
 // keeps the default Circle-indexer confirmation.)
 async function settleWithUsdcConfirm(marketAddress: string, signature: string, label: string): Promise<LiveActionResult> {
@@ -710,14 +1005,31 @@ export async function disputeCircleResolution(marketAddress: string, reason: str
   try {
     const session = await requireSession();
     if (!isAddress(marketAddress)) throw new Error('Market address is invalid.');
+    const data = encodeFunctionData({
+      abi: prestoMarketAbi,
+      functionName: 'disputeResolution',
+      args: [reason],
+    });
+    const memoDispute = memoContractExecution({
+      target: marketAddress as Address,
+      data,
+      action: 'dispute',
+      marketId: marketAddress as Address,
+      ref: reason.slice(0, 120),
+    });
     const txHash = await runContractExecution({
       session,
-      contractAddress: marketAddress,
-      abiFunctionSignature: 'disputeResolution(string)',
-      abiParameters: [reason],
+      contractAddress: memoDispute.contractAddress,
+      abiFunctionSignature: memoDispute.abiFunctionSignature,
+      abiParameters: memoDispute.abiParameters,
       waitForConfirmation: true,
+      preview: {
+        contractAddress: marketAddress,
+        functionSignature: 'disputeResolution(string)',
+        parameters: ['reason recorded with the dispute'],
+      },
     });
-    return { ok: true, message: 'Dispute submitted via Circle wallet — the resolver must now settle directly with evidence.', txHash: txHash as `0x${string}` };
+    return { ok: true, message: 'Dispute submitted via Circle wallet - the resolver must now settle directly with evidence.', txHash: txHash as `0x${string}` };
   } catch (error) {
     const pending = pendingResultFromError(error, 'Dispute');
     if (pending) return pending;

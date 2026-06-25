@@ -8,16 +8,45 @@ import {
   type Hex,
 } from 'viem';
 import { arcTestnet } from 'viem/chains';
-import { getArcConfig } from './arcConfig';
+import { collateralSymbolForAddress, collateralUnit, getArcConfig } from './arcConfig';
 import { ARC_READ_BATCH, arcReadTransport, withRpcRetry } from './arcClient';
-import { erc20Abi, prestoMarketAbi } from './contracts';
+import { erc20Abi, prestoLmsrMarketAbi, prestoMarketAbi } from './contracts';
 import { getCirclePasskeyBundlerClient } from './circlePasskey';
 import { GATEWAY_MINTER } from './gatewayActions';
 import { requestCircleConfirmation, type CircleConfirmDetails } from './circleConfirm';
-import type { LiveActionResult } from './liveActions';
+import { encodeMemoWrappedCall, type PrestoMemoAction } from './arcMemos';
+import type { LiveActionResult, LmsrBuyInput, LmsrSellInput } from './liveActions';
 
 const minTradeUsdc = 0.01;
 const withRetry = withRpcRetry;
+
+function memoPasskeyCall(input: {
+  target: Address;
+  data: Hex;
+  action: PrestoMemoAction;
+  marketId?: Address;
+  outcome?: string;
+  outcomeIndex?: number;
+  amount6?: string;
+  collateral?: string;
+  ref?: string;
+}): { to: Address; data: Hex } {
+  const wrapped = encodeMemoWrappedCall({
+    target: input.target,
+    data: input.data,
+    memo: {
+      action: input.action,
+      target: input.target,
+      marketId: input.marketId,
+      outcome: input.outcome,
+      outcomeIndex: input.outcomeIndex,
+      amount6: input.amount6,
+      collateral: input.collateral,
+      ref: input.ref,
+    },
+  });
+  return { to: wrapped.to, data: wrapped.data };
+}
 
 function requireConfig() {
   const config = getArcConfig();
@@ -177,14 +206,16 @@ const gatewayMinterAbi = [{
 // paymaster), so the external EOA that signed the burn intent never needs Arc gas. Mirrors
 // mintGatewayViaCircle for the user-controlled wallet. Returns the Arc mint tx hash.
 export async function mintGatewayViaPasskey(attestation: string, apiSignature: string): Promise<string> {
-  return runPasskeyCalls([{
-    to: GATEWAY_MINTER,
+  return runPasskeyCalls([memoPasskeyCall({
+    target: GATEWAY_MINTER,
     data: encodeFunctionData({
       abi: gatewayMinterAbi,
       functionName: 'gatewayMint',
       args: [attestation as Hex, apiSignature as Hex],
     }),
-  }]);
+    action: 'gateway_mint',
+    ref: `presto-gateway-mint-${Date.now()}`,
+  })]);
 }
 
 export async function buyPasskeyShares(input: {
@@ -235,23 +266,36 @@ export async function buyPasskeyShares(input: {
     const buyOutcomeIndex = input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1);
     const calls: Array<{ to: Address; data: Hex }> = [];
     if (allowance < amount) {
-      calls.push({
-        to: config.usdcAddress,
+      calls.push(memoPasskeyCall({
+        target: config.usdcAddress,
         data: encodeFunctionData({
           abi: erc20Abi,
           functionName: 'approve',
           args: [marketAddress, amount],
         }),
-      });
+        action: 'buy',
+        marketId: marketAddress,
+        outcome: input.outcome,
+        outcomeIndex: buyOutcomeIndex,
+        amount6: amount.toString(),
+        collateral: 'USDC',
+        ref: 'approve',
+      }));
     }
-    calls.push({
-      to: marketAddress,
+    calls.push(memoPasskeyCall({
+      target: marketAddress,
       data: encodeFunctionData({
         abi: prestoMarketAbi,
         functionName: 'buy',
         args: [buyOutcomeIndex, amount],
       }),
-    });
+      action: 'buy',
+      marketId: marketAddress,
+      outcome: input.outcome,
+      outcomeIndex: buyOutcomeIndex,
+      amount6: amount.toString(),
+      collateral: 'USDC',
+    }));
 
     // Snapshot the buyer's shares so we can confirm the trade directly from Arc (sub-second) the
     // moment they increase, instead of spinning on Circle's slower bundler receipt.
@@ -287,6 +331,143 @@ export async function buyPasskeyShares(input: {
   }
 }
 
+export async function buyPasskeyLmsrShares(input: LmsrBuyInput): Promise<LiveActionResult> {
+  try {
+    const config = requireConfig();
+    const publicClient = getPublicClient();
+    const { address } = getCirclePasskeyBundlerClient();
+
+    if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
+    const marketAddress = input.marketAddress as Address;
+    await assertMarketOpenForTrading(publicClient, marketAddress);
+
+    const shares6 = parseUnits(String(input.shares), 6);
+    const maxCost6 = parseUnits(String(input.maxCost), 6);
+    if (shares6 <= BigInt(0) || maxCost6 <= BigInt(0)) {
+      throw new Error('Enter a valid share amount and max cost.');
+    }
+
+    const collateralToken = (await withRetry(() => publicClient.readContract({
+      address: marketAddress,
+      abi: prestoLmsrMarketAbi,
+      functionName: 'collateral',
+    })).catch(() => config.usdcAddress)) as Address;
+    const collateralSymbol = collateralSymbolForAddress(collateralToken);
+    const unit = collateralUnit(collateralSymbol);
+    const [balance, allowance] = await Promise.all([
+      withRetry(() => publicClient.readContract({
+        address: collateralToken,
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [address],
+      })),
+      withRetry(() => publicClient.readContract({
+        address: collateralToken,
+        abi: erc20Abi,
+        functionName: 'allowance',
+        args: [address, marketAddress],
+      })),
+    ]);
+
+    if (balance < maxCost6) {
+      throw new Error(`Insufficient ${collateralSymbol} balance. You have ${unit}${Number(formatUnits(balance, 6)).toFixed(2)} but this buy may cost up to ${unit}${input.maxCost}.`);
+    }
+
+    const calls: Array<{ to: Address; data: Hex }> = [];
+    if (allowance < maxCost6) {
+      calls.push(memoPasskeyCall({
+        target: collateralToken,
+        data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [marketAddress, maxCost6] }),
+        action: 'buy',
+        marketId: marketAddress,
+        outcome: input.outcome,
+        outcomeIndex: input.outcomeIndex,
+        amount6: maxCost6.toString(),
+        collateral: collateralSymbol,
+        ref: 'approve-lmsr',
+      }));
+    }
+    calls.push(memoPasskeyCall({
+      target: marketAddress,
+      data: encodeFunctionData({ abi: prestoLmsrMarketAbi, functionName: 'buy', args: [input.outcomeIndex, shares6, maxCost6] }),
+      action: 'buy',
+      marketId: marketAddress,
+      outcome: input.outcome,
+      outcomeIndex: input.outcomeIndex,
+      amount6: shares6.toString(),
+      collateral: collateralSymbol,
+    }));
+
+    const readShares = () => publicClient.readContract({
+      address: marketAddress,
+      abi: prestoLmsrMarketAbi,
+      functionName: 'sharesOf',
+      args: [input.outcomeIndex, address],
+    }) as Promise<bigint>;
+    const sharesBefore = await readShares().catch(() => BigInt(0));
+
+    const txHash = await runPasskeyCalls(calls, {
+      confirmOnchain: async () => (await readShares().catch(() => sharesBefore)) > sharesBefore,
+      preview: {
+        label: `Buy ${input.outcome} shares`,
+        action: calls.length > 1
+          ? `Approve ${collateralSymbol} and buy LMSR shares in one passkey signature.`
+          : `Buy LMSR shares with your passkey.`,
+        amountDisplay: `${unit}${Number(input.maxCost).toFixed(2)} max ${collateralSymbol}`,
+        functionSignature: 'buy(uint8,uint256,uint256)',
+        contractAddress: marketAddress,
+        parameters: [
+          `shares: ${input.shares}`,
+          `max cost: ${unit}${Number(input.maxCost).toFixed(2)} ${collateralSymbol}`,
+          `outcome: ${input.outcome} (${input.outcomeIndex})`,
+        ],
+      },
+    });
+    return { ok: true, message: `Bought ${input.outcome} LMSR shares with passkey.`, txHash: txHash ? txHash as Hex : undefined };
+  } catch (error) {
+    return passkeyPendingResult(error, `Buy ${input.outcome}`) ?? { ok: false, message: normalizeError(error, 'Passkey LMSR buy failed.') };
+  }
+}
+
+export async function sellPasskeyLmsrShares(input: LmsrSellInput): Promise<LiveActionResult> {
+  try {
+    if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
+    const marketAddress = input.marketAddress as Address;
+    const shares6 = parseUnits(String(input.shares), 6);
+    const minRefund6 = parseUnits(String(input.minRefund ?? 0), 6);
+    if (shares6 <= BigInt(0)) throw new Error('Enter a share amount to sell.');
+
+    const txHash = await runPasskeyCalls([memoPasskeyCall({
+      target: marketAddress,
+      data: encodeFunctionData({
+        abi: prestoLmsrMarketAbi,
+        functionName: 'sell',
+        args: [input.outcomeIndex, shares6, minRefund6],
+      }),
+      action: 'sell',
+      marketId: marketAddress,
+      outcome: input.outcome,
+      outcomeIndex: input.outcomeIndex,
+      amount6: shares6.toString(),
+    })], {
+      preview: {
+        label: `Sell ${input.outcome} shares`,
+        action: 'Sell LMSR shares with your passkey.',
+        functionSignature: 'sell(uint8,uint256,uint256)',
+        contractAddress: marketAddress,
+        parameters: [
+          `shares: ${input.shares}`,
+          `minimum refund: ${input.minRefund}`,
+          `outcome: ${input.outcome} (${input.outcomeIndex})`,
+        ],
+      },
+    });
+    return { ok: true, message: `Sold ${input.outcome} LMSR shares with passkey.`, txHash: txHash ? txHash as Hex : undefined };
+  } catch (error) {
+    return passkeyPendingResult(error, `Sell ${input.outcome}`) ?? { ok: false, message: normalizeError(error, 'Passkey LMSR sell failed.') };
+  }
+}
+
 async function callPasskeyMarket(
   marketAddress: string,
   functionName: 'cancel' | 'claim' | 'refund',
@@ -310,13 +491,15 @@ async function callPasskeyMarket(
       const balanceBefore = await readBalance().catch(() => BigInt(0));
       confirmOnchain = async () => (await readBalance().catch(() => balanceBefore)) > balanceBefore;
     }
-    const txHash = await runPasskeyCalls([{
-      to: marketAddress as Address,
+    const txHash = await runPasskeyCalls([memoPasskeyCall({
+      target: marketAddress as Address,
       data: encodeFunctionData({
         abi: prestoMarketAbi,
         functionName,
       }),
-    }], {
+      action: functionName,
+      marketId: marketAddress as Address,
+    })], {
       confirmOnchain,
       preview: {
         label: success,
@@ -348,10 +531,13 @@ export async function disputePasskeyMarket(marketAddress: string, reason: string
     if (!isAddress(marketAddress)) {
       throw new Error('Market address is invalid.');
     }
-    const txHash = await runPasskeyCalls([{
-      to: marketAddress as Address,
+    const txHash = await runPasskeyCalls([memoPasskeyCall({
+      target: marketAddress as Address,
       data: encodeFunctionData({ abi: prestoMarketAbi, functionName: 'disputeResolution', args: [reason] }),
-    }], {
+      action: 'dispute',
+      marketId: marketAddress as Address,
+      ref: reason.slice(0, 120),
+    })], {
       preview: {
         label: 'Dispute the proposed result',
         action: 'Sign a dispute with your passkey. This blocks the unchallenged settle, and the resolver must then settle directly with evidence.',
@@ -379,20 +565,26 @@ export async function resolvePasskeyMarket(input: {
     if (!isAddress(input.marketAddress)) {
       throw new Error('Market address is invalid.');
     }
-    const txHash = await runPasskeyCalls([{
-      to: input.marketAddress as Address,
+    const outcomeIndex = input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1);
+    const txHash = await runPasskeyCalls([memoPasskeyCall({
+      target: input.marketAddress as Address,
       data: encodeFunctionData({
         abi: prestoMarketAbi,
         functionName: 'resolve',
-        args: [input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1), input.resolutionURI],
+        args: [outcomeIndex, input.resolutionURI],
       }),
-    }], {
+      action: 'resolve',
+      marketId: input.marketAddress as Address,
+      outcome: input.outcome,
+      outcomeIndex,
+      ref: input.resolutionURI,
+    })], {
       preview: {
         label: `Resolve as ${input.outcome}`,
         action: 'Sign the final outcome with your passkey. The evidence URI is recorded on the contract.',
         functionSignature: 'resolve(uint8,string)',
         contractAddress: input.marketAddress,
-        parameters: [`outcome: ${input.outcome} (${input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1)})`],
+        parameters: [`outcome: ${input.outcome} (${outcomeIndex})`],
       },
     });
     return { ok: true, message: 'Market resolved with passkey.', txHash: txHash ? txHash as `0x${string}` : undefined };

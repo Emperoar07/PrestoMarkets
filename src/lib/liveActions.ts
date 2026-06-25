@@ -11,12 +11,14 @@ import {
   type Hex,
 } from 'viem';
 import { getArcConfig, getArcChainId, collateralSymbolForAddress, collateralUnit } from './arcConfig';
-import { erc20Abi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
+import { erc20Abi, prestoLmsrMarketAbi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { getStoredConnectedWallet } from './walletProvider';
 import { buildMarketMetadataURI, parseMarketMetadata, type AgentMarketMetadata } from './marketMetadata';
 import type { MarketType } from './markets';
 import {
   buyCircleShares,
+  buyCircleLmsrShares,
+  sellCircleLmsrShares,
   cancelCircleMarket,
   claimCircleMarket,
   createCircleMarket,
@@ -26,6 +28,8 @@ import {
 } from './circleActions';
 import {
   buyPasskeyShares,
+  buyPasskeyLmsrShares,
+  sellPasskeyLmsrShares,
   cancelPasskeyMarket,
   claimPasskeyMarket,
   disputePasskeyMarket,
@@ -346,20 +350,38 @@ export async function createLiveMarket(input: CreateLiveMarketInput): Promise<Li
       }
 
       // Batch createMarket + (optional) resolve-fee transfer into ONE gasless passkey user op.
+      const createData = encodeFunctionData({
+        abi: factoryAbi,
+        functionName: 'createMarket',
+        args: useMultiOutcome
+          ? [input.resolver as Address, getCloseTimestamp(input.closeDate), buildMarketMetadataURI({ ...input, outcomeOptions }), getMarketKind(input.type), outcomeOptions.length]
+          : [input.resolver as Address, getCloseTimestamp(input.closeDate), buildMarketMetadataURI({ ...input, outcomeOptions }), getMarketKind(input.type)],
+      });
       const calls: Array<{ to: Address; data: Hex }> = [{
-        to: factoryAddress,
-        data: encodeFunctionData({
-          abi: factoryAbi,
-          functionName: 'createMarket',
-          args: useMultiOutcome
-            ? [input.resolver as Address, getCloseTimestamp(input.closeDate), buildMarketMetadataURI({ ...input, outcomeOptions }), getMarketKind(input.type), outcomeOptions.length]
-            : [input.resolver as Address, getCloseTimestamp(input.closeDate), buildMarketMetadataURI({ ...input, outcomeOptions }), getMarketKind(input.type)],
+        ...encodeMemoWrappedCall({
+          target: factoryAddress,
+          data: createData,
+          memo: {
+            action: 'market_create',
+            target: factoryAddress,
+            ref: input.agent?.trendUrl ?? input.title.slice(0, 80),
+          },
         }),
       }];
       if (feeAmount > BigInt(0)) {
+        const feeData = encodeFunctionData({ abi: erc20Abi, functionName: 'transfer', args: [input.resolver as Address, feeAmount] });
         calls.push({
-          to: config.usdcAddress as Address,
-          data: encodeFunctionData({ abi: erc20Abi, functionName: 'transfer', args: [input.resolver as Address, feeAmount] }),
+          ...encodeMemoWrappedCall({
+            target: config.usdcAddress as Address,
+            data: feeData,
+            memo: {
+              action: 'resolution_fee',
+              target: config.usdcAddress as Address,
+              amount6: feeAmount.toString(),
+              collateral: 'USDC',
+              ref: input.agent?.trendUrl,
+            },
+          }),
         });
       }
 
@@ -599,6 +621,90 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
     return { ok: true, message: `Bought ${input.outcome} shares on Arc.`, txHash: hash };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Buy transaction failed.' };
+  }
+}
+
+// ---- V3 LMSR share-denominated trading ----
+// LMSR markets trade a quantity of shares (each winning share redeems for 1 collateral unit),
+// not a USDC spend. Buy is guarded by maxCost (slippage ceiling), sell by minRefund (floor).
+
+export type LmsrBuyInput = { marketAddress: string; outcome: string; outcomeIndex: number; shares: number; maxCost: number; payWith?: StableSymbol };
+export type LmsrSellInput = { marketAddress: string; outcome: string; outcomeIndex: number; shares: number; minRefund: number; payWith?: StableSymbol };
+
+export async function buyLmsrShares(input: LmsrBuyInput): Promise<LiveActionResult> {
+  if (isAddress(input.marketAddress)) {
+    try {
+      await assertMarketOpenForTrading(getReadClient(), input.marketAddress as Address);
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : 'This market cannot be traded right now.' };
+    }
+  }
+  if (isCircleWallet()) return buyCircleLmsrShares(input);
+  if (isPasskeyWallet()) return buyPasskeyLmsrShares(input);
+  try {
+    const { account, config, publicClient, walletClient } = await getClients();
+    if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
+    const marketAddress = input.marketAddress as Address;
+    const shares6 = parseUnits(String(input.shares), 6);
+    const maxCost6 = parseUnits(String(input.maxCost), 6);
+    if (shares6 <= BigInt(0)) throw new Error('Enter a share amount.');
+
+    const collateralToken = (await withRetry(() => publicClient.readContract({
+      address: marketAddress, abi: prestoLmsrMarketAbi, functionName: 'collateral',
+    })).catch(() => config.usdcAddress)) as Address;
+    const collateralSymbol = collateralSymbolForAddress(collateralToken);
+    const unit = collateralUnit(collateralSymbol);
+
+    const [balance, allowance] = await Promise.all([
+      withRetry(() => publicClient.readContract({ address: collateralToken, abi: erc20Abi, functionName: 'balanceOf', args: [account] })),
+      withRetry(() => publicClient.readContract({ address: collateralToken, abi: erc20Abi, functionName: 'allowance', args: [account, marketAddress] })),
+    ]);
+    if (balance < maxCost6) {
+      throw new Error(`Insufficient ${collateralSymbol} balance. You have ${unit}${Number(formatUnits(balance, 6)).toFixed(2)} but this buy may cost up to ${unit}${input.maxCost}.`);
+    }
+    if (allowance < maxCost6) {
+      const approveHash = await sendMemoWrappedTransaction({
+        walletClient, account, target: collateralToken,
+        data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [marketAddress, approvalAmount(maxCost6)] }),
+        action: 'buy', marketId: marketAddress, outcome: input.outcome, outcomeIndex: input.outcomeIndex,
+        amount6: maxCost6.toString(), collateral: collateralSymbol, ref: 'approve',
+      });
+      await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash }));
+    }
+    const hash = await sendMemoWrappedTransaction({
+      walletClient, account, target: marketAddress,
+      data: encodeFunctionData({ abi: prestoLmsrMarketAbi, functionName: 'buy', args: [input.outcomeIndex, shares6, maxCost6] }),
+      action: 'buy', marketId: marketAddress, outcome: input.outcome, outcomeIndex: input.outcomeIndex,
+      amount6: shares6.toString(), collateral: collateralSymbol,
+    });
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    return { ok: true, message: `Bought ${input.shares} ${input.outcome} shares on Arc.`, txHash: hash };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : 'Buy transaction failed.' };
+  }
+}
+
+export async function sellLmsrShares(input: LmsrSellInput): Promise<LiveActionResult> {
+  if (isCircleWallet()) return sellCircleLmsrShares(input);
+  if (isPasskeyWallet()) return sellPasskeyLmsrShares(input);
+  try {
+    const { account, publicClient, walletClient } = await getClients();
+    if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
+    const marketAddress = input.marketAddress as Address;
+    const shares6 = parseUnits(String(input.shares), 6);
+    const minRefund6 = parseUnits(String(input.minRefund ?? 0), 6);
+    if (shares6 <= BigInt(0)) throw new Error('Enter a share amount to sell.');
+    // Selling returns collateral to the holder; no approval needed (the market burns the shares).
+    const hash = await sendMemoWrappedTransaction({
+      walletClient, account, target: marketAddress,
+      data: encodeFunctionData({ abi: prestoLmsrMarketAbi, functionName: 'sell', args: [input.outcomeIndex, shares6, minRefund6] }),
+      action: 'sell', marketId: marketAddress, outcome: input.outcome, outcomeIndex: input.outcomeIndex,
+      amount6: shares6.toString(),
+    });
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    return { ok: true, message: `Sold ${input.shares} ${input.outcome} shares on Arc.`, txHash: hash };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : 'Sell transaction failed.' };
   }
 }
 

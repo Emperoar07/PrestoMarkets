@@ -1,6 +1,6 @@
 import { decodeFunctionData } from 'viem';
 import { describe, expect, it } from 'vitest';
-import { ARC_MEMO_ADDRESS, arcMemoAbi, buildPrestoMemo, encodeMemoWrappedCall } from '../arcMemos';
+import { ARC_MEMO_ADDRESS, ARC_MEMO_SIGNATURE, arcMemoAbi, buildMemoContractExecution, buildPrestoMemo, decodeMemoWrappedCall, encodeMemoWrappedCall } from '../arcMemos';
 
 const TARGET = '0x1111111111111111111111111111111111111111';
 
@@ -47,5 +47,31 @@ describe('arc memos', () => {
     expect(decoded.args[1]).toBe('0x12345678');
     expect(decoded.args[2]).toBe(wrapped.memoId);
     expect(decoded.args[3]).toBe(wrapped.memoData);
+    expect(decodeMemoWrappedCall(wrapped.data)).toMatchObject({
+      target: TARGET,
+      data: '0x12345678',
+      memoId: wrapped.memoId,
+      memoData: wrapped.memoData,
+    });
+  });
+
+  it('builds Circle contractExecution parameters for the Memo contract', () => {
+    const wrapped = buildMemoContractExecution({
+      target: TARGET,
+      data: '0xabcdef12',
+      memo: {
+        action: 'resolve',
+        target: TARGET,
+        marketId: TARGET,
+        at: '2026-06-24T00:00:00.000Z',
+      },
+    });
+
+    expect(wrapped.contractAddress).toBe(ARC_MEMO_ADDRESS);
+    expect(wrapped.abiFunctionSignature).toBe(ARC_MEMO_SIGNATURE);
+    expect(wrapped.abiParameters[0]).toBe(TARGET);
+    expect(wrapped.abiParameters[1]).toBe('0xabcdef12');
+    expect(wrapped.abiParameters[2]).toBe(wrapped.memoId);
+    expect(wrapped.abiParameters[3]).toBe(wrapped.memoData);
   });
 });

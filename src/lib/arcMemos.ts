@@ -1,6 +1,7 @@
-import { encodeFunctionData, keccak256, stringToHex, type Address, type Hex } from 'viem';
+import { decodeFunctionData, encodeFunctionData, keccak256, stringToHex, type Address, type Hex } from 'viem';
 
 export const ARC_MEMO_ADDRESS = '0x5294E9927c3306DcBaDb03fe70b92e01cCede505' as Address;
+export const ARC_MEMO_SIGNATURE = 'memo(address,bytes,bytes32,bytes)' as const;
 
 export const arcMemoAbi = [
   {
@@ -33,7 +34,9 @@ export type PrestoMemoAction =
   | 'market_create'
   | 'resolution_fee'
   | 'buy'
+  | 'sell'
   | 'resolve'
+  | 'propose'
   | 'dispute'
   | 'cancel'
   | 'claim'
@@ -95,4 +98,38 @@ export function encodeMemoWrappedCall(input: {
     memoData: memo.memoData,
     payload: memo.payload,
   };
+}
+
+export function buildMemoContractExecution(input: {
+  target: Address;
+  data: Hex;
+  memo: BuildMemoInput;
+}): {
+  contractAddress: Address;
+  abiFunctionSignature: typeof ARC_MEMO_SIGNATURE;
+  abiParameters: [Address, Hex, Hex, Hex];
+  memoId: Hex;
+  memoData: Hex;
+  payload: PrestoMemoPayload;
+} {
+  const memo = buildPrestoMemo({ ...input.memo, target: input.target });
+  return {
+    contractAddress: ARC_MEMO_ADDRESS,
+    abiFunctionSignature: ARC_MEMO_SIGNATURE,
+    abiParameters: [input.target, input.data, memo.memoId, memo.memoData],
+    memoId: memo.memoId,
+    memoData: memo.memoData,
+    payload: memo.payload,
+  };
+}
+
+export function decodeMemoWrappedCall(data: Hex): { target: Address; data: Hex; memoId: Hex; memoData: Hex } | null {
+  try {
+    const decoded = decodeFunctionData({ abi: arcMemoAbi, data });
+    if (decoded.functionName !== 'memo') return null;
+    const [target, callData, memoId, memoData] = decoded.args;
+    return { target, data: callData, memoId, memoData };
+  } catch {
+    return null;
+  }
 }
