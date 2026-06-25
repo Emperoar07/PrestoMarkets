@@ -16,7 +16,7 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { getArcConfig } from './arcConfig';
 import { createArcChain } from './arcClient';
-import { erc20Abi, prestoMarketFactoryAbi, prestoMarketAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
+import { erc20Abi, prestoMarketFactoryAbi, prestoMarketAbi, prestoMultiOutcomeMarketFactoryAbi, prestoLmsrMarketFactoryAbi, prestoLmsrMarketAbi } from './contracts';
 import { buildMarketMetadataURI } from './marketMetadata';
 import { logger } from './logger';
 import type { CreateLiveMarketInput } from './liveActions';
@@ -101,8 +101,20 @@ function getClients() {
     multiOutcomeFactoryAddress: isAddress(config.multiOutcomeFactoryAddress)
       ? config.multiOutcomeFactoryAddress as Address
       : undefined,
+    // V3 LMSR factory (USDC). When set, the agent creates LMSR markets seeded with a subsidy
+    // instead of the V1/V2 parimutuel markets.
+    lmsrFactoryAddress: isAddress(config.lmsrFactoryAddress)
+      ? config.lmsrFactoryAddress as Address
+      : undefined,
   };
 }
+
+// USDC subsidy the agent seeds into each LMSR market. This becomes the liquidity parameter
+// b = S / ln(n), so the maximum maker loss equals the seed. Override with PRESTO_AGENT_LMSR_SEED_USDC.
+const AGENT_LMSR_SEED_USDC = (() => {
+  const v = Number(process.env.PRESTO_AGENT_LMSR_SEED_USDC);
+  return Number.isFinite(v) && v > 0 ? v : 5;
+})();
 
 // Create a market onchain from the agent wallet
 export async function agentCreateMarket(input: CreateLiveMarketInput & { agentResolverAddress?: string }) {
@@ -114,12 +126,53 @@ export async function agentCreateMarket(input: CreateLiveMarketInput & { agentRe
       return { ok: false, error: validation.error };
     }
 
-    const { account, publicClient, walletClient, factoryAddress, multiOutcomeFactoryAddress } = getClients();
+    const { account, publicClient, walletClient, factoryAddress, multiOutcomeFactoryAddress, lmsrFactoryAddress } = getClients();
     if (input.agentResolverAddress && input.agentResolverAddress.toLowerCase() !== account.address.toLowerCase()) {
       throw new Error('Configured agent resolver address must match the agent wallet that signs resolution transactions.');
     }
     const resolver = account.address;
     const outcomeOptions = getOutcomeOptions(input);
+    const metadataURI = buildMarketMetadataURI({ ...input, outcomeOptions, agent: { createdByType: 'agent', ...input.agent } });
+
+    // V3 path: when the LMSR factory is configured, create a seeded LMSR market (live pricing,
+    // sellable positions) instead of the parimutuel V1/V2 market. The single factory handles both
+    // binary and multi-outcome via outcomeCount, so there is no separate multi factory here.
+    if (lmsrFactoryAddress) {
+      const seed6 = parseUnits(String(AGENT_LMSR_SEED_USDC), 6);
+      await ensureAgentFunded().catch(() => undefined); // top up so the subsidy is affordable
+      const createHash = await walletClient.writeContract({
+        account,
+        address: lmsrFactoryAddress,
+        abi: prestoLmsrMarketFactoryAbi,
+        functionName: 'createMarket',
+        args: [resolver, getCloseTimestamp(input.closeDate), metadataURI, getMarketKind(input.type), outcomeOptions.length, seed6],
+      });
+      const receipt = await withRetry(() => publicClient.waitForTransactionReceipt({ hash: createHash }));
+      const created = parseEventLogs({ abi: prestoLmsrMarketFactoryAbi, eventName: 'MarketCreated', logs: receipt.logs })[0] as { args?: { market?: unknown } } | undefined;
+      const marketAddress = typeof created?.args?.market === 'string' && isAddress(created.args.market) ? created.args.market : undefined;
+
+      // Fund the subsidy: approve, then seed(). Buys revert NotSeeded until this lands, so a failure
+      // is logged loudly (the market exists but is unbuyable until seeded).
+      if (marketAddress) {
+        try {
+          const config = getArcConfig();
+          const usdc = config.usdcAddress as Address;
+          const allowance = await publicClient.readContract({ address: usdc, abi: erc20Abi, functionName: 'allowance', args: [account.address, marketAddress as Address] }) as bigint;
+          if (allowance < seed6) {
+            const approveHash = await walletClient.writeContract({ account, address: usdc, abi: erc20Abi, functionName: 'approve', args: [marketAddress as Address, seed6] });
+            await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash }));
+          }
+          const seedHash = await walletClient.writeContract({ account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'seed' });
+          await withRetry(() => publicClient.waitForTransactionReceipt({ hash: seedHash }));
+        } catch (err) {
+          logger.error('agent-wallet', 'LMSR market created but seed funding failed — market is unbuyable until seeded', {
+            marketAddress, error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+      return { ok: true, txHash: createHash, marketAddress, resolverAddress: resolver };
+    }
+
     const useMultiOutcome = outcomeOptions.length > 2;
     const selectedFactory = useMultiOutcome ? multiOutcomeFactoryAddress : factoryAddress;
 
@@ -135,13 +188,13 @@ export async function agentCreateMarket(input: CreateLiveMarketInput & { agentRe
       args: useMultiOutcome ? [
         resolver,
         getCloseTimestamp(input.closeDate),
-        buildMarketMetadataURI({ ...input, outcomeOptions, agent: { createdByType: 'agent', ...input.agent } }),
+        metadataURI,
         getMarketKind(input.type),
         outcomeOptions.length,
       ] : [
         resolver,
         getCloseTimestamp(input.closeDate),
-        buildMarketMetadataURI({ ...input, outcomeOptions, agent: { createdByType: 'agent', ...input.agent } }),
+        metadataURI,
         getMarketKind(input.type),
       ],
     });

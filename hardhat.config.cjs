@@ -1,4 +1,7 @@
 require('@nomicfoundation/hardhat-toolbox');
+// Load .env.local first (Next.js precedence: .env.local overrides .env). dotenv does not override
+// already-set vars, so secrets like PRIVATE_KEY in .env.local are picked up for hardhat deploys.
+require('dotenv').config({ path: '.env.local', quiet: true });
 require('dotenv').config({ quiet: true });
 
 /** @type import('hardhat/config').HardhatUserConfig */
