@@ -36,7 +36,6 @@ import { getOutcomeColor } from '@/lib/outcomeColors';
 import { buildFixedShareQuote } from '@/lib/marketUtils';
 import { buildResolutionTrustState } from '@/lib/resolutionTrust';
 import { disputeLiveResolution, buyLmsrShares, sellLmsrShares } from '@/lib/liveActions';
-import { humanizeTxError } from '@/lib/txErrors';
 import { createArcReadClient } from '@/lib/arcClient';
 import { prestoLmsrMarketAbi } from '@/lib/contracts';
 import { parseUnits, formatUnits, type Address } from 'viem';
@@ -186,9 +185,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const market = getMarket(marketId);
   const [selectedOutcome, setSelectedOutcome] = useState('YES');
   const [tradeMode, setTradeMode] = useState<'buy' | 'sell' | 'liquidity'>('buy');
-  const [orderMode, setOrderMode] = useState<'market' | 'limit'>('market');
   const [amount, setAmount] = useState('1');
-  const [limitPrice, setLimitPrice] = useState('50');
   const [resolutionURI, setResolutionURI] = useState('');
   const [agentOutcome, setAgentOutcome] = useState<string>('YES');
   const [agentConfidence, setAgentConfidence] = useState('Medium');
@@ -498,11 +495,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   // V3 LMSR markets trade share quantities with a Buy/Sell toggle; the amount field is shares.
   const isAmm = Boolean(market.amm);
   const isSell = isAmm && tradeMode === 'sell';
-  const isLimitOrder = !isAmm && tradeMode === 'buy' && orderMode === 'limit';
   // Fixed-share parimutuel: 1 USDC = 1 share. Payout if this outcome wins is an estimate derived from current implied odds, not a priced-share quote.
   const fixedShareQuote = buildFixedShareQuote({
     amountUsdc: amountValue,
-    oddsPercent: isLimitOrder ? Number(limitPrice) : Number(activeOutcome.odds),
+    oddsPercent: Number(activeOutcome.odds),
   });
   const liquiditySideAmount = amountValue > 0 ? amountValue / market.outcomes.length : 0;
 
@@ -555,13 +551,15 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     action: () => Promise<{ ok: boolean; message: string; txHash?: string; pending?: boolean }>,
     label: string,
   ) {
+    // Progress, success, and error are all carried by the transaction status toast (useTransactions),
+    // so we don't duplicate them in the inline panel. The inline box is reserved for non-tracked
+    // feedback (e.g. the resolver evidence flow).
     setIsSubmitting(true);
-    setMessage('Waiting for wallet confirmation...');
+    setMessage('');
     try {
-      const result = await track({ label }, action);
-      setMessage(result.ok ? result.message : humanizeTxError(result.message, result.message));
-    } catch (error) {
-      setMessage(humanizeTxError(error, 'Transaction failed.'));
+      await track({ label }, action);
+    } catch {
+      // Surfaced in the toast; nothing to show inline.
     } finally {
       setIsSubmitting(false);
     }
@@ -990,28 +988,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     </button>
                   ))}
                 </div>
-              ) : (
-              <div className="mb-4 grid grid-cols-2 rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-1">
-                  {([
-                    ['market', 'Market'],
-                    ['limit', 'Limit'],
-                  ] as const).map(([mode, label]) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setOrderMode(mode)}
-                      disabled={isTradingLocked}
-                      className={`rounded-[9px] py-2 text-sm font-black transition-all border ${
-                        orderMode === mode
-                          ? 'border-white/80 text-white bg-transparent shadow-sm'
-                          : 'border-transparent text-muted hover:text-white bg-transparent'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
+              ) : null}
 
               {isBinaryMarket ? (
               <div className={`grid grid-cols-2 gap-2 ${tradeMode === 'liquidity' ? 'opacity-70' : ''}`}>
@@ -1127,27 +1104,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
               </div>
 
-              {isLimitOrder ? (
-                <div className="mt-4 rounded-[14px] border border-cyan/15 bg-cyan/[0.045] p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-muted">Limit price</label>
-                    <div className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-[#0d1520] px-3 py-1.5">
-                      <input
-                        value={limitPrice}
-                        onChange={(event) => setLimitPrice(event.target.value)}
-                        disabled={isTradingLocked}
-                        inputMode="decimal"
-                        className="w-14 bg-transparent text-right text-sm font-black text-white outline-none disabled:opacity-50"
-                      />
-                      <span className="text-xs font-black text-cyan">{'\u00a2'}</span>
-                    </div>
-                  </div>
-                  <p className="mt-3 text-xs leading-5 text-muted">
-                    Limit orders are prepared for the order-book contract phase. V1 market buys still execute immediately through the live share contract.
-                  </p>
-                </div>
-              ) : null}
-
               <div className="mt-5 space-y-2.5 border-t border-white/[0.06] pt-5">
                 {isAmm ? (
                   <>
@@ -1173,11 +1129,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 ) : (
                   <>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted">{tradeMode === 'liquidity' ? 'Liquidity method' : isLimitOrder ? 'Limit price' : 'Implied odds'}</span>
+                  <span className="text-muted">{tradeMode === 'liquidity' ? 'Liquidity method' : 'Implied odds'}</span>
                   <span className="font-black text-white">
                     {tradeMode === 'liquidity'
                       ? isBinaryMarket ? 'Balanced YES + NO' : 'Balanced across all outcomes'
-                      : isLimitOrder ? `${limitPrice || '0'}\u00a2 limit` : `${activeOutcome.odds}%`}
+                      : `${activeOutcome.odds}%`}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3 text-sm">
@@ -1260,7 +1216,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   ), isAmm
                     ? `${isSell ? 'Sell' : 'Buy'} ${amountValue} ${selectedOutcome} shares`
                     : tradeMode === 'liquidity' ? `Add liquidity · ${unit}${amountValue}` : `Buy ${selectedOutcome} · ${unit}${amountValue}`)}
-                  disabled={!canTrade || isSubmitting || amountValue <= 0 || isLimitOrder || (isSell && amountValue > activeOutcomeShares)}
+                  disabled={!canTrade || isSubmitting || amountValue <= 0 || (isSell && amountValue > activeOutcomeShares)}
                   style={!isSell && tradeMode !== 'liquidity' ? { backgroundColor: activeOutcomeColor } : undefined}
                   className={`mt-5 w-full min-w-0 rounded-[12px] px-3 py-4 font-black tracking-wide text-ink transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 ${
                     tradeMode === 'liquidity' ? 'bg-cyan' : isSell ? 'bg-red-400' : ''
@@ -1271,7 +1227,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     : amountValue <= 0 ? (isAmm ? 'Enter shares' : 'Enter an amount')
                     : isSell && amountValue > activeOutcomeShares ? 'Not enough shares'
                     : isAmm ? `${isSell ? 'Sell' : 'Buy'} ${amountValue} ${selectedOutcome}${lmsrQuote ? ` · ${unit}${lmsrQuote.value.toFixed(2)}` : ''}`
-                    : isLimitOrder ? 'Limit order book phase'
                     : tradeMode === 'liquidity' ? `Add liquidity · ${unit}${amountValue}`
                     : `Buy ${selectedOutcome} · ${unit}${amountValue}`}
                 </button>

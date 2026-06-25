@@ -8,7 +8,6 @@ import { buildFixedShareQuote } from '@/lib/marketUtils';
 import type { StableSymbol } from '@/lib/walletBalance';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
 import { useTransactions } from '@/lib/transactions';
-import { humanizeTxError } from '@/lib/txErrors';
 import { AddUsdcDrawer } from './AddUsdcDrawer';
 
 interface QuickBuyModalProps {
@@ -25,7 +24,6 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
   const [selectedOutcome, setSelectedOutcome] = useState(initialOutcome);
   const [amount, setAmount] = useState('1');
   const [payWith, setPayWith] = useState<StableSymbol>('USDC');
-  const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fundingOpen, setFundingOpen] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -87,11 +85,11 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
   const kickoffMs = market.kickoffTime ? new Date(market.kickoffTime).getTime() : null;
   const isTradingLocked = kickoffMs !== null && !Number.isNaN(kickoffMs) && Date.now() >= kickoffMs - 60_000;
   const canTrade = (market.status === 'Open' || market.status === 'Closing soon') && !isTradingLocked;
-  const needsFundingHelp = message.toLowerCase().includes('insufficient') || message.toLowerCase().includes('add usdc');
 
   async function handleBuy() {
+    // Progress / success / failure are all carried by the transaction status toast, so this modal
+    // no longer renders its own inline status box.
     setIsSubmitting(true);
-    setMessage('Waiting for wallet confirmation...');
     try {
       const result = await track(
         { label: `Buy ${selectedOutcome} · ${unit}${amountValue}` },
@@ -103,15 +101,14 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
           payWith
         }),
       );
-      setMessage(result.ok ? result.message : humanizeTxError(result.message, result.message));
       if (result.ok) {
-        // Auto close after 2 seconds on success
+        // Auto close after a short beat on success.
         setTimeout(() => {
           onClose();
-        }, 2000);
+        }, 1500);
       }
-    } catch (error) {
-      setMessage(humanizeTxError(error, 'Transaction failed.'));
+    } catch {
+      // Surfaced in the transaction toast.
     } finally {
       setIsSubmitting(false);
     }
@@ -268,27 +265,6 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
             </span>
           </div>
         </div>
-
-        {/* Notification Status message */}
-        {message ? (
-          <div className={`mt-4 rounded-[10px] border px-3 py-2 text-xs leading-5 ${
-            message.toLowerCase().includes('fail') || message.toLowerCase().includes('error') || message.toLowerCase().includes('insufficient') || message.toLowerCase().includes('expired')
-              ? 'border-red-400/25 bg-red-400/10 text-red-200'
-              : 'border-mint/25 bg-mint/10 text-mint'
-          }`}
-          >
-            <p className="max-h-28 overflow-y-auto break-words">{message}</p>
-            {needsFundingHelp ? (
-              <button
-                type="button"
-                onClick={() => setFundingOpen(true)}
-                className="mt-2 rounded-[8px] border border-cyan/25 bg-cyan/10 px-2.5 py-1 text-[11px] font-black text-cyan transition hover:bg-cyan/15"
-              >
-                Add USDC
-              </button>
-            ) : null}
-          </div>
-        ) : null}
 
         {/* Submit Buy Button */}
         <button
