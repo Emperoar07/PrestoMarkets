@@ -79,6 +79,7 @@ export function SiteHeader() {
   const [fundingOpen, setFundingOpen] = useState(false); // mobile bottom-sheet
   const [fundingDropdownOpen, setFundingDropdownOpen] = useState(false); // desktop anchored dropdown
   const [showNotifications, setShowNotifications] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const { unreadCount, notifications, markNotificationsRead } = useSocialSession();
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -93,6 +94,36 @@ export function SiteHeader() {
   // Nav chips are dynamic: curated base categories first, then any categories the live
   // markets actually use (e.g. agent-coined ones like Space or Gaming) appended.
   const navCategories = useMemo(() => mergeTopicNavCategories(extractMarketCategories(markets)), [markets]);
+  const searchText = searchValue.trim().toLowerCase();
+  const marketSuggestions = useMemo(() => {
+    if (!searchText) return [];
+    return markets
+      .filter((market) => {
+        if (market.status === 'Canceled') return false;
+        const blob = [
+          market.title,
+          market.description,
+          market.category,
+          ...(market.categories ?? []),
+          ...market.outcomes.map((outcome) => outcome.label),
+        ].join(' ').toLowerCase();
+        return blob.includes(searchText);
+      })
+      .slice(0, 6);
+  }, [markets, searchText]);
+  const keywordSuggestions = useMemo(() => {
+    if (!searchText) return [];
+    const keywords = new Set<string>();
+    for (const market of markets) {
+      for (const label of [market.category, ...(market.categories ?? [])]) {
+        if (label && label.toLowerCase().includes(searchText)) keywords.add(label);
+      }
+      for (const outcome of market.outcomes) {
+        if (outcome.label.toLowerCase().includes(searchText)) keywords.add(outcome.label);
+      }
+    }
+    return Array.from(keywords).slice(0, 5);
+  }, [markets, searchText]);
   const categoryScrollRef = useRef<HTMLDivElement>(null);
   const loadBalances = useCallback(async () => {
     if (!connectedWallet?.address) {
@@ -166,6 +197,16 @@ export function SiteHeader() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [menuOpen]);
 
+  useEffect(() => {
+    function handleSearchClickOutside(event: MouseEvent) {
+      const target = event.target;
+      if (target instanceof Element && target.closest('[data-presto-search]')) return;
+      setSearchOpen(false);
+    }
+    document.addEventListener('mousedown', handleSearchClickOutside);
+    return () => document.removeEventListener('mousedown', handleSearchClickOutside);
+  }, []);
+
   // Lock body scroll when mobile menu is open
   useEffect(() => {
     if (mobileMenuOpen) {
@@ -178,12 +219,82 @@ export function SiteHeader() {
 
   function updateExploreSearch(value: string) {
     setSearchValue(value);
+    setSearchOpen(value.trim().length > 0);
     // Keep search in memory only so refresh returns to a clean explorer.
-    if (pathname !== '/markets') {
-      window.dispatchEvent(new Event('presto:navigate-start'));
-      router.push('/markets');
-    }
     window.dispatchEvent(new CustomEvent('presto:market-search', { detail: value }));
+  }
+
+  function selectSearchKeyword(keyword: string) {
+    setSearchValue(keyword);
+    setSearchOpen(true);
+    window.dispatchEvent(new CustomEvent('presto:market-search', { detail: keyword }));
+  }
+
+  function goToSearchMarket(marketId: string) {
+    setSearchOpen(false);
+    setSearchValue('');
+    router.push(`/markets/${marketId}`);
+  }
+
+  function renderSearchSuggestions() {
+    if (!searchOpen || !searchText) return null;
+    const hasResults = marketSuggestions.length > 0 || keywordSuggestions.length > 0;
+    return (
+      <div className="absolute left-0 right-0 top-full z-[70] mt-2 overflow-hidden rounded-xl border border-white/[0.08] bg-[#0b1322] shadow-2xl shadow-black/40">
+        {hasResults ? (
+          <div className="max-h-[360px] overflow-y-auto p-2">
+            {marketSuggestions.length > 0 ? (
+              <div className="space-y-1">
+                {marketSuggestions.map((market) => (
+                  <button
+                    key={market.id}
+                    type="button"
+                    onClick={() => goToSearchMarket(market.id)}
+                    className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-white/[0.05]"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/[0.06] bg-[#07111c] text-[10px] font-black text-cyan">
+                      {market.imageURI ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={market.imageURI} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        market.category.slice(0, 2).toUpperCase()
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="line-clamp-2 text-[13px] font-black leading-snug text-white">{market.title}</span>
+                      <span className="mt-1 block truncate text-[11px] font-bold text-[#64748b]">
+                        {market.category} · {market.status} · {market.volume} Vol.
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {keywordSuggestions.length > 0 ? (
+              <div className={marketSuggestions.length > 0 ? 'mt-2 border-t border-white/[0.06] pt-2' : ''}>
+                <p className="px-2 pb-1 text-[9px] font-black uppercase tracking-widest text-[#64748b]">Related keywords</p>
+                <div className="flex flex-wrap gap-1.5 px-2 pb-1">
+                  {keywordSuggestions.map((keyword) => (
+                    <button
+                      key={keyword}
+                      type="button"
+                      onClick={() => selectSearchKeyword(keyword)}
+                      className="rounded-full border border-cyan/20 bg-cyan/10 px-2.5 py-1 text-[11px] font-black text-cyan transition-colors hover:border-cyan/35 hover:bg-cyan/15"
+                    >
+                      {keyword}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="px-3 py-3 text-[12px] font-semibold text-[#64748b]">
+            No live market suggestions for &quot;{searchValue.trim()}&quot;.
+          </div>
+        )}
+      </div>
+    );
   }
 
   function selectCategory(cat: string) {
@@ -254,16 +365,18 @@ export function SiteHeader() {
       {/* ── Mobile search bar — always visible (< md) ── */}
       {showSearchBar ? (
         <div className="px-3 pb-2 md:hidden">
-          <div className="relative">
+          <div className="relative" data-presto-search>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#475569]">
               <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
             </svg>
             <input
               value={searchValue}
               onChange={(event) => updateExploreSearch(event.target.value)}
+              onFocus={() => setSearchOpen(searchValue.trim().length > 0)}
               placeholder="Search markets…"
               className="w-full rounded-xl border border-white/[0.06] bg-[#0d1520] py-2 pl-9 pr-3.5 text-[13px] font-medium text-white outline-none transition-colors placeholder:text-[#334155] focus:border-cyan/40"
             />
+            {renderSearchSuggestions()}
           </div>
         </div>
       ) : null}
@@ -301,16 +414,18 @@ export function SiteHeader() {
         </div>
         <div className="flex flex-1">
           {showSearchBar ? (
-            <div className="relative w-full max-w-[520px]">
+            <div className="relative w-full max-w-[520px]" data-presto-search>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#475569]">
                 <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
               </svg>
               <input
                 value={searchValue}
                 onChange={(event) => updateExploreSearch(event.target.value)}
+                onFocus={() => setSearchOpen(searchValue.trim().length > 0)}
                 placeholder="Search markets…"
                 className="w-full rounded-lg border border-white/[0.06] bg-[#0d1520] py-2 pl-9 pr-3 text-[13px] font-medium text-white outline-none transition-colors placeholder:text-[#334155] focus:border-cyan/40"
               />
+              {renderSearchSuggestions()}
             </div>
           ) : null}
         </div>
