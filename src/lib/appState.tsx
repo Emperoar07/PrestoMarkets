@@ -38,8 +38,7 @@ type OutcomeLabel = string;
 // Refresh timing configuration
 // Arc finalizes transactions in sub-second blocks, but public RPCs need time to surface state changes.
 // These delays balance responsiveness with RPC propagation latency.
-const REFRESH_DELAY_AFTER_TX_MS = 1_200; // Initial delay after transaction (Arc blocks finalize fast, RPC catches up in ~1.2s)
-const POST_TX_REFRESH_DELAYS_MS = [4_000, 10_000, 20_000]; // Progressive refreshes to catch delayed RPC propagation
+const POST_TX_REFRESH_DELAYS_MS = [2_500, 8_000]; // A couple of background follow-ups to catch RPC propagation
 
 export type AppMarket = Market & {
   source: 'onchain';
@@ -229,6 +228,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
 
   const schedulePostTransactionRefresh = useCallback(() => {
+    // Non-blocking: refresh once right away, then a couple of light follow-ups to catch RPC
+    // propagation. Never blocks the trade return, and far fewer full reads than before.
+    void refreshAll({ force: true });
     for (const delay of POST_TX_REFRESH_DELAYS_MS) {
       window.setTimeout(() => {
         void refreshAll({ force: true });
@@ -239,11 +241,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const createMarket = useCallback(async (input: CreateMarketInput) => {
     const result = await createLiveMarket(input satisfies CreateLiveMarketInput);
     if (result.ok) {
-      await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }
     return result;
-  }, [refreshAll, schedulePostTransactionRefresh]);
+  }, [schedulePostTransactionRefresh]);
 
   const placeTrade = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; amount: number; payWith?: StableSymbol }) => {
     const market = markets.find((item) => item.id === input.marketId);
@@ -270,16 +271,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ outcome: input.outcome, amount: input.amount }),
       }).catch((err) => console.error('Failed to dispatch trade notification:', err));
 
-      // Arc finalizes in sub-second blocks but public RPC takes ~1-2s to surface the new
-      // sharesOf state. Refresh once immediately, then once more after a short delay so the
-      // YOUR POSITION block updates without a manual reload.
-      void refreshAll({ force: true });
-      await new Promise((r) => setTimeout(r, REFRESH_DELAY_AFTER_TX_MS));
-      await refreshAll({ force: true });
+      // The tx is already confirmed on-chain here (buyLiveShares waited for the receipt), so return
+      // immediately — the toast flips to "Confirmed" without waiting on a market re-read. Markets and
+      // the YOUR POSITION block refresh in the BACKGROUND so the UI never blocks on the heavy read.
       schedulePostTransactionRefresh();
     }
     return result;
-  }, [markets, connectedWallet?.address, refreshAll, schedulePostTransactionRefresh]);
+  }, [markets, connectedWallet?.address, schedulePostTransactionRefresh]);
 
   const addLiquidity = useCallback(async (input: { marketId: string; amount: number; payWith?: StableSymbol }) => {
     const market = markets.find((item) => item.id.toLowerCase() === input.marketId.toLowerCase());
@@ -297,13 +295,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       writePayWith(connectedWallet?.address, input.marketId, input.payWith);
     }
     if (result.ok && !result.approvalOnly) {
-      void refreshAll({ force: true });
-      await new Promise((r) => setTimeout(r, REFRESH_DELAY_AFTER_TX_MS));
-      await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }
     return result;
-  }, [markets, connectedWallet?.address, refreshAll, schedulePostTransactionRefresh]);
+  }, [markets, connectedWallet?.address, schedulePostTransactionRefresh]);
 
   const resolveMarket = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; resolutionURI: string }) => {
     const result = await resolveLiveMarket({
@@ -320,7 +315,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ action: 'resolved', outcome: input.outcome }),
       }).catch((err) => console.error('Failed to dispatch resolve notification:', err));
 
-      await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }
     return result;
@@ -336,7 +330,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ action: 'canceled' }),
       }).catch((err) => console.error('Failed to dispatch cancel notification:', err));
 
-      await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }
     return result;
@@ -346,7 +339,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const payWith = readPayWith(connectedWallet?.address, marketId) ?? undefined;
     const result = await claimLiveMarket(marketId, payWith);
     if (result.ok) {
-      await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }
     return result;
@@ -356,7 +348,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const payWith = readPayWith(connectedWallet?.address, marketId) ?? undefined;
     const result = await refundLiveMarket(marketId, payWith);
     if (result.ok) {
-      await refreshAll({ force: true });
       schedulePostTransactionRefresh();
     }
     return result;
