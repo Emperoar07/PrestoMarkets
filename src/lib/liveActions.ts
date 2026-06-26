@@ -310,14 +310,6 @@ function submittedPendingResult(label: string, txHash: Hex): LiveActionResult {
   };
 }
 
-function approvalSavedResult(label: string, txHash: Hex): LiveActionResult {
-  return {
-    ok: true,
-    approvalOnly: true,
-    message: `${label} approval saved. Click Buy again to complete the trade with one transaction.`,
-    txHash,
-  };
-}
 
 // An EOA can't natively bundle approve+buy, so it would prompt twice. EIP-5792 (wallet_sendCalls)
 // lets modern wallets (MetaMask, Coinbase, …) execute the batch in ONE prompt. We try it first and
@@ -730,7 +722,8 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
       if (!approved) {
         return submittedPendingResult('Approval', approveHash);
       }
-      return approvalSavedResult(input.outcome, approveHash);
+      // Fall straight through to the buy so a single click does approve + buy (two back-to-back
+      // wallet prompts), instead of asking the user to click Buy a second time.
     }
 
     const hash = await sendMemoWrappedTransaction({
@@ -860,7 +853,7 @@ export async function buyLmsrShares(input: LmsrBuyInput): Promise<LiveActionResu
       if (!approved) {
         return submittedPendingResult('Approval', approveHash);
       }
-      return approvalSavedResult(input.outcome, approveHash);
+      // Fall through to the buy so one click does approve + buy (back-to-back prompts).
     }
     const hash = await sendMemoWrappedTransaction({
       walletClient, account, target: marketAddress,
