@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import type { Market } from '@/lib/markets';
 import { useAppState } from '@/lib/appState';
 import { getOutcomeColor } from '@/lib/outcomeColors';
@@ -11,7 +12,7 @@ import { useTransactions } from '@/lib/transactions';
 import { AddUsdcDrawer } from './AddUsdcDrawer';
 
 interface QuickBuyModalProps {
-  market: Market & { source?: 'onchain'; closeDate?: string };
+  market: Market & { source?: 'onchain'; closeDate?: string; amm?: boolean };
   initialOutcome: string;
   onClose: () => void;
 }
@@ -19,7 +20,11 @@ interface QuickBuyModalProps {
 const quickAmounts = [10, 25, 100, 500];
 
 export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModalProps) {
+  const router = useRouter();
   const { connectedWallet, placeTrade } = useAppState();
+  // V3 LMSR (amm) markets are share-priced and need the full Buy/Sell/Limit panel — the quick "$ amount"
+  // flow only fits V1/V2 fixed-share markets. Sending a V2 buy(uint8,uint256) to a V3 market reverts.
+  const isAmm = Boolean(market.amm);
   const { track } = useTransactions();
   const [selectedOutcome, setSelectedOutcome] = useState(initialOutcome);
   const [amount, setAmount] = useState('1');
@@ -267,6 +272,16 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
         </div>
 
         {/* Submit Buy Button */}
+        {isAmm ? (
+          <button
+            type="button"
+            onClick={() => { onClose(); router.push(`/markets/${market.id}`); }}
+            style={{ backgroundColor: activeOutcomeColor }}
+            className="mt-4 w-full rounded-[12px] py-3.5 text-center text-xs font-black uppercase tracking-wider text-ink transition-all hover:opacity-90"
+          >
+            Trade {selectedOutcome} on market page
+          </button>
+        ) : (
         <button
           type="button"
           onClick={handleBuy}
@@ -284,6 +299,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
             : amountValue <= 0 ? 'Enter Amount'
             : `Buy ${selectedOutcome} · ${unit}${amountValue}`}
         </button>
+        )}
       </div>
       <AddUsdcDrawer open={fundingOpen} onClose={() => setFundingOpen(false)} wallet={connectedWallet} />
     </div>

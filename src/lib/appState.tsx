@@ -251,6 +251,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!market || (market.status !== 'Open' && market.status !== 'Closing soon')) {
       return { ok: false, message: 'This market is closed for trading.' };
     }
+    // V3 LMSR markets are share-priced; the V2 fixed-share buy path (buyLiveShares) sends a
+    // buy(uint8,uint256) that reverts on an LMSR contract. Route users to the market page panel.
+    if (market.amm) {
+      return { ok: false, message: 'This market trades in shares. Open the market page to buy or sell.' };
+    }
 
     const result = await buyLiveShares({
       marketAddress: input.marketId,
