@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import type { Market } from '@/lib/markets';
 import { useAppState } from '@/lib/appState';
 import { getOutcomeColor } from '@/lib/outcomeColors';
@@ -20,7 +19,6 @@ interface QuickBuyModalProps {
 const quickAmounts = [10, 25, 100, 500];
 
 export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModalProps) {
-  const router = useRouter();
   const { connectedWallet, placeTrade } = useAppState();
   // V3 LMSR (amm) markets are share-priced and need the full Buy/Sell/Limit panel — the quick "$ amount"
   // flow only fits V1/V2 fixed-share markets. Sending a V2 buy(uint8,uint256) to a V3 market reverts.
@@ -86,6 +84,12 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
   
   const amountValue = Number(amount) || 0;
   const fixedShareQuote = buildFixedShareQuote({ amountUsdc: amountValue, oddsPercent: Number(activeOutcome.odds) });
+  // V3 LMSR estimate: shares ~= budget / price (with headroom for fee + slippage). Each winning
+  // share redeems for $1, so the estimated payout equals the share count.
+  const ammPrice = Math.min(0.99, Math.max(0.01, Number(activeOutcome.odds) / 100));
+  const ammShares = isAmm && amountValue > 0 ? (amountValue / ammPrice) * 0.95 : 0;
+  const previewShares = isAmm ? ammShares : fixedShareQuote.shares;
+  const previewPayout = isAmm ? ammShares : fixedShareQuote.estimatedPayoutUsdc;
   // Sports markets lock one minute before kickoff (and stay locked while the match is live).
   const kickoffMs = market.kickoffTime ? new Date(market.kickoffTime).getTime() : null;
   const isTradingLocked = kickoffMs !== null && !Number.isNaN(kickoffMs) && Date.now() >= kickoffMs - 60_000;
@@ -128,10 +132,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <span className="rounded-full border border-cyan/25 bg-cyan/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-cyan">
-              {'Quick Trade'}
-            </span>
-            <h2 className="mt-1.5 line-clamp-2 text-sm font-black leading-snug text-white">
+            <h2 className="line-clamp-2 text-sm font-black leading-snug text-white">
               {market.title}
             </h2>
           </div>
@@ -260,28 +261,18 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
             <span className="font-black text-white">{activeOutcome.odds}%</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[#8fa0b4]">{'Shares (1 USDC = 1 share)'}</span>
-            <span className="font-black text-white">{fixedShareQuote.shares > 0 ? fixedShareQuote.shares.toFixed(2) : '—'}</span>
+            <span className="text-[#8fa0b4]">{isAmm ? 'Est. shares' : 'Shares (1 USDC = 1 share)'}</span>
+            <span className="font-black text-white">{previewShares > 0 ? previewShares.toFixed(2) : '—'}</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[#8fa0b4]">{'Est. payout if'} {activeOutcome.label} {'wins'}</span>
-            <span className={`font-black ${fixedShareQuote.estimatedPayoutUsdc > amountValue ? 'text-mint' : 'text-white'}`}>
-              {fixedShareQuote.estimatedPayoutUsdc > 0 ? `${unit}${fixedShareQuote.estimatedPayoutUsdc.toFixed(2)}` : '—'}
+            <span className={`font-black ${previewPayout > amountValue ? 'text-mint' : 'text-white'}`}>
+              {previewPayout > 0 ? `${unit}${previewPayout.toFixed(2)}` : '—'}
             </span>
           </div>
         </div>
 
         {/* Submit Buy Button */}
-        {isAmm ? (
-          <button
-            type="button"
-            onClick={() => { onClose(); router.push(`/markets/${market.id}`); }}
-            style={{ backgroundColor: activeOutcomeColor }}
-            className="mt-4 w-full rounded-[12px] py-3.5 text-center text-xs font-black uppercase tracking-wider text-ink transition-all hover:opacity-90"
-          >
-            Trade {selectedOutcome} on market page
-          </button>
-        ) : (
         <button
           type="button"
           onClick={handleBuy}
@@ -299,7 +290,6 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
             : amountValue <= 0 ? 'Enter Amount'
             : `Buy ${selectedOutcome} · ${unit}${amountValue}`}
         </button>
-        )}
       </div>
       <AddUsdcDrawer open={fundingOpen} onClose={() => setFundingOpen(false)} wallet={connectedWallet} />
     </div>

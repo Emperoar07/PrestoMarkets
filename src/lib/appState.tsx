@@ -13,6 +13,7 @@ import {
 import { fetchOnchainMarkets } from './onchainMarkets';
 import {
   buyLiveShares,
+  buyLmsrShares,
   addLiveLiquidity,
   cancelLiveMarket,
   claimLiveMarket,
@@ -251,10 +252,28 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!market || (market.status !== 'Open' && market.status !== 'Closing soon')) {
       return { ok: false, message: 'This market is closed for trading.' };
     }
-    // V3 LMSR markets are share-priced; the V2 fixed-share buy path (buyLiveShares) sends a
-    // buy(uint8,uint256) that reverts on an LMSR contract. Route users to the market page panel.
+    // V3 LMSR markets are share-priced. Convert the "$ amount" budget into a share quantity using
+    // the live odds, cap the spend at the entered budget (maxCost), and route to the LMSR buy. The
+    // 0.95 factor leaves headroom for the 1% fee + a little price impact so the cost stays under
+    // budget instead of reverting on slippage. The market page panel offers exact share control.
     if (market.amm) {
-      return { ok: false, message: 'This market trades in shares. Open the market page to buy or sell.' };
+      const idx = input.outcomeIndex ?? Math.max(0, market.outcomes.findIndex((o) => o.label === input.outcome));
+      const oddsPct = Number(market.outcomes[idx]?.odds) || 50;
+      const price = Math.min(0.99, Math.max(0.01, oddsPct / 100));
+      const shares = Math.max(0.000001, (input.amount / price) * 0.95);
+      const lmsrResult = await buyLmsrShares({
+        marketAddress: input.marketId,
+        outcome: input.outcome,
+        outcomeIndex: idx,
+        shares,
+        maxCost: input.amount,
+        payWith: input.payWith,
+      });
+      if (lmsrResult.ok && !lmsrResult.approvalOnly) {
+        if (input.payWith) writePayWith(connectedWallet?.address, input.marketId, input.payWith);
+        schedulePostTransactionRefresh();
+      }
+      return lmsrResult;
     }
 
     const result = await buyLiveShares({
