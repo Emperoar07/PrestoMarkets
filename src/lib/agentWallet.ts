@@ -114,7 +114,8 @@ function getClients() {
 // b = S / ln(n), so the maximum maker loss equals the seed. Override with PRESTO_AGENT_LMSR_SEED_USDC.
 const AGENT_LMSR_SEED_USDC = (() => {
   const v = Number(process.env.PRESTO_AGENT_LMSR_SEED_USDC);
-  return Number.isFinite(v) && v > 0 ? v : 5;
+  const chosen = Number.isFinite(v) && v > 0 ? v : 2; // default $2 subsidy per market
+  return Math.min(chosen, 3); // hard cap $3 so the agent never overspends one market's seed
 })();
 
 // Create a market onchain from the agent wallet
