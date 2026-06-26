@@ -140,6 +140,17 @@ export async function agentCreateMarket(input: CreateLiveMarketInput & { agentRe
     // sellable positions) instead of the parimutuel V1/V2 market. The single factory handles both
     // binary and multi-outcome via outcomeCount, so there is no separate multi factory here.
     if (lmsrFactoryAddress) {
+      // No-fee policy: never list a market that doesn't charge a protocol fee. If the factory's
+      // fee is 0, skip creation entirely (turn on fees with scripts/set-fees.cjs first).
+      const factoryFeeBps = await publicClient.readContract({
+        address: lmsrFactoryAddress,
+        abi: [{ type: 'function', name: 'protocolFeeBps', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint16' }] }] as const,
+        functionName: 'protocolFeeBps',
+      }).catch(() => 0);
+      if (!factoryFeeBps || Number(factoryFeeBps) === 0) {
+        return { ok: false, error: 'LMSR factory protocol fee is 0; skipped creation (no-fee policy). Enable fees first.' };
+      }
+
       const seed6 = parseUnits(String(AGENT_LMSR_SEED_USDC), 6);
       const config = getArcConfig();
       const usdc = config.usdcAddress as Address;
