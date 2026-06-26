@@ -107,6 +107,36 @@ export function buildFixedShareQuote(input: { amountUsdc: number; oddsPercent: n
   };
 }
 
+export const LMSR_BUY_SLIPPAGE_BPS = 200;
+export const LMSR_SELL_SLIPPAGE_BPS = 200;
+
+export function lmsrFee6(cost6: bigint, feeBps: number): bigint {
+  if (cost6 <= BigInt(0) || !Number.isFinite(feeBps) || feeBps <= 0) return BigInt(0);
+  return (cost6 * BigInt(Math.floor(feeBps))) / BigInt(10_000);
+}
+
+export function lmsrBuyTotalCost6(cost6: bigint, feeBps: number): bigint {
+  return cost6 + lmsrFee6(cost6, feeBps);
+}
+
+export function addSlippageBps6(value6: bigint, bps: number): bigint {
+  if (value6 <= BigInt(0)) return BigInt(0);
+  const safeBps = Number.isFinite(bps) && bps > 0 ? Math.floor(bps) : 0;
+  return (value6 * BigInt(10_000 + safeBps) + BigInt(9_999)) / BigInt(10_000);
+}
+
+export function subtractSlippageBps(value: number, bps = LMSR_SELL_SLIPPAGE_BPS): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  const safeBps = Number.isFinite(bps) && bps > 0 ? bps : 0;
+  return value * (1 - safeBps / 10_000);
+}
+
+export function addSlippageBps(value: number, bps = LMSR_BUY_SLIPPAGE_BPS): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  const safeBps = Number.isFinite(bps) && bps > 0 ? bps : 0;
+  return value * (1 + safeBps / 10_000);
+}
+
 /**
  * Estimate the payout if a chosen outcome wins, for Presto's fixed-share
  * parimutuel markets. Shares are minted 1:1 with USDC (10 USDC = 10 shares),

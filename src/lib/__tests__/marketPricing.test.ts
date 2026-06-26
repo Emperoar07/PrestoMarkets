@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   buildFixedShareQuote,
   estimateParimutuelPayout,
+  addSlippageBps6,
+  lmsrBuyTotalCost6,
+  lmsrFee6,
   normalizeOutcomeOdds,
 } from '../marketUtils';
 
@@ -51,5 +54,15 @@ describe('buildFixedShareQuote', () => {
 describe('estimateParimutuelPayout', () => {
   it('remains backward compatible with existing callers', () => {
     expect(estimateParimutuelPayout(10, 80)).toBeCloseTo(12.5, 5);
+  });
+});
+
+describe('LMSR fee-aware pricing helpers', () => {
+  it('adds the market fee to buyCost before slippage', () => {
+    const cost6 = BigInt(6_610_000);
+
+    expect(lmsrFee6(cost6, 500)).toBe(BigInt(330_500));
+    expect(lmsrBuyTotalCost6(cost6, 500)).toBe(BigInt(6_940_500));
+    expect(addSlippageBps6(lmsrBuyTotalCost6(cost6, 500), 200)).toBe(BigInt(7_079_310));
   });
 });

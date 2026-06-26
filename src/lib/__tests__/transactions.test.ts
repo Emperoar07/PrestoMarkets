@@ -11,6 +11,10 @@ describe('reduceStage', () => {
     expect(reduceStage({ ok: true, pending: true })).toBe('pending');
   });
 
+  it('approval when ok but only token approval completed', () => {
+    expect(reduceStage({ ok: true, approvalOnly: true })).toBe('approval');
+  });
+
   it('failed when not ok', () => {
     expect(reduceStage({ ok: false, message: 'Arc transaction reverted.' })).toBe('failed');
   });

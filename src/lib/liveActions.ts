@@ -42,6 +42,7 @@ import type { StableSymbol } from './walletBalance';
 import { getAgentResolverSelectionError, getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
 import { ARC_READ_BATCH, arcReadTransport, withRpcRetry } from './arcClient';
 import { encodeMemoWrappedCall, type PrestoMemoAction } from './arcMemos';
+import { LMSR_BUY_SLIPPAGE_BPS, addSlippageBps6, lmsrBuyTotalCost6 } from './marketUtils';
 
 function isCircleWallet(): boolean {
   return getStoredConnectedWallet()?.mode === 'circle-user-controlled';
@@ -112,6 +113,8 @@ export type LiveActionResult = {
   marketAddress?: Address;
   /** True when submitted but the wallet/provider indexer is still catching up. */
   pending?: boolean;
+  /** True when the first EOA step only saved token approval; user must submit the buy again. */
+  approvalOnly?: boolean;
 };
 
 export type CreateLiveMarketInput = {
@@ -307,11 +310,20 @@ function submittedPendingResult(label: string, txHash: Hex): LiveActionResult {
   };
 }
 
+function approvalSavedResult(label: string, txHash: Hex): LiveActionResult {
+  return {
+    ok: true,
+    approvalOnly: true,
+    message: `${label} approval saved. Click Buy again to complete the trade with one transaction.`,
+    txHash,
+  };
+}
+
 // An EOA can't natively bundle approve+buy, so it would prompt twice. EIP-5792 (wallet_sendCalls)
 // lets modern wallets (MetaMask, Coinbase, …) execute the batch in ONE prompt. We try it first and
-// return null only when the wallet doesn't support batching — the caller then falls back to the
-// exact sequential flow, so a wallet without 5792 still works (just two prompts). We never fall back
-// after submission, so there's no risk of double-executing.
+// return null only when the wallet doesn't support batching. The caller then saves token approval
+// as the first step and asks the user to click Buy again, avoiding a surprise second signature.
+// We never fall back after submission, so there's no risk of double-executing.
 function isUnsupportedBatchError(error: unknown): boolean {
   const code = (error as { code?: number } | null)?.code;
   if (code === -32601 || code === 4200 || code === 4100) return true;
@@ -718,6 +730,7 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
       if (!approved) {
         return submittedPendingResult('Approval', approveHash);
       }
+      return approvalSavedResult(input.outcome, approveHash);
     }
 
     const hash = await sendMemoWrappedTransaction({
@@ -774,7 +787,7 @@ export async function buyLmsrShares(input: LmsrBuyInput): Promise<LiveActionResu
     if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
     const marketAddress = input.marketAddress as Address;
     const shares6 = parseUnits(String(input.shares), 6);
-    const maxCost6 = parseUnits(String(input.maxCost), 6);
+    const quotedMaxCost6 = parseUnits(String(input.maxCost), 6);
     if (shares6 <= BigInt(0)) throw new Error('Enter a share amount.');
 
     const collateralToken = (await withRetry(() => publicClient.readContract({
@@ -782,6 +795,22 @@ export async function buyLmsrShares(input: LmsrBuyInput): Promise<LiveActionResu
     })).catch(() => config.usdcAddress)) as Address;
     const collateralSymbol = collateralSymbolForAddress(collateralToken);
     const unit = collateralUnit(collateralSymbol);
+    const [buyCost6, feeBps] = await Promise.all([
+      withRetry(() => publicClient.readContract({
+        address: marketAddress,
+        abi: prestoLmsrMarketAbi,
+        functionName: 'buyCost',
+        args: [input.outcomeIndex, shares6],
+      })),
+      withRetry(() => publicClient.readContract({
+        address: marketAddress,
+        abi: prestoLmsrMarketAbi,
+        functionName: 'feeBps',
+      })),
+    ]);
+    const freshTotalCost6 = lmsrBuyTotalCost6(buyCost6 as bigint, Number(feeBps));
+    const freshMaxCost6 = addSlippageBps6(freshTotalCost6, LMSR_BUY_SLIPPAGE_BPS);
+    const maxCost6 = quotedMaxCost6 > freshMaxCost6 ? quotedMaxCost6 : freshMaxCost6;
 
     const [balance, allowance] = await Promise.all([
       withRetry(() => publicClient.readContract({ address: collateralToken, abi: erc20Abi, functionName: 'balanceOf', args: [account] })),
@@ -831,6 +860,7 @@ export async function buyLmsrShares(input: LmsrBuyInput): Promise<LiveActionResu
       if (!approved) {
         return submittedPendingResult('Approval', approveHash);
       }
+      return approvalSavedResult(input.outcome, approveHash);
     }
     const hash = await sendMemoWrappedTransaction({
       walletClient, account, target: marketAddress,

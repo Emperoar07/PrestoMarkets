@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 import { humanizeTxError } from './txErrors';
 
-export type TxStage = 'confirming' | 'confirmed' | 'pending' | 'failed' | 'cancelled';
+export type TxStage = 'confirming' | 'confirmed' | 'pending' | 'approval' | 'failed' | 'cancelled';
 
 export type TxEntry = {
   id: string;
@@ -12,16 +12,18 @@ export type TxEntry = {
   stage: TxStage;
   txHash?: string;
   error?: string;
+  detail?: string;
   createdAt: number;
 };
 
-type TrackResult = { ok: boolean; message?: string; txHash?: string; pending?: boolean };
+type TrackResult = { ok: boolean; message?: string; txHash?: string; pending?: boolean; approvalOnly?: boolean };
 
 /** Pure mapping from an action result to a terminal toast stage. Unit-tested. */
 export function reduceStage(result: TrackResult): TxStage {
   if (!result.ok) {
     return /cancel/i.test(result.message ?? '') ? 'cancelled' : 'failed';
   }
+  if (result.approvalOnly) return 'approval';
   return result.pending ? 'pending' : 'confirmed';
 }
 
@@ -38,7 +40,7 @@ const TransactionContext = createContext<TransactionContextValue | null>(null);
 // confirmed/cancelled auto-dismiss quickly; 'pending' (submitted, still confirming — e.g. a
 // Gateway deposit finalizing) auto-dismisses after 10s so it doesn't linger; 'failed' stays
 // sticky until the user dismisses it.
-const AUTO_DISMISS_MS: Partial<Record<TxStage, number>> = { confirmed: 6_000, cancelled: 4_000, pending: 10_000 };
+const AUTO_DISMISS_MS: Partial<Record<TxStage, number>> = { confirmed: 6_000, cancelled: 4_000, pending: 10_000, approval: 10_000 };
 
 function newId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -76,7 +78,11 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
     try {
       const result = await runner();
       const stage = reduceStage(result);
-      settle(id, stage, { txHash: result.txHash, error: stage === 'failed' ? humanizeTxError(result.message, result.message) : undefined });
+      settle(id, stage, {
+        txHash: result.txHash,
+        error: stage === 'failed' ? humanizeTxError(result.message, result.message) : undefined,
+        detail: stage !== 'failed' ? result.message : undefined,
+      });
       return result;
     } catch (error) {
       const message = humanizeTxError(error, 'Transaction failed.');

@@ -33,7 +33,7 @@ import { useTransactions } from '@/lib/transactions';
 import { agentResolutionGuardrails, buildAgentResolutionPrompt, buildAgentResolutionReport } from '@/lib/agentResolution';
 import type { MarketStatus } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
-import { buildFixedShareQuote } from '@/lib/marketUtils';
+import { LMSR_BUY_SLIPPAGE_BPS, LMSR_SELL_SLIPPAGE_BPS, addSlippageBps, buildFixedShareQuote, lmsrBuyTotalCost6, subtractSlippageBps } from '@/lib/marketUtils';
 import { buildResolutionTrustState } from '@/lib/resolutionTrust';
 import { disputeLiveResolution, buyLmsrShares, sellLmsrShares } from '@/lib/liveActions';
 import { createArcReadClient } from '@/lib/arcClient';
@@ -209,8 +209,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const [livePrice, setLivePrice] = useState<number | null>(null);
   const [isFetchingPrice, setIsFetchingPrice] = useState(false);
 
-  // V3 LMSR live quote: cost to buy (or refund to sell) the typed share quantity, read on-chain
-  // and debounced. `value` is in collateral units (6dp); `avgPrice` is value / shares.
+  // V3 LMSR live quote: fee-inclusive cost to buy (or refund to sell) the typed share quantity,
+  // read on-chain and debounced. `value` is in collateral units (6dp); `avgPrice` is value / shares.
   const [lmsrQuote, setLmsrQuote] = useState<{ value: number; avgPrice: number } | null>(null);
   useEffect(() => {
     if (!market?.amm) { setLmsrQuote(null); return; }
@@ -224,12 +224,26 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
         const client = createArcReadClient();
         if (!client) return;
         const shares6 = parseUnits(String(shares), 6);
-        const out = await client.readContract({
-          address: market.id as Address,
-          abi: prestoLmsrMarketAbi,
-          functionName: sellMode ? 'sellRefund' : 'buyCost',
-          args: [idx, shares6],
-        }) as bigint;
+        const out = sellMode
+          ? await client.readContract({
+              address: market.id as Address,
+              abi: prestoLmsrMarketAbi,
+              functionName: 'sellRefund',
+              args: [idx, shares6],
+            }) as bigint
+          : await Promise.all([
+              client.readContract({
+                address: market.id as Address,
+                abi: prestoLmsrMarketAbi,
+                functionName: 'buyCost',
+                args: [idx, shares6],
+              }) as Promise<bigint>,
+              client.readContract({
+                address: market.id as Address,
+                abi: prestoLmsrMarketAbi,
+                functionName: 'feeBps',
+              }) as Promise<number>,
+            ]).then(([cost6, feeBps]) => lmsrBuyTotalCost6(cost6, Number(feeBps)));
         if (!active) return;
         const value = Number(formatUnits(out, 6));
         setLmsrQuote({ value, avgPrice: shares > 0 ? value / shares : 0 });
@@ -1123,7 +1137,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     <div className="flex items-center justify-between gap-3 text-sm">
                       <span className="text-muted">{isSell ? 'Min received (2% slip)' : 'Max you pay (2% slip)'}</span>
                       <span className="min-w-0 break-words text-right font-black text-white [overflow-wrap:anywhere]">
-                        {lmsrQuote ? `${unit}${(isSell ? lmsrQuote.value * 0.98 : lmsrQuote.value * 1.03).toFixed(2)}` : '—'}
+                        {lmsrQuote ? `${unit}${(isSell ? subtractSlippageBps(lmsrQuote.value, LMSR_SELL_SLIPPAGE_BPS) : addSlippageBps(lmsrQuote.value, LMSR_BUY_SLIPPAGE_BPS)).toFixed(2)}` : '—'}
                       </span>
                     </div>
                   </>
@@ -1209,8 +1223,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   onClick={() => void runAction(() => (
                     isAmm
                       ? (isSell
-                          ? sellLmsrShares({ marketAddress: marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, shares: amountValue, minRefund: lmsrQuote ? lmsrQuote.value * 0.98 : 0 })
-                          : buyLmsrShares({ marketAddress: marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, shares: amountValue, maxCost: lmsrQuote ? lmsrQuote.value * 1.03 : amountValue * 1.05 }))
+                          ? sellLmsrShares({ marketAddress: marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, shares: amountValue, minRefund: lmsrQuote ? subtractSlippageBps(lmsrQuote.value, LMSR_SELL_SLIPPAGE_BPS) : 0 })
+                          : buyLmsrShares({ marketAddress: marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, shares: amountValue, maxCost: lmsrQuote ? addSlippageBps(lmsrQuote.value, LMSR_BUY_SLIPPAGE_BPS) : amountValue * 1.05 }))
                       : tradeMode === 'liquidity'
                         ? addLiquidity({ marketId, amount: amountValue, payWith })
                         : placeTrade({ marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, amount: amountValue, payWith })

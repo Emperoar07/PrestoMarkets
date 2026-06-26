@@ -258,11 +258,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       amount: input.amount,
       payWith: input.payWith,
     });
-    if (result.ok && input.payWith) {
+    if (result.ok && !result.approvalOnly && input.payWith) {
       // Persist the pay-with choice so claim/refund can swap the payout back to the same token.
       writePayWith(connectedWallet?.address, input.marketId, input.payWith);
     }
-    if (result.ok) {
+    if (result.ok && !result.approvalOnly) {
       // Notify market creator that someone traded on their market. Best effort.
       fetch(`/api/markets/${input.marketId}/trade-notify`, {
         method: 'POST',
@@ -293,10 +293,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       outcomes: market.outcomes.map((outcome) => outcome.label),
       payWith: input.payWith,
     });
-    if (result.ok && input.payWith) {
+    if (result.ok && !result.approvalOnly && input.payWith) {
       writePayWith(connectedWallet?.address, input.marketId, input.payWith);
     }
-    if (result.ok) {
+    if (result.ok && !result.approvalOnly) {
       void refreshAll({ force: true });
       await new Promise((r) => setTimeout(r, REFRESH_DELAY_AFTER_TX_MS));
       await refreshAll({ force: true });

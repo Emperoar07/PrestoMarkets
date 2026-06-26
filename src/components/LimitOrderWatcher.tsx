@@ -7,6 +7,7 @@ import { useTransactions } from '@/lib/transactions';
 import { createArcReadClient } from '@/lib/arcClient';
 import { prestoLmsrMarketAbi } from '@/lib/contracts';
 import { buyLmsrShares, sellLmsrShares } from '@/lib/liveActions';
+import { lmsrBuyTotalCost6 } from '@/lib/marketUtils';
 import { shouldTriggerLimitOrder, limitBoundFromQuote, type LimitOrder } from '@/lib/limitOrders';
 
 const POLL_MS = 15_000;
@@ -40,12 +41,28 @@ export function LimitOrderWatcher() {
       const shares = Number(order.shares);
       const shares6 = parseUnits(order.shares, 6);
       // Fresh quote so the slippage bound reflects the price at fire time, not order time.
-      const quote6 = await client.readContract({
-        address: order.marketId as Address,
-        abi: prestoLmsrMarketAbi,
-        functionName: order.side === 'sell' ? 'sellRefund' : 'buyCost',
-        args: [order.outcomeIndex, shares6],
-      }).catch(() => null) as bigint | null;
+      const quote6 = order.side === 'sell'
+        ? await client.readContract({
+            address: order.marketId as Address,
+            abi: prestoLmsrMarketAbi,
+            functionName: 'sellRefund',
+            args: [order.outcomeIndex, shares6],
+          }).catch(() => null) as bigint | null
+        : await Promise.all([
+            client.readContract({
+              address: order.marketId as Address,
+              abi: prestoLmsrMarketAbi,
+              functionName: 'buyCost',
+              args: [order.outcomeIndex, shares6],
+            }) as Promise<bigint>,
+            client.readContract({
+              address: order.marketId as Address,
+              abi: prestoLmsrMarketAbi,
+              functionName: 'feeBps',
+            }) as Promise<number>,
+          ])
+            .then(([cost6, feeBps]) => lmsrBuyTotalCost6(cost6, Number(feeBps)))
+            .catch(() => null) as bigint | null;
       const quoteValue = quote6 == null ? shares : Number(formatUnits(quote6, 6));
       const bound = limitBoundFromQuote(order.side, quoteValue, order.slippageBps);
 
@@ -56,6 +73,7 @@ export function LimitOrderWatcher() {
             ? sellLmsrShares({ marketAddress: order.marketId, outcome: order.outcomeLabel, outcomeIndex: order.outcomeIndex, shares, minRefund: bound })
             : buyLmsrShares({ marketAddress: order.marketId, outcome: order.outcomeLabel, outcomeIndex: order.outcomeIndex, shares, maxCost: bound })
         ));
+        if (result.approvalOnly) return;
         await patchStatus(order.id, result.ok ? 'filled' : 'failed', {
           txHash: result.txHash,
           lastError: result.ok ? undefined : result.message,

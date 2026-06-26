@@ -101,7 +101,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
           payWith
         }),
       );
-      if (result.ok) {
+      if (result.ok && !result.approvalOnly) {
         // Auto close after a short beat on success.
         setTimeout(() => {
           onClose();
