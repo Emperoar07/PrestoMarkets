@@ -15,6 +15,7 @@
     "test:contracts": "hardhat test",
     "deploy:arc": "hardhat run scripts/deploy-arc.cjs --network arc",
     "deploy:arc:v2": "hardhat run scripts/deploy-arc-v2.cjs --network arc",
+    "db:migrate": "node scripts/apply-migration.cjs",
     "agent-cli": "ts-node scripts/agent-cli.ts"
   },
   "dependencies": {
