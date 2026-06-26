@@ -185,7 +185,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const { track } = useTransactions();
   const market = getMarket(marketId);
   const [selectedOutcome, setSelectedOutcome] = useState('YES');
-  const [tradeMode, setTradeMode] = useState<'buy' | 'sell' | 'liquidity'>('buy');
+  const [tradeMode, setTradeMode] = useState<'buy' | 'sell' | 'liquidity' | 'limit'>('buy');
   const [amount, setAmount] = useState('1');
   const [resolutionURI, setResolutionURI] = useState('');
   const [agentOutcome, setAgentOutcome] = useState<string>('YES');
@@ -980,11 +980,12 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             <div className="min-w-0 overflow-hidden rounded-[18px] border border-white/[0.06] bg-[#141e30] p-4 sm:p-5">
 
               {isAmm ? (
-                // V3 LMSR: Buy / Sell positions at the live AMM price.
-                <div className="mb-4 grid grid-cols-2 rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-1">
+                // V3 LMSR: Buy / Sell at the live AMM price, or place a Limit order.
+                <div className="mb-4 grid grid-cols-3 rounded-[12px] border border-white/[0.06] bg-[#0d1520] p-1">
                   {([
                     ['buy', 'Buy'],
                     ['sell', 'Sell'],
+                    ['limit', 'Limit'],
                   ] as const).map(([mode, label]) => (
                     <button
                       key={mode}
@@ -995,7 +996,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                         tradeMode === mode
                           ? mode === 'sell'
                             ? 'border-red-400/70 text-red-200 bg-transparent shadow-sm'
-                            : 'border-mint/70 text-mint bg-transparent shadow-sm'
+                            : mode === 'limit'
+                              ? 'border-cyan/70 text-cyan bg-transparent shadow-sm'
+                              : 'border-mint/70 text-mint bg-transparent shadow-sm'
                           : 'border-transparent text-muted hover:text-white bg-transparent'
                       }`}
                     >
@@ -1005,6 +1008,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
               ) : null}
 
+              {tradeMode !== 'limit' && (<>
               {isBinaryMarket ? (
               <div className={`grid grid-cols-2 gap-2 ${tradeMode === 'liquidity' ? 'opacity-70' : ''}`}>
                 <button
@@ -1179,6 +1183,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   </p>
                 )}
               </div>
+              </>)}
 
               {/* Buy button / Status Indicator / Lock Indicator */}
               {market.status === 'Resolved' ? (
@@ -1217,6 +1222,8 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                       : 'Trading closed (match is live)'}
                   </span>
                 </div>
+              ) : tradeMode === 'limit' ? (
+                <LimitOrderPanel marketId={marketId} outcomes={market.outcomes.map((o, i) => ({ label: o.label, index: i }))} />
               ) : (
                 <button
                   type="button"
@@ -1489,13 +1496,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </p>
               ) : null}
             </div>
-
-            {isAmm && canTrade ? (
-              <LimitOrderPanel
-                marketId={marketId}
-                outcomes={market.outcomes.map((o, i) => ({ label: o.label, index: i }))}
-              />
-            ) : null}
           </aside>
 
         </div>

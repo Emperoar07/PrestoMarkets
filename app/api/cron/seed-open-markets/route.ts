@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
-import { agentBuyShares, agentReadTotalShares, ensureAgentFunded, getAgentAddress } from '@/lib/agentWallet';
+import { agentBuyShares, agentReadTotalShares, ensureAgentFunded, getAgentAddress, agentReadLmsrSeeded, agentSeedLmsrMarket, agentCancelMarket } from '@/lib/agentWallet';
 import { verifyBearer } from '@/lib/authCompare';
 
 export const runtime = 'nodejs';
@@ -39,8 +39,25 @@ export async function GET(req: NextRequest) {
     );
 
     const results: Array<{ marketId: string; title: string; seeded: number[]; errors: string[] }> = [];
+    const lmsrFixed: Array<{ marketId: string; title: string; action: 'seeded' | 'canceled'; detail?: string }> = [];
 
     for (const market of open) {
+      // V3 LMSR markets are seeded with a single seed() call (the subsidy funds all outcomes). If a
+      // market's seed never landed it is unbuyable (buy reverts NotSeeded), so seed it now — and if
+      // the agent can't afford the seed, cancel it so users stop hitting reverts on a dead market.
+      if (market.amm) {
+        const seeded = await agentReadLmsrSeeded(market.id);
+        if (seeded === true || seeded === null) continue;
+        const seed = await agentSeedLmsrMarket(market.id);
+        if (seed.ok) {
+          lmsrFixed.push({ marketId: market.id, title: market.title, action: 'seeded' });
+        } else {
+          const cancel = await agentCancelMarket(market.id);
+          lmsrFixed.push({ marketId: market.id, title: market.title, action: 'canceled', detail: cancel.ok ? seed.error : `seed+cancel failed: ${cancel.error}` });
+        }
+        continue;
+      }
+
       const outcomeCount = market.outcomes.length;
       if (outcomeCount < 2) continue;
       const perOutcome = (SEED_TOTAL_USDC / outcomeCount).toFixed(6);
@@ -66,6 +83,9 @@ export async function GET(req: NextRequest) {
       ran: new Date().toISOString(),
       openMarkets: open.length,
       marketsSeeded: results.filter((r) => r.seeded.length > 0).length,
+      lmsrSeeded: lmsrFixed.filter((r) => r.action === 'seeded').length,
+      lmsrCanceled: lmsrFixed.filter((r) => r.action === 'canceled').length,
+      lmsrFixed,
       results,
     });
   } catch (error) {

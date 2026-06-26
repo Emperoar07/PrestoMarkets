@@ -140,7 +140,20 @@ export async function agentCreateMarket(input: CreateLiveMarketInput & { agentRe
     // binary and multi-outcome via outcomeCount, so there is no separate multi factory here.
     if (lmsrFactoryAddress) {
       const seed6 = parseUnits(String(AGENT_LMSR_SEED_USDC), 6);
-      await ensureAgentFunded().catch(() => undefined); // top up so the subsidy is affordable
+      const config = getArcConfig();
+      const usdc = config.usdcAddress as Address;
+      // Gate on funds BEFORE creating: an LMSR market is unbuyable (buy reverts NotSeeded) until the
+      // subsidy is seeded, so never create one we cannot afford to seed. Top up from the faucet if
+      // low, then skip creation if still short rather than leaving a broken Open market.
+      let bal = await publicClient.readContract({ address: usdc, abi: erc20Abi, functionName: 'balanceOf', args: [account.address] }).catch(() => BigInt(0)) as bigint;
+      if (bal < seed6) {
+        await ensureAgentFunded({ force: true }).catch(() => undefined);
+        bal = await publicClient.readContract({ address: usdc, abi: erc20Abi, functionName: 'balanceOf', args: [account.address] }).catch(() => bal) as bigint;
+      }
+      if (bal < seed6) {
+        return { ok: false, error: `Agent USDC ${(Number(bal) / 1e6).toFixed(2)} is below the LMSR seed of ${AGENT_LMSR_SEED_USDC}; skipped to avoid creating an unseedable market.` };
+      }
+
       const createHash = await walletClient.writeContract({
         account,
         address: lmsrFactoryAddress,
@@ -152,12 +165,11 @@ export async function agentCreateMarket(input: CreateLiveMarketInput & { agentRe
       const created = parseEventLogs({ abi: prestoLmsrMarketFactoryAbi, eventName: 'MarketCreated', logs: receipt.logs })[0] as { args?: { market?: unknown } } | undefined;
       const marketAddress = typeof created?.args?.market === 'string' && isAddress(created.args.market) ? created.args.market : undefined;
 
-      // Fund the subsidy: approve, then seed(). Buys revert NotSeeded until this lands, so a failure
-      // is logged loudly (the market exists but is unbuyable until seeded).
+      // Fund the subsidy: approve, then seed(). Verify it landed; if not, CANCEL the market so we
+      // never leave an Open-but-unbuyable market that reverts NotSeeded on every buy.
       if (marketAddress) {
+        let seeded = false;
         try {
-          const config = getArcConfig();
-          const usdc = config.usdcAddress as Address;
           const allowance = await publicClient.readContract({ address: usdc, abi: erc20Abi, functionName: 'allowance', args: [account.address, marketAddress as Address] }) as bigint;
           if (allowance < seed6) {
             const approveHash = await walletClient.writeContract({ account, address: usdc, abi: erc20Abi, functionName: 'approve', args: [marketAddress as Address, seed6] });
@@ -165,10 +177,14 @@ export async function agentCreateMarket(input: CreateLiveMarketInput & { agentRe
           }
           const seedHash = await walletClient.writeContract({ account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'seed' });
           await withRetry(() => publicClient.waitForTransactionReceipt({ hash: seedHash }));
+          seeded = await publicClient.readContract({ address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'seeded' }).catch(() => false) as boolean;
         } catch (err) {
-          logger.error('agent-wallet', 'LMSR market created but seed funding failed — market is unbuyable until seeded', {
-            marketAddress, error: err instanceof Error ? err.message : String(err),
-          });
+          logger.error('agent-wallet', 'LMSR seed failed after create', { marketAddress, error: err instanceof Error ? err.message : String(err) });
+        }
+        if (!seeded) {
+          logger.error('agent-wallet', 'LMSR seed did not land — canceling the unseeded market to avoid unbuyable reverts', { marketAddress });
+          await agentCancelMarket(marketAddress).catch(() => undefined);
+          return { ok: false, error: 'LMSR market created but could not be seeded; canceled to avoid an unbuyable market.', marketAddress };
         }
       }
       return { ok: true, txHash: createHash, marketAddress, resolverAddress: resolver };
@@ -636,6 +652,42 @@ export async function agentTransferUsdc(toAddress: string, amountUsdc: string) {
 // Read the onchain total shares staked on a given outcome index for a market.
 // Used by auto-resolve to detect outcomes with no winning shares (which the
 // contract refuses to resolve) so it can cancel-and-refund instead of locking funds.
+// Read whether a V3 LMSR market has been seeded (buys revert NotSeeded until it is).
+export async function agentReadLmsrSeeded(marketAddress: string): Promise<boolean | null> {
+  try {
+    if (!isAddress(marketAddress)) return null;
+    const { publicClient } = getClients();
+    return await publicClient.readContract({ address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'seeded' }) as boolean;
+  } catch {
+    return null;
+  }
+}
+
+// Seed an existing unseeded V3 LMSR market (approve + seed). Used by the repair cron to fix markets
+// whose seed didn't land at creation. Returns ok:false (e.g. insufficient USDC) so the caller can
+// cancel an unbuyable market instead.
+export async function agentSeedLmsrMarket(marketAddress: string) {
+  try {
+    if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
+    const { account, publicClient, walletClient } = getClients();
+    const config = getArcConfig();
+    const usdc = config.usdcAddress as Address;
+    const seed6 = parseUnits(String(AGENT_LMSR_SEED_USDC), 6);
+    const bal = await publicClient.readContract({ address: usdc, abi: erc20Abi, functionName: 'balanceOf', args: [account.address] }) as bigint;
+    if (bal < seed6) return { ok: false as const, error: `insufficient USDC (${(Number(bal) / 1e6).toFixed(2)}) for seed ${AGENT_LMSR_SEED_USDC}` };
+    const allowance = await publicClient.readContract({ address: usdc, abi: erc20Abi, functionName: 'allowance', args: [account.address, marketAddress as Address] }) as bigint;
+    if (allowance < seed6) {
+      const approveHash = await walletClient.writeContract({ account, address: usdc, abi: erc20Abi, functionName: 'approve', args: [marketAddress as Address, seed6] });
+      await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash }));
+    }
+    const seedHash = await walletClient.writeContract({ account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'seed' });
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash: seedHash }));
+    return { ok: true as const, txHash: seedHash };
+  } catch (error) {
+    return { ok: false as const, error: error instanceof Error ? error.message : 'seed failed' };
+  }
+}
+
 export async function agentReadTotalShares(marketAddress: string, outcomeIndex: number): Promise<bigint | null> {
   try {
     if (!isAddress(marketAddress)) return null;
