@@ -570,7 +570,14 @@ async function readOnchainMarkets() {
 
   // Apply metadata overrides (updated market images) here, at the single cached source, so every
   // consumer gets merged markets and cards never flip between tile and image across renders.
-  // Server reads the DB directly; the browser fetches the public override map.
+  await applyImageOverrides(markets);
+
+  return markets;
+}
+
+// Merge stored image overrides into the given markets. Server reads the DB directly; the browser
+// fetches the public override map. Shared by the full read and the single-market refresh.
+async function applyImageOverrides(markets: AppMarket[]) {
   try {
     let overridesMap = new Map<string, string>();
     if (hasDatabaseUrl()) {
@@ -593,8 +600,32 @@ async function readOnchainMarkets() {
   } catch (err) {
     logger.warn('onchain-markets', 'Failed to load metadata overrides', { error: String(err) });
   }
+}
 
-  return markets;
+// Re-read a SINGLE market straight from chain — the targeted post-trade refresh. Reading one market
+// is sub-second versus the ~13s full-grid read, so after a buy/sell we patch just the traded market
+// for instant feedback and let the full refresh catch positions/portfolio in the background.
+export async function fetchOnchainMarket(
+  address: string,
+  opts: { isAmm?: boolean; index?: number } = {},
+): Promise<AppMarket | null> {
+  const config = getArcConfig();
+  if (!config.rpcUrl || !isAddress(address)) return null;
+  const chainId = getArcChainId();
+  const client = createPublicClient({
+    chain: { ...createArcChain(config.rpcUrls), id: chainId },
+    transport: fallback(config.rpcUrls.map((url) => http(url))),
+    batch: { multicall: { batchSize: 16_384, wait: 10 } },
+  });
+  try {
+    const reader = opts.isAmm ? readLmsrMarket : readMarket;
+    const market = await withRetry(() => reader(client, address as Address, opts.index ?? 0));
+    await applyImageOverrides([market]);
+    return market;
+  } catch (err) {
+    logger.warn('onchain-markets', 'single-market read failed', { address, error: String(err) });
+    return null;
+  }
 }
 
 export async function fetchOnchainMarkets(options: { force?: boolean } = {}) {

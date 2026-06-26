@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { fetchOnchainMarkets } from './onchainMarkets';
+import { fetchOnchainMarkets, fetchOnchainMarket } from './onchainMarkets';
 import {
   buyLiveShares,
   buyLmsrShares,
@@ -91,6 +91,7 @@ type AppStateValue = {
   isLoadingMarkets: boolean;
   isLoadingAccount: boolean;
   refreshMarkets: (options?: { force?: boolean }) => Promise<AppMarket[]>;
+  refreshMarket: (id: string) => Promise<void>;
   refreshAccountPortfolio: () => Promise<void>;
   createMarket: (input: CreateMarketInput) => Promise<LiveActionResult>;
   placeTrade: (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; amount: number; payWith?: StableSymbol }) => Promise<LiveActionResult>;
@@ -174,6 +175,26 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Targeted refresh: re-read just one market from chain and patch it in place. Reading a single
+  // market is sub-second (vs the ~13s full grid), so after a trade we update the traded card's odds
+  // instantly while the full refresh catches positions/portfolio in the background. Ordering fields
+  // (createdSortKey/createdAt) come from the single read without creationInfo, so we keep them from
+  // the existing market to avoid the card jumping position after a trade.
+  const refreshMarket = useCallback(async (id: string) => {
+    const key = id.toLowerCase();
+    const existing = marketsRef.current.find((m) => m.id.toLowerCase() === key);
+    const fresh = await fetchOnchainMarket(id, { isAmm: existing?.amm });
+    if (!fresh) return;
+    const merged = existing
+      ? { ...fresh, createdSortKey: existing.createdSortKey, createdAt: existing.createdAt || fresh.createdAt }
+      : fresh;
+    const next = marketsRef.current.some((m) => m.id.toLowerCase() === key)
+      ? marketsRef.current.map((m) => (m.id.toLowerCase() === key ? merged : m))
+      : [...marketsRef.current, merged];
+    marketsRef.current = next;
+    setMarkets(next);
+  }, []);
+
   useEffect(() => {
     void refreshMarkets();
   }, [refreshMarkets]);
@@ -228,16 +249,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     window.dispatchEvent(new CustomEvent('presto:balances-refresh'));
   }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
 
-  const schedulePostTransactionRefresh = useCallback(() => {
-    // Non-blocking: refresh once right away, then a couple of light follow-ups to catch RPC
-    // propagation. Never blocks the trade return, and far fewer full reads than before.
+  const schedulePostTransactionRefresh = useCallback((marketId?: string) => {
+    // Non-blocking. If a specific market was traded, patch just that card first (sub-second) so its
+    // odds update almost instantly, then refresh once right away plus a couple of light follow-ups
+    // to catch RPC propagation and update positions/portfolio. Never blocks the trade return.
+    if (marketId) void refreshMarket(marketId);
     void refreshAll({ force: true });
     for (const delay of POST_TX_REFRESH_DELAYS_MS) {
       window.setTimeout(() => {
         void refreshAll({ force: true });
       }, delay);
     }
-  }, [refreshAll]);
+  }, [refreshAll, refreshMarket]);
 
   const createMarket = useCallback(async (input: CreateMarketInput) => {
     const result = await createLiveMarket(input satisfies CreateLiveMarketInput);
@@ -271,7 +294,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       });
       if (lmsrResult.ok && !lmsrResult.approvalOnly) {
         if (input.payWith) writePayWith(connectedWallet?.address, input.marketId, input.payWith);
-        schedulePostTransactionRefresh();
+        schedulePostTransactionRefresh(input.marketId);
       }
       return lmsrResult;
     }
@@ -298,7 +321,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // The tx is already confirmed on-chain here (buyLiveShares waited for the receipt), so return
       // immediately — the toast flips to "Confirmed" without waiting on a market re-read. Markets and
       // the YOUR POSITION block refresh in the BACKGROUND so the UI never blocks on the heavy read.
-      schedulePostTransactionRefresh();
+      schedulePostTransactionRefresh(input.marketId);
     }
     return result;
   }, [markets, connectedWallet?.address, schedulePostTransactionRefresh]);
@@ -391,6 +414,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     isLoadingMarkets,
     isLoadingAccount,
     refreshMarkets,
+    refreshMarket,
     refreshAccountPortfolio,
     createMarket,
     placeTrade,
@@ -409,6 +433,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     isLoadingMarkets,
     isLoadingAccount,
     refreshMarkets,
+    refreshMarket,
     refreshAccountPortfolio,
     createMarket,
     placeTrade,

@@ -181,7 +181,7 @@ function formatKickoffCountdown(kickoffMs: number, nowMs: number): string {
 }
 
 export function MarketDetailClient({ marketId }: { marketId: string }) {
-  const { accountPreviews, connectedWallet, getMarket, isLoadingMarkets, placeTrade, addLiquidity, resolveMarket, cancelMarket, claimMarket, refundMarket } = useAppState();
+  const { accountPreviews, connectedWallet, getMarket, isLoadingMarkets, placeTrade, addLiquidity, resolveMarket, cancelMarket, claimMarket, refundMarket, refreshMarket, refreshAccountPortfolio } = useAppState();
   const { track } = useTransactions();
   const market = getMarket(marketId);
   const [selectedOutcome, setSelectedOutcome] = useState('YES');
@@ -211,7 +211,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
   // V3 LMSR live quote: fee-inclusive cost to buy (or refund to sell) the typed share quantity,
   // read on-chain and debounced. `value` is in collateral units (6dp); `avgPrice` is value / shares.
-  const [lmsrQuote, setLmsrQuote] = useState<{ value: number; avgPrice: number } | null>(null);
+  const [lmsrQuote, setLmsrQuote] = useState<{ value: number; avgPrice: number; feeBps: number; fee: number } | null>(null);
   useEffect(() => {
     if (!market?.amm) { setLmsrQuote(null); return; }
     const shares = Number(amount) || 0;
@@ -224,29 +224,36 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
         const client = createArcReadClient();
         if (!client) return;
         const shares6 = parseUnits(String(shares), 6);
-        const out = sellMode
-          ? await client.readContract({
+        if (sellMode) {
+          const out = await client.readContract({
+            address: market.id as Address,
+            abi: prestoLmsrMarketAbi,
+            functionName: 'sellRefund',
+            args: [idx, shares6],
+          }) as bigint;
+          if (!active) return;
+          const value = Number(formatUnits(out, 6));
+          setLmsrQuote({ value, avgPrice: shares > 0 ? value / shares : 0, feeBps: 0, fee: 0 });
+        } else {
+          const [cost6, feeBps] = await Promise.all([
+            client.readContract({
               address: market.id as Address,
               abi: prestoLmsrMarketAbi,
-              functionName: 'sellRefund',
+              functionName: 'buyCost',
               args: [idx, shares6],
-            }) as bigint
-          : await Promise.all([
-              client.readContract({
-                address: market.id as Address,
-                abi: prestoLmsrMarketAbi,
-                functionName: 'buyCost',
-                args: [idx, shares6],
-              }) as Promise<bigint>,
-              client.readContract({
-                address: market.id as Address,
-                abi: prestoLmsrMarketAbi,
-                functionName: 'feeBps',
-              }) as Promise<number>,
-            ]).then(([cost6, feeBps]) => lmsrBuyTotalCost6(cost6, Number(feeBps)));
-        if (!active) return;
-        const value = Number(formatUnits(out, 6));
-        setLmsrQuote({ value, avgPrice: shares > 0 ? value / shares : 0 });
+            }) as Promise<bigint>,
+            client.readContract({
+              address: market.id as Address,
+              abi: prestoLmsrMarketAbi,
+              functionName: 'feeBps',
+            }) as Promise<number>,
+          ]);
+          const total = lmsrBuyTotalCost6(cost6, Number(feeBps));
+          if (!active) return;
+          const value = Number(formatUnits(total, 6));
+          const fee = Number(formatUnits(total - cost6, 6));
+          setLmsrQuote({ value, avgPrice: shares > 0 ? value / shares : 0, feeBps: Number(feeBps), fee });
+        }
       } catch {
         if (active) setLmsrQuote(null);
       }
@@ -572,7 +579,14 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     setIsSubmitting(true);
     setMessage('');
     try {
-      await track({ label }, action);
+      const result = await track({ label }, action);
+      // Targeted post-trade refresh: the direct LMSR buy/sell path doesn't go through placeTrade's
+      // background refresh, so patch just this market (sub-second) + the portfolio here. placeTrade /
+      // addLiquidity already schedule their own refresh; this single-market read on top is cheap.
+      if (result?.ok && marketId) {
+        void refreshMarket(marketId);
+        void refreshAccountPortfolio();
+      }
     } catch {
       // Surfaced in the toast; nothing to show inline.
     } finally {
@@ -1138,6 +1152,14 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                         {lmsrQuote ? `${unit}${lmsrQuote.value.toFixed(2)}` : '—'}
                       </span>
                     </div>
+                    {!isSell && lmsrQuote && lmsrQuote.feeBps > 0 ? (
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <span className="text-muted">Protocol fee ({(lmsrQuote.feeBps / 100).toFixed(lmsrQuote.feeBps % 100 === 0 ? 0 : 2)}%)</span>
+                        <span className="min-w-0 break-words text-right font-semibold text-[#94a3b8] [overflow-wrap:anywhere]">
+                          {`${unit}${lmsrQuote.fee.toFixed(2)} incl.`}
+                        </span>
+                      </div>
+                    ) : null}
                     <div className="flex items-center justify-between gap-3 text-sm">
                       <span className="text-muted">{isSell ? 'Min received (2% slip)' : 'Max you pay (2% slip)'}</span>
                       <span className="min-w-0 break-words text-right font-black text-white [overflow-wrap:anywhere]">

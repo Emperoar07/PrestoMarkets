@@ -8,6 +8,7 @@ import { useAppState } from '@/lib/appState';
 import { prefetchMarketDetail } from '@/lib/marketPrefetch';
 import { deriveDisplayType } from '@/lib/marketDisplay';
 import { detectCountryFlagUrl } from '@/lib/marketSubjectImage';
+import { useLiveScore } from '@/lib/useLiveScore';
 import { Countdown } from './Countdown';
 import { ChanceMeter } from './ChanceMeter';
 
@@ -83,6 +84,24 @@ function MarketCardComponent({
   const isSportsFixture = displayType === 'sports_live' && !isBinaryYesNo;
   const isOpinion = market.type === 'Opinion';
 
+  // Fixture sides (computed up here so the live-score watcher and footer can use them). For a
+  // 3-way market the away side is the last non-home, non-draw outcome.
+  const drawOutcome = market.outcomes.find((outcome) => /^draw$/i.test(outcome.label));
+  const homeOutcome = market.outcomes[0];
+  const awayOutcome = market.outcomes.find((outcome, index) => index > 0 && outcome.label !== drawOutcome?.label) ?? market.outcomes[2] ?? market.outcomes[1];
+  const homeLabel = homeOutcome?.label ?? 'Home';
+  const awayLabel = awayOutcome?.label ?? 'Away';
+
+  const live = useLiveScore({
+    homeTeam: homeLabel,
+    awayTeam: awayLabel,
+    kickoffTime: market.kickoffTime,
+    trendUrl: market.trendUrl,
+    status: market.status,
+    enabled: isSportsFixture,
+  });
+  const matchIsLive = Boolean(live?.isLive);
+
   const handleQuickBuy = (outcome: string) => (event: MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -112,16 +131,19 @@ function MarketCardComponent({
   const footer = (
     <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/[0.04] pt-1.5">
       <span className="text-[10px] font-semibold text-[#475569]">{market.volume} Vol.</span>
-      <div className="flex items-center gap-2">
-        {isLive ? (
-          <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider ${isClosingSoon ? 'text-amber-400 animate-pulse' : 'text-[#475569]'}`}>
-            <span className={`h-1 w-1 rounded-full ${isClosingSoon ? 'bg-amber-400 animate-pulse' : 'bg-red-500'}`} />
-            {market.closeDate ? <Countdown closeDate={market.closeDate} /> : 'LIVE'}
-          </span>
-        ) : (
-          <span className="text-[9px] font-black uppercase tracking-wider text-[#475569]">{isResolved ? 'Resolved' : market.closeLabel || 'Closed'}</span>
-        )}
-      </div>
+      {matchIsLive ? (
+        <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-red-400">
+          <span className="h-1 w-1 rounded-full bg-red-500 animate-pulse" />
+          LIVE{live?.clock ? ` · ${live.clock}` : ''}
+        </span>
+      ) : isLive ? (
+        <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider ${isClosingSoon ? 'text-amber-400 animate-pulse' : 'text-[#475569]'}`}>
+          <span className={`h-1 w-1 rounded-full ${isClosingSoon ? 'bg-amber-400 animate-pulse' : 'bg-red-500'}`} />
+          {market.closeDate ? <Countdown closeDate={market.closeDate} /> : 'LIVE'}
+        </span>
+      ) : (
+        <span className="text-[9px] font-black uppercase tracking-wider text-[#475569]">{isResolved ? 'Resolved' : market.closeLabel || 'Closed'}</span>
+      )}
     </div>
   );
 
@@ -152,11 +174,6 @@ function MarketCardComponent({
   }
 
   if (isSportsFixture) {
-    const drawOutcome = market.outcomes.find((outcome) => /^draw$/i.test(outcome.label));
-    const homeOutcome = market.outcomes[0];
-    const awayOutcome = market.outcomes.find((outcome, index) => index > 0 && outcome.label !== drawOutcome?.label) ?? market.outcomes[2] ?? market.outcomes[1];
-    const homeLabel = homeOutcome?.label ?? 'Home';
-    const awayLabel = awayOutcome?.label ?? 'Away';
     const buttonOutcomes = [homeOutcome, drawOutcome, awayOutcome]
       .filter((outcome): outcome is Market['outcomes'][number] => Boolean(outcome))
       .filter((outcome, index, list) => list.findIndex((item) => item.label === outcome.label) === index);
@@ -173,15 +190,20 @@ function MarketCardComponent({
             // flag). Previously the home row used market.imageURI, which for fixtures is the home
             // team's football-federation crest — so the home side showed a logo while the away side
             // showed its flag. Both now resolve to the country flag for national-team fixtures.
-            { label: homeLabel, odds: homeOutcome?.odds ?? 0, image: homeOutcome?.image },
-            { label: awayLabel, odds: awayOutcome?.odds ?? 0, image: awayOutcome?.image },
+            { label: homeLabel, odds: homeOutcome?.odds ?? 0, image: homeOutcome?.image, score: live?.homeScore },
+            { label: awayLabel, odds: awayOutcome?.odds ?? 0, image: awayOutcome?.image, score: live?.awayScore },
           ].map((team) => (
             <div key={team.label} className="flex items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-2">
                 <TeamBadge team={team.label} image={team.image} />
                 <span className="truncate text-[12.5px] font-extrabold text-[#e5edf8]">{team.label}</span>
               </span>
-              <span className="shrink-0 text-[11.5px] font-black text-white">{Math.round(team.odds)}%</span>
+              <span className="flex shrink-0 items-center gap-2">
+                {team.score != null ? (
+                  <span className="min-w-[16px] rounded-[5px] bg-white/[0.06] px-1.5 py-0.5 text-center text-[13px] font-black tabular-nums text-white">{team.score}</span>
+                ) : null}
+                <span className="text-[11.5px] font-black text-white/70">{Math.round(team.odds)}%</span>
+              </span>
             </div>
           ))}
         </div>
