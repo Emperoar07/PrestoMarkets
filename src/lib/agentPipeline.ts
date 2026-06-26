@@ -1987,8 +1987,10 @@ ${breakingNewsCopyRule}
 ${priceRangeRule}
 ${shapeDirective}
 
-Close-date guidance — pick the SHORTEST horizon that still gives the source time to resolve.
-DO NOT default to 7 or 30 days; match the timeframe to the actual event:
+Close-date guidance — the closeDate is when the outcome is DECIDED. Set it at or JUST AFTER the
+moment the result becomes known, NEVER before. A market that closes before its result is locked in
+lets traders buy a near-certain winner risk-free, so accuracy here is a fraud-safety requirement.
+Pick the SHORTEST horizon that still gives the source time to resolve; DO NOT default to 7 or 30 days:
 - Live sports fixture or game tonight: closeDate = ${anchors.today} (today, ~20:00)
 - News breaking right now that resolves within hours: closeDate = ${anchors.sixHours}
 - News that resolves tomorrow (decisions due next day, fixtures next day): ${anchors.tomorrow}
@@ -1996,6 +1998,13 @@ DO NOT default to 7 or 30 days; match the timeframe to the actual event:
 - Weekly cycle (product launch, earnings, weekly fixtures): ${anchors.sevenDays}
 - Monthly cycle (regulator decisions, monthly metrics, mid-term forecasts): ${anchors.thirtyDays}
 - Long-horizon (quarterly, end-of-quarter price targets): up to ${anchors.ninetyDays}
+- DECIDED-BY-EVENT EXCEPTION (overrides the "shortest horizon" rule): when the outcome is settled by
+  a specific future scheduled event — a tournament winner (decided by the FINAL), a league/season
+  champion (decided by the last decisive match), an election winner (decided on/just after election
+  day), an award, or a "who will win <competition>" market — the closeDate MUST be at or just after
+  that deciding event, even if it is weeks away. Example: "Who will win the World Cup?" closes just
+  after the World Cup final, never on a generic 7- or 30-day window. Closing such a market early is a
+  bug: the result would already be public while the market is still open.
 
 If the trend looks like a 24h news cycle, do NOT set a 30-day close. Pick today or tomorrow.
 
