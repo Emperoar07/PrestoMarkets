@@ -1137,15 +1137,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 </div>
               </div>
 
-              <div className="mt-5 space-y-2.5 border-t border-white/[0.06] pt-5">
+              <div className="mt-4 space-y-2 border-t border-white/[0.06] pt-4">
                 {isAmm ? (
                   <>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted">Avg price / share</span>
-                      <span className="font-black text-white">
-                        {lmsrQuote ? `${unit}${lmsrQuote.avgPrice.toFixed(3)}` : `${activeOutcome.odds}%`}
-                      </span>
-                    </div>
                     <div className="flex items-center justify-between gap-3 text-sm">
                       <span className="text-muted">{isSell ? 'Est. you receive' : 'Est. cost'}</span>
                       <span className="min-w-0 break-words text-right font-black text-white [overflow-wrap:anywhere]">
@@ -1198,6 +1192,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 {tradeMode === 'liquidity' ? (
                   <p className="rounded-[10px] border border-cyan/15 bg-cyan/[0.05] px-3 py-2 text-xs leading-5 text-muted">
                     The app splits your amount evenly across every outcome to start with balanced depth.
+                  </p>
+                ) : isAmm ? (
+                  <p className="text-[11px] leading-4 text-[#64748b]">
+                    The % is each outcome&apos;s live price; every winning share pays {unit}1.
                   </p>
                 ) : (
                   <p className="text-[11px] leading-4 text-[#64748b]">
