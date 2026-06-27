@@ -68,6 +68,16 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -w "\nHTTP %{http_code}\n" --max-time 290
 
+      # Sweep accrued V3 protocol fees to the treasury. Idempotent and cheap on empty ticks (just a
+      # market read + per-market accruedFees read); only markets above the dust threshold are swept.
+      - name: Sweep accrued protocol fees to treasury
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/withdraw-fees" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n" --max-time 290
+
       - name: Refresh forecaster leaderboard
         if: ${{ always() }}
         run: |

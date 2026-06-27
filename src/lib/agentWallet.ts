@@ -369,6 +369,35 @@ export async function agentSettleV3(marketAddress: string) {
   }
 }
 
+// Accrued (un-withdrawn) protocol fees on a V3 market, in USDC 6-decimals. null on a read failure.
+export async function agentReadLmsrAccruedFees(marketAddress: string): Promise<bigint | null> {
+  try {
+    if (!isAddress(marketAddress)) return null;
+    const { publicClient } = getClients();
+    return await publicClient.readContract({
+      address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'accruedFees6',
+    }) as bigint;
+  } catch {
+    return null;
+  }
+}
+
+// Sweep a V3 market's accrued fees to its protocolFeeRecipient (the treasury, set at creation).
+// withdrawFees() is permissionless and always pays the recipient, so the caller only triggers it.
+export async function agentWithdrawLmsrFees(marketAddress: string) {
+  try {
+    if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
+    const { account, publicClient, walletClient } = getClients();
+    const hash = await walletClient.writeContract({
+      account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'withdrawFees',
+    });
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    return { ok: true as const, txHash: hash };
+  } catch (error) {
+    return { ok: false as const, error: error instanceof Error ? error.message : 'withdrawFees failed.' };
+  }
+}
+
 // Adjudicate a disputed V3 proposal (resolver decides the final outcome).
 export async function agentResolveDisputedV3(marketAddress: string, finalOutcome: number, evidenceURI: string) {
   try {
