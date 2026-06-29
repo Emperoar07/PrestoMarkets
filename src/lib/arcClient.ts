@@ -63,6 +63,23 @@ export function arcRpcUrls(override?: string): string[] {
 const ARC_RPC_TIMEOUT_MS = 8_000;
 
 /**
+ * Decide whether a fallback should STOP failing over (throw) vs advance to the next RPC.
+ *
+ * viem's default `shouldThrow` short-circuits on a handful of "deterministic" RPC error codes —
+ * crucially -32003 (`TransactionRejectedRpcError`, surfaced as "Transaction creation failed."),
+ * which is exactly what QuikNode / Alchemy return when they hit a DAILY or RATE limit. Those are
+ * provider-specific, so stopping there strands every read on the dead endpoint instead of moving on
+ * to a healthy one — the "out for Alchemy/QuikNode and not falling back" symptom, and why the whole
+ * grid read returned empty. We override it: only stop for a genuine on-chain execution revert (the
+ * one error that is identical on every node, so retrying elsewhere is pointless); fail over on
+ * everything else — rate limits, daily quotas, timeouts, internal errors.
+ */
+export function arcShouldThrow(error: unknown): boolean {
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return message.includes('execution reverted');
+}
+
+/**
  * Fallback HTTP transport across the ordered Arc RPCs. viem's `fallback` advances to the next
  * endpoint on error (so a throttled/down provider transparently fails over), each leg batches
  * JSON-RPC calls into a single request, and a per-endpoint timeout makes a hanging provider fail
@@ -70,7 +87,7 @@ const ARC_RPC_TIMEOUT_MS = 8_000;
  */
 export function arcReadTransport(rpcUrl?: string) {
   const transports = arcRpcUrls(rpcUrl).map((url) => http(url, { batch: true, timeout: ARC_RPC_TIMEOUT_MS }));
-  return fallback(transports, { rank: false });
+  return fallback(transports, { rank: false, shouldThrow: arcShouldThrow });
 }
 
 export function createArcChain(rpcUrls?: string[]) {

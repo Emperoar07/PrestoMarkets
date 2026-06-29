@@ -1,6 +1,6 @@
 import { createPublicClient, fallback, formatUnits, http, isAddress, type Address } from 'viem';
 import { getArcConfig, getArcChainId, collateralSymbolForAddress } from './arcConfig';
-import { createArcChain } from './arcClient';
+import { createArcChain, arcShouldThrow } from './arcClient';
 import { erc20Abi, prestoLmsrMarketAbi, prestoLmsrMarketFactoryAbi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { isSafeResolutionUri, parseMarketMetadata } from './marketMetadata';
 import { stripSourceFromDescription } from './sourcePrivacy';
@@ -499,8 +499,10 @@ async function readOnchainMarkets() {
       id: chainId,
     },
     // Per-endpoint timeout so a hung/out provider (e.g. Alchemy past quota) fails over fast instead
-    // of stalling the whole grid read on viem's 10s default. Generous enough for the heavy multicall.
-    transport: fallback(config.rpcUrls.map((url) => http(url, { timeout: 12_000 })), { rank: false }),
+    // of stalling the whole grid read on viem's 10s default. arcShouldThrow makes failover advance
+    // past rate-limit / daily-quota errors (which viem otherwise maps to -32003 and refuses to fail
+    // over on) so a throttled provider can't strand the whole read on an empty result.
+    transport: fallback(config.rpcUrls.map((url) => http(url, { timeout: 12_000 })), { rank: false, shouldThrow: arcShouldThrow }),
     batch: {
       multicall: {
         batchSize: 16_384,
@@ -617,8 +619,10 @@ export async function fetchOnchainMarket(
   const client = createPublicClient({
     chain: { ...createArcChain(config.rpcUrls), id: chainId },
     // Per-endpoint timeout so a hung/out provider (e.g. Alchemy past quota) fails over fast instead
-    // of stalling the whole grid read on viem's 10s default. Generous enough for the heavy multicall.
-    transport: fallback(config.rpcUrls.map((url) => http(url, { timeout: 12_000 })), { rank: false }),
+    // of stalling the whole grid read on viem's 10s default. arcShouldThrow makes failover advance
+    // past rate-limit / daily-quota errors (which viem otherwise maps to -32003 and refuses to fail
+    // over on) so a throttled provider can't strand the whole read on an empty result.
+    transport: fallback(config.rpcUrls.map((url) => http(url, { timeout: 12_000 })), { rank: false, shouldThrow: arcShouldThrow }),
     batch: { multicall: { batchSize: 16_384, wait: 10 } },
   });
   try {

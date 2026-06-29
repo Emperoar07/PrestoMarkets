@@ -16,7 +16,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { getArcConfig } from './arcConfig';
-import { createArcChain } from './arcClient';
+import { createArcChain, arcShouldThrow } from './arcClient';
 import { erc20Abi, prestoMarketFactoryAbi, prestoMarketAbi, prestoMultiOutcomeMarketFactoryAbi, prestoLmsrMarketFactoryAbi, prestoLmsrMarketAbi } from './contracts';
 import { buildMarketMetadataURI } from './marketMetadata';
 import { logger } from './logger';
@@ -85,11 +85,13 @@ function getClients() {
 
   const account = privateKeyToAccount(pk as Hex);
   const chain = createArcChain(config.rpcUrls);
-  // Fallback across all configured Arc RPCs (dRPC -> QuikNode -> public). The agent's writes were
-  // failing whenever the primary provider was down/throttled because it used a single endpoint;
-  // viem's fallback advances to the next on error so a dead provider no longer blocks creation.
+  // Fallback across all configured Arc RPCs (Alchemy -> dRPC -> QuikNode -> public). The agent's
+  // writes/reads were failing whenever the primary provider was down/throttled: a single endpoint
+  // has nothing to fail over to, AND even with a fallback viem refused to advance past a provider's
+  // daily-quota/rate-limit error (mapped to -32003). arcShouldThrow makes it fail over on those, plus
+  // a per-endpoint timeout so a hung provider doesn't stall the tick. This is why agent-tick failed.
   const transport = config.rpcUrls.length > 0
-    ? fallback(config.rpcUrls.map((url) => http(url)))
+    ? fallback(config.rpcUrls.map((url) => http(url, { timeout: 12_000 })), { rank: false, shouldThrow: arcShouldThrow })
     : http();
   const publicClient = createPublicClient({ chain, transport });
   const walletClient = createWalletClient({ account, chain, transport });
