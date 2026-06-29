@@ -1,8 +1,9 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { createPublicClient, getAddress, http, isAddress, verifyMessage, type Address } from 'viem';
+import { createPublicClient, getAddress, isAddress, verifyMessage, type Address } from 'viem';
 import { arcTestnet } from 'viem/chains';
 import { eq } from 'drizzle-orm';
 import { getArcConfig } from './arcConfig';
+import { arcReadTransport } from './arcClient';
 import { getDb, hasDatabaseUrl } from './db/client';
 import { siweNonces } from './db/schema';
 
@@ -193,7 +194,9 @@ export async function verifySiweSignature(input: {
     const config = getArcConfig();
     const client = createPublicClient({
       chain: arcTestnet,
-      transport: http(config.rpcUrl || 'https://rpc.testnet.arc.network'),
+      // Fail over across the ordered Arc RPCs so an out/throttled provider doesn't break passkey
+      // ownership verification.
+      transport: arcReadTransport(config.rpcUrl || undefined),
     });
     return await client.verifyMessage({
       address: normalized as Address,

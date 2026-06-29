@@ -53,12 +53,23 @@ export function arcRpcUrls(override?: string): string[] {
 }
 
 /**
+ * Per-endpoint request timeout. viem's `fallback` only advances to the next RPC once the current
+ * one ERRORS — a provider that is "out" but hangs (e.g. Alchemy past its quota holding the socket
+ * open, or a slow 429 with Retry-After) would otherwise stall every call for viem's 10s default
+ * before failing over, which looks like the pipeline is frozen / "not falling back". A tight 8s cap
+ * makes a dead/slow leg fail over quickly while still comfortably covering a healthy multicall read
+ * (individual JSON-RPC requests return in 1–3s; the heavy grid read is many such requests, not one).
+ */
+const ARC_RPC_TIMEOUT_MS = 8_000;
+
+/**
  * Fallback HTTP transport across the ordered Arc RPCs. viem's `fallback` advances to the next
- * endpoint on error (so a throttled/down provider transparently fails over), and each leg batches
- * JSON-RPC calls into a single request via Multicall3-friendly batching.
+ * endpoint on error (so a throttled/down provider transparently fails over), each leg batches
+ * JSON-RPC calls into a single request, and a per-endpoint timeout makes a hanging provider fail
+ * over fast instead of stalling on the default 10s.
  */
 export function arcReadTransport(rpcUrl?: string) {
-  const transports = arcRpcUrls(rpcUrl).map((url) => http(url, { batch: true }));
+  const transports = arcRpcUrls(rpcUrl).map((url) => http(url, { batch: true, timeout: ARC_RPC_TIMEOUT_MS }));
   return fallback(transports, { rank: false });
 }
 

@@ -3,7 +3,6 @@ import {
   createPublicClient,
   decodeEventLog,
   erc20Abi,
-  http,
   isAddress,
   parseUnits,
   type Address,
@@ -11,6 +10,7 @@ import {
 } from 'viem';
 import { arcTestnet } from 'viem/chains';
 import { getArcConfig } from './arcConfig';
+import { arcReadTransport } from './arcClient';
 
 /**
  * Seller-side x402 gate for the public API (`/api/v1`). Monetizes the agent storefront: an
@@ -98,7 +98,8 @@ async function verifyArcUsdcPayment(txHash: Hex, recipient: Address, priceUsdc: 
 
   const client = createPublicClient({
     chain: arcTestnet,
-    transport: http(cfg.rpcUrl || 'https://rpc.testnet.arc.network'),
+    // Fail over across the ordered Arc RPCs so an out/throttled provider doesn't break receipt checks.
+    transport: arcReadTransport(cfg.rpcUrl || undefined),
   });
 
   const receipt = await client.getTransactionReceipt({ hash: txHash });

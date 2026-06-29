@@ -498,7 +498,9 @@ async function readOnchainMarkets() {
       ...createArcChain(config.rpcUrls),
       id: chainId,
     },
-    transport: fallback(config.rpcUrls.map((url) => http(url))),
+    // Per-endpoint timeout so a hung/out provider (e.g. Alchemy past quota) fails over fast instead
+    // of stalling the whole grid read on viem's 10s default. Generous enough for the heavy multicall.
+    transport: fallback(config.rpcUrls.map((url) => http(url, { timeout: 12_000 })), { rank: false }),
     batch: {
       multicall: {
         batchSize: 16_384,
@@ -614,7 +616,9 @@ export async function fetchOnchainMarket(
   const chainId = getArcChainId();
   const client = createPublicClient({
     chain: { ...createArcChain(config.rpcUrls), id: chainId },
-    transport: fallback(config.rpcUrls.map((url) => http(url))),
+    // Per-endpoint timeout so a hung/out provider (e.g. Alchemy past quota) fails over fast instead
+    // of stalling the whole grid read on viem's 10s default. Generous enough for the heavy multicall.
+    transport: fallback(config.rpcUrls.map((url) => http(url, { timeout: 12_000 })), { rank: false }),
     batch: { multicall: { batchSize: 16_384, wait: 10 } },
   });
   try {

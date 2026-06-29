@@ -9,7 +9,6 @@
 import {
   createPublicClient,
   createWalletClient,
-  http,
   keccak256,
   toHex,
   parseAbiItem,
@@ -18,6 +17,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { getArcConfig, getArcChainId } from './arcConfig';
+import { arcReadTransport } from './arcClient';
 
 // ── Arc ERC-8004 contract addresses ──────────────────────────────────────────
 
@@ -73,7 +73,9 @@ function getAgentClients() {
   if (!config.rpcUrl) throw new Error('ARC_RPC_URL not set');
   const chain = getChain();
   const account = privateKeyToAccount(pk as Hex);
-  const transport = http(config.rpcUrl);
+  // Fail over across the ordered Arc RPCs (dedicated first, public last) so an out/throttled
+  // provider doesn't strand the agent on a single dead endpoint.
+  const transport = arcReadTransport(config.rpcUrl);
   return {
     account,
     publicClient: createPublicClient({ chain, transport }),
@@ -88,7 +90,9 @@ function getValidatorClients() {
   if (!config.rpcUrl) throw new Error('ARC_RPC_URL not set');
   const chain = getChain();
   const account = privateKeyToAccount(pk as Hex);
-  const transport = http(config.rpcUrl);
+  // Fail over across the ordered Arc RPCs (dedicated first, public last) so an out/throttled
+  // provider doesn't strand the agent on a single dead endpoint.
+  const transport = arcReadTransport(config.rpcUrl);
   return {
     account,
     walletClient: createWalletClient({ account, chain, transport }),
