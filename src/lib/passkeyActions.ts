@@ -132,7 +132,9 @@ async function assertMarketOpenForTrading(publicClient: ReturnType<typeof getPub
 }
 
 const PASSKEY_RECEIPT_TIMEOUT_MS = 150_000;
-const PASSKEY_RECEIPT_POLL_MS = 1_500;
+// Arc finalizes sub-second; the limiting factor is Circle's bundler inclusion, so once the userOp
+// lands we detect the on-chain effect on the next tight tick instead of waiting out a 1.5s poll.
+const PASSKEY_RECEIPT_POLL_MS = 700;
 
 // The Circle paymaster sometimes can't sponsor (policy limit, transient outage), surfacing as an
 // AA-prefixed paymaster error. When that persists we retry the user op WITHOUT the paymaster so the

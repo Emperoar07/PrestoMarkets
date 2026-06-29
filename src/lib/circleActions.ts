@@ -29,7 +29,9 @@ const ARC_RECEIPT_TIMEOUT_MS = 20_000;
 // from Arc instead of waiting on Circle's slower transaction indexer — which otherwise
 // leaves the progress toast spinning long after the trade has actually landed.
 const ONCHAIN_CONFIRM_TIMEOUT_MS = 30_000;
-const ONCHAIN_CONFIRM_POLL_MS = 1_500;
+// Arc finalizes sub-second, so poll the on-chain effect tightly — the limiting factor is bundler
+// inclusion, and once it lands we want to flip to success fast rather than wait out a 1.5s tick.
+const ONCHAIN_CONFIRM_POLL_MS = 700;
 const QUICK_TXHASH_LOOKUP_MS = 3_000;
 
 function memoContractExecution(input: {
@@ -306,6 +308,14 @@ async function runContractExecution(input: {
   if (waitForConfirmation && input.confirmOnchain) {
     const deadline = Date.now() + ONCHAIN_CONFIRM_TIMEOUT_MS;
     while (Date.now() < deadline) {
+      // Check the Arc effect FIRST — it's a single sub-second read and Arc is the source of truth,
+      // so the UI flips to success the instant the userOp lands, without waiting on Circle's slower
+      // transaction indexer. The indexer lookups below are only a fallback for the tx-hash link.
+      if (await input.confirmOnchain().catch(() => false)) {
+        // Confirmed on Arc. Best-effort: fetch Circle's tx hash for the explorer link, but do
+        // not block success on the indexer — an empty hash just means "no link yet".
+        return observedTxHash || await quickCircleTxHash(input.session, anchor).catch(() => '');
+      }
       if (!observedTransactionId) {
         observedTransactionId = await findRecentTransactionIdOnce(input.session, anchor).catch(() => '');
       }
@@ -314,11 +324,6 @@ async function runContractExecution(input: {
           .catch(() => ({ confirmed: false, txHash: observedTxHash }));
         observedTxHash = status.txHash || observedTxHash;
         if (status.confirmed) return status.txHash;
-      }
-      if (await input.confirmOnchain().catch(() => false)) {
-        // Confirmed on Arc. Best-effort: fetch Circle's tx hash for the explorer link, but do
-        // not block success on the indexer — an empty hash just means "no link yet".
-        return observedTxHash || await quickCircleTxHash(input.session, anchor).catch(() => '');
       }
       await new Promise((r) => setTimeout(r, ONCHAIN_CONFIRM_POLL_MS));
     }
