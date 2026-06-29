@@ -498,11 +498,12 @@ async function readOnchainMarkets() {
       ...createArcChain(config.rpcUrls),
       id: chainId,
     },
-    // Per-endpoint timeout so a hung/out provider (e.g. Alchemy past quota) fails over fast instead
-    // of stalling the whole grid read on viem's 10s default. arcShouldThrow makes failover advance
-    // past rate-limit / daily-quota errors (which viem otherwise maps to -32003 and refuses to fail
-    // over on) so a throttled provider can't strand the whole read on an empty result.
-    transport: fallback(config.rpcUrls.map((url) => http(url, { timeout: 12_000 })), { rank: false, shouldThrow: arcShouldThrow }),
+    // Per-endpoint timeout so a hung/slow provider fails over fast instead of stalling the whole
+    // grid read on viem's 10s default. 7s comfortably covers a healthy batched multicall request
+    // (each batch request returns in a few seconds) while abandoning a leg that isn't keeping up.
+    // arcShouldThrow makes failover advance past rate-limit/daily-quota errors (which viem otherwise
+    // maps to -32003 and refuses to fail over on) so a throttled provider can't strand the read.
+    transport: fallback(config.rpcUrls.map((url) => http(url, { timeout: 7_000 })), { rank: false, shouldThrow: arcShouldThrow }),
     batch: {
       multicall: {
         batchSize: 16_384,
@@ -618,11 +619,12 @@ export async function fetchOnchainMarket(
   const chainId = getArcChainId();
   const client = createPublicClient({
     chain: { ...createArcChain(config.rpcUrls), id: chainId },
-    // Per-endpoint timeout so a hung/out provider (e.g. Alchemy past quota) fails over fast instead
-    // of stalling the whole grid read on viem's 10s default. arcShouldThrow makes failover advance
-    // past rate-limit / daily-quota errors (which viem otherwise maps to -32003 and refuses to fail
-    // over on) so a throttled provider can't strand the whole read on an empty result.
-    transport: fallback(config.rpcUrls.map((url) => http(url, { timeout: 12_000 })), { rank: false, shouldThrow: arcShouldThrow }),
+    // Per-endpoint timeout so a hung/slow provider fails over fast instead of stalling the whole
+    // grid read on viem's 10s default. 7s comfortably covers a healthy batched multicall request
+    // (each batch request returns in a few seconds) while abandoning a leg that isn't keeping up.
+    // arcShouldThrow makes failover advance past rate-limit/daily-quota errors (which viem otherwise
+    // maps to -32003 and refuses to fail over on) so a throttled provider can't strand the read.
+    transport: fallback(config.rpcUrls.map((url) => http(url, { timeout: 7_000 })), { rank: false, shouldThrow: arcShouldThrow }),
     batch: { multicall: { batchSize: 16_384, wait: 10 } },
   });
   try {

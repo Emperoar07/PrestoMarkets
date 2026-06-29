@@ -40,15 +40,35 @@ const ARC_PUBLIC_RPC = 'https://rpc.testnet.arc.network';
  * jumps to the front when provided.
  */
 export function arcRpcUrls(override?: string): string[] {
-  const alchemy = process.env.NEXT_PUBLIC_ARC_RPC_ALCHEMY?.trim();
-  const drpc = process.env.NEXT_PUBLIC_ARC_RPC_DRPC?.trim();
-  const quiknode = process.env.NEXT_PUBLIC_ARC_RPC_QUIKNODE?.trim();
-  // Dedicated providers first (Alchemy leads — premium, high limit); the rate-limited public RPC is
-  // the last-resort fallback so normal read/write load goes to high-limit endpoints and only
-  // degrades to public if they all fail.
-  const ordered = [alchemy, drpc, quiknode, override?.trim(), ARC_PUBLIC_RPC].filter(
-    (url): url is string => Boolean(url),
-  );
+  // Named dedicated providers (kept for back-compat). Alchemy leads — premium, high limit.
+  const alchemy = process.env.NEXT_PUBLIC_ARC_RPC_ALCHEMY;
+  const drpc = process.env.NEXT_PUBLIC_ARC_RPC_DRPC;
+  const quiknode = process.env.NEXT_PUBLIC_ARC_RPC_QUIKNODE;
+
+  // Generic numbered slots — fill ANY of these with ANY endpoint (e.g. several Alchemy keys) in any
+  // order; empty ones are skipped. They all join the fallback chain and are tried one-by-one. An
+  // exhausted endpoint stays in the chain: arcShouldThrow advances past its quota/rate-limit error,
+  // and it starts serving again the moment you top it up — so you can refill whichever you like.
+  // NOTE: each must be referenced STATICALLY here — Next.js only inlines NEXT_PUBLIC_* vars into the
+  // browser bundle when accessed by literal name, so a dynamic process.env[...] would be undefined.
+  const numbered = [
+    process.env.NEXT_PUBLIC_ARC_RPC_1,
+    process.env.NEXT_PUBLIC_ARC_RPC_2,
+    process.env.NEXT_PUBLIC_ARC_RPC_3,
+    process.env.NEXT_PUBLIC_ARC_RPC_4,
+    process.env.NEXT_PUBLIC_ARC_RPC_5,
+    process.env.NEXT_PUBLIC_ARC_RPC_6,
+    process.env.NEXT_PUBLIC_ARC_RPC_7,
+    process.env.NEXT_PUBLIC_ARC_RPC_8,
+    process.env.NEXT_PUBLIC_ARC_RPC_9,
+    process.env.NEXT_PUBLIC_ARC_RPC_10,
+  ];
+
+  // Named premium first, then the numbered slots, then any explicit override; the rate-limited
+  // public RPC is always the last-resort tail so load only degrades to it if every other leg fails.
+  const ordered = [alchemy, drpc, quiknode, ...numbered, override, ARC_PUBLIC_RPC]
+    .map((url) => url?.trim())
+    .filter((url): url is string => Boolean(url));
   return Array.from(new Set(ordered));
 }
 
@@ -56,11 +76,13 @@ export function arcRpcUrls(override?: string): string[] {
  * Per-endpoint request timeout. viem's `fallback` only advances to the next RPC once the current
  * one ERRORS — a provider that is "out" but hangs (e.g. Alchemy past its quota holding the socket
  * open, or a slow 429 with Retry-After) would otherwise stall every call for viem's 10s default
- * before failing over, which looks like the pipeline is frozen / "not falling back". A tight 8s cap
- * makes a dead/slow leg fail over quickly while still comfortably covering a healthy multicall read
- * (individual JSON-RPC requests return in 1–3s; the heavy grid read is many such requests, not one).
+ * before failing over, which looks like the pipeline is frozen / "not falling back". A tight cap
+ * makes a dead OR slow leg fail over quickly while still comfortably covering a healthy light read
+ * (balances/allowance return in well under 2s; a provider that needs >4.5s is "not working well"
+ * and we'd rather advance to the next than wait on it). A quota/rate-limit error already fails over
+ * instantly via arcShouldThrow — this cap is for the slow-hang case.
  */
-const ARC_RPC_TIMEOUT_MS = 8_000;
+const ARC_RPC_TIMEOUT_MS = 4_500;
 
 /**
  * Decide whether a fallback should STOP failing over (throw) vs advance to the next RPC.

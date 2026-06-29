@@ -60,7 +60,22 @@ export function getArcConfig() {
   const alchemy = publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_ALCHEMY);
   const drpc = publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_DRPC);
   const quiknode = publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_QUIKNODE);
-  const rpcUrls = uniqueValues([alchemy, drpc, quiknode, configuredRpcUrl, DEFAULT_ARC_RPC_URL].filter(Boolean));
+  // Generic numbered slots — fill ANY with ANY endpoint (e.g. several Alchemy keys), any order;
+  // empty ones drop out. All join the fallback chain; an exhausted one is skipped (arcShouldThrow)
+  // and serves again once topped up. Must be referenced statically so Next.js inlines them.
+  const numbered = [
+    publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_1),
+    publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_2),
+    publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_3),
+    publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_4),
+    publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_5),
+    publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_6),
+    publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_7),
+    publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_8),
+    publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_9),
+    publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_10),
+  ];
+  const rpcUrls = uniqueValues([alchemy, drpc, quiknode, ...numbered, configuredRpcUrl, DEFAULT_ARC_RPC_URL].filter(Boolean));
   const rpcUrl = rpcUrls[0] ?? DEFAULT_ARC_RPC_URL;
   const usdcAddress = publicEnv(process.env.NEXT_PUBLIC_USDC_ADDRESS);
   // EURC on Arc Testnet (Circle docs) — euro-denominated market collateral. 6 decimals like USDC.

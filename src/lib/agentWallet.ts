@@ -91,7 +91,7 @@ function getClients() {
   // daily-quota/rate-limit error (mapped to -32003). arcShouldThrow makes it fail over on those, plus
   // a per-endpoint timeout so a hung provider doesn't stall the tick. This is why agent-tick failed.
   const transport = config.rpcUrls.length > 0
-    ? fallback(config.rpcUrls.map((url) => http(url, { timeout: 12_000 })), { rank: false, shouldThrow: arcShouldThrow })
+    ? fallback(config.rpcUrls.map((url) => http(url, { timeout: 7_000 })), { rank: false, shouldThrow: arcShouldThrow })
     : http();
   const publicClient = createPublicClient({ chain, transport });
   const walletClient = createWalletClient({ account, chain, transport });
