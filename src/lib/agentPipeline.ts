@@ -1407,6 +1407,19 @@ function isDuplicateMarket(draft: GeminiDraft, trend: TrendItem, existingMarkets
   });
 }
 
+// After the agent creates a market mid-run, record a lightweight stand-in so the SAME run's later
+// dedup checks (isDuplicateMarket / isSemanticDuplicateMarket) treat it as already existing.
+// existingMarkets is read ONCE at the start of the run, so without this two drafts for the same
+// fixture/topic in one run both pass the "already exists?" check and both get created — exactly the
+// duplicate pairs seen on chain (same match, created 1–2 min apart in one tick).
+function rememberCreatedMarket(existingMarkets: AppMarket[], draft: GeminiDraft, trend: TrendItem) {
+  existingMarkets.push({
+    title: draft.title,
+    trendUrl: trend.url,
+    status: 'Open',
+  } as unknown as AppMarket);
+}
+
 // LLM semantic dedup — catches same-meaning markets that token overlap misses, e.g.
 // "Who will win Real Madrid presidency?" vs "Who will be elected Real Madrid president in 2026?".
 // Only invoked after the cheap checks pass, so it adds at most one bounded call per creation.
@@ -2390,11 +2403,23 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   // The deterministic fixture lane covers every recognized football/basketball match (objectively
   // settleable from the official result), not just the World Cup. They skip the LLM classify/draft
   // and are shaped into Home/Draw/Away markets. World Cup fixtures sort first, then by kickoff.
+  const seenFixtureKeys = new Set<string>();
   const fixtureTrends = trends
     .filter((trend) => trend.guaranteedFixture || (Boolean(trend.kickoffTime) && isFootballBasketballTrend(trend)))
     .sort((a, b) =>
       (a.guaranteedFixture === b.guaranteedFixture ? 0 : a.guaranteedFixture ? -1 : 1)
-      || Date.parse(a.kickoffTime ?? '') - Date.parse(b.kickoffTime ?? ''));
+      || Date.parse(a.kickoffTime ?? '') - Date.parse(b.kickoffTime ?? ''))
+    // Collapse the same match arriving from multiple sources (a guaranteed World Cup entry AND an
+    // ESPN/TheSportsDB version come through different code paths, so dedupeFixtureTrends never saw
+    // them together) before the loop, so we don't even attempt to create it twice. Guaranteed
+    // fixtures sort first, so the kept copy is the World Cup-tagged one.
+    .filter((trend) => {
+      const key = fixturePairKey(trend.topic) ?? fixtureMatchupKey(trend.topic);
+      if (!key) return true;
+      if (seenFixtureKeys.has(key)) return false;
+      seenFixtureKeys.add(key);
+      return true;
+    });
   // Bail only when there's genuinely nothing to create: the regular (non-fixture) lane is at its
   // cap AND either there are no fixtures to add or the total is past the fixture reserve ceiling.
   if (
@@ -2459,6 +2484,7 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
       if (result.ok) {
         liveActive += 1;
         typeMix.Prediction += 1;
+        rememberCreatedMarket(existingMarkets, draft, trend);
       }
     } catch (e) {
       results.push({ ok: false, topic: trend.topic, stage: 'pipeline', reason: String(e) });
@@ -2655,6 +2681,7 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
         liveActive += 1;
         liveNonFixtureActive += 1;
         createdThisRun += 1;
+        rememberCreatedMarket(existingMarkets, draft, trend);
         // Reflect the new market in the type mix so subsequent picks (when per-run cap > 1)
         // see the updated distribution.
         if (draft.type === 'Prediction' || draft.type === 'Opinion') {
