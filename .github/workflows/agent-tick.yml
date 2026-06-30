@@ -84,4 +84,5 @@ jobs:
           curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/leaderboard" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -w "\nHTTP %{http_code}\n" \
+            --max-time 290 --retry 2 --retry-delay 15 --retry-all-errors \
             --fail-with-body

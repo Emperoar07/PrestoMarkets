@@ -4,7 +4,11 @@ import { getAllAccountStats } from '@/lib/marketIndexer';
 import { refreshLeaderboardCache } from '@/lib/socialDb';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+// 300s like the other crons. The leaderboard read is the heaviest in the tick (all markets + the
+// per-account ledger from event logs); a 60s budget blew past it when the RPC was throttled, 504'd
+// the endpoint, and — since this is the only agent-tick step without continue-on-error — failed the
+// whole run. The wider budget + the workflow's retry keep a transient blip from doing that.
+export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
