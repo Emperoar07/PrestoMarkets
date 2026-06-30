@@ -3,6 +3,7 @@ import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 import { verifyBearer } from '@/lib/authCompare';
 import { resolveSubjectImageUrl, brandedMarketImage } from '@/lib/marketSubjectImage';
 import { validateImageUrl } from '@/lib/agentPipeline';
+import { generateAiMarketImage } from '@/lib/generateAiMarketImage';
 import { getDb, hasDatabaseUrl } from '@/lib/db/client';
 import { marketMetadataOverrides } from '@/lib/db/schema';
 import { hasGoodImage } from '@/lib/imageQuality';
@@ -12,6 +13,9 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 const MAX_BACKFILL_PER_RUN = 40;
+// Cap AI image generations per run so the FLUX free tier isn't rate-limited; the rest get a branded
+// banner this run and are retried next run (a banner isn't a "good" image, so it stays eligible).
+const MAX_AI_IMAGES_PER_RUN = Math.max(0, Number(process.env.PRESTO_AI_IMAGES_PER_RUN ?? 10));
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -71,6 +75,7 @@ export async function GET(req: NextRequest) {
     // Slice to cap per run to avoid rate limits or timeouts
     const batch = targetMarkets.slice(0, MAX_BACKFILL_PER_RUN);
     const updates: Array<{ id: string; title: string; imageURI: string }> = [];
+    let aiGenerated = 0;
 
     for (const market of batch) {
       try {
@@ -80,8 +85,17 @@ export async function GET(req: NextRequest) {
           query: market.description,
         });
         const validated = imageCandidate ? await validateImageUrl(imageCandidate, market.title) : undefined;
-        // Guarantee an image: fall back to a branded banner when no real subject image resolves.
-        const finalImage = validated || brandedMarketImage(market.title);
+        // No real subject image (flag/coin/crest/article photo)? Generate a relevant illustration
+        // from the market's own context with the AI image model, instead of a generic banner. The
+        // branded banner is the final fallback if generation is unavailable/fails. AI generation is
+        // capped per run so the FLUX free tier isn't rate-limited — un-generated markets keep their
+        // branded banner (not "good"), so they're retried on the next run until they get an image.
+        let finalImage = validated;
+        if (!finalImage && aiGenerated < MAX_AI_IMAGES_PER_RUN) {
+          aiGenerated += 1;
+          finalImage = (await generateAiMarketImage({ title: market.title, category: market.category })) ?? undefined;
+        }
+        finalImage = finalImage || brandedMarketImage(market.title);
 
         await db
           .insert(marketMetadataOverrides)
