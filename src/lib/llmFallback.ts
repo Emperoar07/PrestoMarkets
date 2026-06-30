@@ -318,6 +318,32 @@ async function callTogether(input: LlmCallInput): Promise<ProviderResult | null>
   });
 }
 
+// Cloudflare Workers AI — OpenAI-compatible chat endpoint, generous free tier (shares the same
+// CF_ACCOUNT_ID + CF_API_TOKEN used for image generation). Adds capacity so the heavier sports/
+// fixture slate doesn't exhaust the other free LLM providers.
+async function callCloudflare(input: LlmCallInput): Promise<ProviderResult | null> {
+  const account = envClean('CF_ACCOUNT_ID');
+  const key = envClean('CF_API_TOKEN');
+  if (!account || !key) return null;
+  const models = uniqueStrings([
+    envClean(input.task === 'reasoning' ? 'CF_REASONING_MODEL' : 'CF_SAFETY_MODEL'),
+    envClean('CF_LLM_MODEL'),
+    input.task === 'reasoning' ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast' : '@cf/meta/llama-3.1-8b-instruct-fast',
+    '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  ]);
+  return callOpenAiCompatibleModels({
+    baseUrl: `https://api.cloudflare.com/client/v4/accounts/${account}/ai/v1`,
+    apiKey: key,
+    models,
+    provider: 'cloudflare',
+    basePayload: {
+      messages: [{ role: 'user', content: input.prompt }],
+      max_tokens: input.maxTokens ?? (input.task === 'reasoning' ? 1024 : 256),
+      temperature: input.temperature ?? 0.2,
+    },
+  });
+}
+
 async function callHuggingFace(input: LlmCallInput): Promise<ProviderResult | null> {
   const key = envClean('HUGGINGFACE_API_KEY') || envClean('HF_TOKEN') || envClean('HF_API_KEY');
   if (!key) return null;
@@ -348,7 +374,7 @@ async function callHuggingFace(input: LlmCallInput): Promise<ProviderResult | nu
  * validate the task-specific fields they require.
  */
 export async function callLlmJson(input: LlmCallInput): Promise<ProviderResult> {
-  const chain = [callAnthropic, callGemini, callGroq, callMistral, callOpenRouter, callCerebras, callTogether, callHuggingFace];
+  const chain = [callAnthropic, callGemini, callGroq, callMistral, callOpenRouter, callCerebras, callTogether, callCloudflare, callHuggingFace];
   for (const fn of chain) {
     const result = await fn(input);
     if (!result) continue;

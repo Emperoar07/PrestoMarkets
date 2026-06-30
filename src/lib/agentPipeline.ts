@@ -655,19 +655,33 @@ function formatSportsDbDate(date: Date) {
 // Free, no-key fallback: ESPN's public scoreboard API. Covers global soccer incl. the World Cup
 // and qualifiers, with team logos — so sports markets keep being created even without a
 // TheSportsDB key. Same TrendItem shape (guaranteed lane for World Cup / international fixtures).
+// Fixture lookahead windows (days from today). Guaranteed lanes (World Cup / international) scan
+// further out so every upcoming match gets a market well before kickoff; club leagues scan a
+// shorter window. Both env-tunable so coverage can widen without a code change.
+const GUARANTEED_LOOKAHEAD_DAYS = Math.max(1, Number(process.env.PRESTO_FIXTURE_LOOKAHEAD_DAYS ?? 14));
+const CLUB_LOOKAHEAD_DAYS = Math.max(1, Number(process.env.PRESTO_CLUB_LOOKAHEAD_DAYS ?? 3));
+
 const ESPN_LEAGUES: Array<{ slug: string; label: string; guaranteed: boolean }> = [
+  // International / World Cup lanes — guaranteed, scanned the full lookahead so no match is missed.
   { slug: 'fifa.world', label: 'FIFA World Cup', guaranteed: true },
   { slug: 'fifa.worldq.uefa', label: 'World Cup Qualifying - UEFA', guaranteed: true },
   { slug: 'fifa.worldq.conmebol', label: 'World Cup Qualifying - CONMEBOL', guaranteed: true },
   { slug: 'fifa.worldq.concacaf', label: 'World Cup Qualifying - CONCACAF', guaranteed: true },
+  { slug: 'fifa.worldq.afc', label: 'World Cup Qualifying - AFC', guaranteed: true },
+  { slug: 'fifa.worldq.caf', label: 'World Cup Qualifying - CAF', guaranteed: true },
   { slug: 'fifa.friendly', label: 'International Friendly', guaranteed: true },
+  { slug: 'uefa.nations', label: 'UEFA Nations League', guaranteed: true },
+  // Club competitions — broader "other sports" coverage across the top leagues + continental cups.
   { slug: 'uefa.champions', label: 'UEFA Champions League', guaranteed: false },
+  { slug: 'uefa.europa', label: 'UEFA Europa League', guaranteed: false },
   { slug: 'eng.1', label: 'English Premier League', guaranteed: false },
   { slug: 'esp.1', label: 'Spanish La Liga', guaranteed: false },
   { slug: 'ita.1', label: 'Italian Serie A', guaranteed: false },
   { slug: 'ger.1', label: 'German Bundesliga', guaranteed: false },
   { slug: 'fra.1', label: 'French Ligue 1', guaranteed: false },
   { slug: 'usa.1', label: 'American Major League Soccer', guaranteed: false },
+  { slug: 'mex.1', label: 'Mexican Liga MX', guaranteed: false },
+  { slug: 'conmebol.libertadores', label: 'Copa Libertadores', guaranteed: false },
 ];
 
 // Close a fixture market 10 minutes after the match ends. A football match runs roughly 120 min of
@@ -680,8 +694,9 @@ const FIXTURE_CLOSE_AFTER_KICKOFF_MS = (120 + 10) * 60 * 1000;
 async function fetchEspnSoccerSignals(): Promise<TrendItem[]> {
   const today = new Date();
   const requests = ESPN_LEAGUES.flatMap((league) => {
-    // World Cup / international lanes scan a week ahead; club leagues only today + tomorrow.
-    const days = league.guaranteed ? 7 : 2;
+    // International lanes scan the full lookahead so every upcoming match gets a market well ahead
+    // of kickoff; club leagues scan a shorter near-term window.
+    const days = league.guaranteed ? GUARANTEED_LOOKAHEAD_DAYS : CLUB_LOOKAHEAD_DAYS;
     return Array.from({ length: days }, (_, i) => new Date(today.getTime() + i * 86_400_000)).map(async (date) => {
       const ymd = date.toISOString().slice(0, 10).replace(/-/g, '');
       const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${league.slug}/scoreboard?dates=${ymd}`;
@@ -748,7 +763,7 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
   // week gets its market days before kickoff — a few missed ticks can never miss a match.
   // Days beyond tomorrow only admit World Cup fixtures (guard below) so the regular trend lane
   // isn't flooded with far-out club fixtures.
-  const soccerDates = Array.from({ length: 7 }, (_, i) => new Date(Date.now() + i * 86_400_000));
+  const soccerDates = Array.from({ length: GUARANTEED_LOOKAHEAD_DAYS }, (_, i) => new Date(Date.now() + i * 86_400_000));
   const requests = sportsDbSports.flatMap((sport) => (sport.sport === 'Soccer' ? soccerDates : dates).map(async (date, dateIndex) => {
     const isExtendedDay = dateIndex >= 2; // beyond today + tomorrow → World Cup only
     const day = formatSportsDbDate(date);
