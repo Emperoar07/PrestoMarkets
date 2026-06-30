@@ -16,6 +16,9 @@ import { sanitizeFeedText } from './feedSanitizer';
 import { fetchPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
 import { resolveSubjectImageUrl, brandedMarketImage, detectCountryFlagUrl } from './marketSubjectImage';
 import { deriveDisplayType } from './marketDisplay';
+import { generateAiMarketImage } from './generateAiMarketImage';
+import { getDb, hasDatabaseUrl } from './db/client';
+import { marketMetadataOverrides } from './db/schema';
 import { logger } from './logger';
 import { assessTrendResearchQuality, formatResearchAssessment, getResearchDecision } from './agentResearch';
 import { formatExaEvidence, researchTrendWithExa, summarizeExaEvidence, type ExaEvidence } from './exaResearch';
@@ -2240,6 +2243,27 @@ Return JSON only:
 
 // ── Stage 5: Onchain creation ──────────────────────────────────────────────
 
+// When a brand-new market had no real subject image, generate a relevant illustration from its own
+// context and store it as a metadata override (same path the backfill + reader use). Keyed by the
+// new market address, so the card shows the generated image immediately instead of the on-chain
+// branded banner. Best-effort: a failure just leaves the banner, which the backfill retries later.
+async function persistAiImageOverride(marketId: string, title: string, category?: string) {
+  if (!hasDatabaseUrl()) return;
+  try {
+    const image = await generateAiMarketImage({ title, category });
+    if (!image) return;
+    await getDb()
+      .insert(marketMetadataOverrides)
+      .values({ marketId: marketId.toLowerCase(), imageUri: image, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: marketMetadataOverrides.marketId,
+        set: { imageUri: image, updatedAt: new Date() },
+      });
+  } catch (err) {
+    logger.warn('agent-pipeline', 'AI image override failed', { marketId, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
 async function createOnchain(
   draft: GeminiDraft,
   trend: TrendItem,
@@ -2247,12 +2271,13 @@ async function createOnchain(
   safety: SafetyResult,
 ): Promise<PipelineResult> {
   const agentConfidence = String(Math.round(safety.confidence * 100)) + '%';
-  const imageURI = await fetchTrendImageURI(trend);
-  // Strict image policy: a market must have a REAL image (article/subject/team/flag), not the
-  // generic branded SVG fallback. No real image → don't create the market.
-  if (!imageURI || imageURI.startsWith('data:image/svg+xml')) {
-    return { ok: false, topic: trend.topic, stage: 'no-image', reason: 'No real image available for this market — skipped (strict image policy).' };
-  }
+  const resolvedImage = await fetchTrendImageURI(trend);
+  // A "real" image is an article/subject/team/flag photo — NOT the generic branded SVG fallback.
+  const hasRealImage = Boolean(resolvedImage && !resolvedImage.startsWith('data:image/svg+xml'));
+  // No real image? Create with the branded banner on-chain now and generate a relevant AI image as
+  // an override right after (below), so the market still launches with a fitting picture instead of
+  // being skipped. brandedMarketImage is deterministic and never empty.
+  const imageURI = hasRealImage ? resolvedImage! : brandedMarketImage(draft.title);
   const horizon = analyzeMarketHorizon(trend);
   const research = assessTrendResearchQuality(trend);
   const exaSummary = summarizeExaEvidence(trend.exaEvidence);
@@ -2307,6 +2332,13 @@ async function createOnchain(
 
   if (!result.ok) {
     return { ok: false, topic: trend.topic, stage: 'onchain', reason: result.error ?? 'Unknown' };
+  }
+
+  // No real subject image → it launched with a branded banner; generate a relevant AI image now and
+  // store it as an override so the card shows a fitting picture immediately. Awaited (Vercel may
+  // drop background work after the response) but best-effort, so it never fails the creation.
+  if (!hasRealImage && result.marketAddress) {
+    await persistAiImageOverride(result.marketAddress, draft.title, classification.category);
   }
 
   return { ok: true, topic: trend.topic, txHash: result.txHash as string, draft: input };

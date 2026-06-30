@@ -5,11 +5,17 @@ import { logger } from './logger';
 // Instead of falling back to a generic branded banner, the agent generates a relevant illustration
 // from the market's own context, then compresses it to a compact JPEG data-URI. hasGoodImage()
 // treats a real data-image as good, so it flows through the existing override storage + onchain
-// merge unchanged. Tries Gemini image first (the project already pays for Gemini), then Together
-// FLUX. Returns null on any failure so callers fall back to the branded banner — no regression.
+// merge unchanged. Returns null on any failure so callers fall back to the branded banner.
+//
+// Provider chain (first that returns an image wins) — all key-based or keyless, none paid-required:
+//   1. Gemini image      (GEMINI_API_KEY)            — best quality; needs image quota/billing.
+//   2. Cloudflare WorkersAI (CF_ACCOUNT_ID+CF_API_TOKEN) — generous free tier, fast FLUX-schnell.
+//   3. Together FLUX     (TOGETHER_API_KEY)          — needs account credit.
+//   4. Pollinations.ai   (no key at all)             — free community FLUX; the always-on fallback.
 
 const GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL?.trim() || 'gemini-2.5-flash-image';
 const TOGETHER_IMAGE_MODEL = process.env.TOGETHER_IMAGE_MODEL?.trim() || 'black-forest-labs/FLUX.1-schnell-Free';
+const CF_IMAGE_MODEL = process.env.CF_IMAGE_MODEL?.trim() || '@cf/black-forest-labs/flux-1-schnell';
 
 function buildPrompt(title: string, category?: string): string {
   // Image models render text as garbled glyphs, so explicitly forbid words/letters and ask for a
@@ -37,10 +43,7 @@ async function generateWithGemini(prompt: string): Promise<Buffer | null> {
         signal: AbortSignal.timeout(35_000),
       },
     );
-    if (!res.ok) {
-      logger.warn('ai-image', `Gemini image gen failed (${res.status})`);
-      return null;
-    }
+    if (!res.ok) { logger.warn('ai-image', `Gemini image gen failed (${res.status})`); return null; }
     const data = await res.json() as {
       candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { data?: string }; inline_data?: { data?: string } }> } }>;
     };
@@ -53,7 +56,38 @@ async function generateWithGemini(prompt: string): Promise<Buffer | null> {
   }
 }
 
-// Together FLUX fallback → base64 (or a short-lived URL we then fetch).
+// Cloudflare Workers AI — free tier, FLUX-schnell returns base64 JPEG in result.image.
+async function generateWithCloudflare(prompt: string): Promise<Buffer | null> {
+  const account = process.env.CF_ACCOUNT_ID?.trim();
+  const token = process.env.CF_API_TOKEN?.trim();
+  if (!account || !token) return null;
+  try {
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${account}/ai/run/${CF_IMAGE_MODEL}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ prompt, steps: 4 }),
+        signal: AbortSignal.timeout(35_000),
+      },
+    );
+    if (!res.ok) { logger.warn('ai-image', `Cloudflare image gen failed (${res.status})`); return null; }
+    // flux-1-schnell returns JSON { result: { image: "<base64>" } }; some models return raw bytes.
+    const ct = res.headers.get('content-type') ?? '';
+    if (ct.includes('application/json')) {
+      const data = await res.json() as { result?: { image?: string } };
+      const b64 = data.result?.image;
+      return b64 ? Buffer.from(b64, 'base64') : null;
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    return buf.length > 0 ? buf : null;
+  } catch (err) {
+    logger.warn('ai-image', 'Cloudflare image gen error', { error: err instanceof Error ? err.message : String(err) });
+    return null;
+  }
+}
+
+// Together FLUX → base64 (or a short-lived URL we then fetch).
 async function generateWithTogether(prompt: string): Promise<Buffer | null> {
   const key = process.env.TOGETHER_API_KEY?.trim();
   if (!key) return null;
@@ -61,21 +95,10 @@ async function generateWithTogether(prompt: string): Promise<Buffer | null> {
     const res = await fetch('https://api.together.xyz/v1/images/generations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-      body: JSON.stringify({
-        model: TOGETHER_IMAGE_MODEL,
-        prompt,
-        width: 1024,
-        height: 768,
-        steps: 4, // FLUX-schnell is a 1–4 step model
-        n: 1,
-        response_format: 'b64_json',
-      }),
+      body: JSON.stringify({ model: TOGETHER_IMAGE_MODEL, prompt, width: 1024, height: 768, steps: 4, n: 1, response_format: 'b64_json' }),
       signal: AbortSignal.timeout(35_000),
     });
-    if (!res.ok) {
-      logger.warn('ai-image', `Together image gen failed (${res.status})`);
-      return null;
-    }
+    if (!res.ok) { logger.warn('ai-image', `Together image gen failed (${res.status})`); return null; }
     const data = await res.json() as { data?: Array<{ b64_json?: string; url?: string }> };
     const first = data.data?.[0];
     if (first?.b64_json) return Buffer.from(first.b64_json, 'base64');
@@ -90,12 +113,34 @@ async function generateWithTogether(prompt: string): Promise<Buffer | null> {
   }
 }
 
+// Pollinations.ai — keyless free FLUX. GET the prompt URL; it returns image bytes directly. Set
+// POLLINATIONS_DISABLED=1 to turn off (it's a community service). Always-on last resort.
+async function generateWithPollinations(prompt: string): Promise<Buffer | null> {
+  if (process.env.POLLINATIONS_DISABLED === '1') return null;
+  try {
+    const seed = Math.floor(Math.random() * 1_000_000);
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`
+      + `?width=1024&height=768&nologo=true&model=flux&seed=${seed}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(40_000) });
+    if (!res.ok) { logger.warn('ai-image', `Pollinations image gen failed (${res.status})`); return null; }
+    if (!(res.headers.get('content-type') ?? '').startsWith('image/')) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    return buf.length > 1024 ? buf : null;
+  } catch (err) {
+    logger.warn('ai-image', 'Pollinations image gen error', { error: err instanceof Error ? err.message : String(err) });
+    return null;
+  }
+}
+
 /** Generate a relevant market image from its context. Returns a compact JPEG data-URI, or null. */
 export async function generateAiMarketImage(input: { title: string; category?: string }): Promise<string | null> {
   if (!input.title?.trim()) return null;
   const prompt = buildPrompt(input.title, input.category);
 
-  const raw = (await generateWithGemini(prompt)) ?? (await generateWithTogether(prompt));
+  const raw = (await generateWithGemini(prompt))
+    ?? (await generateWithCloudflare(prompt))
+    ?? (await generateWithTogether(prompt))
+    ?? (await generateWithPollinations(prompt));
   if (!raw || raw.length === 0) return null;
 
   try {
