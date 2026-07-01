@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Hex, Address } from 'viem';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
-import { agentResolveMarket, agentCancelMarket, agentProposeResolution, agentSettleProposedResolution, agentReadTotalShares, getAgentAddress, agentProposeV3, agentSettleV3, agentPayWinners, agentReadLmsrBuyers } from '@/lib/agentWallet';
+import { agentResolveMarket, agentCancelMarket, agentProposeResolution, agentSettleProposedResolution, agentReadTotalShares, getAgentAddress, agentProposeV3, agentSettleV3, agentPayWinners, agentReadLmsrBuyers, agentReadLmsrPaused, agentUnpauseLmsrMarket } from '@/lib/agentWallet';
 import { verifyBearer } from '@/lib/authCompare';
 import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
 import { getAgentIdentityStatus, recordResolutionReputation } from '@/lib/agentIdentity';
@@ -38,6 +38,11 @@ async function proposeOrResolve(
   // V3 LMSR markets use the bonded optimistic flow: propose(), then settle() on a later tick once
   // the 30-minute window closes. They have no direct resolve(), so there is no fallback here.
   if (isAmm) {
+    // If this market was frozen by the early-decided pause, re-open it first — propose() is
+    // whenNotPaused. Only when actually paused, so we don't waste a tx on unpaused markets.
+    if (await agentReadLmsrPaused(marketId) === true) {
+      await agentUnpauseLmsrMarket(marketId).catch(() => undefined);
+    }
     const proposedV3 = await agentProposeV3(marketId, outcomeIndex, resolutionURI);
     if (proposedV3.ok) return { ok: true, mode: 'proposed', txHash: assertNonEmptyString(proposedV3.txHash, 'txHash') };
     return { ok: false, error: proposedV3.error };

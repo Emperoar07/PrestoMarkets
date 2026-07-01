@@ -112,6 +112,76 @@ function getClients() {
   };
 }
 
+// Guardian (pause) client. The V3 LMSR guardian is the factory OWNER — the deployer key, not the
+// agent — so pausing a market to freeze trading needs that key. Kept separate from the agent wallet
+// and read from GUARDIAN_PRIVATE_KEY (falls back to PRIVATE_KEY for local hardhat parity).
+function getGuardianClients() {
+  const pk = process.env.GUARDIAN_PRIVATE_KEY ?? process.env.PRIVATE_KEY;
+  if (!pk) throw new Error('GUARDIAN_PRIVATE_KEY is not set — pause/unpause unavailable.');
+  const config = getArcConfig();
+  const account = privateKeyToAccount(pk as Hex);
+  const chain = createArcChain(config.rpcUrls);
+  const transport = config.rpcUrls.length > 0
+    ? fallback(config.rpcUrls.map((url) => http(url, { timeout: 7_000 })), { rank: false, shouldThrow: arcShouldThrow })
+    : http();
+  return {
+    account,
+    publicClient: createPublicClient({ chain, transport }),
+    walletClient: createWalletClient({ account, chain, transport }),
+  };
+}
+
+export function getGuardianAddress(): string | null {
+  const pk = process.env.GUARDIAN_PRIVATE_KEY ?? process.env.PRIVATE_KEY;
+  if (!pk) return null;
+  try { return privateKeyToAccount(pk as Hex).address; } catch { return null; }
+}
+
+// Read whether a V3 market is currently paused. null on a read failure (e.g. a V2 market with no
+// paused()).
+export async function agentReadLmsrPaused(marketAddress: string): Promise<boolean | null> {
+  try {
+    if (!isAddress(marketAddress)) return null;
+    const { publicClient } = getClients();
+    return await publicClient.readContract({
+      address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'paused',
+    }) as boolean;
+  } catch {
+    return null;
+  }
+}
+
+// Freeze trading on a decided V3 market until it can be resolved at close. Guardian-only.
+export async function agentPauseLmsrMarket(marketAddress: string) {
+  try {
+    if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
+    const { account, publicClient, walletClient } = getGuardianClients();
+    const hash = await walletClient.writeContract({
+      account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'pause',
+    });
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    return { ok: true as const, txHash: hash };
+  } catch (error) {
+    return { ok: false as const, error: error instanceof Error ? error.message : 'pause failed.' };
+  }
+}
+
+// Re-open a paused V3 market (e.g. right before the resolver proposes at close — propose() is
+// whenNotPaused). Guardian-only.
+export async function agentUnpauseLmsrMarket(marketAddress: string) {
+  try {
+    if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
+    const { account, publicClient, walletClient } = getGuardianClients();
+    const hash = await walletClient.writeContract({
+      account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'unpause',
+    });
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    return { ok: true as const, txHash: hash };
+  } catch (error) {
+    return { ok: false as const, error: error instanceof Error ? error.message : 'unpause failed.' };
+  }
+}
+
 // USDC subsidy the agent seeds into each LMSR market. This becomes the liquidity parameter
 // b = S / ln(n), so the maximum maker loss equals the seed. Override with PRESTO_AGENT_LMSR_SEED_USDC.
 const AGENT_LMSR_SEED_USDC = (() => {

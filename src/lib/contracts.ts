@@ -572,6 +572,12 @@ export const prestoLmsrMarketAbi = [
   { type: 'function', name: 'cancel', stateMutability: 'nonpayable', inputs: [], outputs: [] },
   { type: 'function', name: 'timeoutCancel', stateMutability: 'nonpayable', inputs: [], outputs: [] },
   { type: 'function', name: 'withdrawFees', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  // Guardian-only pause controls + the paused view. Pausing freezes buy/sell (whenNotPaused) so an
+  // early-decided market can be frozen until it resolves at close.
+  { type: 'function', name: 'pause', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  { type: 'function', name: 'unpause', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  { type: 'function', name: 'paused', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'bool' }] },
+  { type: 'function', name: 'guardian', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'address' }] },
   {
     type: 'event',
     name: 'SharesBought',
