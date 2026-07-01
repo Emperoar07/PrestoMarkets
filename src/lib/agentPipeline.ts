@@ -1388,7 +1388,7 @@ const DUPLICATE_SIMILARITY_THRESHOLD = 0.6;
 // second market for a fixture it already has, no matter how the winner question is phrased (the
 // title token-similarity check misses differently-worded fixture questions). Returns null when the
 // text isn't an "A vs B" fixture.
-function fixturePairKey(text: string): string | null {
+export function fixturePairKey(text: string): string | null {
   const m = text.match(/\b([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*)*)\s+vs?\.?\s+([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*)*)/);
   if (!m) return null;
   const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z]/g, '');
