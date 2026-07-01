@@ -81,6 +81,23 @@ export async function GET(request: Request) {
   const agentMarkets = markets.filter((market) => market.createdByType === 'agent');
   const activeAgentMarkets = agentMarkets.filter((market) => market.status === 'Open' || market.status === 'Closing soon');
 
+  // Ordered list for the profile page's "Created Markets" section: active first, then newest.
+  const statusRank = (status: string) =>
+    status === 'Open' || status === 'Closing soon' ? 0 : status === 'Resolved' ? 1 : status === 'Canceled' ? 3 : 2;
+  const createdMarkets = [...agentMarkets]
+    .sort((a, b) => statusRank(a.status) - statusRank(b.status)
+      || (Date.parse(b.createdAt ?? '') || 0) - (Date.parse(a.createdAt ?? '') || 0))
+    .slice(0, 60)
+    .map((market) => ({
+      id: market.id,
+      title: market.title,
+      status: market.status,
+      category: market.category,
+      imageURI: market.imageURI,
+      closeLabel: market.closeLabel,
+      volume: market.volume,
+    }));
+
   return NextResponse.json({
     ok: true,
     agent: {
@@ -114,6 +131,7 @@ export async function GET(request: Request) {
       resolvedAgentMarkets: agentMarkets.filter((market) => market.status === 'Resolved').length,
       canceledAgentMarkets: agentMarkets.filter((market) => market.status === 'Canceled').length,
     },
+    markets: createdMarkets,
     skills: agentSkills,
     policy: disputePolicy,
     demoStory: grantDemoStory,

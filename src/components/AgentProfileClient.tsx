@@ -1,19 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
-import { 
-  Coins, 
-  Clock, 
-  MessageSquare, 
-  Trophy, 
-  ShieldCheck, 
-  Wallet, 
-  FileCode, 
-  BrainCircuit, 
+import {
+  Coins,
+  Clock,
+  MessageSquare,
+  Trophy,
+  ShieldCheck,
+  BrainCircuit,
   Sliders,
-  ExternalLink 
+  LayoutGrid,
+  ExternalLink
 } from 'lucide-react';
 
 type AgentProfile = {
@@ -33,6 +33,15 @@ type AgentProfile = {
   };
   limits?: Record<string, number>;
   activity?: Record<string, number>;
+  markets?: Array<{
+    id: string;
+    title: string;
+    status: string;
+    category: string;
+    imageURI?: string;
+    closeLabel?: string;
+    volume?: string;
+  }>;
   skills?: Array<{ name: string; summary: string }>;
   policy?: Array<{ title: string; summary: string }>;
   demoStory?: string[];
@@ -150,6 +159,60 @@ export function AgentProfileClient() {
             </div>
           </section>
         )}
+
+        {/* Section: Created Markets */}
+        {profile?.markets?.length ? (
+          <section className="border-t border-white/[0.06] pt-8 mt-10">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-cyan/10 text-cyan">
+                  <LayoutGrid className="h-4.5 w-4.5" />
+                </span>
+                <h2 className="text-sm font-black text-white uppercase tracking-wider">Created Markets</h2>
+              </div>
+              <span className="text-[11px] font-bold text-[#64748b]">
+                {profile.activity?.totalAgentMarkets ?? profile.markets.length} total
+              </span>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              {profile.markets.map((market) => {
+                const status = market.status;
+                const badge =
+                  status === 'Open' || status === 'Closing soon' ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20'
+                  : status === 'Resolved' ? 'text-cyan bg-cyan/10 border-cyan/20'
+                  : status === 'Canceled' ? 'text-rose-400 bg-rose-400/10 border-rose-400/20'
+                  : 'text-[#94a3b8] bg-white/[0.04] border-white/[0.08]';
+                return (
+                  <Link
+                    key={market.id}
+                    href={`/markets/${market.id}`}
+                    className="group flex items-center gap-3 rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-3.5 transition-all hover:border-cyan/20 hover:bg-white/[0.02]"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/[0.05] bg-[#070e17]">
+                      {market.imageURI ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={market.imageURI} alt="" width={40} height={40} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="text-[10px] font-black text-cyan/70">{market.category?.slice(0, 2).toUpperCase()}</span>
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="line-clamp-2 text-[12.5px] font-bold leading-snug text-[#cbd5e1] transition-colors group-hover:text-white">
+                        {market.title}
+                      </span>
+                      <span className="mt-1.5 flex items-center gap-2">
+                        <span className={`rounded-full border px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wider ${badge}`}>{status}</span>
+                        <span className="text-[10px] font-semibold text-[#64748b]">{market.volume} Vol.</span>
+                        {market.closeLabel ? <span className="text-[10px] font-semibold text-[#475569]">· {market.closeLabel}</span> : null}
+                      </span>
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
 
         {/* Section: Identity */}
         <section className="border-t border-white/[0.06] pt-8 mt-10">
