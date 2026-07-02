@@ -598,10 +598,20 @@ async function applyImageOverrides(markets: AppMarket[]) {
     }
     for (const m of markets) {
       const overrideImage = overridesMap.get(m.id.toLowerCase());
+      if (!overrideImage) continue;
       // Prefer a stored override whenever the on-chain image isn't render-reliable — empty, a branded
       // SVG fallback, OR a broken/untrusted HTTP URL that loads as a blank letter tile. This is the
       // same quality bar the backfill uses, so a backfilled image always wins over a bad on-chain one.
-      if (overrideImage && !hasGoodImage(m.imageURI)) m.imageURI = overrideImage;
+      //
+      // ALSO: a REAL data-image override (AI-generated / stored payload, not the branded SVG) wins
+      // over any on-chain http URL — even a "good" trusted-host one. hasGoodImage trusts by HOSTNAME,
+      // so a dead trusted URL (Wikimedia 400s on a bad thumb path) passes it and rendered as a letter
+      // tile forever while a perfectly good AI image sat unused in the override store. The backfill
+      // only writes a data-image when the market had no working image, so it is always the safer pick.
+      const overrideIsRealDataImage = overrideImage.startsWith('data:image/') && !overrideImage.startsWith('data:image/svg');
+      if (!hasGoodImage(m.imageURI) || (overrideIsRealDataImage && !m.imageURI?.startsWith('data:'))) {
+        m.imageURI = overrideImage;
+      }
     }
   } catch (err) {
     logger.warn('onchain-markets', 'Failed to load metadata overrides', { error: String(err) });
