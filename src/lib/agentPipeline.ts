@@ -17,6 +17,7 @@ import { fetchPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
 import { resolveSubjectImageUrl, brandedMarketImage, detectCountryFlagUrl } from './marketSubjectImage';
 import { deriveDisplayType } from './marketDisplay';
 import { generateAiMarketImage } from './generateAiMarketImage';
+import { imageUrlLoads } from './imageQuality';
 import { getDb, hasDatabaseUrl } from './db/client';
 import { marketMetadataOverrides } from './db/schema';
 import { logger } from './logger';
@@ -2288,7 +2289,13 @@ async function createOnchain(
   const agentConfidence = String(Math.round(safety.confidence * 100)) + '%';
   const resolvedImage = await fetchTrendImageURI(trend);
   // A "real" image is an article/subject/team/flag photo — NOT the generic branded SVG fallback.
-  const hasRealImage = Boolean(resolvedImage && !resolvedImage.startsWith('data:image/svg+xml'));
+  let hasRealImage = Boolean(resolvedImage && !resolvedImage.startsWith('data:image/svg+xml'));
+  // validateImageUrl trusts curated hosts WITHOUT fetching, so a dead trusted-host URL would ship
+  // on-chain and render as a letter tile. Probe the bytes; a dead link counts as "no real image",
+  // which routes the market to the branded banner + AI-generated override instead.
+  if (hasRealImage && resolvedImage && /^https?:\/\//i.test(resolvedImage) && !(await imageUrlLoads(resolvedImage))) {
+    hasRealImage = false;
+  }
   // No real image? Create with the branded banner on-chain now and generate a relevant AI image as
   // an override right after (below), so the market still launches with a fitting picture instead of
   // being skipped. brandedMarketImage is deterministic and never empty.

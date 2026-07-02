@@ -6,7 +6,7 @@ import { validateImageUrl } from '@/lib/agentPipeline';
 import { generateAiMarketImage } from '@/lib/generateAiMarketImage';
 import { getDb, hasDatabaseUrl } from '@/lib/db/client';
 import { marketMetadataOverrides } from '@/lib/db/schema';
-import { hasGoodImage } from '@/lib/imageQuality';
+import { hasGoodImage, imageUrlLoads } from '@/lib/imageQuality';
 import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
@@ -46,19 +46,29 @@ export async function GET(req: NextRequest) {
     const overrideRows = await db
       .select({ id: marketMetadataOverrides.marketId, imageUri: marketMetadataOverrides.imageUri })
       .from(marketMetadataOverrides);
-    const settled = new Set(overrideRows.filter((r) => hasGoodImage(r.imageUri)).map((r) => r.id.toLowerCase()));
+    // "Settled" = the stored override is a real data-image (renders unconditionally). An http-URL
+    // override is NOT settled by itself — it must also pass the liveness probe below, otherwise a
+    // dead trusted-host link would freeze a market on a letter tile forever.
+    const settled = new Set(
+      overrideRows
+        .filter((r) => r.imageUri.startsWith('data:image/') && !r.imageUri.startsWith('data:image/svg'))
+        .map((r) => r.id.toLowerCase()),
+    );
     const everAttempted = new Set(overrideRows.map((r) => r.id.toLowerCase()));
 
-    // 2. Identify ANY market that lacks a GOOD image — empty, a branded SVG fallback, or a
-    //    non-trusted-host URL (likely stale/broken and showing the card placeholder). Covers both
-    //    agent and user-created markets, so a user market launched without a picture still gets a
-    //    resolved subject image (BTC logo, team flag, …) or a clean branded banner instead of blank.
-    const targetMarkets = allMarkets
-      .filter(
-        (m) => (m.status === 'Open' || m.status === 'Closing soon') // live markets only — no point fixing closed/resolved ones
-          && !hasGoodImage(m.imageURI)
-          && !settled.has(m.id.toLowerCase()),
-      )
+    // 2. Identify ANY market that lacks a GOOD image (empty / branded SVG / untrusted host) — OR
+    //    whose "good" trusted-host URL is actually DEAD (404/timeout → the letter-tile card). Covers
+    //    both agent and user-created markets.
+    const liveMarkets = allMarkets.filter(
+      (m) => (m.status === 'Open' || m.status === 'Closing soon') && !settled.has(m.id.toLowerCase()),
+    );
+    const deadImage = new Map<string, boolean>();
+    await Promise.all(liveMarkets.map(async (m) => {
+      if (!hasGoodImage(m.imageURI)) return; // already eligible; skip the probe
+      deadImage.set(m.id.toLowerCase(), !(await imageUrlLoads(m.imageURI)));
+    }));
+    const targetMarkets = liveMarkets
+      .filter((m) => !hasGoodImage(m.imageURI) || deadImage.get(m.id.toLowerCase()) === true)
       // Newly created markets (never attempted) come first so they always get a slot under the
       // per-run cap; branded-fallback retries fill whatever budget remains.
       .sort((a, b) => Number(everAttempted.has(a.id.toLowerCase())) - Number(everAttempted.has(b.id.toLowerCase())));
@@ -84,7 +94,12 @@ export async function GET(req: NextRequest) {
           topic: market.title,
           query: market.description,
         });
-        const validated = imageCandidate ? await validateImageUrl(imageCandidate, market.title) : undefined;
+        let validated = imageCandidate ? await validateImageUrl(imageCandidate, market.title) : undefined;
+        // validateImageUrl trusts curated hosts WITHOUT fetching, so a dead trusted-host URL (the
+        // letter-tile cause) passes it. Probe the bytes; a dead candidate falls through to AI gen.
+        if (validated && /^https?:\/\//i.test(validated) && !(await imageUrlLoads(validated))) {
+          validated = undefined;
+        }
         // No real subject image (flag/coin/crest/article photo)? Generate a relevant illustration
         // from the market's own context with the AI image model, instead of a generic banner. The
         // branded banner is the final fallback if generation is unavailable/fails. AI generation is

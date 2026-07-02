@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 import {
+  agentCancelMarket,
   agentPauseLmsrMarket,
   agentReadLmsrPaused,
   getGuardianAddress,
@@ -78,10 +79,25 @@ export async function GET(req: NextRequest) {
       if (await fixtureIsFinished(origin, m)) targets.push({ market: m, reason: 'match-finished' });
     }
 
+    // V2 markets have no pause(); the only on-chain way to stop trading on a decided V2 market is
+    // cancel (traders get refunds). Destructive, so it's opt-in per run AND only applies to
+    // markets the operator explicitly flagged — the auto fixture detection never cancels.
+    const cancelV2 = url.searchParams.get('cancelV2') === '1';
+
     const paused: Array<{ id: string; title: string; reason: string; txHash?: string }> = [];
     const skipped: Array<{ id: string; title: string; reason: string }> = [];
+    const canceled: Array<{ id: string; title: string; txHash?: string }> = [];
     for (const { market, reason } of targets) {
-      if (!market.amm) { skipped.push({ id: market.id, title: market.title, reason: 'v2-no-pause (needs manual cancel)' }); continue; }
+      if (!market.amm) {
+        if (cancelV2 && reason === 'flagged') {
+          const res = await agentCancelMarket(market.id);
+          if (res.ok) canceled.push({ id: market.id, title: market.title, txHash: res.txHash });
+          else skipped.push({ id: market.id, title: market.title, reason: `cancel-failed: ${res.error}` });
+        } else {
+          skipped.push({ id: market.id, title: market.title, reason: 'v2-no-pause (needs manual cancel)' });
+        }
+        continue;
+      }
       const already = await agentReadLmsrPaused(market.id);
       if (already === true) { skipped.push({ id: market.id, title: market.title, reason: 'already-paused' }); continue; }
       const res = await agentPauseLmsrMarket(market.id);
@@ -96,7 +112,9 @@ export async function GET(req: NextRequest) {
       activeMarkets: active.length,
       targets: targets.length,
       pausedCount: paused.length,
+      canceledCount: canceled.length,
       paused,
+      canceled,
       skipped,
     });
   } catch (error) {

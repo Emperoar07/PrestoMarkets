@@ -129,6 +129,15 @@ export const marketMetadataOverrides = pgTable('market_metadata_overrides', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Latest full market-list snapshot (single row, key='latest'). Serverless instances are often cold
+// (no in-process cache) and the full on-chain read takes 10-30s — the skeleton screen users see on
+// load. Serving this snapshot instead takes ~300ms; a background refresh keeps it current.
+export const marketListCache = pgTable('market_list_cache', {
+  key: text('key').primaryKey(),
+  payload: jsonb('payload').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Periodic odds snapshots per market so charts have dense, truthful history over long ranges
 // (the on-chain event reconstruction only covers a short recent block window).
 export const marketSnapshots = pgTable('market_snapshots', {

@@ -8,7 +8,8 @@ import { normalizeOutcomeOdds } from './marketUtils';
 import type { AppMarket } from './appState';
 import type { MarketStatus, MarketType, ResolutionMode } from './markets';
 import { getDb, hasDatabaseUrl } from './db/client';
-import { marketMetadataOverrides } from './db/schema';
+import { marketMetadataOverrides, marketListCache } from './db/schema';
+import { eq } from 'drizzle-orm';
 import { hasGoodImage } from './imageQuality';
 import { logger } from './logger';
 const MARKET_ADDRESS_BATCH_SIZE = 50;
@@ -651,6 +652,9 @@ export async function fetchOnchainMarkets(options: { force?: boolean } = {}) {
   marketFetchInFlight = readOnchainMarkets()
     .then((markets) => {
       marketCache = { at: Date.now(), markets };
+      // Persist the snapshot so COLD serverless instances can serve the list in ~300ms instead of
+      // redoing the 10-30s chain read (the skeleton screen). Server-only, best-effort.
+      if (markets.length > 0) void saveMarketListSnapshot(markets);
       return markets;
     })
     .finally(() => {
@@ -658,4 +662,38 @@ export async function fetchOnchainMarkets(options: { force?: boolean } = {}) {
     });
 
   return marketFetchInFlight;
+}
+
+// ── DB-backed market-list snapshot (cold-start fast path) ─────────────────────
+
+async function saveMarketListSnapshot(markets: AppMarket[]) {
+  if (typeof window !== 'undefined' || !hasDatabaseUrl()) return;
+  try {
+    await getDb()
+      .insert(marketListCache)
+      .values({ key: 'latest', payload: markets, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: marketListCache.key, set: { payload: markets, updatedAt: new Date() } });
+  } catch (err) {
+    logger.warn('onchain-markets', 'market list snapshot save failed', { error: String(err) });
+  }
+}
+
+/**
+ * Latest persisted market list + its age. Used by /api/markets as the instant fast path on cold
+ * instances; callers decide how stale is acceptable. null when no DB or no snapshot yet.
+ */
+export async function readMarketListSnapshot(): Promise<{ markets: AppMarket[]; ageMs: number } | null> {
+  if (typeof window !== 'undefined' || !hasDatabaseUrl()) return null;
+  try {
+    const rows = await getDb()
+      .select()
+      .from(marketListCache)
+      .where(eq(marketListCache.key, 'latest'))
+      .limit(1);
+    const row = rows[0];
+    if (!row || !Array.isArray(row.payload)) return null;
+    return { markets: row.payload as AppMarket[], ageMs: Date.now() - new Date(row.updatedAt).getTime() };
+  } catch {
+    return null;
+  }
 }

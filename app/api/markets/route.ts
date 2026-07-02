@@ -1,27 +1,39 @@
-import { NextResponse } from 'next/server';
-import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
+import { NextResponse, after } from 'next/server';
+import { fetchOnchainMarkets, readMarketListSnapshot } from '@/lib/onchainMarkets';
 
 export const runtime = 'nodejs';
 
-// Cached market list for the app's own UI. The on-chain read is ~13s cold for ~74 markets; doing it
-// in every browser made the grid show skeletons for that long on each fresh load. Running it on the
-// server lets ALL users share one read: the in-process 60s cache (fetchOnchainMarkets) means most
-// requests to a warm instance return in ~1s, and the Cache-Control below lets Vercel's CDN serve the
-// JSON from the edge for 30s (stale-while-revalidate) so the typical response is near-instant.
+// Cached market list for the app's own UI. The on-chain read is 10-30s cold, and serverless
+// instances are usually cold — that read was the skeleton screen users stared at. Three layers now
+// make the typical response near-instant:
+//   1. Vercel CDN (Cache-Control below) serves the JSON from the edge for 60s + 5min stale.
+//   2. Warm instances serve the in-process 60s cache (fetchOnchainMarkets).
+//   3. COLD instances serve the DB snapshot (~300ms) written on every successful full read, and
+//      refresh it in the background via after() — so no user request ever waits on the chain read.
+// Only a brand-new deployment with an empty snapshot does the full read inline.
 //
 // Not under /api/v1, so it is NOT x402-gated — this is internal app data, not the paid public API.
+const SNAPSHOT_MAX_AGE_MS = 15 * 60 * 1000; // beyond this the snapshot is too stale to show
+
 export async function GET() {
   try {
+    const snapshot = await readMarketListSnapshot();
+    if (snapshot && snapshot.markets.length > 0 && snapshot.ageMs < SNAPSHOT_MAX_AGE_MS) {
+      // Serve instantly; if the snapshot is older than the in-process cache window, refresh it
+      // after the response (fetchOnchainMarkets persists the new snapshot when the read lands).
+      if (snapshot.ageMs > 60_000) {
+        after(async () => { await fetchOnchainMarkets({ force: true }).catch(() => undefined); });
+      }
+      return NextResponse.json(
+        { markets: snapshot.markets },
+        { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=300' } },
+      );
+    }
+
     const markets = await fetchOnchainMarkets();
     return NextResponse.json(
       { markets },
-      {
-        headers: {
-          // Browser doesn't cache (max-age=0) so it always revalidates; the CDN caches for 30s and
-          // serves stale up to 60s more while it refreshes in the background.
-          'Cache-Control': 'public, max-age=0, s-maxage=30, stale-while-revalidate=60',
-        },
-      },
+      { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=300' } },
     );
   } catch (error) {
     return NextResponse.json(
