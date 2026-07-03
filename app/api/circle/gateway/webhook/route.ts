@@ -1,6 +1,7 @@
-import { createHmac, timingSafeEqual } from 'crypto';
+import { timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { recordCircleGatewayWebhook } from '@/lib/circleGatewayWebhooks';
+import { verifyCircleWebhookSignature } from '@/lib/circleWebhookVerify';
 import { checkRateLimit } from '@/lib/rateLimitRedis';
 import { getClientIp } from '@/lib/requestGuards';
 
@@ -13,30 +14,26 @@ function safeEqual(a: string, b: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-function verifyWebhookSecret(request: NextRequest, rawBody: string): boolean {
+// Optional shared-secret fallback for manual/testnet delivery (a proxy that forwards Circle events
+// with a static bearer). Genuine Circle webhooks authenticate via the ECDSA signature above.
+function matchesSharedSecret(request: NextRequest): boolean {
   const secret = process.env.CIRCLE_GATEWAY_WEBHOOK_SECRET;
-  // Fail closed: without a configured secret we cannot authenticate the sender, so reject rather
-  // than accept attacker-supplied payloads into the DB. Set CIRCLE_GATEWAY_WEBHOOK_SECRET to enable.
-  if (!secret) {
-    console.error('CIRCLE_GATEWAY_WEBHOOK_SECRET not configured; rejecting unauthenticated webhook');
-    return false;
-  }
-
+  if (!secret) return false;
   const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim();
   if (bearer && safeEqual(bearer, secret)) return true;
-
   const staticSecret = request.headers.get('x-presto-webhook-secret')?.trim();
-  if (staticSecret && safeEqual(staticSecret, secret)) return true;
+  return Boolean(staticSecret && safeEqual(staticSecret, secret));
+}
 
-  const signature = request.headers.get('x-circle-signature')
-    ?? request.headers.get('circle-signature')
-    ?? request.headers.get('x-webhook-signature')
-    ?? request.headers.get('x-presto-signature');
-  if (!signature) return false;
-
-  const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
-  const normalized = signature.replace(/^sha256=/i, '').trim();
-  return safeEqual(normalized, expected);
+// Authenticate the webhook: Circle's real asymmetric ECDSA signature first (X-Circle-Signature +
+// X-Circle-Key-Id), then the optional shared-secret fallback. Fails closed.
+async function isAuthenticWebhook(request: NextRequest, rawBody: string): Promise<boolean> {
+  const sig = await verifyCircleWebhookSignature(request.headers, rawBody);
+  if (sig === 'valid') return true;
+  // A present-but-invalid Circle signature is a hard reject — do NOT let the shared-secret path
+  // rescue a forged/tampered Circle-signed payload.
+  if (sig === 'invalid') return false;
+  return matchesSharedSecret(request);
 }
 
 export async function OPTIONS() {
@@ -55,7 +52,7 @@ export async function POST(request: NextRequest) {
   }
 
   const rawBody = await request.text();
-  if (!verifyWebhookSecret(request, rawBody)) {
+  if (!(await isAuthenticWebhook(request, rawBody))) {
     return NextResponse.json({ error: 'Invalid webhook signature.' }, { status: 401 });
   }
 

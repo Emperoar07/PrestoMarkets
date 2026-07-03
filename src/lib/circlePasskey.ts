@@ -92,6 +92,11 @@ function getDirectPublicClient() {
 
 const minPriorityFee = parseGwei('1');
 const fallbackBaseFee = parseGwei('48');
+// Arc enforces a 20 Gwei minimum base fee (docs.arc.io/arc/references/gas-and-fees). A userOp priced
+// below it "may remain pending or fail", so we floor maxFeePerGas here regardless of the bundler's
+// quote — cheap insurance against a stuck passkey transaction on a quiet testnet.
+const ARC_MIN_MAX_FEE_PER_GAS = parseGwei('20');
+const maxBig = (a: bigint, b: bigint) => (a > b ? a : b);
 
 async function estimateUserOpFees(input: {
   bundlerClient: unknown;
@@ -108,7 +113,7 @@ async function estimateUserOpFees(input: {
   if (tier) {
     const priority = BigInt(tier.maxPriorityFeePerGas);
     return {
-      maxFeePerGas: BigInt(tier.maxFeePerGas),
+      maxFeePerGas: maxBig(BigInt(tier.maxFeePerGas), ARC_MIN_MAX_FEE_PER_GAS),
       maxPriorityFeePerGas: priority < minPriorityFee ? minPriorityFee : priority,
     };
   }
@@ -116,7 +121,7 @@ async function estimateUserOpFees(input: {
   const block = await getDirectPublicClient().getBlock();
   const baseFee = block.baseFeePerGas ?? fallbackBaseFee;
   return {
-    maxFeePerGas: baseFee * BigInt(2) + minPriorityFee,
+    maxFeePerGas: maxBig(baseFee * BigInt(2) + minPriorityFee, ARC_MIN_MAX_FEE_PER_GAS),
     maxPriorityFeePerGas: minPriorityFee,
   };
 }
