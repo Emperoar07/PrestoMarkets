@@ -31,6 +31,10 @@ export type Market = {
   liquidity: string;
   closeLabel: string;
   status: MarketStatus;
+  /** V3 guardian pause: buys/sells revert on-chain while true (early-decided markets). */
+  paused?: boolean;
+  /** App-level trading freeze for decided markets whose contract can't pause (V1/V2). */
+  frozen?: boolean;
   collateral: 'USDC';
   chain: 'Arc Testnet';
   resolver: string;

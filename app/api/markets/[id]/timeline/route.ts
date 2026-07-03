@@ -7,16 +7,19 @@ import {
   type AbiEvent,
   type Address,
 } from 'viem';
+import { and, asc, eq, lt } from 'drizzle-orm';
 import { ARC_USDC_DECIMALS, createArcReadClient } from '@/lib/arcClient';
 import { prestoMarketAbi } from '@/lib/contracts';
 import { getPublicMarket } from '@/lib/publicMarketSource';
 import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
+import { getDb, hasDatabaseUrl } from '@/lib/db/client';
+import { marketSnapshots } from '@/lib/db/schema';
 import type { Market } from '@/lib/markets';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-type TimelineEventType = 'created' | 'trade' | 'trade_summary' | 'proposed' | 'disputed' | 'settled' | 'canceled';
+type TimelineEventType = 'created' | 'trade' | 'trade_summary' | 'proposed' | 'disputed' | 'settled' | 'canceled' | 'odds';
 
 export type MarketTimelineEvent = {
   type: TimelineEventType;
@@ -203,6 +206,55 @@ async function fetchChainTimelineEvents(input: {
     .sort(sortChainOldestFirst);
 }
 
+// History OLDER than the chain-scan window comes from the periodic odds snapshots the
+// market-snapshots cron records (same source the charts use). Emit an event whenever any outcome
+// moved >= 5 points since the last emitted snapshot, so long-lived markets show meaningful history
+// instead of a blank gap before the recent-blocks scan. Server-only, best-effort.
+const SNAPSHOT_MOVE_THRESHOLD = 0.05;
+const MAX_SNAPSHOT_EVENTS = 12;
+
+async function fetchSnapshotOddsEvents(
+  marketId: string,
+  labels: string[],
+  beforeMs: number,
+): Promise<MarketTimelineEvent[]> {
+  if (!hasDatabaseUrl()) return [];
+  try {
+    const rows = await getDb()
+      .select()
+      .from(marketSnapshots)
+      .where(and(eq(marketSnapshots.marketId, marketId.toLowerCase()), lt(marketSnapshots.capturedAt, new Date(beforeMs))))
+      .orderBy(asc(marketSnapshots.capturedAt));
+    if (rows.length < 2) return [];
+
+    const events: MarketTimelineEvent[] = [];
+    let last = rows[0].probabilities;
+    for (const row of rows.slice(1)) {
+      const probs = row.probabilities;
+      if (!Array.isArray(probs) || !Array.isArray(last)) { last = probs; continue; }
+      let bestIndex = -1;
+      let bestDelta = 0;
+      for (let i = 0; i < Math.min(probs.length, last.length); i++) {
+        const delta = Math.abs((probs[i] ?? 0) - (last[i] ?? 0));
+        if (delta > bestDelta) { bestDelta = delta; bestIndex = i; }
+      }
+      if (bestIndex >= 0 && bestDelta >= SNAPSHOT_MOVE_THRESHOLD) {
+        const from = Math.round((last[bestIndex] ?? 0) * 100);
+        const to = Math.round((probs[bestIndex] ?? 0) * 100);
+        events.push({
+          type: 'odds',
+          t: new Date(row.capturedAt).getTime(),
+          label: `${labels[bestIndex] ?? `Outcome ${bestIndex + 1}`} moved ${from}% → ${to}%`,
+        });
+        last = probs;
+      }
+    }
+    return events.slice(-MAX_SNAPSHOT_EVENTS);
+  } catch {
+    return [];
+  }
+}
+
 function aggregateTrades(events: MarketTimelineEvent[]) {
   const trades = events.filter((event) => event.type === 'trade').sort(sortNewestFirst);
   const nonTrades = events.filter((event) => event.type !== 'trade');
@@ -276,7 +328,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     });
   }
 
-  const events = aggregateTrades([...fallbackEvents, ...chainEvents])
+  // Odds history for the period the chain scan can't reach (older than its window).
+  const windowStartMs = chainEvents.length > 0
+    ? Math.min(...chainEvents.map((event) => event.t))
+    : Date.now() - MAX_CHUNKS * Number(BLOCK_CHUNK) * 500; // ~0.5s Arc blocks
+  const snapshotEvents = await fetchSnapshotOddsEvents(id, labels, windowStartMs);
+
+  const events = aggregateTrades([...fallbackEvents, ...snapshotEvents, ...chainEvents])
     .sort(sortNewestFirst)
     .slice(0, 40);
 

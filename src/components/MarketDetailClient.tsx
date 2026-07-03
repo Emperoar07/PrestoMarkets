@@ -524,7 +524,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   });
   const liquiditySideAmount = amountValue > 0 ? amountValue / market.outcomes.length : 0;
 
-  const canTrade = (market.status === 'Open' || market.status === 'Closing soon') && !isTradingLocked;
+  // paused = V3 guardian pause (buys revert on-chain); frozen = app-level freeze for decided
+  // V1/V2 markets with no pause. Both mean: outcome known, trading stops, settles at close.
+  const isFrozenMarket = Boolean(market.paused || market.frozen);
+  const canTrade = (market.status === 'Open' || market.status === 'Closing soon') && !isTradingLocked && !isFrozenMarket;
   
   const groundingUrl = [market.trendUrl, market.sourceOfTruth].find((u) => typeof u === 'string' && /^https?:\/\//i.test(u));
   const groundingHost = (() => {
@@ -1264,7 +1267,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     tradeMode === 'liquidity' ? 'bg-cyan' : isSell ? 'bg-red-400' : ''
                   }`}
                 >
-                  {!canTrade ? 'Market not open'
+                  {!canTrade ? (isFrozenMarket ? 'Trading frozen — settles at close' : 'Market not open')
                     : isSubmitting ? 'Confirming…'
                     : amountValue <= 0 ? (isAmm ? 'Enter shares' : 'Enter an amount')
                     : isSell && amountValue > activeOutcomeShares ? 'Not enough shares'

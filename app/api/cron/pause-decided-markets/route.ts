@@ -7,6 +7,8 @@ import {
   getGuardianAddress,
 } from '@/lib/agentWallet';
 import { verifyBearer } from '@/lib/authCompare';
+import { getDb, hasDatabaseUrl } from '@/lib/db/client';
+import { marketFlags } from '@/lib/db/schema';
 import type { AppMarket } from '@/lib/appState';
 
 export const runtime = 'nodejs';
@@ -84,15 +86,37 @@ export async function GET(req: NextRequest) {
     // markets the operator explicitly flagged — the auto fixture detection never cancels.
     const cancelV2 = url.searchParams.get('cancelV2') === '1';
 
+    // App-level freeze for decided markets whose contract can't stop trading (old V1/V2 with no
+    // pause and close-gated cancel). The reader merges this flag into the list and the trade UI
+    // refuses buys, so the stale price can't be farmed even though the contract stays open.
+    async function freezeInApp(marketId: string, reason: string) {
+      if (!hasDatabaseUrl()) return false;
+      try {
+        await getDb().insert(marketFlags)
+          .values({ marketId: marketId.toLowerCase(), flag: 'frozen', reason, createdAt: new Date() })
+          .onConflictDoUpdate({ target: marketFlags.marketId, set: { flag: 'frozen', reason } });
+        return true;
+      } catch { return false; }
+    }
+
     const paused: Array<{ id: string; title: string; reason: string; txHash?: string }> = [];
     const skipped: Array<{ id: string; title: string; reason: string }> = [];
     const canceled: Array<{ id: string; title: string; txHash?: string }> = [];
+    const frozen: Array<{ id: string; title: string; reason: string }> = [];
     for (const { market, reason } of targets) {
       if (!market.amm) {
         if (cancelV2 && reason === 'flagged') {
           const res = await agentCancelMarket(market.id);
-          if (res.ok) canceled.push({ id: market.id, title: market.title, txHash: res.txHash });
-          else skipped.push({ id: market.id, title: market.title, reason: `cancel-failed: ${res.error}` });
+          if (res.ok) { canceled.push({ id: market.id, title: market.title, txHash: res.txHash }); continue; }
+          // Cancel not possible on this deployed contract (e.g. MarketNotClosed on V1) — freeze in
+          // the app instead so trading stops even though the contract stays open until close.
+          if (await freezeInApp(market.id, `decided (${reason}); cancel failed: ${String(res.error).slice(0, 120)}`)) {
+            frozen.push({ id: market.id, title: market.title, reason: 'app-frozen (cancel unavailable)' });
+          } else {
+            skipped.push({ id: market.id, title: market.title, reason: `cancel-failed: ${res.error}` });
+          }
+        } else if (await freezeInApp(market.id, `decided (${reason}); contract has no pause`)) {
+          frozen.push({ id: market.id, title: market.title, reason: 'app-frozen (no on-chain pause)' });
         } else {
           skipped.push({ id: market.id, title: market.title, reason: 'v2-no-pause (needs manual cancel)' });
         }
@@ -113,8 +137,10 @@ export async function GET(req: NextRequest) {
       targets: targets.length,
       pausedCount: paused.length,
       canceledCount: canceled.length,
+      frozenCount: frozen.length,
       paused,
       canceled,
+      frozen,
       skipped,
     });
   } catch (error) {

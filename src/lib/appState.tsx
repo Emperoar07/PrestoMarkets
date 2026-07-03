@@ -275,6 +275,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!market || (market.status !== 'Open' && market.status !== 'Closing soon')) {
       return { ok: false, message: 'This market is closed for trading.' };
     }
+    if (market.paused || market.frozen) {
+      return { ok: false, message: 'Trading is frozen on this market — its outcome is already decided and it will settle at close.' };
+    }
     // V3 LMSR markets are share-priced. When the caller passes an explicit share count (QuickBuy's
     // shares mode), use it directly and let buyLmsrShares' fresh on-chain quote set the spend cap.
     // Otherwise convert the "$ amount" budget into shares at the live odds and cap the spend at the

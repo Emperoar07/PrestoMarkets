@@ -8,7 +8,7 @@ import { normalizeOutcomeOdds } from './marketUtils';
 import type { AppMarket } from './appState';
 import type { MarketStatus, MarketType, ResolutionMode } from './markets';
 import { getDb, hasDatabaseUrl } from './db/client';
-import { marketMetadataOverrides, marketListCache } from './db/schema';
+import { marketMetadataOverrides, marketListCache, marketFlags } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { hasGoodImage } from './imageQuality';
 import { logger } from './logger';
@@ -301,7 +301,7 @@ async function readLmsrMarket(
   index: number,
   creationInfo?: MarketCreationInfo,
 ): Promise<AppMarket> {
-  const [creator, resolver, closeTime, marketKind, metadataURI, state, outcomeCountRaw, feeBps, winningOutcome, collateralToken] =
+  const [creator, resolver, closeTime, marketKind, metadataURI, state, outcomeCountRaw, feeBps, winningOutcome, collateralToken, pausedRaw] =
     await Promise.all([
       client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'creator' }),
       client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'resolver' }),
@@ -313,6 +313,8 @@ async function readLmsrMarket(
       client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'feeBps' }),
       client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'winningOutcome' }),
       client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'collateral' }),
+      // Guardian pause — buys/sells revert while true, so the UI must show the freeze.
+      client.readContract({ address, abi: prestoLmsrMarketAbi, functionName: 'paused' }).catch(() => false),
     ]);
 
   const metadata = parseMarketMetadata(metadataURI as string);
@@ -387,6 +389,7 @@ async function readLmsrMarket(
     collateralAddress: typeof collateralToken === 'string' ? collateralToken : undefined,
     collateralSymbol,
     amm: true,
+    paused: Boolean(pausedRaw),
     proposal: isProposalLive
       ? {
           outcome: Number(proposedOutcomeRaw ?? 0),
@@ -577,8 +580,25 @@ async function readOnchainMarkets() {
   // Apply metadata overrides (updated market images) here, at the single cached source, so every
   // consumer gets merged markets and cards never flip between tile and image across renders.
   await applyImageOverrides(markets);
+  await applyMarketFlags(markets);
 
   return markets;
+}
+
+// Merge app-level flags (currently 'frozen') into the market list. Server-only best-effort read —
+// the browser's direct-read fallback skips it, but every served list (API + snapshot) includes it.
+async function applyMarketFlags(markets: AppMarket[]) {
+  if (typeof window !== 'undefined' || !hasDatabaseUrl()) return;
+  try {
+    const rows = await getDb().select().from(marketFlags);
+    if (rows.length === 0) return;
+    const frozen = new Set(rows.filter((r) => r.flag === 'frozen').map((r) => r.marketId.toLowerCase()));
+    for (const m of markets) {
+      if (frozen.has(m.id.toLowerCase())) m.frozen = true;
+    }
+  } catch (err) {
+    logger.warn('onchain-markets', 'market flags merge failed', { error: String(err) });
+  }
 }
 
 // Merge stored image overrides into the given markets. Server reads the DB directly; the browser

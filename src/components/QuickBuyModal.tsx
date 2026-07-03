@@ -100,7 +100,8 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
   // Sports markets lock one minute before kickoff (and stay locked while the match is live).
   const kickoffMs = market.kickoffTime ? new Date(market.kickoffTime).getTime() : null;
   const isTradingLocked = kickoffMs !== null && !Number.isNaN(kickoffMs) && Date.now() >= kickoffMs - 60_000;
-  const canTrade = (market.status === 'Open' || market.status === 'Closing soon') && !isTradingLocked;
+  const isFrozen = Boolean(market.paused || market.frozen);
+  const canTrade = (market.status === 'Open' || market.status === 'Closing soon') && !isTradingLocked && !isFrozen;
 
   async function handleBuy() {
     // Progress / success / failure are all carried by the transaction status toast, so this modal
@@ -313,7 +314,8 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
           className={`mt-4 w-full rounded-[12px] py-3.5 text-center text-xs font-black uppercase tracking-wider text-ink transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[#1a2436] disabled:text-[#475569]`}
         >
           {!canTrade ? (
-            isTradingLocked ? 'Match Live · Trading Locked'
+            isFrozen ? 'Trading Frozen · Settles at Close'
+            : isTradingLocked ? 'Match Live · Trading Locked'
             : market.status === 'Resolved' ? 'Market Resolved'
             : market.status === 'Canceled' ? 'Market Canceled'
             : 'Market Closed'

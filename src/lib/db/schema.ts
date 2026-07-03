@@ -129,6 +129,16 @@ export const marketMetadataOverrides = pgTable('market_metadata_overrides', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// App-level market flags. 'frozen' blocks trading in the UI for decided markets whose deployed
+// contract offers no pause/early-cancel (old V1/V2) — written by the pause-decided-markets cron,
+// merged into the market list by the reader, enforced by placeTrade + the trade panels.
+export const marketFlags = pgTable('market_flags', {
+  marketId: text('market_id').primaryKey(),
+  flag: text('flag').notNull(),
+  reason: text('reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Latest full market-list snapshot (single row, key='latest'). Serverless instances are often cold
 // (no in-process cache) and the full on-chain read takes 10-30s — the skeleton screen users see on
 // load. Serving this snapshot instead takes ~300ms; a background refresh keeps it current.

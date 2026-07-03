@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 
-type TimelineEventType = 'created' | 'trade' | 'trade_summary' | 'proposed' | 'disputed' | 'settled' | 'canceled';
+type TimelineEventType = 'created' | 'trade' | 'trade_summary' | 'proposed' | 'disputed' | 'settled' | 'canceled' | 'odds';
 
 type TimelineEvent = {
   type: TimelineEventType;
@@ -20,6 +20,7 @@ const eventTone: Record<TimelineEventType, { dotColor: string; label: string }> 
   disputed: { dotColor: 'border-red-400 bg-red-400/20 text-red-400', label: 'Disputed' },
   settled: { dotColor: 'border-mint bg-mint/20 text-mint', label: 'Settled' },
   canceled: { dotColor: 'border-rose-400 bg-rose-400/20 text-rose-400', label: 'Canceled' },
+  odds: { dotColor: 'border-violet-400 bg-violet-400/20 text-violet-400', label: 'Odds' },
 };
 
 function timeAgo(ms: number): string {

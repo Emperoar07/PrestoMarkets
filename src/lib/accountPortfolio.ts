@@ -15,6 +15,10 @@ import type { PortfolioActivity, Position } from './portfolio';
 const activityBlockWindow = BigInt(7_200);
 const costBasisTimeoutMs = 2_000;
 
+// account -> marketId -> last successful per-market portfolio result. Session-scoped: keeps the
+// portfolio stable when a subset of per-market reads fails under RPC throttling (see below).
+const lastGoodPortfolioByAccount = new Map<string, Map<string, { positions: Position[]; preview: AccountMarketPreview }>>();
+
 export type AccountMarketPreview = {
   marketId: string;
   outcomeShares: Array<{ label: string; shares: string }>;
@@ -170,18 +174,39 @@ export async function fetchAccountPortfolio(
   const previews: Record<string, AccountMarketPreview> = {};
   const positions: Position[] = [];
 
+  // Last-known-good per-market results. sharesOf reads used to fall back to 0 on RPC failure,
+  // which silently DROPPED held positions — under provider throttling a varying subset of markets
+  // failed each load, so the portfolio flickered between different counts and totals ($18 → $115 →
+  // $62). Now a market whose share reads fail reuses its last successful result for this account
+  // instead of pretending the user holds nothing.
+  const accountKey = account.toLowerCase();
+  const lastGood = lastGoodPortfolioByAccount.get(accountKey) ?? new Map<string, { positions: Position[]; preview: AccountMarketPreview }>();
+  lastGoodPortfolioByAccount.set(accountKey, lastGood);
+
   await Promise.all(markets.map(async (market) => {
     if (!isAddress(market.id)) return;
 
     const address = market.id as Address;
+    const marketKey = market.id.toLowerCase();
     const outcomeLabels = market.outcomes.length > 0 ? market.outcomes.map((outcome) => outcome.label) : ['YES', 'NO'];
-    // Retry each read (429-aware backoff) before falling back. Without retries a transient RPC
-    // blip silently returns 0 shares, which drops a held position and makes the portfolio totals
-    // and counts flicker between loads.
-    const [outcomeShareValues, claimPreview, refundable, hasClaimed] = await Promise.all([
-      Promise.all(outcomeLabels.map((_, outcomeIndex) =>
-        withRpcRetry(() => client.readContract({ address, abi: prestoMarketAbi, functionName: 'sharesOf', args: [outcomeIndex, account] })).catch(() => BigInt(0)),
-      )),
+    // Core position data (sharesOf) is all-or-nothing per market: retry with 429-aware backoff,
+    // and on persistent failure reuse the cached result rather than dropping the position.
+    let outcomeShareValues: bigint[];
+    try {
+      outcomeShareValues = await Promise.all(outcomeLabels.map((_, outcomeIndex) =>
+        withRpcRetry(() => client.readContract({ address, abi: prestoMarketAbi, functionName: 'sharesOf', args: [outcomeIndex, account] }) as Promise<bigint>),
+      ));
+    } catch {
+      const cached = lastGood.get(marketKey);
+      if (cached) {
+        previews[market.id] = cached.preview;
+        positions.push(...cached.positions);
+      }
+      return;
+    }
+    // Auxiliary reads keep individual fallbacks — previewClaim/refund/claimed legitimately revert
+    // on contract versions that don't expose them, which must not disturb the position itself.
+    const [claimPreview, refundable, hasClaimed] = await Promise.all([
       withRpcRetry(() => client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewClaim', args: [account] })).catch(() => [BigInt(0), BigInt(0)] as const),
       withRpcRetry(() => client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewRefund', args: [account] })).catch(() => BigInt(0)),
       withRpcRetry(() => client.readContract({ address, abi: prestoMarketAbi, functionName: 'claimed', args: [account] })).catch(() => false),
@@ -213,6 +238,7 @@ export async function fetchAccountPortfolio(
       hasClaimed,
     };
 
+    const marketPositions: Position[] = [];
     outcomeLabels.forEach((outcome, outcomeIndex) => {
       const shares = outcomeShareValues[outcomeIndex] ?? BigInt(0);
       if (shares === BigInt(0)) return;
@@ -233,7 +259,7 @@ export async function fetchAccountPortfolio(
         hasClaimed,
       });
 
-      positions.push({
+      marketPositions.push({
         marketId: market.id,
         title: market.title,
         outcome,
@@ -252,6 +278,8 @@ export async function fetchAccountPortfolio(
         ),
       });
     });
+    positions.push(...marketPositions);
+    lastGood.set(marketKey, { positions: marketPositions, preview: previews[market.id] });
   }));
 
   const combined = options.includeActivity
