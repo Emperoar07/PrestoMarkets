@@ -20,9 +20,15 @@ const CF_IMAGE_MODEL = process.env.CF_IMAGE_MODEL?.trim() || '@cf/black-forest-l
 function buildPrompt(title: string, category?: string): string {
   // Image models render text as garbled glyphs, so explicitly forbid words/letters and ask for a
   // single clear subject — a clean editorial illustration that reads at thumbnail size on a card.
+  const isCrypto = /crypto|bitcoin|btc|eth|token|coin|defi|blockchain/i.test(`${title} ${category ?? ''}`);
   return [
     `Editorial cover illustration for a prediction market titled "${title}".`,
     category ? `Topic area: ${category}.` : '',
+    // Real coin marks come from CoinGecko upstream; the model must never IMITATE one — a wrong or
+    // distorted logo looks worse than no logo. Ask for a narrative market scene instead.
+    isCrypto
+      ? 'Depict an abstract financial scene that fits the question (rising or falling glowing price chart, candlesticks, market energy) — do NOT draw or imitate any cryptocurrency coin logo or brand mark.'
+      : '',
     'Modern, clean, professional flat/vector style with vivid but tasteful colors and a single clear',
     'centered subject relevant to the topic. No text, no words, no letters, no numbers, no logos,',
     'no watermark, no captions, no UI.',
