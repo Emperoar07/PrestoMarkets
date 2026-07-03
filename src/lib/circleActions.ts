@@ -1081,6 +1081,56 @@ export const cancelCircleMarket = (m: string) => noArgAction(m, 'cancel()', 'Mar
 export const claimCircleMarket = (m: string) => settleWithUsdcConfirm(m, 'claim()', 'Claim submitted');
 export const refundCircleMarket = (m: string) => settleWithUsdcConfirm(m, 'refund()', 'Refund submitted');
 
+// Settle EVERY claimable position in ONE PIN challenge: claim()/refund() legs batched through the
+// SCA's executeBatch — the same single-signature mechanism the approve+buy flow uses. Legs are
+// memo-wrapped and validated by the proxy allowlist (inspectBatch 'settle' ops) before signing.
+export async function claimAllCircleMarkets(
+  items: Array<{ marketAddress: string; mode: 'claim' | 'refund' }>,
+): Promise<LiveActionResult> {
+  try {
+    const session = await requireSession();
+    const owner = getStoredConnectedWallet()?.address;
+    if (!owner || !isAddress(owner)) throw new Error('Circle wallet is not connected.');
+    const valid = items.filter((item) => isAddress(item.marketAddress));
+    if (valid.length === 0) return { ok: false, message: 'Nothing to claim.' };
+
+    const legs = valid.map((item) => memoBatchLeg({
+      target: item.marketAddress as Address,
+      data: encodeFunctionData({ abi: prestoMarketAbi, functionName: item.mode }),
+      action: item.mode,
+      marketId: item.marketAddress as Address,
+    }));
+
+    const config = getArcConfig();
+    const usdc = config.usdcAddress as Address;
+    const client = getPublicClient();
+    const readBalance = () => client.readContract({
+      address: usdc, abi: erc20Abi, functionName: 'balanceOf', args: [owner as Address],
+    }) as Promise<bigint>;
+    const balanceBefore = await readBalance().catch(() => BigInt(0));
+
+    const txHash = await runContractExecution({
+      session,
+      contractAddress: owner as Address,
+      abiFunctionSignature: 'executeBatch((address, uint256, bytes)[])',
+      abiParameters: [legs],
+      refId: `presto-claim-all-${Date.now()}`,
+      waitForConfirmation: true,
+      confirmOnchain: async () => (await readBalance()) > balanceBefore,
+      preview: {
+        label: `Claim all (${valid.length})`,
+        action: `Settles ${valid.length} position${valid.length === 1 ? '' : 's'} (claims and refunds) in one signature.`,
+        parameters: valid.slice(0, 6).map((item) => `${item.mode}: ${item.marketAddress.slice(0, 10)}…`),
+      },
+    });
+    return { ok: true, message: `Settled ${valid.length} positions via Circle wallet.`, txHash: txHash as `0x${string}` };
+  } catch (error) {
+    const pending = pendingResultFromError(error, 'Claim all');
+    if (pending) return pending;
+    return { ok: false, message: error instanceof Error ? error.message : 'Claim all failed.' };
+  }
+}
+
 // Dispute a proposed resolution (V2 optimistic markets). Blocks the unchallenged settle path;
 // the resolver must then settle directly with evidence.
 export async function disputeCircleResolution(marketAddress: string, reason: string): Promise<LiveActionResult> {

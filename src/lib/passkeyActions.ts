@@ -551,6 +551,44 @@ async function callPasskeyMarket(
   }
 }
 
+// Settle EVERY claimable position in ONE userOp (one biometric prompt): claim()/refund() calls
+// batched through the smart account. Confirms from Arc the moment the wallet's USDC balance rises.
+export async function claimAllPasskeyMarkets(
+  items: Array<{ marketAddress: string; mode: 'claim' | 'refund' }>,
+): Promise<LiveActionResult> {
+  try {
+    const valid = items.filter((item) => isAddress(item.marketAddress));
+    if (valid.length === 0) return { ok: false, message: 'Nothing to claim.' };
+    const config = requireConfig();
+    const publicClient = getPublicClient();
+    const { address } = getCirclePasskeyBundlerClient();
+    const readBalance = () => publicClient.readContract({
+      address: config.usdcAddress, abi: erc20Abi, functionName: 'balanceOf', args: [address],
+    }) as Promise<bigint>;
+    const balanceBefore = await readBalance().catch(() => BigInt(0));
+
+    const calls = valid.map((item) => memoPasskeyCall({
+      target: item.marketAddress as Address,
+      data: encodeFunctionData({ abi: prestoMarketAbi, functionName: item.mode }),
+      action: item.mode,
+      marketId: item.marketAddress as Address,
+    }));
+
+    const txHash = await runPasskeyCalls(calls, {
+      confirmOnchain: async () => (await readBalance().catch(() => balanceBefore)) > balanceBefore,
+      preview: {
+        label: `Claim all (${valid.length})`,
+        action: `Settle ${valid.length} position${valid.length === 1 ? '' : 's'} (claims and refunds) with one passkey signature.`,
+        functionSignature: 'claim() / refund()',
+        parameters: valid.slice(0, 6).map((item) => `${item.mode}: ${item.marketAddress.slice(0, 10)}…`),
+      },
+    });
+    return { ok: true, message: `Settled ${valid.length} positions with passkey.`, txHash: txHash ? txHash as Hex : undefined };
+  } catch (error) {
+    return passkeyPendingResult(error, 'Claim all') ?? { ok: false, message: normalizeError(error, 'Claim all failed.') };
+  }
+}
+
 export function cancelPasskeyMarket(marketAddress: string) {
   return callPasskeyMarket(marketAddress, 'cancel', 'Market canceled with passkey.');
 }

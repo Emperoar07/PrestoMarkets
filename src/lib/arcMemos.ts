@@ -44,13 +44,20 @@ export const arcMulticall3FromAbi = [
  * NOTE: subcalls are the RAW target calls (not memo-wrapped) — nesting through the Memo contract
  * inside Multicall3From is undocumented, so we don't do it on the money path.
  */
-export function encodeMulticall3FromCall(calls: Array<{ target: Address; data: Hex }>): { to: Address; data: Hex } {
+export function encodeMulticall3FromCall(
+  calls: Array<{ target: Address; data: Hex }>,
+  opts: { allowFailure?: boolean } = {},
+): { to: Address; data: Hex } {
+  // allowFailure=false (default) for dependent sequences like approve+buy — all or nothing.
+  // allowFailure=true for independent settlements like claim-all, where one already-claimed
+  // market reverting must not block everyone else's payout in the same transaction.
+  const allowFailure = opts.allowFailure ?? false;
   return {
     to: ARC_MULTICALL3FROM_ADDRESS,
     data: encodeFunctionData({
       abi: arcMulticall3FromAbi,
       functionName: 'aggregate3',
-      args: [calls.map((call) => ({ target: call.target, allowFailure: false, callData: call.data }))],
+      args: [calls.map((call) => ({ target: call.target, allowFailure, callData: call.data }))],
     }),
   };
 }

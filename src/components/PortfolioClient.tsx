@@ -50,7 +50,7 @@ function parsePnlPercent(pnl: string): number {
 }
 
 export function PortfolioClient() {
-  const { positions, connectedWallet, isLoadingAccount, markets, claimMarket, refundMarket } = useAppState();
+  const { positions, connectedWallet, isLoadingAccount, markets, claimAllMarkets } = useAppState();
   const { track } = useTransactions();
   const [filter, setFilter] = useState<FilterType>('all');
   const [sort, setSort] = useState<SortType>('date');
@@ -64,17 +64,25 @@ export function PortfolioClient() {
     const targets = claimable.filter((p) => (seen.has(p.marketId) ? false : seen.add(p.marketId)));
     if (targets.length === 0) return;
     setClaimingAll(true);
-    for (const position of targets) {
-      // Canceled markets must be settled with refund(), not claim() — calling claim() on a
-      // canceled market reverts (the "succeeds then fails" bug). Detect refunds from the
-      // position's valuation label, falling back to the market's canceled status.
-      const isRefund = /refund/i.test(position.valuationLabel ?? '')
-        || markets.find((m) => m.id === position.marketId)?.status === 'Canceled';
-      const label = isRefund ? 'Refund' : 'Claim winnings';
-      try {
-        await track({ label }, () => (isRefund ? refundMarket(position.marketId) : claimMarket(position.marketId)));
-      } catch { /* keep settling the rest */ }
-    }
+    try {
+      // ONE wallet interaction for everything: Multicall3From for EOA, one userOp for passkey, one
+      // executeBatch PIN challenge for Circle. Canceled markets settle with refund(), everything
+      // else with claim() — a claim() on a canceled market reverts, so the mode is per position.
+      const items = targets.map((position) => ({
+        marketAddress: position.marketId,
+        mode: (/refund/i.test(position.valuationLabel ?? '')
+          || markets.find((m) => m.id === position.marketId)?.status === 'Canceled')
+          ? 'refund' as const
+          : 'claim' as const,
+      }));
+      const claims = items.filter((item) => item.mode === 'claim').length;
+      const refunds = items.length - claims;
+      // Honest toast label: don't call a batch of refunds "claims" (or vice versa).
+      const label = refunds === 0 ? `Claim all (${items.length})`
+        : claims === 0 ? `Refund all (${items.length})`
+        : `Settle all (${claims} claim${claims === 1 ? '' : 's'} + ${refunds} refund${refunds === 1 ? '' : 's'})`;
+      await track({ label }, () => claimAllMarkets(items));
+    } catch { /* surfaced by the toast */ }
     setClaimingAll(false);
   }
 

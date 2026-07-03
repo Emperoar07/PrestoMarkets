@@ -20,6 +20,7 @@ import {
   buyCircleLmsrShares,
   sellCircleLmsrShares,
   cancelCircleMarket,
+  claimAllCircleMarkets,
   claimCircleMarket,
   createCircleMarket,
   disputeCircleResolution,
@@ -31,6 +32,7 @@ import {
   buyPasskeyLmsrShares,
   sellPasskeyLmsrShares,
   cancelPasskeyMarket,
+  claimAllPasskeyMarkets,
   claimPasskeyMarket,
   disputePasskeyMarket,
   refundPasskeyMarket,
@@ -332,8 +334,9 @@ async function sendMulticall3FromBatch(
   walletClient: ReturnType<typeof createWalletClient>,
   account: Address,
   calls: Array<{ target: Address; data: Hex }>,
+  opts: { allowFailure?: boolean } = {},
 ): Promise<Hex | null> {
-  const oneTx = encodeMulticall3FromCall(calls);
+  const oneTx = encodeMulticall3FromCall(calls, opts);
   try {
     return await walletClient.sendTransaction({
       account,
@@ -1057,6 +1060,58 @@ export async function refundLiveMarket(marketAddress: string, payWith?: StableSy
     });
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Refund transaction failed.' };
+  }
+}
+
+/**
+ * Settle EVERY claimable position in ONE wallet interaction, for all three wallet types:
+ *  - EOA: one Multicall3From transaction (sender preserved per subcall). allowFailure=true so an
+ *    already-claimed market can't revert everyone else's payout in the same tx.
+ *  - Passkey: one batched userOp (one biometric prompt).
+ *  - Circle PIN/email: one executeBatch challenge (one PIN).
+ */
+export async function claimAllLiveMarkets(
+  items: Array<{ marketAddress: string; mode: 'claim' | 'refund' }>,
+): Promise<LiveActionResult> {
+  const valid = items.filter((item) => isAddress(item.marketAddress));
+  if (valid.length === 0) return { ok: false, message: 'Nothing to claim.' };
+  if (valid.length === 1) {
+    return valid[0].mode === 'refund' ? refundLiveMarket(valid[0].marketAddress) : claimLiveMarket(valid[0].marketAddress);
+  }
+  if (isCircleWallet()) return claimAllCircleMarkets(valid);
+  if (isPasskeyWallet()) return claimAllPasskeyMarkets(valid);
+
+  try {
+    const { account, config, publicClient, walletClient } = await getClients();
+    const usdc = config.usdcAddress as Address;
+    const readBalance = () => publicClient.readContract({
+      address: usdc, abi: erc20Abi, functionName: 'balanceOf', args: [account],
+    }) as Promise<bigint>;
+    const balanceBefore = await readBalance().catch(() => BigInt(0));
+
+    const calls = valid.map((item) => ({
+      target: item.marketAddress as Address,
+      data: encodeFunctionData({ abi: prestoMarketAbi, functionName: item.mode }),
+    }));
+    const batchHash = await sendMulticall3FromBatch(walletClient, account, calls, { allowFailure: true });
+    if (batchHash !== null) {
+      const confirmed = await waitForSubmittedTransaction(publicClient, batchHash, async () => (await readBalance().catch(() => balanceBefore)) > balanceBefore);
+      if (!confirmed) return submittedPendingResult(`Claim all (${valid.length})`, batchHash);
+      return { ok: true, message: `Settled ${valid.length} positions in one transaction.`, txHash: batchHash };
+    }
+
+    // The wallet refused the batch for a non-rejection reason — settle sequentially instead.
+    let settled = 0;
+    let lastError = '';
+    for (const item of valid) {
+      const result = item.mode === 'refund' ? await refundLiveMarket(item.marketAddress) : await claimLiveMarket(item.marketAddress);
+      if (result.ok) settled += 1;
+      else lastError = result.message;
+    }
+    if (settled === 0) return { ok: false, message: lastError || 'Claim all failed.' };
+    return { ok: true, message: `Settled ${settled}/${valid.length} positions.` };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : 'Claim all failed.' };
   }
 }
 

@@ -16,6 +16,7 @@ import {
   buyLmsrShares,
   addLiveLiquidity,
   cancelLiveMarket,
+  claimAllLiveMarkets,
   claimLiveMarket,
   createLiveMarket,
   refundLiveMarket,
@@ -99,6 +100,7 @@ type AppStateValue = {
   resolveMarket: (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; resolutionURI: string }) => Promise<LiveActionResult>;
   cancelMarket: (marketId: string) => Promise<LiveActionResult>;
   claimMarket: (marketId: string) => Promise<LiveActionResult>;
+  claimAllMarkets: (items: Array<{ marketAddress: string; mode: 'claim' | 'refund' }>) => Promise<LiveActionResult>;
   refundMarket: (marketId: string) => Promise<LiveActionResult>;
   getMarket: (id: string) => AppMarket | undefined;
 };
@@ -399,6 +401,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return result;
   }, [connectedWallet?.address, refreshAll, schedulePostTransactionRefresh]);
 
+  // Settle every claimable position with ONE wallet interaction (Multicall3From / batched userOp /
+  // executeBatch depending on the wallet type).
+  const claimAllMarkets = useCallback(async (items: Array<{ marketAddress: string; mode: 'claim' | 'refund' }>) => {
+    const result = await claimAllLiveMarkets(items);
+    if (result.ok) {
+      schedulePostTransactionRefresh();
+    }
+    return result;
+  }, [schedulePostTransactionRefresh]);
+
   const refundMarket = useCallback(async (marketId: string) => {
     const payWith = readPayWith(connectedWallet?.address, marketId) ?? undefined;
     const result = await refundLiveMarket(marketId, payWith);
@@ -430,6 +442,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     resolveMarket,
     cancelMarket,
     claimMarket,
+    claimAllMarkets,
     refundMarket,
     getMarket,
   }), [
@@ -449,6 +462,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     resolveMarket,
     cancelMarket,
     claimMarket,
+    claimAllMarkets,
     refundMarket,
     getMarket,
   ]);

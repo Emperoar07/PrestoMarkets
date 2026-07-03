@@ -158,11 +158,18 @@ const BATCH_SIGNATURE = 'executeBatch((address, uint256, bytes)[])';
 const APPROVE_SELECTOR = toFunctionSelector('approve(address,uint256)');
 const BUY_SELECTOR = toFunctionSelector('buy(uint8,uint256)');
 const BUY_LMSR_SELECTOR = toFunctionSelector('buy(uint8,uint256,uint256)'); // V3 slippage-guarded buy
+const CLAIM_SELECTOR = toFunctionSelector('claim()');
+const REFUND_SELECTOR = toFunctionSelector('refund()');
 const MAX_BATCH_LEGS = 4;
+// Settle-only batches (claim()/refund() legs — the "Claim All" flow) may carry more legs than a
+// buy batch: each leg only pays USDC *to the caller* from a known market, so the per-leg risk that
+// motivates the tight buy cap doesn't apply.
+const MAX_SETTLE_BATCH_LEGS = 20;
 
 type BatchOp =
   | { kind: 'approve'; usdcTarget: string; spender: string; amount: bigint }
-  | { kind: 'buy'; market: string };
+  | { kind: 'buy'; market: string }
+  | { kind: 'settle'; market: string };
 
 function isHexCalldata(value: unknown): value is Hex {
   return typeof value === 'string' && /^0x[0-9a-fA-F]{8,}$/.test(value);
@@ -186,7 +193,7 @@ function unwrapMemoLeg(target: string, calldata: Hex): { target: string; calldat
  */
 export function inspectBatch(abiParameters: unknown[] | undefined): { ok: true; ops: BatchOp[] } | { ok: false } {
   const legs = abiParameters?.[0];
-  if (!Array.isArray(legs) || legs.length === 0 || legs.length > MAX_BATCH_LEGS) return { ok: false };
+  if (!Array.isArray(legs) || legs.length === 0 || legs.length > MAX_SETTLE_BATCH_LEGS) return { ok: false };
 
   const ops: BatchOp[] = [];
   for (const leg of legs) {
@@ -215,10 +222,16 @@ export function inspectBatch(abiParameters: unknown[] | undefined): { ok: true; 
       ops.push({ kind: 'approve', usdcTarget: unwrapped.target.toLowerCase(), spender: spender.toLowerCase(), amount });
     } else if (selector === BUY_SELECTOR || selector === BUY_LMSR_SELECTOR) {
       ops.push({ kind: 'buy', market: unwrapped.target.toLowerCase() });
+    } else if (selector === CLAIM_SELECTOR || selector === REFUND_SELECTOR) {
+      ops.push({ kind: 'settle', market: unwrapped.target.toLowerCase() });
     } else {
       return { ok: false };
     }
   }
+
+  // The generous leg cap is reserved for settle-only batches; anything containing an approve or
+  // buy leg keeps the tight cap.
+  if (ops.some((op) => op.kind !== 'settle') && ops.length > MAX_BATCH_LEGS) return { ok: false };
 
   return { ok: true, ops };
 }

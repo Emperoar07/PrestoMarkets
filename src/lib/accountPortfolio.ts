@@ -12,7 +12,12 @@ import type { AppMarket } from './appState';
 import type { PortfolioActivity, Position } from './portfolio';
 // Arc's public RPC returns 413 on wide getLogs queries. Cap the activity window at ~1 hour
 // of sub-second blocks (~7200 blocks at 0.5s) so each market's three log calls stay accepted.
-const activityBlockWindow = BigInt(7_200);
+// ~24h of 0.5s Arc blocks. The old 7,200 (~1h) window made the Activity page look broken — buys
+// older than an hour vanished ("Bought 0"). The wide range is safe because every getLogs here is
+// address + topic + account filtered (tiny result sets), and a provider that rejects the range
+// falls back to the old window instead of returning nothing.
+const activityBlockWindow = BigInt(172_800);
+const activityFallbackBlockWindow = BigInt(7_200);
 const costBasisTimeoutMs = 2_000;
 
 // account -> marketId -> last successful per-market portfolio result. Session-scoped: keeps the

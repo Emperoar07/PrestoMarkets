@@ -1,0 +1,7 @@
+[mcp_servers.arc]
+url = "https://docs.arc.io/mcp"
+enabled = true
+
+[mcp_servers.circle]
+url = "https://api.circle.com/v1/codegen/mcp"
+enabled = true
