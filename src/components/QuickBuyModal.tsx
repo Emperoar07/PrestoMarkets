@@ -26,6 +26,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
   const { track } = useTransactions();
   const [selectedOutcome, setSelectedOutcome] = useState(initialOutcome);
   const [amount, setAmount] = useState('1');
+  const [inputMode, setInputMode] = useState<'usd' | 'shares'>('usd');
   const [payWith, setPayWith] = useState<StableSymbol>('USDC');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fundingOpen, setFundingOpen] = useState(false);
@@ -84,10 +85,16 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
   
   const amountValue = Number(amount) || 0;
   const fixedShareQuote = buildFixedShareQuote({ amountUsdc: amountValue, oddsPercent: Number(activeOutcome.odds) });
-  // V3 LMSR estimate: shares ~= budget / price (with headroom for fee + slippage). Each winning
-  // share redeems for $1, so the estimated payout equals the share count.
+  // amm (V3) markets are share-priced, so the input can be denominated either way; V2 stays $-only.
+  const isShareMode = isAmm && inputMode === 'shares';
+  // V3 LMSR estimate. $-mode: shares ~= budget / price (with headroom for fee + slippage).
+  // Shares-mode: the input IS the share count and est. cost = shares x price (+1% fee).
+  // Each winning share redeems for $1, so the estimated payout equals the share count.
   const ammPrice = Math.min(0.99, Math.max(0.01, Number(activeOutcome.odds) / 100));
-  const ammShares = isAmm && amountValue > 0 ? (amountValue / ammPrice) * 0.95 : 0;
+  const ammShares = !isAmm || amountValue <= 0 ? 0
+    : isShareMode ? amountValue
+    : (amountValue / ammPrice) * 0.95;
+  const ammEstCost = isAmm && amountValue > 0 ? ammShares * ammPrice * 1.01 : 0;
   const previewShares = isAmm ? ammShares : fixedShareQuote.shares;
   const previewPayout = isAmm ? ammShares : fixedShareQuote.estimatedPayoutUsdc;
   // Sports markets lock one minute before kickoff (and stay locked while the match is live).
@@ -101,12 +108,15 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
     setIsSubmitting(true);
     try {
       const result = await track(
-        { label: `Buy ${selectedOutcome} · ${unit}${amountValue}` },
+        { label: isShareMode ? `Buy ${amountValue} ${selectedOutcome}` : `Buy ${selectedOutcome} · ${unit}${amountValue}` },
         () => placeTrade({
           marketId: market.id,
           outcome: selectedOutcome,
           outcomeIndex: activeOutcomeIndex,
-          amount: amountValue,
+          // Shares-mode passes the share count straight through; amount is only the $ estimate the
+          // toasts display. $-mode keeps the budget semantics (spend at most this).
+          amount: isShareMode ? Number(ammEstCost.toFixed(2)) : amountValue,
+          shares: isShareMode ? amountValue : undefined,
           payWith
         }),
       );
@@ -214,7 +224,25 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
         {/* Amount Input */}
         <div className="mt-4">
           <div className="flex items-center justify-between">
-            <label className="text-[10px] font-black uppercase tracking-widest text-[#475569]">{'Amount'}</label>
+            <span className="flex items-center gap-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-[#475569]">{isShareMode ? 'Shares' : 'Amount'}</label>
+              {isAmm ? (
+                <span className="flex overflow-hidden rounded-[6px] border border-white/[0.08]">
+                  {(['usd', 'shares'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setInputMode(m)}
+                      className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider transition-colors ${
+                        inputMode === m ? 'bg-cyan/15 text-cyan' : 'bg-[#0d1520] text-[#64748b] hover:text-white'
+                      }`}
+                    >
+                      {m === 'usd' ? unit : 'Shares'}
+                    </button>
+                  ))}
+                </span>
+              ) : null}
+            </span>
             <button
               type="button"
               onClick={() => setFundingOpen(true)}
@@ -224,7 +252,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
             </button>
           </div>
           <div className="relative mt-1.5 flex items-center rounded-[12px] border border-white/[0.06] bg-[#0d1520] px-3.5 py-2.5">
-            <span className="text-2xl font-black text-[#475569] mr-1">$</span>
+            {!isShareMode ? <span className="text-2xl font-black text-[#475569] mr-1">$</span> : null}
             <input
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
@@ -233,7 +261,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
               inputMode="decimal"
             />
           </div>
-          
+
           {/* Quick Amounts */}
           <div className="mt-2.5 flex gap-2">
             {quickAmounts.map((q) => (
@@ -247,7 +275,7 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
                     : 'border-white/[0.06] bg-[#0d1520] text-[#8fa0b4] hover:border-white/10 hover:text-white'
                 }`}
               >
-                {unit}{q}
+                {isShareMode ? q : `${unit}${q}`}
               </button>
             ))}
           </div>
@@ -261,8 +289,12 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
             <span className="font-black text-white">{activeOutcome.odds}%</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[#8fa0b4]">{isAmm ? 'Est. shares' : 'Shares (1 USDC = 1 share)'}</span>
-            <span className="font-black text-white">{previewShares > 0 ? previewShares.toFixed(2) : '—'}</span>
+            <span className="text-[#8fa0b4]">{isShareMode ? 'Est. cost (incl. 1% fee)' : isAmm ? 'Est. shares' : 'Shares (1 USDC = 1 share)'}</span>
+            <span className="font-black text-white">
+              {isShareMode
+                ? (ammEstCost > 0 ? `${unit}${ammEstCost.toFixed(2)}` : '—')
+                : (previewShares > 0 ? previewShares.toFixed(2) : '—')}
+            </span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[#8fa0b4]">{'Est. payout if'} {activeOutcome.label} {'wins'}</span>
@@ -287,7 +319,8 @@ export function QuickBuyModal({ market, initialOutcome, onClose }: QuickBuyModal
             : 'Market Closed'
           )
             : isSubmitting ? 'Confirming…'
-            : amountValue <= 0 ? 'Enter Amount'
+            : amountValue <= 0 ? (isShareMode ? 'Enter Shares' : 'Enter Amount')
+            : isShareMode ? `Buy ${amountValue} ${selectedOutcome}`
             : `Buy ${selectedOutcome} · ${unit}${amountValue}`}
         </button>
       </div>

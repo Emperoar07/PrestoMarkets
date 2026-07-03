@@ -6,7 +6,8 @@ import { validateImageUrl } from '@/lib/agentPipeline';
 import { generateAiMarketImage } from '@/lib/generateAiMarketImage';
 import { getDb, hasDatabaseUrl } from '@/lib/db/client';
 import { marketMetadataOverrides } from '@/lib/db/schema';
-import { hasGoodImage, imageUrlLoads } from '@/lib/imageQuality';
+import { hasGoodImage } from '@/lib/imageQuality';
+import { imageUrlLoads } from '@/lib/imageLiveness';
 import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';

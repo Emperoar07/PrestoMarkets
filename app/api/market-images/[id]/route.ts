@@ -25,10 +25,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     const match = uri.match(/^data:(image\/[a-z+.-]+);base64,(.+)$/i);
     if (!match) return new NextResponse('Not found', { status: 404 });
     const [, contentType, b64] = match;
+    // Raster images only. SVG served inline from our origin could carry scripts (stored XSS) if a
+    // malicious payload ever landed in the override store; the generator only makes JPEGs anyway.
+    if (contentType.toLowerCase().includes('svg')) return new NextResponse('Not found', { status: 404 });
     const bytes = Buffer.from(b64, 'base64');
     return new NextResponse(new Uint8Array(bytes), {
       headers: {
         'Content-Type': contentType,
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'",
         // Long edge cache; the list URL carries a ?v= content hash, so a regenerated image gets a
         // new URL and never fights this cache.
         'Cache-Control': 'public, max-age=3600, s-maxage=31536000, immutable',

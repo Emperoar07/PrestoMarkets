@@ -635,42 +635,40 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
     // markets). All amounts are 6-decimal on Arc. Older markets without collateral() fall back
     // to USDC. (Open-state + kickoff-lock already asserted above, before the wallet-mode branches.)
     const marketAddress = input.marketAddress as Address;
-    const collateralToken = (await withRetry(() => publicClient.readContract({
-      address: marketAddress, abi: prestoMarketAbi, functionName: 'collateral',
-    })).catch(() => config.usdcAddress)) as Address;
-    const collateralSymbol = collateralSymbolForAddress(collateralToken);
-    const unit = collateralUnit(collateralSymbol);
-
     const amount = parseUnits(String(input.amount), 6);
-
-    const [balance, allowance] = await Promise.all([
-      withRetry(() => publicClient.readContract({
-        address: collateralToken,
-        abi: erc20Abi,
-        functionName: 'balanceOf',
-        args: [account],
-      })),
-      withRetry(() => publicClient.readContract({
-        address: collateralToken,
-        abi: erc20Abi,
-        functionName: 'allowance',
-        args: [account, marketAddress],
-      })),
-    ]);
-
-    if (balance < amount) {
-      const have = Number(formatUnits(balance, 6)).toFixed(2);
-      throw new Error(`Insufficient ${collateralSymbol} balance. You have ${unit}${have} but the trade needs ${unit}${input.amount}.`);
-    }
-
     const buyOutcomeIndex = input.outcomeIndex ?? (input.outcome === 'YES' ? 0 : 1);
+
+    // ONE round trip before the wallet prompt (multicall-batched Promise.all): collateral, the
+    // buyer's current shares, and optimistic USDC balance/allowance together — re-read only for
+    // the rare EURC-collateralized market. Serial read groups here were why the tx prompt lagged.
+    const usdc = config.usdcAddress as Address;
     const readShares = () => publicClient.readContract({
       address: marketAddress,
       abi: prestoMarketAbi,
       functionName: 'sharesOf',
       args: [buyOutcomeIndex, account],
     }) as Promise<bigint>;
-    const sharesBefore = await withRetry(readShares).catch(() => BigInt(0));
+    const [collateralToken, sharesBefore, usdcBalance, usdcAllowance] = await Promise.all([
+      withRetry(() => publicClient.readContract({ address: marketAddress, abi: prestoMarketAbi, functionName: 'collateral' })).catch(() => usdc) as Promise<Address>,
+      withRetry(readShares).catch(() => BigInt(0)),
+      withRetry(() => publicClient.readContract({ address: usdc, abi: erc20Abi, functionName: 'balanceOf', args: [account] })) as Promise<bigint>,
+      withRetry(() => publicClient.readContract({ address: usdc, abi: erc20Abi, functionName: 'allowance', args: [account, marketAddress] })) as Promise<bigint>,
+    ]);
+    const collateralSymbol = collateralSymbolForAddress(collateralToken);
+    const unit = collateralUnit(collateralSymbol);
+
+    let [balance, allowance] = [usdcBalance, usdcAllowance];
+    if (collateralToken.toLowerCase() !== usdc.toLowerCase()) {
+      [balance, allowance] = await Promise.all([
+        withRetry(() => publicClient.readContract({ address: collateralToken, abi: erc20Abi, functionName: 'balanceOf', args: [account] })) as Promise<bigint>,
+        withRetry(() => publicClient.readContract({ address: collateralToken, abi: erc20Abi, functionName: 'allowance', args: [account, marketAddress] })) as Promise<bigint>,
+      ]);
+    }
+
+    if (balance < amount) {
+      const have = Number(formatUnits(balance, 6)).toFixed(2);
+      throw new Error(`Insufficient ${collateralSymbol} balance. You have ${unit}${have} but the trade needs ${unit}${input.amount}.`);
+    }
 
     if (allowance < amount) {
       // ONE-prompt path: approve + buy in a single ordinary transaction via Arc's Multicall3From
@@ -772,42 +770,42 @@ export async function buyLmsrShares(input: LmsrBuyInput): Promise<LiveActionResu
     const quotedMaxCost6 = parseUnits(String(input.maxCost), 6);
     if (shares6 <= BigInt(0)) throw new Error('Enter a share amount.');
 
-    const collateralToken = (await withRetry(() => publicClient.readContract({
-      address: marketAddress, abi: prestoLmsrMarketAbi, functionName: 'collateral',
-    })).catch(() => config.usdcAddress)) as Address;
-    const collateralSymbol = collateralSymbolForAddress(collateralToken);
-    const unit = collateralUnit(collateralSymbol);
-    const [buyCost6, feeBps] = await Promise.all([
-      withRetry(() => publicClient.readContract({
-        address: marketAddress,
-        abi: prestoLmsrMarketAbi,
-        functionName: 'buyCost',
-        args: [input.outcomeIndex, shares6],
-      })),
-      withRetry(() => publicClient.readContract({
-        address: marketAddress,
-        abi: prestoLmsrMarketAbi,
-        functionName: 'feeBps',
-      })),
-    ]);
-    const freshTotalCost6 = lmsrBuyTotalCost6(buyCost6 as bigint, Number(feeBps));
-    const freshMaxCost6 = addSlippageBps6(freshTotalCost6, LMSR_BUY_SLIPPAGE_BPS);
-    const maxCost6 = quotedMaxCost6 > freshMaxCost6 ? quotedMaxCost6 : freshMaxCost6;
-
-    const [balance, allowance] = await Promise.all([
-      withRetry(() => publicClient.readContract({ address: collateralToken, abi: erc20Abi, functionName: 'balanceOf', args: [account] })),
-      withRetry(() => publicClient.readContract({ address: collateralToken, abi: erc20Abi, functionName: 'allowance', args: [account, marketAddress] })),
-    ]);
-    if (balance < maxCost6) {
-      throw new Error(`Insufficient ${collateralSymbol} balance. You have ${unit}${Number(formatUnits(balance, 6)).toFixed(2)} but this buy may cost up to ${unit}${input.maxCost}.`);
-    }
+    // ONE round trip before the wallet prompt: the client multicall-batches same-tick reads, so
+    // firing everything in a single Promise.all collapses what used to be 4 serial read groups
+    // (collateral → quote → balance/allowance → shares) into one RPC call. Balance/allowance are
+    // read optimistically against USDC — the collateral for ~all markets — and only re-read when
+    // the market turns out to be EURC-collateralized. This is what makes the tx prompt pop fast.
+    const usdc = config.usdcAddress as Address;
     const readShares = () => publicClient.readContract({
       address: marketAddress,
       abi: prestoLmsrMarketAbi,
       functionName: 'sharesOf',
       args: [input.outcomeIndex, account],
     }) as Promise<bigint>;
-    const sharesBefore = await withRetry(readShares).catch(() => BigInt(0));
+    const [collateralToken, buyCost6, feeBps, sharesBefore, usdcBalance, usdcAllowance] = await Promise.all([
+      withRetry(() => publicClient.readContract({ address: marketAddress, abi: prestoLmsrMarketAbi, functionName: 'collateral' })).catch(() => usdc) as Promise<Address>,
+      withRetry(() => publicClient.readContract({ address: marketAddress, abi: prestoLmsrMarketAbi, functionName: 'buyCost', args: [input.outcomeIndex, shares6] })),
+      withRetry(() => publicClient.readContract({ address: marketAddress, abi: prestoLmsrMarketAbi, functionName: 'feeBps' })),
+      withRetry(readShares).catch(() => BigInt(0)),
+      withRetry(() => publicClient.readContract({ address: usdc, abi: erc20Abi, functionName: 'balanceOf', args: [account] })),
+      withRetry(() => publicClient.readContract({ address: usdc, abi: erc20Abi, functionName: 'allowance', args: [account, marketAddress] })),
+    ]);
+    const collateralSymbol = collateralSymbolForAddress(collateralToken);
+    const unit = collateralUnit(collateralSymbol);
+    const freshTotalCost6 = lmsrBuyTotalCost6(buyCost6 as bigint, Number(feeBps));
+    const freshMaxCost6 = addSlippageBps6(freshTotalCost6, LMSR_BUY_SLIPPAGE_BPS);
+    const maxCost6 = quotedMaxCost6 > freshMaxCost6 ? quotedMaxCost6 : freshMaxCost6;
+
+    let [balance, allowance] = [usdcBalance as bigint, usdcAllowance as bigint];
+    if (collateralToken.toLowerCase() !== usdc.toLowerCase()) {
+      [balance, allowance] = await Promise.all([
+        withRetry(() => publicClient.readContract({ address: collateralToken, abi: erc20Abi, functionName: 'balanceOf', args: [account] })) as Promise<bigint>,
+        withRetry(() => publicClient.readContract({ address: collateralToken, abi: erc20Abi, functionName: 'allowance', args: [account, marketAddress] })) as Promise<bigint>,
+      ]);
+    }
+    if (balance < maxCost6) {
+      throw new Error(`Insufficient ${collateralSymbol} balance. You have ${unit}${Number(formatUnits(balance, 6)).toFixed(2)} but this buy may cost up to ${unit}${input.maxCost}.`);
+    }
 
     if (allowance < maxCost6) {
       // ONE-prompt path: approve + buy atomically via Arc's Multicall3From (sender preserved in

@@ -94,7 +94,7 @@ type AppStateValue = {
   refreshMarket: (id: string) => Promise<void>;
   refreshAccountPortfolio: () => Promise<void>;
   createMarket: (input: CreateMarketInput) => Promise<LiveActionResult>;
-  placeTrade: (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; amount: number; payWith?: StableSymbol }) => Promise<LiveActionResult>;
+  placeTrade: (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; amount: number; shares?: number; payWith?: StableSymbol }) => Promise<LiveActionResult>;
   addLiquidity: (input: { marketId: string; amount: number; payWith?: StableSymbol }) => Promise<LiveActionResult>;
   resolveMarket: (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; resolutionURI: string }) => Promise<LiveActionResult>;
   cancelMarket: (marketId: string) => Promise<LiveActionResult>;
@@ -270,26 +270,31 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return result;
   }, [schedulePostTransactionRefresh]);
 
-  const placeTrade = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; amount: number; payWith?: StableSymbol }) => {
+  const placeTrade = useCallback(async (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; amount: number; shares?: number; payWith?: StableSymbol }) => {
     const market = markets.find((item) => item.id === input.marketId);
     if (!market || (market.status !== 'Open' && market.status !== 'Closing soon')) {
       return { ok: false, message: 'This market is closed for trading.' };
     }
-    // V3 LMSR markets are share-priced. Convert the "$ amount" budget into a share quantity using
-    // the live odds, cap the spend at the entered budget (maxCost), and route to the LMSR buy. The
-    // 0.95 factor leaves headroom for the 1% fee + a little price impact so the cost stays under
-    // budget instead of reverting on slippage. The market page panel offers exact share control.
+    // V3 LMSR markets are share-priced. When the caller passes an explicit share count (QuickBuy's
+    // shares mode), use it directly and let buyLmsrShares' fresh on-chain quote set the spend cap.
+    // Otherwise convert the "$ amount" budget into shares at the live odds and cap the spend at the
+    // entered budget (maxCost). The 0.95 factor leaves headroom for the 1% fee + a little price
+    // impact so a budget buy stays under budget instead of reverting on slippage.
     if (market.amm) {
       const idx = input.outcomeIndex ?? Math.max(0, market.outcomes.findIndex((o) => o.label === input.outcome));
       const oddsPct = Number(market.outcomes[idx]?.odds) || 50;
       const price = Math.min(0.99, Math.max(0.01, oddsPct / 100));
-      const shares = Math.max(0.000001, (input.amount / price) * 0.95);
+      const explicitShares = Number.isFinite(input.shares) && (input.shares as number) > 0 ? (input.shares as number) : null;
+      const shares = explicitShares ?? Math.max(0.000001, (input.amount / price) * 0.95);
+      // For explicit shares the estimate can run low; buyLmsrShares takes max(quoted, fresh quote
+      // + slippage) as the on-chain cap, so a low estimate never blocks or reverts the buy.
+      const maxCost = explicitShares ? Math.max(0.01, explicitShares * price * 1.06) : input.amount;
       const lmsrResult = await buyLmsrShares({
         marketAddress: input.marketId,
         outcome: input.outcome,
         outcomeIndex: idx,
         shares,
-        maxCost: input.amount,
+        maxCost,
         payWith: input.payWith,
       });
       if (lmsrResult.ok && !lmsrResult.approvalOnly) {

@@ -17,7 +17,7 @@ import { fetchPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
 import { resolveSubjectImageUrl, brandedMarketImage, detectCountryFlagUrl } from './marketSubjectImage';
 import { deriveDisplayType } from './marketDisplay';
 import { generateAiMarketImage } from './generateAiMarketImage';
-import { imageUrlLoads } from './imageQuality';
+import { imageUrlLoads } from './imageLiveness';
 import { getDb, hasDatabaseUrl } from './db/client';
 import { marketMetadataOverrides } from './db/schema';
 import { logger } from './logger';

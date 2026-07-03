@@ -24,26 +24,5 @@ export function hasGoodImage(uri: string | undefined | null): boolean {
   }
 }
 
-// Liveness probe: hasGoodImage() trusts URLs by HOSTNAME, but a trusted-host URL that 404s still
-// renders as the letter-tile placeholder (the card's <img> onError). Verify the bytes actually load
-// before shipping/keeping a URL. data: URIs always render. Server-side only.
-export async function imageUrlLoads(url: string | undefined | null): Promise<boolean> {
-  if (!url) return false;
-  const trimmed = url.trim();
-  if (trimmed.startsWith('data:image/')) return true;
-  if (!/^https?:\/\//i.test(trimmed)) return false;
-  try {
-    // GET with a tiny range (some CDNs reject HEAD); any 2xx + image content-type counts as alive.
-    const res = await fetch(trimmed, {
-      method: 'GET',
-      headers: { Range: 'bytes=0-2047' },
-      signal: AbortSignal.timeout(5_000),
-      redirect: 'follow',
-    });
-    if (!(res.ok || res.status === 206)) return false;
-    const type = res.headers.get('content-type') ?? '';
-    return type.startsWith('image/');
-  } catch {
-    return false;
-  }
-}
+// NOTE: the byte-level liveness probe (imageUrlLoads) lives in imageLiveness.ts — it is
+// server-only (SSRF-guarded via node DNS pinning), while this module is also bundled client-side.
