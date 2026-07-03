@@ -1,7 +1,28 @@
 import { NextResponse, after } from 'next/server';
 import { fetchOnchainMarkets, readMarketListSnapshot } from '@/lib/onchainMarkets';
+import type { AppMarket } from '@/lib/appState';
 
 export const runtime = 'nodejs';
+
+// Inlined AI images are 50-80KB of base64 EACH — they ballooned this list past 1MB, and shipping
+// that JSON became the skeleton time. Replace big data-URI images with a reference to the cacheable
+// /api/market-images/[id] endpoint; the tiny branded SVGs stay inline. ?v= is a content hash so a
+// regenerated image busts the edge cache.
+function contentHash(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i += 199) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return (h ^ s.length).toString(36);
+}
+
+function slimImages(markets: AppMarket[]): AppMarket[] {
+  return markets.map((m) => {
+    const u = m.imageURI || '';
+    if (u.startsWith('data:image/') && !u.startsWith('data:image/svg') && u.length > 4096) {
+      return { ...m, imageURI: `/api/market-images/${m.id.toLowerCase()}?v=${contentHash(u)}` };
+    }
+    return m;
+  });
+}
 
 // Cached market list for the app's own UI. The on-chain read is 10-30s cold, and serverless
 // instances are usually cold — that read was the skeleton screen users stared at. Three layers now
@@ -25,14 +46,14 @@ export async function GET() {
         after(async () => { await fetchOnchainMarkets({ force: true }).catch(() => undefined); });
       }
       return NextResponse.json(
-        { markets: snapshot.markets },
+        { markets: slimImages(snapshot.markets) },
         { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=300' } },
       );
     }
 
     const markets = await fetchOnchainMarkets();
     return NextResponse.json(
-      { markets },
+      { markets: slimImages(markets) },
       { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=300' } },
     );
   } catch (error) {
