@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { getDb, hasDatabaseUrl } from './db/client';
 import { circleGatewayEvents } from './db/schema';
 import { isRecord } from './typeGuards';
+import { logger } from './logger';
 
 export const CIRCLE_GATEWAY_EVENT_TYPES = [
   'gateway.deposit.finalized',
@@ -77,7 +78,16 @@ export async function recordCircleGatewayWebhook(input: unknown): Promise<{
   skipped: boolean;
 }> {
   const event = normalizeCircleGatewayWebhook(input);
-  if (!hasDatabaseUrl()) return { event, inserted: false, skipped: true };
+  if (!hasDatabaseUrl()) {
+    // Do NOT swallow this: without a DB the event can't be recorded, and acking it (2xx) would make
+    // Circle drop it permanently. The route maps skipped -> 503 so Circle retries until the
+    // DATABASE_URL misconfiguration is fixed.
+    logger.error('circle-gateway-webhook', 'DATABASE_URL not configured — gateway event NOT recorded', {
+      notificationId: event.notificationId,
+      eventType: event.eventType,
+    });
+    return { event, inserted: false, skipped: true };
+  }
 
   const existing = await getDb().select({ notificationId: circleGatewayEvents.notificationId })
     .from(circleGatewayEvents)

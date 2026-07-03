@@ -41,6 +41,11 @@ type TimelineMarket = Market & {
   };
 };
 
+// ACCEPTED BOUND: the chain scan covers the most recent BLOCK_CHUNK x MAX_CHUNKS blocks (~1 day on
+// Arc). Older trade events fall outside it, so long-lived markets show only recent trades plus the
+// lifecycle events synthesized from market state. The durable fix is a DB event indexer that
+// ingests SharesBought continuously (like market_snapshots does for odds); until then widening the
+// window just multiplies getLogs calls per page view. Audited + accepted 2026-07.
 const BLOCK_CHUNK = BigInt(7_200);
 const MAX_CHUNKS = 12;
 const MAX_TRADE_EVENTS = 25;

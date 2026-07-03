@@ -13,6 +13,7 @@ function getFallbackStore(endpoint: string): Map<string, { count: number; resetA
 }
 
 let redis: Redis | null = null;
+let warnedInMemoryFallback = false;
 
 if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
   try {
@@ -53,7 +54,14 @@ export async function checkRateLimit(
     }
   }
 
-  // Fallback to in-memory fixed window rate limiter
+  // Fallback to in-memory fixed window rate limiter. On serverless this is PER-INSTANCE — an
+  // attacker spread across instances multiplies the effective limit — so production should have
+  // UPSTASH_REDIS_REST_URL/TOKEN configured. Warn once per process so the gap is visible in logs
+  // without spamming every request.
+  if (process.env.NODE_ENV === 'production' && !warnedInMemoryFallback) {
+    warnedInMemoryFallback = true;
+    console.warn('[rate-limit] Upstash Redis is NOT configured — falling back to per-instance in-memory limits. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN for durable, cross-instance rate limiting.');
+  }
   const store = getFallbackStore(endpoint);
   return checkFixedWindowRateLimit(store, key, {
     max: options.limit,

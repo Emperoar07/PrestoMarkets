@@ -41,7 +41,7 @@ import {
 import type { StableSymbol } from './walletBalance';
 import { getAgentResolverSelectionError, getResolveFeeUsdc, isAgentResolutionMode } from './resolveFee';
 import { ARC_READ_BATCH, arcReadTransport, withRpcRetry } from './arcClient';
-import { encodeMemoWrappedCall, type PrestoMemoAction } from './arcMemos';
+import { encodeMemoWrappedCall, encodeMulticall3FromCall, type PrestoMemoAction } from './arcMemos';
 import { LMSR_BUY_SLIPPAGE_BPS, addSlippageBps6, lmsrBuyTotalCost6 } from './marketUtils';
 
 function isCircleWallet(): boolean {
@@ -311,43 +311,39 @@ function submittedPendingResult(label: string, txHash: Hex): LiveActionResult {
 }
 
 
-// An EOA can't natively bundle approve+buy, so it would prompt twice. EIP-5792 (wallet_sendCalls)
-// lets modern wallets (MetaMask, Coinbase, …) execute the batch in ONE prompt. We try it first and
-// return null only when the wallet doesn't support batching. The caller then saves token approval
-// as the first step and asks the user to click Buy again, avoiding a surprise second signature.
-// We never fall back after submission, so there's no risk of double-executing.
-function isUnsupportedBatchError(error: unknown): boolean {
+// An EOA can't natively bundle approve+buy, so it used to prompt twice (EIP-5792 batching only
+// works on wallets that support wallet_sendCalls). On Arc there's a better primitive: the
+// predeployed Multicall3From contract batches subcalls in ONE ordinary transaction while the
+// CallFrom precompile preserves the ORIGINAL msg.sender in every subcall
+// (docs.arc.io/arc/concepts/batched-transactions). So approve sets the user's own allowance and
+// buy spends it, atomically (allowFailure=false), with a single prompt — on ANY wallet.
+function isUserRejectedError(error: unknown): boolean {
   const code = (error as { code?: number } | null)?.code;
-  if (code === -32601 || code === 4200 || code === 4100) return true;
+  if (code === 4001) return true;
   const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  return msg.includes('sendcalls') || msg.includes('method not') || msg.includes('not support')
-    || msg.includes('unsupported') || msg.includes('does not exist') || msg.includes('not available')
-    || msg.includes('unknown rpc');
+  return msg.includes('user rejected') || msg.includes('user denied')
+    || msg.includes('rejected the request') || msg.includes('user cancel');
 }
 
-async function trySendBatchedCalls(
+// Returns the tx hash, or null when SENDING failed for a non-rejection reason (the caller then
+// recovers via the sequential approve → buy flow). A user rejection is rethrown — never retried.
+// Once a batch is SUBMITTED we never fall back, so there is no double-execution risk.
+async function sendMulticall3FromBatch(
   walletClient: ReturnType<typeof createWalletClient>,
   account: Address,
-  calls: Array<{ to: Address; data: Hex }>,
+  calls: Array<{ target: Address; data: Hex }>,
 ): Promise<Hex | null> {
+  const oneTx = encodeMulticall3FromCall(calls);
   try {
-    const wc = walletClient as unknown as {
-      sendCalls: (args: { account: Address; calls: Array<{ to: Address; data: Hex }>; chain?: unknown; forceAtomic?: boolean }) => Promise<{ id: string } | string>;
-      waitForCallsStatus: (args: { id: string }) => Promise<{ status?: string; receipts?: Array<{ transactionHash: Hex; status?: string }> }>;
-    };
-    if (typeof wc.sendCalls !== 'function') return null;
-    // forceAtomic: require a single atomic batch (one prompt) or fail → fall back. Avoids a wallet
-    // silently splitting the batch back into two prompts.
-    const sent = await wc.sendCalls({ account, calls, chain: undefined, forceAtomic: true });
-    const id = typeof sent === 'string' ? sent : sent.id;
-    const status = await wc.waitForCallsStatus({ id });
-    const receipts = status.receipts ?? [];
-    const last = receipts[receipts.length - 1];
-    if (last?.status === 'reverted') throw new Error('Batched transaction reverted on-chain.');
-    return (last?.transactionHash ?? '0x') as Hex;
+    return await walletClient.sendTransaction({
+      account,
+      chain: undefined,
+      to: oneTx.to,
+      data: oneTx.data,
+    });
   } catch (error) {
-    if (isUnsupportedBatchError(error)) return null;
-    throw error;
+    if (isUserRejectedError(error)) throw error;
+    return null;
   }
 }
 
@@ -677,27 +673,20 @@ export async function buyLiveShares(input: { marketAddress: string; outcome: str
     const sharesBefore = await withRetry(readShares).catch(() => BigInt(0));
 
     if (allowance < amount) {
-      // One-prompt path: try to bundle approve + buy atomically (EIP-5792). Falls through to the
-      // sequential two-tx flow below if the wallet doesn't support batching.
-      const approveCall = encodeMemoWrappedCall({
-        target: collateralToken,
-        data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [marketAddress, approvalAmount(amount)] }),
-        memo: { action: 'buy', target: collateralToken, marketId: marketAddress, outcome: input.outcome, outcomeIndex: buyOutcomeIndex, amount6: amount.toString(), collateral: collateralSymbol, ref: 'approve' },
-      });
-      const buyCall = encodeMemoWrappedCall({
-        target: marketAddress,
-        data: encodeFunctionData({ abi: prestoMarketAbi, functionName: 'buy', args: [buyOutcomeIndex, amount] }),
-        memo: { action: 'buy', target: marketAddress, marketId: marketAddress, outcome: input.outcome, outcomeIndex: buyOutcomeIndex, amount6: amount.toString(), collateral: collateralSymbol },
-      });
-      const batchHash = await trySendBatchedCalls(walletClient, account, [
-        { to: approveCall.to, data: approveCall.data },
-        { to: buyCall.to, data: buyCall.data },
+      // ONE-prompt path: approve + buy in a single ordinary transaction via Arc's Multicall3From
+      // (sender preserved in each subcall by the CallFrom precompile, atomic). Subcalls are the RAW
+      // calls — memo-wrapping inside the multicall is undocumented, so we skip memos here; the
+      // market's own SharesBought event still records the trade.
+      const batchHash = await sendMulticall3FromBatch(walletClient, account, [
+        { target: collateralToken, data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [marketAddress, approvalAmount(amount)] }) },
+        { target: marketAddress, data: encodeFunctionData({ abi: prestoMarketAbi, functionName: 'buy', args: [buyOutcomeIndex, amount] }) },
       ]);
       if (batchHash !== null) {
         const confirmed = await waitForSubmittedTransaction(publicClient, batchHash, async () => (await readShares().catch(() => sharesBefore)) > sharesBefore);
         if (!confirmed) return submittedPendingResult(`Buy ${input.outcome}`, batchHash);
         return { ok: true, message: `Bought ${input.outcome} shares on Arc.`, txHash: batchHash };
       }
+      // Send failed for a non-rejection reason — recover via the sequential approve → buy flow.
 
       const approveHash = await sendMemoWrappedTransaction({
         walletClient,
@@ -821,27 +810,18 @@ export async function buyLmsrShares(input: LmsrBuyInput): Promise<LiveActionResu
     const sharesBefore = await withRetry(readShares).catch(() => BigInt(0));
 
     if (allowance < maxCost6) {
-      // One-prompt path: bundle approve + buy atomically (EIP-5792); fall through to two txs if
-      // the wallet doesn't support batching.
-      const approveCall = encodeMemoWrappedCall({
-        target: collateralToken,
-        data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [marketAddress, approvalAmount(maxCost6)] }),
-        memo: { action: 'buy', target: collateralToken, marketId: marketAddress, outcome: input.outcome, outcomeIndex: input.outcomeIndex, amount6: maxCost6.toString(), collateral: collateralSymbol, ref: 'approve' },
-      });
-      const buyCall = encodeMemoWrappedCall({
-        target: marketAddress,
-        data: encodeFunctionData({ abi: prestoLmsrMarketAbi, functionName: 'buy', args: [input.outcomeIndex, shares6, maxCost6] }),
-        memo: { action: 'buy', target: marketAddress, marketId: marketAddress, outcome: input.outcome, outcomeIndex: input.outcomeIndex, amount6: shares6.toString(), collateral: collateralSymbol },
-      });
-      const batchHash = await trySendBatchedCalls(walletClient, account, [
-        { to: approveCall.to, data: approveCall.data },
-        { to: buyCall.to, data: buyCall.data },
+      // ONE-prompt path: approve + buy atomically via Arc's Multicall3From (sender preserved in
+      // each subcall). Raw subcalls — see the V2 buy path note on memos.
+      const batchHash = await sendMulticall3FromBatch(walletClient, account, [
+        { target: collateralToken, data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [marketAddress, approvalAmount(maxCost6)] }) },
+        { target: marketAddress, data: encodeFunctionData({ abi: prestoLmsrMarketAbi, functionName: 'buy', args: [input.outcomeIndex, shares6, maxCost6] }) },
       ]);
       if (batchHash !== null) {
         const confirmed = await waitForSubmittedTransaction(publicClient, batchHash, async () => (await readShares().catch(() => sharesBefore)) > sharesBefore);
         if (!confirmed) return submittedPendingResult(`Buy ${input.outcome}`, batchHash);
         return { ok: true, message: `Bought ${input.shares} ${input.outcome} shares on Arc.`, txHash: batchHash };
       }
+      // Send failed for a non-rejection reason — recover via the sequential approve → buy flow.
 
       const approveHash = await sendMemoWrappedTransaction({
         walletClient, account, target: collateralToken,

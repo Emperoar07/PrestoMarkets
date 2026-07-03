@@ -68,6 +68,15 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await recordCircleGatewayWebhook(body);
+    // skipped = the event could NOT be recorded (no DATABASE_URL). Answer 503 — a non-2xx makes
+    // Circle retry the delivery, so the event survives until the misconfiguration is fixed,
+    // instead of being acked and dropped forever.
+    if (result.skipped) {
+      return NextResponse.json(
+        { ok: false, error: 'Event store unavailable; retry later.', notificationId: result.event.notificationId },
+        { status: 503, headers: { 'Retry-After': '300' } },
+      );
+    }
     return NextResponse.json({
       ok: true,
       inserted: result.inserted,
