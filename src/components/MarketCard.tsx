@@ -143,11 +143,6 @@ function MarketCardComponent({
           <span className={`h-1 w-1 rounded-full ${isClosingSoon ? 'bg-amber-400 animate-pulse' : 'bg-red-500'}`} />
           {market.closeDate ? <Countdown closeDate={market.closeDate} /> : 'LIVE'}
         </span>
-      ) : isFrozen ? (
-        <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-amber-400">
-          <span className="h-1 w-1 rounded-full bg-amber-400" />
-          Frozen · settles at close
-        </span>
       ) : (
         <span className="text-[9px] font-black uppercase tracking-wider text-[#475569]">{isResolved ? 'Resolved' : market.closeLabel || 'Closed'}</span>
       )}
@@ -402,11 +397,6 @@ function MarketCardComponent({
               <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider ${isClosingSoon ? 'text-amber-400 animate-pulse' : 'text-[#475569]'}`}>
                 <span className={`h-1 w-1 rounded-full ${isClosingSoon ? 'bg-amber-400 animate-pulse' : 'bg-red-500'}`} />
                 {market.closeDate ? <Countdown closeDate={market.closeDate} /> : 'LIVE'}
-              </span>
-            ) : isFrozen ? (
-              <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-amber-400">
-                <span className="h-1 w-1 rounded-full bg-amber-400" />
-                Frozen · settles at close
               </span>
             ) : (
               <span className="text-[9px] font-black uppercase tracking-wider text-[#475569]">
