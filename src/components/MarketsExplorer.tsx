@@ -10,6 +10,8 @@ const MARKETS_PAGE_SIZE = 12;
 import { MarketSignalChart } from './MarketSignalChart';
 import { SkeletonCard } from './SkeletonCard';
 import { QuickBuyModal } from './QuickBuyModal';
+import { FilterDropdown } from './FilterDropdown';
+import { ArrowUpDown, CalendarDays, CircleDot } from 'lucide-react';
 import { useAppState } from '@/lib/appState';
 import type { AppMarket } from '@/lib/appState';
 import { extractMarketCategories } from '@/lib/categories';
@@ -177,7 +179,6 @@ export function MarketsExplorer() {
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'resolved'>('active');
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
-  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [visibleCount, setVisibleCount] = useState(MARKETS_PAGE_SIZE);
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -292,104 +293,44 @@ export function MarketsExplorer() {
         {showAdvancedFilters && (
           <>
             {/* Sort dropdown */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setOpenDropdown(openDropdown === 'volume' ? null : 'volume')}
-                className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
-              >
-                {sortKey === 'newest' ? 'Newest' : sortKey === 'volume' ? 'Volume' : 'Ending'}
-                <span className="text-[10px]">v</span>
-              </button>
-              {openDropdown === 'volume' && (
-                <div className="absolute top-full mt-1 left-0 rounded-[8px] border border-white/[0.06] bg-[#0d1520] py-1 z-50 min-w-[180px]">
-                  {([
-                    ['newest', 'Newest'],
-                    ['volume', 'Volume'],
-                    ['ending', 'Ending soon'],
-                  ] as [SortKey, string][]).map(([key, label]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      className={`block w-full px-4 py-1.5 text-left text-sm transition-colors hover:bg-white/[0.08] hover:text-white ${
-                        sortKey === key ? 'text-cyan' : 'text-[#cbd5e1]'
-                      }`}
-                      onClick={() => {
-                        setSortKey(key);
-                        setOpenDropdown(null);
-                      }}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <FilterDropdown
+              icon={ArrowUpDown}
+              heading="Sort by"
+              value={sortKey}
+              onChange={setSortKey}
+              options={[
+                { key: 'newest', label: 'Newest', hint: 'Most recently created' },
+                { key: 'volume', label: 'Volume', hint: 'Highest traded volume' },
+                { key: 'ending', label: 'Ending soon', hint: 'Closest to market close' },
+              ]}
+            />
 
             {/* Created period */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setOpenDropdown(openDropdown === 'period' ? null : 'period')}
-                className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
-              >
-                {periodFilter === 'all' ? 'All time' : periodFilter === 'daily' ? 'Today' : periodFilter === 'weekly' ? 'This week' : 'This month'}
-                <span className="text-[10px]">v</span>
-              </button>
-              {openDropdown === 'period' && (
-                <div className="absolute top-full mt-1 left-0 rounded-[8px] border border-white/[0.06] bg-[#0d1520] py-1 z-50 min-w-[120px]">
-                  {([
-                    ['all', 'All time'],
-                    ['daily', 'Today'],
-                    ['weekly', 'This week'],
-                    ['monthly', 'This month'],
-                  ] as [PeriodFilter, string][]).map(([key, label]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      className={`block w-full px-4 py-1.5 text-left text-sm transition-colors hover:bg-white/[0.08] hover:text-white ${
-                        periodFilter === key ? 'text-cyan' : 'text-[#cbd5e1]'
-                      }`}
-                      onClick={() => {
-                        setPeriodFilter(key);
-                        setOpenDropdown(null);
-                      }}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <FilterDropdown
+              icon={CalendarDays}
+              heading="Created"
+              value={periodFilter}
+              onChange={setPeriodFilter}
+              options={[
+                { key: 'all', label: 'All time' },
+                { key: 'daily', label: 'Today' },
+                { key: 'weekly', label: 'This week' },
+                { key: 'monthly', label: 'This month' },
+              ]}
+            />
 
             {/* Status dropdown */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setOpenDropdown(openDropdown === 'status' ? null : 'status')}
-                className="flex items-center gap-2 rounded-[8px] bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#cbd5e1] transition-colors hover:bg-white/[0.08] hover:text-white"
-              >
-                {statusFilter === 'active' ? 'Active' : statusFilter === 'resolved' ? 'Resolved' : 'All'}
-                <span className="text-[10px]">v</span>
-              </button>
-              {openDropdown === 'status' && (
-                <div className="absolute top-full mt-1 left-0 rounded-[8px] border border-white/[0.06] bg-[#0d1520] py-1 z-50 min-w-[120px]">
-                  {(['all', 'active', 'resolved'] as const).map((status) => (
-                    <button
-                      key={status}
-                      type="button"
-                      onClick={() => {
-                        setStatusFilter(status);
-                        setOpenDropdown(null);
-                      }}
-                      className="block w-full px-4 py-1.5 text-left text-sm text-[#cbd5e1] hover:bg-white/[0.08] hover:text-white transition-colors"
-                    >
-                      {status === 'all' ? 'All' : status === 'active' ? 'Active' : 'Resolved'}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <FilterDropdown
+              icon={CircleDot}
+              heading="Status"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { key: 'all', label: 'All' },
+                { key: 'active', label: 'Active', hint: 'Open for trading' },
+                { key: 'resolved', label: 'Resolved', hint: 'Settled markets' },
+              ]}
+            />
 
             {/* Hide category checkboxes — derived from the categories live markets actually use */}
             {hideableCategories.map((cat) => (

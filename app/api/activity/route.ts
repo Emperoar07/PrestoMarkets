@@ -323,14 +323,25 @@ export async function GET(request: NextRequest) {
 
   const pageRows = (await hydrateTitles(client, collected.slice(0, limit))).sort(sortRows);
   const oldest = pageRows[pageRows.length - 1];
-  const hasMore = collected.length > limit || lowestScannedBlock > BigInt(0);
+  // Two distinct "more" cases. (1) More rows inside the range we already scanned — continue from
+  // the oldest row on this page. (2) The per-request chunk budget ran out ABOVE block 0 — continue
+  // from just below the scan floor, even when this page carried ZERO rows. Case 2 used to return
+  // nextCursor:null, which hid "See more" exactly when the user's history sat below the scanned
+  // window and made older activity unreachable.
+  const moreInScannedRange = collected.length > limit && Boolean(oldest);
+  const moreBelowScan = lowestScannedBlock > BigInt(0);
+  const nextCursor = moreInScannedRange && oldest
+    ? `${oldest.blockNumber.toString()}:${oldest.logIndex}`
+    : moreBelowScan
+      ? `${(lowestScannedBlock - BigInt(1)).toString()}:${Number.MAX_SAFE_INTEGER}`
+      : null;
 
   return NextResponse.json({
     ok: true,
     items: pageRows.map(serializeRow),
-    nextCursor: oldest && hasMore ? `${oldest.blockNumber.toString()}:${oldest.logIndex}` : null,
+    nextCursor,
     scannedFromBlock: lowestScannedBlock.toString(),
     scannedToBlock: (cursor ? cursor.blockNumber : latestBlock).toString(),
-    hasMore: Boolean(oldest && hasMore),
+    hasMore: nextCursor !== null,
   }, { headers: activityCacheHeaders });
 }

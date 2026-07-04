@@ -5,9 +5,11 @@ import Link from 'next/link';
 import { useAppState } from '@/lib/appState';
 import type { PortfolioActivity } from '@/lib/portfolio';
 import { readCompletedMoves, GATEWAY_SOURCES } from '@/lib/gatewayActions';
-import { ArrowDownLeft, Award, Coins, ExternalLink, Plus, RefreshCw } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpDown, Award, Coins, ExternalLink, Plus, RefreshCw } from 'lucide-react';
+import { FilterDropdown } from './FilterDropdown';
 
 type Filter = 'all' | 'create' | 'out' | 'win' | 'refund' | 'in';
+type ActivitySort = 'newest' | 'oldest' | 'amount';
 
 const filters: { id: Filter; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -44,6 +46,33 @@ function headlineFor(item: PortfolioActivity): string {
   return `${item.label} - ${item.detail}`;
 }
 
+// Recency key for mixed time formats: on-chain rows carry "Block N" (higher = newer), Gateway
+// moves carry ISO timestamps. Timestamps (~1.7e12) always exceed block numbers (~5e7), so credits
+// float above chain rows at the same "newest" end — matching how the feed prepended them before.
+function recencyOf(item: PortfolioActivity): number {
+  const blockMatch = /^Block (\d+)/.exec(item.time ?? '');
+  if (blockMatch) return Number(blockMatch[1]);
+  const parsed = Date.parse(item.time ?? '');
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function amountOf(item: PortfolioActivity): number {
+  const match = /(\d+(?:\.\d+)?)/.exec(item.detail ?? '');
+  return match ? parseFloat(match[1]) : 0;
+}
+
+// ISO timestamps render as a compact local date; "Block N" stays as-is (linked to the explorer).
+function displayTime(time: string): string {
+  if (/^Block /.test(time)) return time;
+  const parsed = Date.parse(time);
+  if (!Number.isFinite(parsed)) return time;
+  return new Date(parsed).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function shortHash(hash: string): string {
+  return `${hash.slice(0, 6)}…${hash.slice(-4)}`;
+}
+
 function statusBadgeFor(status: string) {
   const normalized = status.toLowerCase();
   if (normalized.includes('confirm') || normalized.includes('success')) {
@@ -60,11 +89,12 @@ export function ActivityClient() {
   const [activity, setActivity] = useState<PortfolioActivity[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
+  const [sort, setSort] = useState<ActivitySort>('newest');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadActivity = useCallback(async (nextCursor?: string | null) => {
+  const loadActivity = useCallback(async (nextCursor?: string | null, hop = 0) => {
     if (!connectedWallet?.address) return;
 
     if (nextCursor) {
@@ -109,6 +139,13 @@ export function ActivityClient() {
         setActivity([...moves, ...onchain]);
       }
       setCursor(data.nextCursor ?? null);
+      // The API scans a bounded block window per request; an account whose history sits deeper
+      // returns an EMPTY page with a continue-cursor. Auto-follow a few of those so the user isn't
+      // clicking "See more" through blank windows before their first real row appears.
+      if ((onchain.length === 0) && data.nextCursor && hop < 3) {
+        await loadActivity(data.nextCursor, hop + 1);
+        return;
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Unable to load activity.');
     } finally {
@@ -129,9 +166,11 @@ export function ActivityClient() {
   }, [connectedWallet?.address, loadActivity]);
 
   const visible = useMemo(() => {
-    if (filter === 'all') return activity;
-    return activity.filter((item) => item.kind === filter);
-  }, [activity, filter]);
+    const filtered = filter === 'all' ? [...activity] : activity.filter((item) => item.kind === filter);
+    if (sort === 'amount') return filtered.sort((a, b) => amountOf(b) - amountOf(a));
+    if (sort === 'oldest') return filtered.sort((a, b) => recencyOf(a) - recencyOf(b));
+    return filtered.sort((a, b) => recencyOf(b) - recencyOf(a));
+  }, [activity, filter, sort]);
 
   const counts = useMemo(() => {
     const out = { all: activity.length, create: 0, out: 0, win: 0, refund: 0, in: 0 } as Record<Filter, number>;
@@ -158,7 +197,8 @@ export function ActivityClient() {
         </div>
       ) : (
         <>
-          <div className="mt-8 flex flex-wrap gap-2 border-b border-white/[0.06] pb-5">
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.06] pb-5">
+            <div className="flex flex-wrap gap-2">
             {filters.map(({ id, label }) => {
               const isActive = filter === id;
               return (
@@ -181,6 +221,19 @@ export function ActivityClient() {
                 </button>
               );
             })}
+            </div>
+            <FilterDropdown
+              icon={ArrowUpDown}
+              heading="Sort by"
+              align="right"
+              value={sort}
+              onChange={setSort}
+              options={[
+                { key: 'newest', label: 'Newest first', hint: 'Latest transactions on top' },
+                { key: 'oldest', label: 'Oldest first', hint: 'Earliest transactions on top' },
+                { key: 'amount', label: 'Amount', hint: 'Largest value first' },
+              ]}
+            />
           </div>
 
           {isLoading && activity.length === 0 ? (
@@ -191,9 +244,11 @@ export function ActivityClient() {
             </p>
           ) : visible.length === 0 ? (
             <p className="mt-12 text-center text-[14px] text-muted">
-              {filter === 'all'
-                ? 'No trades yet. Your buys, wins, and refunds will appear here as they confirm onchain.'
-                : `No ${filters.find((f) => f.id === filter)?.label.toLowerCase()} activity yet.`}
+              {filter !== 'all'
+                ? `No ${filters.find((f) => f.id === filter)?.label.toLowerCase()} activity yet.`
+                : cursor
+                  ? 'Nothing in the recent block window — use "See more" below to scan older history.'
+                  : 'No trades yet. Your buys, wins, and refunds will appear here as they confirm onchain.'}
             </p>
           ) : (
             <div className="mt-6 flex flex-col gap-3">
@@ -220,7 +275,7 @@ export function ActivityClient() {
                         <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-extrabold tracking-wide uppercase ${statusBadgeFor(item.status)}`}>
                           {item.status}
                         </span>
-                        <span className="text-[11px] text-[#64748b]">{item.time}</span>
+                        <span className="text-[11px] text-[#64748b]">{displayTime(item.time)}</span>
                       </div>
 
                       {item.txHash ? (
@@ -228,9 +283,10 @@ export function ActivityClient() {
                           href={`${ARC_EXPLORER_BASE}${item.txHash}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-[11px] font-bold text-cyan transition-colors hover:opacity-80"
+                          title="View transaction on Arc explorer"
+                          className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-cyan transition-colors hover:opacity-80"
                         >
-                          <span>Explorer</span>
+                          <span>{shortHash(item.txHash)}</span>
                           <ExternalLink className="h-3 w-3" />
                         </a>
                       ) : null}
@@ -241,7 +297,7 @@ export function ActivityClient() {
             </div>
           )}
 
-          {activity.length > 0 ? (
+          {activity.length > 0 || cursor ? (
             <div className="mt-10 flex flex-col items-center gap-3 text-center">
               {cursor ? (
                 <button
