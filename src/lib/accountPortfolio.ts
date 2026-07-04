@@ -188,6 +188,11 @@ export async function fetchAccountPortfolio(
   const lastGood = lastGoodPortfolioByAccount.get(accountKey) ?? new Map<string, { positions: Position[]; preview: AccountMarketPreview }>();
   lastGoodPortfolioByAccount.set(accountKey, lastGood);
 
+  // Markets this account has actually touched (holds shares, has something to claim/refund, or has
+  // claimed before). The activity log scan below only covers these — scanning all ~200 markets x 3
+  // event filters over the wide block window would be hundreds of pointless getLogs.
+  const interactedMarketIds = new Set<string>();
+
   await Promise.all(markets.map(async (market) => {
     if (!isAddress(market.id)) return;
 
@@ -217,6 +222,9 @@ export async function fetchAccountPortfolio(
       withRpcRetry(() => client.readContract({ address, abi: prestoMarketAbi, functionName: 'claimed', args: [account] })).catch(() => false),
     ]);
     const claimable = claimPreview[0];
+    if (outcomeShareValues.some((shares) => shares > BigInt(0)) || claimable > BigInt(0) || refundable > BigInt(0) || hasClaimed) {
+      interactedMarketIds.add(market.id.toLowerCase());
+    }
     const yesIndex = outcomeLabels.findIndex((label) => label.toUpperCase() === 'YES');
     const noIndex = outcomeLabels.findIndex((label) => label.toUpperCase() === 'NO');
     const yesShares = outcomeShareValues[yesIndex >= 0 ? yesIndex : 0] ?? BigInt(0);
@@ -287,10 +295,11 @@ export async function fetchAccountPortfolio(
     lastGood.set(marketKey, { positions: marketPositions, preview: previews[market.id] });
   }));
 
+  const interactedMarkets = markets.filter((market) => interactedMarketIds.has(market.id.toLowerCase()));
   const combined = options.includeActivity
     ? [
       ...(await fetchRecentCreatedMarkets(client, markets, account).catch(() => [] as PortfolioActivity[])),
-      ...(await fetchRecentAccountActivity(client, markets, account)),
+      ...(await fetchRecentAccountActivity(client, interactedMarkets, account)),
     ].sort((a, b) => b.time.localeCompare(a.time))
     : [];
 
@@ -306,21 +315,35 @@ function formatSignedUsd(value: number) {
   return `${prefix}$${value.toFixed(2)}`;
 }
 
+// getLogs with the wide window, retrying once on the small window when the provider rejects the
+// range — so a strict provider degrades to the old behavior instead of an empty activity feed.
+async function withWindowFallback<T>(
+  latestBlock: bigint,
+  run: (fromBlock: bigint) => Promise<T[]>,
+): Promise<T[]> {
+  const wideFrom = latestBlock > activityBlockWindow ? latestBlock - activityBlockWindow : BigInt(0);
+  try {
+    return await run(wideFrom);
+  } catch {
+    const narrowFrom = latestBlock > activityFallbackBlockWindow ? latestBlock - activityFallbackBlockWindow : BigInt(0);
+    return run(narrowFrom).catch(() => [] as T[]);
+  }
+}
+
 async function fetchRecentAccountActivity(
   client: ReturnType<typeof createPublicClient>,
   markets: AppMarket[],
   account: Address,
 ): Promise<PortfolioActivity[]> {
   const latestBlock = await client.getBlockNumber().catch(() => BigInt(0));
-  const fromBlock = latestBlock > activityBlockWindow ? latestBlock - activityBlockWindow : BigInt(0);
   const rows = await Promise.all(markets.map(async (market) => {
     if (!isAddress(market.id)) return [];
 
     const address = market.id as Address;
     const [buys, claims, refunds] = await Promise.all([
-      client.getLogs({ address, event: sharesBoughtEvent, args: { recipient: account }, fromBlock }).catch(() => []),
-      client.getLogs({ address, event: claimedEvent, args: { user: account }, fromBlock }).catch(() => []),
-      client.getLogs({ address, event: refundedEvent, args: { user: account }, fromBlock }).catch(() => []),
+      withWindowFallback(latestBlock, (fromBlock) => client.getLogs({ address, event: sharesBoughtEvent, args: { recipient: account }, fromBlock })),
+      withWindowFallback(latestBlock, (fromBlock) => client.getLogs({ address, event: claimedEvent, args: { user: account }, fromBlock })),
+      withWindowFallback(latestBlock, (fromBlock) => client.getLogs({ address, event: refundedEvent, args: { user: account }, fromBlock })),
     ]);
 
     return [
