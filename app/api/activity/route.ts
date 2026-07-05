@@ -7,7 +7,7 @@ import {
 } from 'viem';
 import { getArcConfig } from '@/lib/arcConfig';
 import { ARC_USDC_DECIMALS, createArcReadClient } from '@/lib/arcClient';
-import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from '@/lib/contracts';
+import { prestoLmsrMarketAbi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from '@/lib/contracts';
 import { parseMarketMetadata } from '@/lib/marketMetadata';
 import type { PortfolioActivity } from '@/lib/portfolio';
 import { getClientIp } from '@/lib/requestGuards';
@@ -26,6 +26,12 @@ const activityCacheHeaders = { 'Cache-Control': 'public, s-maxage=15, stale-whil
 const sharesBoughtEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'SharesBought')!;
 const claimedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'Claimed')!;
 const refundedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'Refunded')!;
+// V3 LMSR markets emit DIFFERENT event signatures (different topic hashes), so the V2 filters
+// above never match them — without these, every LMSR buy/sell/auto-payout/refund is invisible.
+const lmsrSharesBoughtEvent = prestoLmsrMarketAbi.find((e) => e.type === 'event' && e.name === 'SharesBought')!;
+const lmsrSharesSoldEvent = prestoLmsrMarketAbi.find((e) => e.type === 'event' && e.name === 'SharesSold')!;
+const lmsrWinnerPaidEvent = prestoLmsrMarketAbi.find((e) => e.type === 'event' && e.name === 'WinnerPaid')!;
+const lmsrRefundedEvent = prestoLmsrMarketAbi.find((e) => e.type === 'event' && e.name === 'Refunded')!;
 const marketCreatedEvent = prestoMarketFactoryAbi.find((e) => e.type === 'event' && e.name === 'MarketCreated')!;
 const multiOutcomeMarketCreatedEvent = prestoMultiOutcomeMarketFactoryAbi.find((e) => e.type === 'event' && e.name === 'MarketCreated')!;
 
@@ -162,7 +168,7 @@ async function fetchRowsInRange(input: {
   // blank with no error.
   const guarded = <T>(p: Promise<T[]>): Promise<T[]> => p.catch(() => { onError(); return [] as T[]; });
 
-  const [buys, claims, refunds, createdGroups] = await Promise.all([
+  const [buys, claims, refunds, lmsrBuys, lmsrSells, lmsrWins, lmsrRefunds, createdGroups] = await Promise.all([
     marketAddresses.length
       ? guarded(client.getLogs({ address: marketAddresses, event: sharesBoughtEvent, args: { recipient: account }, fromBlock, toBlock }))
       : Promise.resolve([]),
@@ -171,6 +177,18 @@ async function fetchRowsInRange(input: {
       : Promise.resolve([]),
     marketAddresses.length
       ? guarded(client.getLogs({ address: marketAddresses, event: refundedEvent, args: { user: account }, fromBlock, toBlock }))
+      : Promise.resolve([]),
+    marketAddresses.length
+      ? guarded(client.getLogs({ address: marketAddresses, event: lmsrSharesBoughtEvent, args: { buyer: account }, fromBlock, toBlock }))
+      : Promise.resolve([]),
+    marketAddresses.length
+      ? guarded(client.getLogs({ address: marketAddresses, event: lmsrSharesSoldEvent, args: { seller: account }, fromBlock, toBlock }))
+      : Promise.resolve([]),
+    marketAddresses.length
+      ? guarded(client.getLogs({ address: marketAddresses, event: lmsrWinnerPaidEvent, args: { winner: account }, fromBlock, toBlock }))
+      : Promise.resolve([]),
+    marketAddresses.length
+      ? guarded(client.getLogs({ address: marketAddresses, event: lmsrRefundedEvent, args: { holder: account }, fromBlock, toBlock }))
       : Promise.resolve([]),
     Promise.all(factoryAddresses.map((factory) => (
       factory.multiOutcome
@@ -210,6 +228,57 @@ async function fetchRowsInRange(input: {
       label: 'Refunded collateral',
       market: `Market ${truncateAddress(log.address)}`,
       detail: formatUsdc(log.args.amount ?? BigInt(0)),
+      status: 'Confirmed' as const,
+      time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
+      kind: 'refund' as const,
+      txHash: log.transactionHash ?? undefined,
+      blockNumber: log.blockNumber ?? BigInt(0),
+      logIndex: log.logIndex ?? 0,
+      marketAddress: log.address as Address,
+    })),
+    ...lmsrBuys.map((log) => ({
+      label: 'Bought outcome',
+      market: `Market ${truncateAddress(log.address)}`,
+      detail: formatUsdc(log.args.cost6 ?? BigInt(0)),
+      status: 'Confirmed' as const,
+      time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
+      kind: 'out' as const,
+      txHash: log.transactionHash ?? undefined,
+      blockNumber: log.blockNumber ?? BigInt(0),
+      logIndex: log.logIndex ?? 0,
+      marketAddress: log.address as Address,
+      outcomeIndex: Number(log.args.outcome ?? 0),
+    })),
+    ...lmsrSells.map((log) => ({
+      label: 'Sold shares',
+      market: `Market ${truncateAddress(log.address)}`,
+      detail: `${formatUsdc(log.args.refund6 ?? BigInt(0))} received`,
+      status: 'Confirmed' as const,
+      time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
+      kind: 'in' as const,
+      txHash: log.transactionHash ?? undefined,
+      blockNumber: log.blockNumber ?? BigInt(0),
+      logIndex: log.logIndex ?? 0,
+      marketAddress: log.address as Address,
+    })),
+    // The auto-payout "airdrop": settled V3 markets push winnings via payWinners, no claim needed —
+    // these rows are how those wins show up for every wallet type.
+    ...lmsrWins.map((log) => ({
+      label: 'Won payout',
+      market: `Market ${truncateAddress(log.address)}`,
+      detail: `${formatUsdc(log.args.amount6 ?? BigInt(0))} payout`,
+      status: 'Confirmed' as const,
+      time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
+      kind: 'win' as const,
+      txHash: log.transactionHash ?? undefined,
+      blockNumber: log.blockNumber ?? BigInt(0),
+      logIndex: log.logIndex ?? 0,
+      marketAddress: log.address as Address,
+    })),
+    ...lmsrRefunds.map((log) => ({
+      label: 'Refunded collateral',
+      market: `Market ${truncateAddress(log.address)}`,
+      detail: formatUsdc(log.args.amount6 ?? BigInt(0)),
       status: 'Confirmed' as const,
       time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
       kind: 'refund' as const,

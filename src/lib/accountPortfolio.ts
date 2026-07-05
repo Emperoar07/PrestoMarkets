@@ -6,7 +6,7 @@ import {
 } from 'viem';
 import { ARC_USDC_DECIMALS, createArcReadClient, withRpcRetry } from './arcClient';
 import { getArcConfig } from './arcConfig';
-import { prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
+import { prestoLmsrMarketAbi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { fetchMarketCostBasisIndexed } from './costBasisIndexer';
 import type { AppMarket } from './appState';
 import type { PortfolioActivity, Position } from './portfolio';
@@ -47,6 +47,12 @@ export type AccountPortfolioOptions = {
 const sharesBoughtEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'SharesBought')!;
 const claimedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'Claimed')!;
 const refundedEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'Refunded')!;
+// V3 LMSR markets emit different event signatures — see the activity API note; without these the
+// portfolio feed misses every LMSR buy/sell/auto-payout/refund.
+const lmsrSharesBoughtEvent = prestoLmsrMarketAbi.find((e) => e.type === 'event' && e.name === 'SharesBought')!;
+const lmsrSharesSoldEvent = prestoLmsrMarketAbi.find((e) => e.type === 'event' && e.name === 'SharesSold')!;
+const lmsrWinnerPaidEvent = prestoLmsrMarketAbi.find((e) => e.type === 'event' && e.name === 'WinnerPaid')!;
+const lmsrRefundedEvent = prestoLmsrMarketAbi.find((e) => e.type === 'event' && e.name === 'Refunded')!;
 const marketCreatedEvent = prestoMarketFactoryAbi.find((e) => e.type === 'event' && e.name === 'MarketCreated')!;
 const multiOutcomeMarketCreatedEvent = prestoMultiOutcomeMarketFactoryAbi.find((e) => e.type === 'event' && e.name === 'MarketCreated')!;
 
@@ -340,10 +346,17 @@ async function fetchRecentAccountActivity(
     if (!isAddress(market.id)) return [];
 
     const address = market.id as Address;
-    const [buys, claims, refunds] = await Promise.all([
-      withWindowFallback(latestBlock, (fromBlock) => client.getLogs({ address, event: sharesBoughtEvent, args: { recipient: account }, fromBlock })),
-      withWindowFallback(latestBlock, (fromBlock) => client.getLogs({ address, event: claimedEvent, args: { user: account }, fromBlock })),
-      withWindowFallback(latestBlock, (fromBlock) => client.getLogs({ address, event: refundedEvent, args: { user: account }, fromBlock })),
+    // V2 and V3 markets emit different event signatures (different topic hashes); query the right
+    // family per market so LMSR buys/sells/auto-payouts/refunds show up in the feed too.
+    const none = Promise.resolve([] as never[]);
+    const [buys, claims, refunds, lmsrBuys, lmsrSells, lmsrWins, lmsrRefunds] = await Promise.all([
+      market.amm ? none : withWindowFallback(latestBlock, (fromBlock) => client.getLogs({ address, event: sharesBoughtEvent, args: { recipient: account }, fromBlock })),
+      market.amm ? none : withWindowFallback(latestBlock, (fromBlock) => client.getLogs({ address, event: claimedEvent, args: { user: account }, fromBlock })),
+      market.amm ? none : withWindowFallback(latestBlock, (fromBlock) => client.getLogs({ address, event: refundedEvent, args: { user: account }, fromBlock })),
+      market.amm ? withWindowFallback(latestBlock, (fromBlock) => client.getLogs({ address, event: lmsrSharesBoughtEvent, args: { buyer: account }, fromBlock })) : none,
+      market.amm ? withWindowFallback(latestBlock, (fromBlock) => client.getLogs({ address, event: lmsrSharesSoldEvent, args: { seller: account }, fromBlock })) : none,
+      market.amm ? withWindowFallback(latestBlock, (fromBlock) => client.getLogs({ address, event: lmsrWinnerPaidEvent, args: { winner: account }, fromBlock })) : none,
+      market.amm ? withWindowFallback(latestBlock, (fromBlock) => client.getLogs({ address, event: lmsrRefundedEvent, args: { holder: account }, fromBlock })) : none,
     ]);
 
     return [
@@ -354,6 +367,42 @@ async function fetchRecentAccountActivity(
         status: 'Confirmed' as const,
         time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
         kind: 'out' as const,
+        txHash: log.transactionHash ?? undefined,
+      })),
+      ...lmsrBuys.map((log) => ({
+        label: `Bought ${market.outcomes[Number((log.args as { outcome?: number | bigint }).outcome ?? 0)]?.label ?? 'outcome'}`,
+        market: market.title,
+        detail: formatUsdc((log.args as { cost6?: bigint }).cost6 ?? BigInt(0)),
+        status: 'Confirmed' as const,
+        time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
+        kind: 'out' as const,
+        txHash: log.transactionHash ?? undefined,
+      })),
+      ...lmsrSells.map((log) => ({
+        label: `Sold ${market.outcomes[Number((log.args as { outcome?: number | bigint }).outcome ?? 0)]?.label ?? 'shares'}`,
+        market: market.title,
+        detail: `${formatUsdc((log.args as { refund6?: bigint }).refund6 ?? BigInt(0))} received`,
+        status: 'Confirmed' as const,
+        time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
+        kind: 'in' as const,
+        txHash: log.transactionHash ?? undefined,
+      })),
+      ...lmsrWins.map((log) => ({
+        label: 'Won payout',
+        market: market.title,
+        detail: `${formatUsdc((log.args as { amount6?: bigint }).amount6 ?? BigInt(0))} payout`,
+        status: 'Confirmed' as const,
+        time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
+        kind: 'win' as const,
+        txHash: log.transactionHash ?? undefined,
+      })),
+      ...lmsrRefunds.map((log) => ({
+        label: 'Refunded collateral',
+        market: market.title,
+        detail: formatUsdc((log.args as { amount6?: bigint }).amount6 ?? BigInt(0)),
+        status: 'Confirmed' as const,
+        time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
+        kind: 'refund' as const,
         txHash: log.transactionHash ?? undefined,
       })),
       ...claims.map((log) => ({
