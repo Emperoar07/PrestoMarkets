@@ -9,7 +9,7 @@ import {
 } from 'viem';
 import { and, asc, eq, lt } from 'drizzle-orm';
 import { ARC_USDC_DECIMALS, createArcReadClient } from '@/lib/arcClient';
-import { prestoMarketAbi } from '@/lib/contracts';
+import { prestoLmsrMarketAbi, prestoMarketAbi } from '@/lib/contracts';
 import { getPublicMarket } from '@/lib/publicMarketSource';
 import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
 import { getDb, hasDatabaseUrl } from '@/lib/db/client';
@@ -60,6 +60,13 @@ const resolutionProposedEvent = prestoMarketAbi.find((entry) => entry.type === '
 const resolutionDisputedEvent = prestoMarketAbi.find((entry) => entry.type === 'event' && entry.name === 'ResolutionDisputed') as AbiEvent;
 const marketResolvedEvent = prestoMarketAbi.find((entry) => entry.type === 'event' && entry.name === 'MarketResolved') as AbiEvent;
 const marketCanceledEvent = prestoMarketAbi.find((entry) => entry.type === 'event' && entry.name === 'MarketCanceled') as AbiEvent;
+// V3 LMSR markets emit different signatures (different topic hashes) for most lifecycle events, so
+// the V2 filters above never match them — without these an LMSR market's timeline missed its
+// trades, sells, proposals and settlement.
+const lmsrSharesBoughtEvent = prestoLmsrMarketAbi.find((entry) => entry.type === 'event' && entry.name === 'SharesBought') as AbiEvent;
+const lmsrSharesSoldEvent = prestoLmsrMarketAbi.find((entry) => entry.type === 'event' && entry.name === 'SharesSold') as AbiEvent;
+const lmsrResolutionProposedEvent = prestoLmsrMarketAbi.find((entry) => entry.type === 'event' && entry.name === 'ResolutionProposed') as AbiEvent;
+const lmsrResolvedEvent = prestoLmsrMarketAbi.find((entry) => entry.type === 'event' && entry.name === 'Resolved') as AbiEvent;
 
 function createClient() {
   return createArcReadClient();
@@ -122,14 +129,18 @@ async function fetchChainTimelineEvents(input: {
   }
 
   const chunks = await Promise.all(ranges.map(async (range) => {
-    const [trades, proposals, disputes, resolutions, cancellations] = await Promise.all([
+    const [trades, proposals, disputes, resolutions, cancellations, lmsrTrades, lmsrSells, lmsrProposals, lmsrResolutions] = await Promise.all([
       client.getLogs({ address, event: sharesBoughtEvent, fromBlock: range.start, toBlock: range.end }).catch(() => []),
       client.getLogs({ address, event: resolutionProposedEvent, fromBlock: range.start, toBlock: range.end }).catch(() => []),
       client.getLogs({ address, event: resolutionDisputedEvent, fromBlock: range.start, toBlock: range.end }).catch(() => []),
       client.getLogs({ address, event: marketResolvedEvent, fromBlock: range.start, toBlock: range.end }).catch(() => []),
       client.getLogs({ address, event: marketCanceledEvent, fromBlock: range.start, toBlock: range.end }).catch(() => []),
+      client.getLogs({ address, event: lmsrSharesBoughtEvent, fromBlock: range.start, toBlock: range.end }).catch(() => []),
+      client.getLogs({ address, event: lmsrSharesSoldEvent, fromBlock: range.start, toBlock: range.end }).catch(() => []),
+      client.getLogs({ address, event: lmsrResolutionProposedEvent, fromBlock: range.start, toBlock: range.end }).catch(() => []),
+      client.getLogs({ address, event: lmsrResolvedEvent, fromBlock: range.start, toBlock: range.end }).catch(() => []),
     ]);
-    return { trades, proposals, disputes, resolutions, cancellations };
+    return { trades, proposals, disputes, resolutions, cancellations, lmsrTrades, lmsrSells, lmsrProposals, lmsrResolutions };
   }));
 
   const chainEvents: ChainTimelineEvent[] = [];
@@ -192,6 +203,58 @@ async function fetchChainTimelineEvents(input: {
         type: 'canceled',
         t: 0,
         label: 'Market canceled',
+        txHash: log.transactionHash,
+        blockNumber: log.blockNumber,
+        logIndex: log.logIndex,
+      });
+    }
+
+    for (const log of chunk.lmsrTrades) {
+      if (log.blockNumber === null || log.logIndex === null) continue;
+      const args = (log as { args?: { buyer?: string; outcome?: number | bigint; cost6?: bigint } }).args ?? {};
+      chainEvents.push({
+        type: 'trade',
+        t: 0,
+        label: `${shortAddress(args.buyer)} bought ${formatUsdc(args.cost6 ?? BigInt(0))} ${outcomeLabel(labels, args.outcome)}`,
+        txHash: log.transactionHash,
+        blockNumber: log.blockNumber,
+        logIndex: log.logIndex,
+      });
+    }
+
+    for (const log of chunk.lmsrSells) {
+      if (log.blockNumber === null || log.logIndex === null) continue;
+      const args = (log as { args?: { seller?: string; outcome?: number | bigint; refund6?: bigint } }).args ?? {};
+      chainEvents.push({
+        type: 'trade',
+        t: 0,
+        label: `${shortAddress(args.seller)} sold ${outcomeLabel(labels, args.outcome)} for ${formatUsdc(args.refund6 ?? BigInt(0))}`,
+        txHash: log.transactionHash,
+        blockNumber: log.blockNumber,
+        logIndex: log.logIndex,
+      });
+    }
+
+    for (const log of chunk.lmsrProposals) {
+      if (log.blockNumber === null || log.logIndex === null) continue;
+      const args = (log as { args?: { proposer?: string; outcome?: number | bigint } }).args ?? {};
+      chainEvents.push({
+        type: 'proposed',
+        t: 0,
+        label: `${outcomeLabel(labels, args.outcome)} outcome proposed by ${shortAddress(args.proposer)}`,
+        txHash: log.transactionHash,
+        blockNumber: log.blockNumber,
+        logIndex: log.logIndex,
+      });
+    }
+
+    for (const log of chunk.lmsrResolutions) {
+      if (log.blockNumber === null || log.logIndex === null) continue;
+      const args = (log as { args?: { outcome?: number | bigint } }).args ?? {};
+      chainEvents.push({
+        type: 'settled',
+        t: 0,
+        label: `Settled as ${outcomeLabel(labels, args.outcome)}`,
         txHash: log.transactionHash,
         blockNumber: log.blockNumber,
         logIndex: log.logIndex,
