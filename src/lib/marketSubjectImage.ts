@@ -224,9 +224,20 @@ async function fetchWikipediaThumbnail(subject: string): Promise<string | undefi
       8_000,
     );
     if (!res || !res.ok) return undefined;
-    const data = (await res.json()) as { thumbnail?: { source?: string }; originalimage?: { source?: string } };
-    // Prefer the (resizable) thumbnail upscaled to a reasonable width over the raw original.
-    return sizedWikiThumb(data.thumbnail?.source) || data.thumbnail?.source || data.originalimage?.source || undefined;
+    const data = (await res.json()) as {
+      thumbnail?: { source?: string };
+      originalimage?: { source?: string; width?: number };
+    };
+    // Prefer the (resizable) thumbnail at a sensible width over the raw multi-MB original — but
+    // CLAMP to the original's width: Wikimedia returns HTTP 400 for a thumb wider than the source
+    // file, and that dead URL is exactly why person markets fell through to AI-generated art
+    // instead of the subject's real photo (e.g. an 800px request against a 640px portrait).
+    const originalWidth = data.originalimage?.width;
+    const width = originalWidth && originalWidth > 0 ? Math.min(800, originalWidth - 1) : 800;
+    return sizedWikiThumb(data.thumbnail?.source, Math.max(width, 200))
+      || data.thumbnail?.source
+      || data.originalimage?.source
+      || undefined;
   } catch {
     return undefined;
   }

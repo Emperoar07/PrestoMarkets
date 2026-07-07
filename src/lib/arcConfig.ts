@@ -75,7 +75,9 @@ export function getArcConfig() {
     publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_9),
     publicEnv(process.env.NEXT_PUBLIC_ARC_RPC_10),
   ];
-  const rpcUrls = uniqueValues([alchemy, drpc, quiknode, ...numbered, configuredRpcUrl, DEFAULT_ARC_RPC_URL].filter(Boolean));
+  // Alchemy legs first (primary + numbered) so failover lands on another healthy high-limit
+  // endpoint immediately; dRPC/QuikNode free tiers exhaust and a dead leg in between costs ~2s/hop.
+  const rpcUrls = uniqueValues([alchemy, ...numbered, drpc, quiknode, configuredRpcUrl, DEFAULT_ARC_RPC_URL].filter(Boolean));
   const rpcUrl = rpcUrls[0] ?? DEFAULT_ARC_RPC_URL;
   const usdcAddress = publicEnv(process.env.NEXT_PUBLIC_USDC_ADDRESS);
   // EURC on Arc Testnet (Circle docs) — euro-denominated market collateral. 6 decimals like USDC.

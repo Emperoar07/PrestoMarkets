@@ -64,9 +64,11 @@ export function arcRpcUrls(override?: string): string[] {
     process.env.NEXT_PUBLIC_ARC_RPC_10,
   ];
 
-  // Named premium first, then the numbered slots, then any explicit override; the rate-limited
-  // public RPC is always the last-resort tail so load only degrades to it if every other leg fails.
-  const ordered = [alchemy, drpc, quiknode, ...numbered, override, ARC_PUBLIC_RPC]
+  // Alchemy legs first (primary + numbered slots) so a failover from the primary lands on another
+  // healthy high-limit endpoint immediately — dRPC/QuikNode sit later because their free tiers
+  // exhaust monthly/daily and a dead leg in between costs ~2s per failover hop. The rate-limited
+  // public RPC is always the last-resort tail.
+  const ordered = [alchemy, ...numbered, drpc, quiknode, override, ARC_PUBLIC_RPC]
     .map((url) => url?.trim())
     .filter((url): url is string => Boolean(url));
   return Array.from(new Set(ordered));
