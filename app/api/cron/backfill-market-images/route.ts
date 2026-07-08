@@ -104,7 +104,15 @@ export async function GET(req: NextRequest) {
     const updates: Array<{ id: string; title: string; imageURI: string }> = [];
     let aiGenerated = 0;
 
+    // Hard wall-clock budget: a single market's resolution can burn ~20s of provider timeouts, and
+    // Vercel kills the function at maxDuration — writes queued behind the kill were silently lost,
+    // so long batches never converged. Stop early and return partial progress instead; the next
+    // run (30-min cadence or manual) picks up the remainder.
+    const startedAt = Date.now();
+    const TIME_BUDGET_MS = 220_000;
+
     for (const market of batch) {
+      if (Date.now() - startedAt > TIME_BUDGET_MS) break;
       try {
         // Resolve subject image using the same pipeline helpers (e.g. flag, coin logo, SportsDB, Wikipedia)
         const imageCandidate = await resolveSubjectImageUrl({
