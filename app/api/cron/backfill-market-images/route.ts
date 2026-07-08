@@ -74,7 +74,22 @@ export async function GET(req: NextRequest) {
       // per-run cap; branded-fallback retries fill whatever budget remains.
       .sort((a, b) => Number(everAttempted.has(a.id.toLowerCase())) - Number(everAttempted.has(b.id.toLowerCase())));
 
-    if (targetMarkets.length === 0) {
+    // UPGRADE pass (Polymarket-style policy): markets currently wearing an AI illustration get
+    // re-checked for a REAL subject image (person's actual photo, project/product logo, flag,
+    // crest). When one resolves and its bytes load, it replaces the AI art; when nothing real
+    // resolves, the AI image stays — an upgrade candidate is never downgraded to a banner and
+    // never burns AI-generation budget.
+    const aiOverridden = new Set(
+      overrideRows
+        .filter((r) => r.imageUri.startsWith('data:image/') && !r.imageUri.startsWith('data:image/svg'))
+        .map((r) => r.id.toLowerCase()),
+    );
+    const upgradeCandidates = allMarkets.filter(
+      (m) => (m.status === 'Open' || m.status === 'Closing soon') && aiOverridden.has(m.id.toLowerCase()),
+    );
+    const upgradeIds = new Set(upgradeCandidates.map((m) => m.id.toLowerCase()));
+
+    if (targetMarkets.length === 0 && upgradeCandidates.length === 0) {
       return NextResponse.json({
         ok: true,
         message: 'No agent markets needing an image refresh.',
@@ -83,8 +98,9 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Slice to cap per run to avoid rate limits or timeouts
-    const batch = targetMarkets.slice(0, MAX_BACKFILL_PER_RUN);
+    // Slice to cap per run to avoid rate limits or timeouts. Needs-image markets take priority;
+    // upgrade candidates fill the remaining budget.
+    const batch = [...targetMarkets, ...upgradeCandidates].slice(0, MAX_BACKFILL_PER_RUN);
     const updates: Array<{ id: string; title: string; imageURI: string }> = [];
     let aiGenerated = 0;
 
@@ -101,6 +117,22 @@ export async function GET(req: NextRequest) {
         if (validated && /^https?:\/\//i.test(validated) && !(await imageUrlLoads(validated))) {
           validated = undefined;
         }
+        // Upgrade candidates only ever move AI -> REAL: store when a real image resolved, otherwise
+        // leave their AI image untouched (no banner downgrade, no AI budget spent).
+        if (upgradeIds.has(market.id.toLowerCase())) {
+          if (validated) {
+            await db
+              .insert(marketMetadataOverrides)
+              .values({ marketId: market.id.toLowerCase(), imageUri: validated, updatedAt: new Date() })
+              .onConflictDoUpdate({
+                target: marketMetadataOverrides.marketId,
+                set: { imageUri: validated, updatedAt: new Date() },
+              });
+            updates.push({ id: market.id, title: market.title, imageURI: validated });
+          }
+          continue;
+        }
+
         // No real subject image (flag/coin/crest/article photo)? Generate a relevant illustration
         // from the market's own context with the AI image model, instead of a generic banner. The
         // branded banner is the final fallback if generation is unavailable/fails. AI generation is
