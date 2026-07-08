@@ -623,13 +623,14 @@ async function applyImageOverrides(markets: AppMarket[]) {
       // SVG fallback, OR a broken/untrusted HTTP URL that loads as a blank letter tile. This is the
       // same quality bar the backfill uses, so a backfilled image always wins over a bad on-chain one.
       //
-      // ALSO: a REAL data-image override (AI-generated / stored payload, not the branded SVG) wins
-      // over any on-chain http URL — even a "good" trusted-host one. hasGoodImage trusts by HOSTNAME,
-      // so a dead trusted URL (Wikimedia 400s on a bad thumb path) passes it and rendered as a letter
-      // tile forever while a perfectly good AI image sat unused in the override store. The backfill
-      // only writes a data-image when the market had no working image, so it is always the safer pick.
-      const overrideIsRealDataImage = overrideImage.startsWith('data:image/') && !overrideImage.startsWith('data:image/svg');
-      if (!hasGoodImage(m.imageURI) || (overrideIsRealDataImage && !m.imageURI?.startsWith('data:'))) {
+      // ALSO: any REAL override (a data-image payload OR a probed URL — anything but the branded
+      // SVG banner) wins over an on-chain http URL, even a "good" trusted-host one. hasGoodImage
+      // trusts by HOSTNAME, so a dead trusted URL (Wikimedia 400s) passes it and rendered as a
+      // letter tile forever while the working replacement sat unused in the override store. The
+      // backfill only writes an override when the market's own image was missing/dead, and it
+      // liveness-probes URL candidates before storing — so the override is always the safer pick.
+      const overrideIsReal = !overrideImage.startsWith('data:image/svg');
+      if (!hasGoodImage(m.imageURI) || (overrideIsReal && !m.imageURI?.startsWith('data:'))) {
         m.imageURI = overrideImage;
       }
     }

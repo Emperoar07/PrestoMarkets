@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAddress } from 'viem';
 import { eq } from 'drizzle-orm';
 import { getDb, hasDatabaseUrl } from '@/lib/db/client';
-import { marketMetadataOverrides } from '@/lib/db/schema';
+import { marketMetadataOverrides, marketListCache } from '@/lib/db/schema';
 
 export const runtime = 'nodejs';
 
@@ -21,7 +21,21 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       .from(marketMetadataOverrides)
       .where(eq(marketMetadataOverrides.marketId, id.toLowerCase()))
       .limit(1);
-    const uri = rows[0]?.imageUri ?? '';
+    let uri = rows[0]?.imageUri ?? '';
+    // No override row? The list's slimImages rewrites EVERY big data-URI to this endpoint —
+    // including images that live on-chain in the market metadata (e.g. user-uploaded pictures),
+    // not in the override store. Fall back to the market's raw image from the list snapshot so
+    // those don't 404 into letter tiles.
+    if (!uri.startsWith('data:image/')) {
+      const snapshotRows = await getDb()
+        .select({ payload: marketListCache.payload })
+        .from(marketListCache)
+        .where(eq(marketListCache.key, 'latest'))
+        .limit(1);
+      const markets = (snapshotRows[0]?.payload ?? []) as Array<{ id?: string; imageURI?: string }>;
+      const market = markets.find((m) => (m.id ?? '').toLowerCase() === id.toLowerCase());
+      uri = market?.imageURI ?? '';
+    }
     const match = uri.match(/^data:(image\/[a-z+.-]+);base64,(.+)$/i);
     if (!match) return new NextResponse('Not found', { status: 404 });
     const [, contentType, b64] = match;
