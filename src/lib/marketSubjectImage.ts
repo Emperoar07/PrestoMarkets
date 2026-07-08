@@ -228,16 +228,12 @@ async function fetchWikipediaThumbnail(subject: string): Promise<string | undefi
       thumbnail?: { source?: string };
       originalimage?: { source?: string; width?: number };
     };
-    // Prefer the (resizable) thumbnail at a sensible width over the raw multi-MB original — but
-    // CLAMP to the original's width: Wikimedia returns HTTP 400 for a thumb wider than the source
-    // file, and that dead URL is exactly why person markets fell through to AI-generated art
-    // instead of the subject's real photo (e.g. an 800px request against a 640px portrait).
-    const originalWidth = data.originalimage?.width;
-    const width = originalWidth && originalWidth > 0 ? Math.min(800, originalWidth - 1) : 800;
-    return sizedWikiThumb(data.thumbnail?.source, Math.max(width, 200))
-      || data.thumbnail?.source
-      || data.originalimage?.source
-      || undefined;
+    // Use the API-provided thumbnail URL VERBATIM. Rewriting the width (even clamped to the
+    // original's width) is not safe: Wikimedia 400s arbitrary widths for some files regardless of
+    // source size (e.g. official-portrait uploads reject >=640px despite a 2105px original), and
+    // every dead URL pushed a person market to AI art instead of the subject's real photo. The
+    // ~330px API thumb always renders; cards show 40px tiles and the banner upscales acceptably.
+    return data.thumbnail?.source || data.originalimage?.source || undefined;
   } catch {
     return undefined;
   }

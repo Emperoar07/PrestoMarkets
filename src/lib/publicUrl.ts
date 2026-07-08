@@ -91,7 +91,10 @@ export async function resolvePublicHttpUrl(value: string): Promise<PublicHttpUrl
     }
   }
 
-  const record = records[0];
+  // Prefer an IPv4 record: dual-stack hosts (e.g. upload.wikimedia.org) list AAAA first, but many
+  // runtimes — Vercel lambdas included — have no IPv6 egress, so pinning the v6 address makes every
+  // request to those hosts fail at connect.
+  const record = records.find((entry) => entry.family === 4) ?? records[0];
   if (!record || (record.family !== 4 && record.family !== 6)) {
     throw new Error('Source URL hostname does not resolve.');
   }
@@ -115,8 +118,15 @@ export async function fetchPublicHttpUrl(value: string, init: PublicFetchInit = 
     const request = transport.request(url, {
       method: init.method ?? 'GET',
       headers: Object.fromEntries(headers.entries()),
-      lookup: ((_hostname: string, _options: unknown, callback: (error: NodeJS.ErrnoException | null, address: string, family: number) => void) => {
-        callback(null, record.address, record.family);
+      // Pin the connection to the vetted public IP (SSRF/DNS-rebinding defense). Node >= 20's
+      // autoSelectFamily (happy eyeballs) calls this hook with { all: true } and expects an ARRAY
+      // of {address, family}; the old single-address callback made the connector read `undefined`
+      // and throw ERR_INVALID_IP_ADDRESS on EVERY request — silently breaking each fetchPublicHttpUrl
+      // consumer (image validation fell through to AI generation for months of markets).
+      lookup: ((_hostname: string, options: unknown, callback: (error: NodeJS.ErrnoException | null, result: unknown, family?: number) => void) => {
+        const wantsAll = typeof options === 'object' && options !== null && (options as { all?: boolean }).all === true;
+        if (wantsAll) callback(null, [{ address: record.address, family: record.family }]);
+        else callback(null, record.address, record.family);
       }) as never,
     }, (incoming) => {
       const chunks: Buffer[] = [];

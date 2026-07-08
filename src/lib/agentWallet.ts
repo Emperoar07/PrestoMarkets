@@ -32,6 +32,13 @@ function validateMarketCreationRequest(input: CreateLiveMarketInput): { ok: bool
   if (outcomes.length < 2) return { ok: false, error: 'Market must have at least 2 outcomes' };
   if (outcomes.length > 12) return { ok: false, error: 'Market cannot have more than 12 outcomes' };
 
+  // No market ships without a renderable image — same rule the user-facing create flow enforces
+  // (marketImageError in liveActions); this covers the agent pipeline, the x-api-key create route,
+  // the queue, and the MCP/v1 agent tools so nothing can publish an imageless market.
+  const image = (input.imageURI ?? '').trim();
+  const imageOk = image.startsWith('data:image/') || /^https?:\/\/\S+$/i.test(image);
+  if (!imageOk) return { ok: false, error: 'A market image is required (uploaded picture or a valid image URL).' };
+
   if (!input.closeDate) return { ok: false, error: 'Close date is required' };
   const closeTime = new Date(input.closeDate).getTime();
   const nowTime = Date.now();

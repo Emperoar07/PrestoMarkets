@@ -393,7 +393,23 @@ async function assertMarketOpenForTrading(
   }
 }
 
+// Every market must ship with a renderable image — an uploaded picture (data:image) or an http(s)
+// URL. Enforced HERE (not just in the builder form) so no wallet path or direct caller can publish
+// an imageless market; the same rule guards the agent/API creation paths in agentWallet.
+export function marketImageError(imageURI?: string): string | null {
+  const value = (imageURI ?? '').trim();
+  if (!value) return 'A market image is required — add a picture before publishing.';
+  if (value.startsWith('data:image/')) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol === 'http:' || url.protocol === 'https:') return null;
+  } catch { /* fall through */ }
+  return 'The market image must be an uploaded picture or a valid image URL.';
+}
+
 export async function createLiveMarket(input: CreateLiveMarketInput): Promise<LiveActionResult> {
+  const imageError = marketImageError(input.imageURI);
+  if (imageError) return { ok: false, message: imageError };
   if (isCircleWallet()) return createCircleMarket(input);
   if (isPasskeyWallet()) {
     try {

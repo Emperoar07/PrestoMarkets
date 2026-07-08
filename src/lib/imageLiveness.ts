@@ -19,7 +19,8 @@ export async function imageUrlLoads(url: string | undefined | null): Promise<boo
     try {
       // GET with a tiny range (some CDNs reject HEAD); any 2xx + image content-type counts as alive.
       const res = await fetchPublicHttpUrl(target, {
-        headers: { Range: 'bytes=0-2047' },
+        // Wikimedia (and others) 403 requests without a descriptive User-Agent per their bot policy.
+        headers: { Range: 'bytes=0-2047', 'User-Agent': 'PrestoMarketsAgent/1.0 (+https://presto-markets.vercel.app)' },
         timeoutMs: 5_000,
         maxBytes: 64_000,
       });
