@@ -20,9 +20,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # The endpoint self-limits to a ~220s work budget and returns partial progress, so a healthy
+      # run answers well inside --max-time (it used to run past Vercel's 300s kill, which timed out
+      # curl at 290s and turned EVERY scheduled run red). One retry covers a transient blip; the
+      # endpoint is idempotent, and the next 30-minute run resumes wherever this one stopped.
       - name: Backfill missing market images
         run: |
           curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/backfill-market-images" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -w "\nHTTP %{http_code}\n" \
-            --max-time 290 --fail-with-body
+            --max-time 290 --retry 1 --retry-delay 10 --retry-all-errors \
+            --fail-with-body
