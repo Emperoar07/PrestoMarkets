@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
+import { NextRequest, NextResponse, after } from 'next/server';
+import { fetchOnchainMarkets, readMarketListSnapshot } from '@/lib/onchainMarkets';
 import { verifyBearer } from '@/lib/authCompare';
 import { resolveSubjectImageUrl, brandedMarketImage } from '@/lib/marketSubjectImage';
 import { validateImageUrl } from '@/lib/agentPipeline';
@@ -38,8 +38,21 @@ export async function GET(req: NextRequest) {
 
   try {
     const db = getDb();
-    // 1. Fetch current onchain markets
-    const allMarkets = await fetchOnchainMarkets({ force: true });
+    // Wall-clock budget for the WHOLE route. The old budget only covered the processing loop, but
+    // the forced chain read before it (and the refresh after it) each take minutes when the RPC
+    // providers are degraded — runs blew past the workflow's 290s curl timeout and every scheduled
+    // run went red. Everything below subtracts from this one clock.
+    const routeStart = Date.now();
+    const ROUTE_BUDGET_MS = 230_000;
+
+    // 1. Market list: snapshot-first. The backfill doesn't need block-fresh data — the DB snapshot
+    // (refreshed continuously by /api/markets) is instant, while a forced chain read on a cold
+    // lambda takes 30-150s+ depending on RPC health. Fall back to the chain only without a usable
+    // snapshot.
+    const snapshot = await readMarketListSnapshot();
+    const allMarkets = snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 30 * 60 * 1000
+      ? snapshot.markets
+      : await fetchOnchainMarkets({ force: true });
 
     // Markets whose stored override is ALREADY a good image — skip these so we don't reprocess
     // them every run. Crucially, a market whose override is only a branded-SVG fallback stays
@@ -104,15 +117,11 @@ export async function GET(req: NextRequest) {
     const updates: Array<{ id: string; title: string; imageURI: string }> = [];
     let aiGenerated = 0;
 
-    // Hard wall-clock budget: a single market's resolution can burn ~20s of provider timeouts, and
-    // Vercel kills the function at maxDuration — writes queued behind the kill were silently lost,
-    // so long batches never converged. Stop early and return partial progress instead; the next
-    // run (30-min cadence or manual) picks up the remainder.
-    const startedAt = Date.now();
-    const TIME_BUDGET_MS = 220_000;
-
+    // Stop the loop early and return partial progress instead of running into Vercel's kill (which
+    // silently loses queued writes); the next run picks up the remainder. Reserve a little headroom
+    // for the response itself.
     for (const market of batch) {
-      if (Date.now() - startedAt > TIME_BUDGET_MS) break;
+      if (Date.now() - routeStart > ROUTE_BUDGET_MS - 10_000) break;
       try {
         // Resolve subject image using the same pipeline helpers (e.g. flag, coin logo, SportsDB, Wikipedia)
         const imageCandidate = await resolveSubjectImageUrl({
@@ -169,9 +178,9 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Clear memory cache so the overridden images take effect immediately on next load
-    // (force: true on fetchOnchainMarkets will rebuild the cache)
-    await fetchOnchainMarkets({ force: true }).catch(() => null);
+    // Rebuild the market cache/snapshot so overridden images take effect on next load — AFTER the
+    // response, so a slow chain read can't push this run past the workflow's curl timeout.
+    after(async () => { await fetchOnchainMarkets({ force: true }).catch(() => null); });
 
     return NextResponse.json({
       ok: true,
