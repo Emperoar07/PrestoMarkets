@@ -212,12 +212,18 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   // V3 LMSR live quote: fee-inclusive cost to buy (or refund to sell) the typed share quantity,
   // read on-chain and debounced. `value` is in collateral units (6dp); `avgPrice` is value / shares.
   const [lmsrQuote, setLmsrQuote] = useState<{ value: number; avgPrice: number; feeBps: number; fee: number } | null>(null);
+  // amm buys accept either denomination (like QuickBuy): 'shares' enters an exact share count,
+  // 'usd' enters a $ budget that converts to shares at the live price (0.95 headroom for the 1%
+  // fee + impact). Sells stay share-denominated — you sell shares you hold, not dollars.
+  const [ammAmountMode, setAmmAmountMode] = useState<'shares' | 'usd'>('shares');
   useEffect(() => {
     if (!market?.amm) { setLmsrQuote(null); return; }
-    const shares = Number(amount) || 0;
-    if (shares <= 0) { setLmsrQuote(null); return; }
     const idx = Math.max(0, market.outcomes.findIndex((o) => o.label === selectedOutcome));
     const sellMode = tradeMode === 'sell';
+    const raw = Number(amount) || 0;
+    const entryPrice = Math.min(0.99, Math.max(0.01, Number(market.outcomes[idx]?.odds ?? 50) / 100));
+    const shares = !sellMode && ammAmountMode === 'usd' ? (raw / entryPrice) * 0.95 : raw;
+    if (shares <= 0) { setLmsrQuote(null); return; }
     let active = true;
     const timer = setTimeout(async () => {
       try {
@@ -259,7 +265,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
       }
     }, 350);
     return () => { active = false; clearTimeout(timer); };
-  }, [market?.amm, market?.id, market?.outcomes, amount, selectedOutcome, tradeMode]);
+  }, [market?.amm, market?.id, market?.outcomes, amount, selectedOutcome, tradeMode, ammAmountMode]);
 
   // Identify if this is a crypto asset market
   const cryptoAsset = market ? identifyAsset(market) : null;
@@ -517,6 +523,10 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   // V3 LMSR markets trade share quantities with a Buy/Sell toggle; the amount field is shares.
   const isAmm = Boolean(market.amm);
   const isSell = isAmm && tradeMode === 'sell';
+  // $-denominated entry (buys only): the typed budget converts to shares at the live price.
+  const isUsdEntry = isAmm && !isSell && ammAmountMode === 'usd';
+  const ammEntryPrice = Math.min(0.99, Math.max(0.01, Number(activeOutcome?.odds ?? 50) / 100));
+  const ammShareCount = isUsdEntry ? Math.max(0, (amountValue / ammEntryPrice) * 0.95) : amountValue;
   // Fixed-share parimutuel: 1 USDC = 1 share. Payout if this outcome wins is an estimate derived from current implied odds, not a priced-share quote.
   const fixedShareQuote = buildFixedShareQuote({
     amountUsdc: amountValue,
@@ -1092,7 +1102,25 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
               <div className="mt-5">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-muted">{isAmm ? 'Shares' : 'Amount'}</label>
+                  <span className="flex items-center gap-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-muted">{isAmm ? (isUsdEntry ? 'Amount' : 'Shares') : 'Amount'}</label>
+                    {isAmm && tradeMode === 'buy' ? (
+                      <span className="flex overflow-hidden rounded-[6px] border border-white/[0.08]">
+                        {(['shares', 'usd'] as const).map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setAmmAmountMode(m)}
+                            className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider transition-colors ${
+                              ammAmountMode === m ? 'bg-cyan/15 text-cyan' : 'bg-[#0f172a] text-[#64748b] hover:text-white'
+                            }`}
+                          >
+                            {m === 'usd' ? unit : 'Shares'}
+                          </button>
+                        ))}
+                      </span>
+                    ) : null}
+                  </span>
                   {isSell ? (
                     <button
                       type="button"
@@ -1121,6 +1149,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                   placeholder="0"
                   inputMode="decimal"
                 />
+                {isUsdEntry && amountValue > 0 ? (
+                  <p className="mt-1 text-[11px] font-semibold text-[#64748b]">
+                    ≈ {ammShareCount.toFixed(2)} {selectedOutcome} shares at {Math.round(ammEntryPrice * 100)}¢
+                  </p>
+                ) : null}
                 <div className="mt-3 flex gap-2">
                   {quickAmounts.map((q) => (
                     <button
@@ -1134,7 +1167,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                           : 'border-white/[0.06] bg-[#0f172a] text-[#8fa0b4] hover:border-white/10 hover:text-white'
                       }`}
                     >
-                      {isAmm ? `${q}` : `${unit}${q}`}
+                      {isAmm && !isUsdEntry ? `${q}` : `${unit}${q}`}
                     </button>
                   ))}
                 </div>
@@ -1254,7 +1287,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                     isAmm
                       ? (isSell
                           ? sellLmsrShares({ marketAddress: marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, shares: amountValue, minRefund: lmsrQuote ? subtractSlippageBps(lmsrQuote.value, LMSR_SELL_SLIPPAGE_BPS) : 0 })
-                          : buyLmsrShares({ marketAddress: marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, shares: amountValue, maxCost: lmsrQuote ? addSlippageBps(lmsrQuote.value, LMSR_BUY_SLIPPAGE_BPS) : amountValue * 1.05 }))
+                          : buyLmsrShares({ marketAddress: marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, shares: ammShareCount, maxCost: lmsrQuote ? addSlippageBps(lmsrQuote.value, LMSR_BUY_SLIPPAGE_BPS) : (isUsdEntry ? amountValue : amountValue * 1.05) }))
                       : tradeMode === 'liquidity'
                         ? addLiquidity({ marketId, amount: amountValue, payWith })
                         : placeTrade({ marketId, outcome: selectedOutcome, outcomeIndex: activeOutcomeIndex, amount: amountValue, payWith })
@@ -1269,9 +1302,11 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
                 >
                   {!canTrade ? (isFrozenMarket ? 'Trading frozen — settles at close' : 'Market not open')
                     : isSubmitting ? 'Confirming…'
-                    : amountValue <= 0 ? (isAmm ? 'Enter shares' : 'Enter an amount')
+                    : amountValue <= 0 ? (isAmm && !isUsdEntry ? 'Enter shares' : 'Enter an amount')
                     : isSell && amountValue > activeOutcomeShares ? 'Not enough shares'
-                    : isAmm ? `${isSell ? 'Sell' : 'Buy'} ${amountValue} ${selectedOutcome}${lmsrQuote ? ` · ${unit}${lmsrQuote.value.toFixed(2)}` : ''}`
+                    : isAmm ? (isUsdEntry
+                      ? `Buy ${selectedOutcome} · ${unit}${amountValue}${ammShareCount > 0 ? ` (≈${ammShareCount.toFixed(2)} shares)` : ''}`
+                      : `${isSell ? 'Sell' : 'Buy'} ${amountValue} ${selectedOutcome}${lmsrQuote ? ` · ${unit}${lmsrQuote.value.toFixed(2)}` : ''}`)
                     : tradeMode === 'liquidity' ? `Add liquidity · ${unit}${amountValue}`
                     : `Buy ${selectedOutcome} · ${unit}${amountValue}`}
                 </button>
