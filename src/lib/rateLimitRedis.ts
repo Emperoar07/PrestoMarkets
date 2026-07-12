@@ -1,6 +1,8 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import { sql } from 'drizzle-orm';
 import { checkFixedWindowRateLimit } from './requestGuards';
+import { getDb, hasDatabaseUrl } from './db/client';
 
 // In-memory fallback stores (keyed by action/endpoint name)
 const fallbackStores = new Map<string, Map<string, { count: number; resetAt: number }>>();
@@ -54,13 +56,39 @@ export async function checkRateLimit(
     }
   }
 
-  // Fallback to in-memory fixed window rate limiter. On serverless this is PER-INSTANCE — an
-  // attacker spread across instances multiplies the effective limit — so production should have
-  // UPSTASH_REDIS_REST_URL/TOKEN configured. Warn once per process so the gap is visible in logs
-  // without spamming every request.
+  // Durable middle tier: a Postgres fixed window (single atomic upsert per check). Cross-instance
+  // like Upstash — an attacker spread across serverless instances no longer multiplies the limit —
+  // at the cost of one ~50-150ms DB roundtrip, acceptable for the mutation routes this guards.
+  if (hasDatabaseUrl()) {
+    try {
+      const bucket = `${endpoint}:${key}`;
+      const windowSec = Math.max(1, Math.floor(options.windowSec));
+      const result = await getDb().execute(sql`
+        INSERT INTO rate_limits (bucket, window_start, count) VALUES (${bucket}, now(), 1)
+        ON CONFLICT (bucket) DO UPDATE SET
+          count = CASE WHEN rate_limits.window_start < now() - make_interval(secs => ${windowSec}) THEN 1 ELSE rate_limits.count + 1 END,
+          window_start = CASE WHEN rate_limits.window_start < now() - make_interval(secs => ${windowSec}) THEN now() ELSE rate_limits.window_start END
+        RETURNING count
+      `);
+      const rows = (result as unknown as { rows?: Array<{ count: number }> }).rows
+        ?? (result as unknown as Array<{ count: number }>);
+      const count = Number(Array.isArray(rows) ? rows[0]?.count : undefined);
+      // Opportunistic cleanup so stale buckets don't accumulate forever (~1% of checks).
+      if (Math.random() < 0.01) {
+        void getDb().execute(sql`DELETE FROM rate_limits WHERE window_start < now() - interval '1 day'`).catch(() => undefined);
+      }
+      if (Number.isFinite(count)) return count <= options.limit;
+    } catch (error) {
+      console.error(`[rate-limit] Postgres limiter error on ${endpoint}:`, error);
+      // fall through to in-memory
+    }
+  }
+
+  // Last resort: in-memory fixed window. On serverless this is PER-INSTANCE — warn once per
+  // process so the gap is visible in logs without spamming every request.
   if (process.env.NODE_ENV === 'production' && !warnedInMemoryFallback) {
     warnedInMemoryFallback = true;
-    console.warn('[rate-limit] Upstash Redis is NOT configured — falling back to per-instance in-memory limits. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN for durable, cross-instance rate limiting.');
+    console.warn('[rate-limit] Neither Upstash nor Postgres available — falling back to per-instance in-memory limits.');
   }
   const store = getFallbackStore(endpoint);
   return checkFixedWindowRateLimit(store, key, {
