@@ -491,44 +491,60 @@ export async function GET(req: NextRequest) {
     const resolveStart = Date.now();
     const RESOLVE_BUDGET_MS = 150_000;
 
+    // Hard per-market deadline: a single iteration can stall indefinitely when writes crawl
+    // through saturated RPCs, blowing the run past the workflow's curl ceiling even with the
+    // between-markets budget check. Timing out an iteration is safe — any transaction that still
+    // lands is picked up next tick from the market's on-chain state (a duplicate propose/settle
+    // simply reverts and is reported as skipped).
+    const MARKET_DEADLINE_MS = 90_000;
+
     for (const market of expired) {
       if (Date.now() - resolveStart > RESOLVE_BUDGET_MS) break;
       try {
         // Pending optimistic proposal: wait out the dispute window, then settle. A DISPUTED
         // proposal falls through to resolveMarket, where direct resolve() is the escalation.
-        let result: ResolutionResult;
-        const proposal = market.proposal;
-        if (proposal && !proposal.disputed) {
-          const windowEndsAt = proposal.proposedAtMs + DISPUTE_WINDOW_MS;
-          if (Date.now() < windowEndsAt) {
-            result = {
-              ok: false,
-              action: 'skipped',
-              marketId: market.id,
-              title: market.title,
-              reason: `Proposal "${proposal.outcomeLabel}" pending — dispute window ends ${new Date(windowEndsAt).toISOString()}.`,
-            };
-          } else if (market.amm) {
-            // V3 LMSR: settle the unchallenged proposal, then push winner payouts (best-effort;
-            // claim() remains the fallback for anyone a batch misses).
-            const settled = await agentSettleV3(market.id);
-            if (settled.ok) {
-              const buyers = await agentReadLmsrBuyers(market.id);
-              const paid = await agentPayWinners(market.id, buyers);
-              if (!paid.ok) console.warn('[auto-resolve] V3 payWinners failed (winners can still claim):', paid.error);
-              result = { ok: true, action: 'resolved', marketId: market.id, title: market.title, outcome: proposal.outcomeLabel, txHash: assertNonEmptyString(settled.txHash, 'txHash'), confidence: 1 };
-            } else {
-              result = { ok: false, action: 'skipped', marketId: market.id, title: market.title, reason: `V3 settle failed: ${settled.error ?? 'unknown error'}` };
+        const computeResult = async (): Promise<ResolutionResult> => {
+          const proposal = market.proposal;
+          if (proposal && !proposal.disputed) {
+            const windowEndsAt = proposal.proposedAtMs + DISPUTE_WINDOW_MS;
+            if (Date.now() < windowEndsAt) {
+              return {
+                ok: false,
+                action: 'skipped',
+                marketId: market.id,
+                title: market.title,
+                reason: `Proposal "${proposal.outcomeLabel}" pending — dispute window ends ${new Date(windowEndsAt).toISOString()}.`,
+              };
             }
-          } else {
+            if (market.amm) {
+              // V3 LMSR: settle the unchallenged proposal, then push winner payouts (best-effort;
+              // claim() remains the fallback for anyone a batch misses).
+              const settled = await agentSettleV3(market.id);
+              if (settled.ok) {
+                const buyers = await agentReadLmsrBuyers(market.id);
+                const paid = await agentPayWinners(market.id, buyers);
+                if (!paid.ok) console.warn('[auto-resolve] V3 payWinners failed (winners can still claim):', paid.error);
+                return { ok: true, action: 'resolved', marketId: market.id, title: market.title, outcome: proposal.outcomeLabel, txHash: assertNonEmptyString(settled.txHash, 'txHash'), confidence: 1 };
+              }
+              return { ok: false, action: 'skipped', marketId: market.id, title: market.title, reason: `V3 settle failed: ${settled.error ?? 'unknown error'}` };
+            }
             const settled = await agentSettleProposedResolution(market.id);
-            result = settled.ok
+            return settled.ok
               ? { ok: true, action: 'resolved', marketId: market.id, title: market.title, outcome: proposal.outcomeLabel, txHash: assertNonEmptyString(settled.txHash, 'txHash'), confidence: 1 }
               : { ok: false, action: 'skipped', marketId: market.id, title: market.title, reason: `Proposal settlement failed: ${settled.error ?? 'unknown error'}` };
           }
-        } else {
-          result = await resolveMarket(market);
-        }
+          return resolveMarket(market);
+        };
+        const result = await Promise.race([
+          computeResult(),
+          new Promise<ResolutionResult>((resolve) => setTimeout(() => resolve({
+            ok: false,
+            action: 'skipped',
+            marketId: market.id,
+            title: market.title,
+            reason: 'Timed out this tick under RPC congestion; retried automatically next run.',
+          }), MARKET_DEADLINE_MS)),
+        ]);
         results.push(result);
 
         // Side effects run AFTER the response: trader lookups are on-chain log scans and the
