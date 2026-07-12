@@ -475,15 +475,21 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, ran: new Date().toISOString(), resolved: 0, canceled: 0, results: [] });
     }
 
-    const identityStatus = await getAgentIdentityStatus().catch(() => null);
+    // Time-boxed: the ERC-8004 identity read hangs for minutes under RPC saturation, and it is
+    // only used to attach reputation attestations — a null skips those, never the settlements.
+    const identityStatus = await Promise.race([
+      getAgentIdentityStatus().catch(() => null),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 8_000)),
+    ]);
     const agentErc8004Id = identityStatus?.agentId ? BigInt(identityStatus.agentId) : null;
     const results: ResolutionResult[] = [];
 
     // Wall-clock budget: each market costs evidence search + LLM + on-chain writes (slow under RPC
     // throttling). Runs used to blow past Vercel's kill with the report lost — stop early, return
-    // partial progress, and let the 15-minute cadence walk the backlog.
+    // partial progress, and let the 15-minute cadence walk the backlog. 150s leaves room for one
+    // long final iteration (~2 min worst case) inside the workflow's 290s curl ceiling.
     const resolveStart = Date.now();
-    const RESOLVE_BUDGET_MS = 170_000;
+    const RESOLVE_BUDGET_MS = 150_000;
 
     for (const market of expired) {
       if (Date.now() - resolveStart > RESOLVE_BUDGET_MS) break;
