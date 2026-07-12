@@ -73,15 +73,19 @@ export async function GET(request: Request) {
   }
 
   const config = getArcConfig();
+  // Every leg is time-boxed: identity and balance are chain reads that can hang for a minute+
+  // when RPC providers are degraded, and the profile renders fine with nulls for both.
+  const withDeadline = <T,>(promise: Promise<T>, ms: number, fallbackValue: T): Promise<T> =>
+    Promise.race([promise, new Promise<T>((resolve) => setTimeout(() => resolve(fallbackValue), ms))]);
   const [identity, markets, usdcBalance] = await Promise.all([
-    getAgentIdentityStatus().catch(() => null),
+    withDeadline(getAgentIdentityStatus().catch(() => null), 8_000, null),
     // Snapshot-first: the profile page doesn't need block-fresh markets, and the inline chain
     // read pinned this route for 30s+ whenever RPC providers were degraded.
     readMarketListSnapshot()
       .then((snapshot) => (snapshot && snapshot.markets.length > 0 ? snapshot.markets : fetchOnchainMarkets()))
       .catch(() => fetchOnchainMarkets())
       .catch(() => []),
-    readTokenBalance(agentAddress as Address, config.usdcAddress).catch(() => null),
+    withDeadline(readTokenBalance(agentAddress as Address, config.usdcAddress).catch(() => null), 8_000, null),
   ]);
   const agentMarkets = markets.filter((market) => market.createdByType === 'agent');
   const activeAgentMarkets = agentMarkets.filter((market) => market.status === 'Open' || market.status === 'Closing soon');
