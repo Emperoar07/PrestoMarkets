@@ -477,7 +477,14 @@ export async function GET(req: NextRequest) {
     const agentErc8004Id = identityStatus?.agentId ? BigInt(identityStatus.agentId) : null;
     const results: ResolutionResult[] = [];
 
+    // Wall-clock budget: each market costs evidence search + LLM + on-chain writes (slow under RPC
+    // throttling). Runs used to blow past Vercel's kill with the report lost — stop early, return
+    // partial progress, and let the 15-minute cadence walk the backlog.
+    const resolveStart = Date.now();
+    const RESOLVE_BUDGET_MS = 230_000;
+
     for (const market of expired) {
+      if (Date.now() - resolveStart > RESOLVE_BUDGET_MS) break;
       try {
         // Pending optimistic proposal: wait out the dispute window, then settle. A DISPUTED
         // proposal falls through to resolveMarket, where direct resolve() is the escalation.
