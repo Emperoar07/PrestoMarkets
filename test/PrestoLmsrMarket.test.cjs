@@ -268,4 +268,49 @@ describe('PrestoLmsrMarket pause and cancel', () => {
     await market.connect(alice).refund();
     expect(await market.sharesOf(0, alice.address)).to.equal(0n);
   });
+
+  it('an abandoned DISPUTE can be timeout-canceled; both bonds return to their posters', async () => {
+    const { usdc, market, resolver, bob, close, bond6 } = await deployMarket({ outcomes: 2 });
+    await buyShares(usdc, market, bob, 1, USDC(20)); // bob holds a position so he can dispute
+    await advancePastClose(close);
+
+    await usdc.connect(resolver).approve(await market.getAddress(), bond6);
+    await market.connect(resolver).propose(0, 'ipfs://evidence');
+    const resolverAfterBond = await usdc.balanceOf(resolver.address);
+    await usdc.connect(bob).approve(await market.getAddress(), bond6);
+    await market.connect(bob).dispute('i disagree');
+    const bobAfterBond = await usdc.balanceOf(bob.address);
+    expect(await market.state()).to.equal(2); // Disputed
+
+    // The resolver vanishes: nobody can resolveDisputed. Before the fix this locked every
+    // holder's collateral forever (timeoutCancel rejected the Disputed state).
+    await expect(market.timeoutCancel()).to.be.revertedWithCustomError(market, 'TimeoutNotReached');
+    await advanceSeconds(7 * 24 * 60 * 60 + 60);
+    await market.timeoutCancel();
+    expect(await market.state()).to.equal(4); // Canceled
+
+    // No adjudication happened, so neither side is slashed: each bond goes back to its poster.
+    expect((await usdc.balanceOf(resolver.address)) - resolverAfterBond).to.equal(bond6);
+    expect((await usdc.balanceOf(bob.address)) - bobAfterBond).to.equal(bond6);
+
+    // Holders unwind their positions as with any cancellation.
+    await market.connect(bob).refund();
+    expect(await market.sharesOf(1, bob.address)).to.equal(0n);
+  });
+
+  it('an abandoned PROPOSAL that is timeout-canceled returns the proposer bond', async () => {
+    const { usdc, market, resolver, alice, close, bond6 } = await deployMarket({ outcomes: 2 });
+    await buyShares(usdc, market, alice, 0, USDC(15));
+    await advancePastClose(close);
+
+    await usdc.connect(resolver).approve(await market.getAddress(), bond6);
+    await market.connect(resolver).propose(0, 'ipfs://evidence');
+    const resolverAfterBond = await usdc.balanceOf(resolver.address);
+    expect(await market.state()).to.equal(1); // Proposed
+
+    await advanceSeconds(7 * 24 * 60 * 60 + 60);
+    await market.timeoutCancel();
+    expect(await market.state()).to.equal(4); // Canceled
+    expect((await usdc.balanceOf(resolver.address)) - resolverAfterBond).to.equal(bond6);
+  });
 });

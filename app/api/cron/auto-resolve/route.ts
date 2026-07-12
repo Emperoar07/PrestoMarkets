@@ -357,9 +357,11 @@ Return JSON only:
   if (parsed.outcome === 'CANCEL' || !Number.isFinite(confidence) || confidence < MIN_AUTO_RESOLVE_CONFIDENCE) {
     const formattedConfidence = Number.isFinite(confidence) ? confidence.toFixed(2) : 'invalid';
     const reason = `Oracle did not reach a resolvable confidence threshold (confidence=${formattedConfidence}, outcome=${parsed.outcome}). ${parsed.evidenceSummary}`;
-    // An explicit CANCEL verdict is definitive; low confidence gets the grace window to let
-    // better evidence appear before we cancel.
-    return parsed.outcome === 'CANCEL' || pastCancelGrace ? cancelUnresolvable(reason) : skipResolution(`Pending: ${reason}`);
+    // An explicit CANCEL verdict gets the SAME grace window as low confidence: the verdict comes
+    // from an LLM reading live search results, so a poisoned/wrong snapshot must not be able to
+    // void a valid market on the first tick. Only after the post-close grace period does a
+    // persistent CANCEL/low-confidence verdict actually cancel (refund) the market.
+    return pastCancelGrace ? cancelUnresolvable(reason) : skipResolution(`Pending: ${reason}`);
   }
 
   const derivedIndex = allowedOutcomes.findIndex((outcome) => outcome === parsed.outcome);

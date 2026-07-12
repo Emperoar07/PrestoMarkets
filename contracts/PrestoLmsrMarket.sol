@@ -330,11 +330,19 @@ contract PrestoLmsrMarket is ReentrancyGuard, Pausable {
         emit MarketCanceled();
     }
 
-    /// @notice Anyone may void a market the resolver abandoned past the timeout.
+    /// @notice Anyone may void a market the resolver abandoned past the timeout. Disputed markets
+    /// are included: after a dispute only the resolver can adjudicate, so without this hatch an
+    /// abandoned dispute would lock every holder's collateral forever. Bonds return to their
+    /// posters — with no adjudication there is no basis to slash either side.
     function timeoutCancel() external nonReentrant {
-        if (state != State.Open && state != State.Proposed) revert NotCancelable();
+        if (state != State.Open && state != State.Proposed && state != State.Disputed) revert NotCancelable();
         if (block.timestamp < closeTime + RESOLUTION_TIMEOUT) revert TimeoutNotReached();
+        State prior = state;
         state = State.Canceled;
+        if (bond6 > 0) {
+            if (prior == State.Proposed || prior == State.Disputed) collateralToken.safeTransfer(proposer, bond6);
+            if (prior == State.Disputed) collateralToken.safeTransfer(disputer, bond6);
+        }
         emit MarketCanceled();
     }
 

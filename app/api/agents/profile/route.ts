@@ -6,7 +6,7 @@ import { getArcConfig } from '@/lib/arcConfig';
 import { ARC_USDC_DECIMALS, createArcReadClient } from '@/lib/arcClient';
 import { erc20Abi } from '@/lib/contracts';
 import { disputePolicy, grantDemoStory } from '@/lib/disputePolicy';
-import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
+import { fetchOnchainMarkets, readMarketListSnapshot } from '@/lib/onchainMarkets';
 import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
 import { getResolveFeeUsdc } from '@/lib/resolveFee';
 
@@ -75,7 +75,12 @@ export async function GET(request: Request) {
   const config = getArcConfig();
   const [identity, markets, usdcBalance] = await Promise.all([
     getAgentIdentityStatus().catch(() => null),
-    fetchOnchainMarkets().catch(() => []),
+    // Snapshot-first: the profile page doesn't need block-fresh markets, and the inline chain
+    // read pinned this route for 30s+ whenever RPC providers were degraded.
+    readMarketListSnapshot()
+      .then((snapshot) => (snapshot && snapshot.markets.length > 0 ? snapshot.markets : fetchOnchainMarkets()))
+      .catch(() => fetchOnchainMarkets())
+      .catch(() => []),
     readTokenBalance(agentAddress as Address, config.usdcAddress).catch(() => null),
   ]);
   const agentMarkets = markets.filter((market) => market.createdByType === 'agent');
@@ -119,8 +124,10 @@ export async function GET(request: Request) {
       resolveFee: `$${Number(getResolveFeeUsdc()).toFixed(2)} USDC per agent-assisted market`,
     },
     limits: {
-      perRunCap: Number(process.env.PRESTO_AGENT_PER_RUN_CAP ?? 1),
-      activeMarketCap: Number(process.env.PRESTO_AGENT_ACTIVE_MARKET_CAP ?? 2),
+      // Defaults MUST mirror agentPipeline.ts (AGENT_PER_RUN_CAP / AGENT_ACTIVE_MARKET_CAP) — this
+      // route previously reported 1/2 while the pipeline actually ran 20/48.
+      perRunCap: Math.max(1, Number(process.env.PRESTO_AGENT_PER_RUN_CAP ?? 20)),
+      activeMarketCap: Math.max(0, Number(process.env.PRESTO_AGENT_ACTIVE_MARKET_CAP ?? 48)),
       minSafetyScore: Number(process.env.PRESTO_AGENT_MIN_SAFETY_SCORE ?? 70),
       minMomentumScore: Number(process.env.PRESTO_AGENT_MIN_MOMENTUM_SCORE ?? 60),
       compositeSignalGate: Number(process.env.PRESTO_AGENT_MIN_COMPOSITE_SIGNAL ?? 0.62),

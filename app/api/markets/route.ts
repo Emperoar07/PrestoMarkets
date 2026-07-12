@@ -39,15 +39,25 @@ const SNAPSHOT_MAX_AGE_MS = 15 * 60 * 1000; // beyond this the snapshot is too s
 export async function GET() {
   try {
     const snapshot = await readMarketListSnapshot();
-    if (snapshot && snapshot.markets.length > 0 && snapshot.ageMs < SNAPSHOT_MAX_AGE_MS) {
-      // Serve instantly; if the snapshot is older than the in-process cache window, refresh it
-      // after the response (fetchOnchainMarkets persists the new snapshot when the read lands).
+    if (snapshot && snapshot.markets.length > 0) {
+      // Serve ANY existing snapshot instantly — never make a user request wait on a chain read.
+      // A snapshot past the freshness cap is marked stale and refreshed after the response
+      // (fetchOnchainMarkets persists the new snapshot when the read lands); the previous
+      // behavior of falling through to an INLINE chain read pinned requests for 25-30s whenever
+      // the snapshot aged out under degraded RPCs.
       if (snapshot.ageMs > 60_000) {
         after(async () => { await fetchOnchainMarkets({ force: true }).catch(() => undefined); });
       }
+      const isStale = snapshot.ageMs >= SNAPSHOT_MAX_AGE_MS;
       return NextResponse.json(
-        { markets: slimImages(snapshot.markets) },
-        { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=300' } },
+        { markets: slimImages(snapshot.markets), ...(isStale ? { stale: true } : {}) },
+        {
+          headers: {
+            'Cache-Control': isStale
+              ? 'public, max-age=0, s-maxage=30, stale-while-revalidate=120'
+              : 'public, max-age=0, s-maxage=60, stale-while-revalidate=300',
+          },
+        },
       );
     }
 
