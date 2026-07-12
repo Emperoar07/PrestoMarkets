@@ -51,11 +51,25 @@ export async function GET() {
       );
     }
 
-    const markets = await fetchOnchainMarkets();
-    return NextResponse.json(
-      { markets: slimImages(markets) },
-      { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=300' } },
-    );
+    try {
+      const markets = await fetchOnchainMarkets();
+      return NextResponse.json(
+        { markets: slimImages(markets) },
+        { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=300' } },
+      );
+    } catch (chainError) {
+      // Total RPC saturation (all keyed providers out + public legs throttled) can fail the whole
+      // chain read. A STALE snapshot beats an empty grid: serve whatever we last knew (short CDN
+      // cache so recovery shows fast) and keep retrying in the background.
+      if (snapshot && snapshot.markets.length > 0) {
+        after(async () => { await fetchOnchainMarkets({ force: true }).catch(() => undefined); });
+        return NextResponse.json(
+          { markets: slimImages(snapshot.markets), stale: true },
+          { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=30, stale-while-revalidate=120' } },
+        );
+      }
+      throw chainError;
+    }
   } catch (error) {
     return NextResponse.json(
       { markets: [], error: error instanceof Error ? error.message : 'Failed to load markets' },
