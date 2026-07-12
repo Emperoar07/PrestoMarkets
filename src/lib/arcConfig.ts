@@ -8,6 +8,12 @@ const DEFAULT_MARKET_FACTORY_ADDRESS = '0xe51ff3E9f3Ce36e8427ae286d7768ce9dA55B5
 const DEFAULT_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS = '0xD01e6828601b9d813b36110748257B0C461a0128';
 const DEFAULT_LEGACY_MARKET_FACTORY_ADDRESSES = ['0xB5FA65ae7c76b2DeecA1906848e8805df6dCF807'];
 const DEFAULT_LEGACY_MULTI_OUTCOME_FACTORY_ADDRESSES = ['0xd2961F0e52a1F1Af787cf3722E90459dC0995F2c'];
+// June-25 LMSR factories (pre timeoutCancel-from-Disputed fix). Baked in as legacy defaults so
+// their markets stay readable the moment the primary env vars cut over to the fixed factories.
+const DEFAULT_LEGACY_LMSR_FACTORY_ADDRESSES = [
+  '0xcc8B40ca4562f4fbCcfA1529a9dcE438280769aE',
+  '0x6E4F87b17B5746fEeA6A4dE0A10Ab9D0f7BF3F27',
+];
 const DEFAULT_ARC_RPC_URL = 'https://rpc.testnet.arc.network';
 // Additional keyless public Arc RPCs — join the ranked fallback pool so an all-providers-out
 // situation still has multiple public legs to spread load across (see arcClient.ARC_PUBLIC_RPCS).
@@ -107,6 +113,15 @@ export function getArcConfig() {
     ...publicEnvList(process.env.NEXT_PUBLIC_LEGACY_MULTI_OUTCOME_MARKET_FACTORY_ADDRESSES),
     ...DEFAULT_LEGACY_MULTI_OUTCOME_FACTORY_ADDRESSES,
   ].filter((address) => address.toLowerCase() !== multiOutcomeFactoryAddress.toLowerCase()));
+  // Retired V3 (LMSR) factories — same rule: their markets stay readable after a factory upgrade
+  // (e.g. the timeoutCancel-from-Disputed fix requires new factory bytecode), while creation moves
+  // to the primary lmsr factories above. Active addresses are filtered out so a factory is never
+  // read twice when it appears in both lists during a cutover.
+  const activeLmsr = new Set([lmsrFactoryAddress, eurcLmsrFactoryAddress].filter(Boolean).map((a) => a.toLowerCase()));
+  const legacyLmsrFactoryAddresses = uniqueValues([
+    ...publicEnvList(process.env.NEXT_PUBLIC_LEGACY_LMSR_FACTORY_ADDRESSES),
+    ...DEFAULT_LEGACY_LMSR_FACTORY_ADDRESSES,
+  ].filter((address) => !activeLmsr.has(address.toLowerCase())));
 
   return {
     chainId,
@@ -122,6 +137,7 @@ export function getArcConfig() {
     multiOutcomeFactoryAddress,
     legacyFactoryAddresses,
     legacyMultiOutcomeFactoryAddresses,
+    legacyLmsrFactoryAddresses,
     circlePaymasterEnabled: process.env.NEXT_PUBLIC_CIRCLE_PAYMASTER_ENABLED === 'true',
     circleWalletsEnabled: process.env.NEXT_PUBLIC_CIRCLE_WALLETS_ENABLED === 'true',
     circleBridgeKitEnabled: process.env.NEXT_PUBLIC_CIRCLE_BRIDGE_KIT_ENABLED === 'true',

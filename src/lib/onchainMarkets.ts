@@ -528,7 +528,17 @@ async function readOnchainMarkets() {
     // Retired factories: their markets stay readable so positions and claims never disappear.
     ...config.legacyFactoryAddresses.map((address) => ({ address: address as Address, abi: prestoMarketFactoryAbi })),
     ...config.legacyMultiOutcomeFactoryAddresses.map((address) => ({ address: address as Address, abi: prestoMultiOutcomeMarketFactoryAbi })),
+    ...config.legacyLmsrFactoryAddresses.filter((address) => isAddress(address)).map((address) => ({ address: address as Address, abi: prestoLmsrMarketFactoryAbi, lmsr: true })),
   ].filter(Boolean) as { address: Address; abi: typeof prestoMarketFactoryAbi | typeof prestoMultiOutcomeMarketFactoryAbi | typeof prestoLmsrMarketFactoryAbi; lmsr?: boolean }[];
+  // Never read the same factory twice (e.g. an address present as both active and legacy during a
+  // cutover would duplicate every one of its markets in the grid).
+  const seenFactories = new Set<string>();
+  const uniqueFactories = factories.filter((factory) => {
+    const key = factory.address.toLowerCase();
+    if (seenFactories.has(key)) return false;
+    seenFactories.add(key);
+    return true;
+  });
   const marketAddresses: Address[] = [];
   const lmsrMarkets = new Set<string>();
   const fallbackOrder = new Map<string, number>();
@@ -561,7 +571,7 @@ async function readOnchainMarkets() {
     }
   }
 
-  const creationInfo = await readCreationInfo(client, factories, fallbackOrder);
+  const creationInfo = await readCreationInfo(client, uniqueFactories, fallbackOrder);
 
   const markets: AppMarket[] = [];
   for (let i = 0; i < marketAddresses.length; i += MARKET_HYDRATION_BATCH_SIZE) {
