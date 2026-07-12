@@ -70,6 +70,8 @@ function MarketCardComponent({
   const { refreshAccountPortfolio } = useAppState();
   const yes = market.outcomes.find((o) => o.label === 'YES') ?? market.outcomes[0];
   const yesOdds = yes?.odds ?? 50;
+  const no = market.outcomes.find((o) => o.label === 'NO') ?? market.outcomes[1];
+  const noOdds = no?.odds ?? (100 - yesOdds);
   const isClosingSoon = market.status === 'Closing soon';
   // paused (V3 guardian) / frozen (app flag) = decided early; trading stops but it stays listed.
   const isFrozen = Boolean(market.paused || market.frozen);
@@ -342,14 +344,8 @@ function MarketCardComponent({
         ) : (
           /* ── Binary (YES/NO) Prediction or Opinion markets ── */
           <div className="flex flex-col my-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[10.5px] font-bold text-[#94a3b8]">
-                {isOpinion ? 'Support' : 'YES'} <span className="font-black text-[#cbd5e1]">{yesOdds}%</span>
-              </span>
-            </div>
-
             {isLive ? (
-              <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="mt-1.5 grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={(e) => {
@@ -363,7 +359,7 @@ function MarketCardComponent({
                   }}
                   className="rounded-[8px] bg-[#132d21] border border-emerald-500/10 py-2 text-[11px] font-black uppercase text-[#2ff0a2] transition-all hover:bg-[#183929] hover:text-[#37ffb4] hover:border-emerald-500/20 active:scale-95 text-center"
                 >
-                  {'YES'}
+                  {isOpinion ? `Support ${Math.round(yesOdds)}%` : `YES ${Math.round(yesOdds)}%`}
                 </button>
                 <button
                   type="button"
@@ -378,12 +374,17 @@ function MarketCardComponent({
                   }}
                   className="rounded-[8px] bg-[#381515] border border-rose-500/10 py-2 text-[11px] font-black uppercase text-rose-400 transition-all hover:bg-[#4c1c1c] hover:text-rose-300 hover:border-rose-500/20 active:scale-95 text-center"
                 >
-                  {'NO'}
+                  {isOpinion ? `Oppose ${Math.round(noOdds)}%` : `NO ${Math.round(noOdds)}%`}
                 </button>
               </div>
             ) : (
-              <div className="mt-3 rounded-[8px] border border-white/[0.06] py-2 text-center text-[10px] font-bold text-[#475569]">
-                {'Closed'}
+              <div className="mt-1.5 grid grid-cols-2 gap-2 opacity-50">
+                <div className="rounded-[8px] bg-[#132d21]/50 border border-white/[0.04] py-2 text-[11px] font-black uppercase text-[#2ff0a2]/70 text-center select-none">
+                  {isOpinion ? `Support ${Math.round(yesOdds)}%` : `YES ${Math.round(yesOdds)}%`}
+                </div>
+                <div className="rounded-[8px] bg-[#381515]/50 border border-white/[0.04] py-2 text-[11px] font-black uppercase text-rose-400/70 text-center select-none">
+                  {isOpinion ? `Oppose ${Math.round(noOdds)}%` : `NO ${Math.round(noOdds)}%`}
+                </div>
               </div>
             )}
           </div>

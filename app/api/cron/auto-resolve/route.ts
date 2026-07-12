@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import type { Hex, Address } from 'viem';
 import { fetchOnchainMarkets, readMarketListSnapshot } from '@/lib/onchainMarkets';
 import { agentResolveMarket, agentCancelMarket, agentProposeResolution, agentSettleProposedResolution, agentReadTotalShares, getAgentAddress, agentProposeV3, agentSettleV3, agentPayWinners, agentReadLmsrBuyers, agentReadLmsrPaused, agentUnpauseLmsrMarket } from '@/lib/agentWallet';
@@ -481,7 +481,7 @@ export async function GET(req: NextRequest) {
     // throttling). Runs used to blow past Vercel's kill with the report lost — stop early, return
     // partial progress, and let the 15-minute cadence walk the backlog.
     const resolveStart = Date.now();
-    const RESOLVE_BUDGET_MS = 230_000;
+    const RESOLVE_BUDGET_MS = 170_000;
 
     for (const market of expired) {
       if (Date.now() - resolveStart > RESOLVE_BUDGET_MS) break;
@@ -523,49 +523,54 @@ export async function GET(req: NextRequest) {
         }
         results.push(result);
 
-        // Notify users watching or trading this market. Best-effort, never blocks.
+        // Side effects run AFTER the response: trader lookups are on-chain log scans and the
+        // reputation attestation is an on-chain write — awaited in-loop they pushed runs past the
+        // workflow's curl timeout (the red auto-resolve emails). None of them affect settlement.
         if (result.ok && (result.action === 'resolved' || result.action === 'canceled' || result.action === 'proposed')) {
           const action = result.action;
-          try {
-            const watchers = await listMarketWatchers(market.id);
-            const traders = await listMarketTraders(market.id as Address);
-            const recipients = Array.from(new Set([...watchers, ...traders]));
+          const sideEffectResult = result;
+          after(async () => {
+            try {
+              const watchers = await listMarketWatchers(market.id);
+              const traders = await listMarketTraders(market.id as Address);
+              const recipients = Array.from(new Set([...watchers, ...traders]));
 
-            if (recipients.length > 0) {
-              await notifyMany(recipients, () => ({
-                type: action === 'resolved' ? 'market_resolved' : action === 'canceled' ? 'market_canceled' : 'system',
-                title: action === 'resolved' ? `Market resolved: ${market.title}`
-                  : action === 'canceled' ? `Market canceled & refunded: ${market.title}`
-                  : `Outcome proposed: ${market.title}`,
-                body: action === 'resolved' ? `Outcome: ${result.outcome}. Claim your winnings if you held the winning side.`
-                  : action === 'canceled' ? 'All participants can claim a refund.'
-                  : `Proposed outcome: ${result.outcome}. Anyone can dispute on the market page for about 2 hours before it settles.`,
-                marketId: market.id,
-              }));
+              if (recipients.length > 0) {
+                await notifyMany(recipients, () => ({
+                  type: action === 'resolved' ? 'market_resolved' : action === 'canceled' ? 'market_canceled' : 'system',
+                  title: action === 'resolved' ? `Market resolved: ${market.title}`
+                    : action === 'canceled' ? `Market canceled & refunded: ${market.title}`
+                    : `Outcome proposed: ${market.title}`,
+                  body: action === 'resolved' ? `Outcome: ${sideEffectResult.outcome}. Claim your winnings if you held the winning side.`
+                    : action === 'canceled' ? 'All participants can claim a refund.'
+                    : `Proposed outcome: ${sideEffectResult.outcome}. Anyone can dispute on the market page for about 2 hours before it settles.`,
+                  marketId: market.id,
+                }));
+              }
+            } catch (err) {
+              console.error('Failed to notify auto-resolve action:', err);
             }
-          } catch (err) {
-            console.error('Failed to notify auto-resolve action:', err);
-          }
 
-          // Fan out to partner webhooks (best-effort, fully isolated from resolution).
-          await dispatchWebhookEvent({
-            type: action === 'resolved' ? 'market_resolved' : action === 'canceled' ? 'market_canceled' : 'resolution_proposed',
-            marketId: market.id,
-            title: market.title,
-            outcome: result.outcome,
-            txHash: typeof result.txHash === 'string' ? result.txHash : undefined,
-            at: new Date().toISOString(),
-          }).catch(() => undefined);
-        }
+            // Fan out to partner webhooks (best-effort, fully isolated from resolution).
+            await dispatchWebhookEvent({
+              type: action === 'resolved' ? 'market_resolved' : action === 'canceled' ? 'market_canceled' : 'resolution_proposed',
+              marketId: market.id,
+              title: market.title,
+              outcome: sideEffectResult.outcome,
+              txHash: typeof sideEffectResult.txHash === 'string' ? sideEffectResult.txHash : undefined,
+              at: new Date().toISOString(),
+            }).catch(() => undefined);
 
-        if (agentErc8004Id && result.ok && result.action === 'resolved') {
-          const score = result.confidence >= 0.95 ? 95 : result.confidence >= 0.85 ? 85 : 75;
-          await recordResolutionReputation(
-            agentErc8004Id,
-            score,
-            'successful_resolution',
-            result.txHash,
-          ).catch(() => null);
+            if (agentErc8004Id && sideEffectResult.action === 'resolved') {
+              const score = sideEffectResult.confidence >= 0.95 ? 95 : sideEffectResult.confidence >= 0.85 ? 85 : 75;
+              await recordResolutionReputation(
+                agentErc8004Id,
+                score,
+                'successful_resolution',
+                sideEffectResult.txHash,
+              ).catch(() => null);
+            }
+          });
         }
       } catch (error) {
         results.push({
