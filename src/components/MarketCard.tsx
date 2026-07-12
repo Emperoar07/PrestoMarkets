@@ -231,7 +231,7 @@ function MarketCardComponent({
                         : 'bg-[#2d2d16] text-[#facc15] hover:bg-[#39391c]',
                   ].join(' ')}
                 >
-                  {isDraw ? 'Draw' : getTeamCode(outcome.label)}
+                  {isDraw ? `Draw ${Math.round(outcome.odds)}%` : getTeamCode(outcome.label)}
                 </button>
               );
             })}
