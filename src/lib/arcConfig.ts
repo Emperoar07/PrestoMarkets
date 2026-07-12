@@ -9,6 +9,9 @@ const DEFAULT_MULTI_OUTCOME_MARKET_FACTORY_ADDRESS = '0xD01e6828601b9d813b361107
 const DEFAULT_LEGACY_MARKET_FACTORY_ADDRESSES = ['0xB5FA65ae7c76b2DeecA1906848e8805df6dCF807'];
 const DEFAULT_LEGACY_MULTI_OUTCOME_FACTORY_ADDRESSES = ['0xd2961F0e52a1F1Af787cf3722E90459dC0995F2c'];
 const DEFAULT_ARC_RPC_URL = 'https://rpc.testnet.arc.network';
+// Additional keyless public Arc RPCs — join the ranked fallback pool so an all-providers-out
+// situation still has multiple public legs to spread load across (see arcClient.ARC_PUBLIC_RPCS).
+const EXTRA_PUBLIC_ARC_RPCS = ['https://5042002.rpc.thirdweb.com', 'https://arc-testnet.drpc.org'];
 const DEFAULT_ARC_EURC_ADDRESS = '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
 
 export type CollateralSymbol = 'USDC' | 'EURC';
@@ -77,7 +80,7 @@ export function getArcConfig() {
   ];
   // Alchemy legs first (primary + numbered) so failover lands on another healthy high-limit
   // endpoint immediately; dRPC/QuikNode free tiers exhaust and a dead leg in between costs ~2s/hop.
-  const rpcUrls = uniqueValues([alchemy, ...numbered, drpc, quiknode, configuredRpcUrl, DEFAULT_ARC_RPC_URL].filter(Boolean));
+  const rpcUrls = uniqueValues([alchemy, ...numbered, drpc, quiknode, configuredRpcUrl, DEFAULT_ARC_RPC_URL, ...EXTRA_PUBLIC_ARC_RPCS].filter(Boolean));
   const rpcUrl = rpcUrls[0] ?? DEFAULT_ARC_RPC_URL;
   const usdcAddress = publicEnv(process.env.NEXT_PUBLIC_USDC_ADDRESS);
   // EURC on Arc Testnet (Circle docs) — euro-denominated market collateral. 6 decimals like USDC.

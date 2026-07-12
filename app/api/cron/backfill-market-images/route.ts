@@ -50,9 +50,27 @@ export async function GET(req: NextRequest) {
     // lambda takes 30-150s+ depending on RPC health. Fall back to the chain only without a usable
     // snapshot.
     const snapshot = await readMarketListSnapshot();
-    const allMarkets = snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 30 * 60 * 1000
-      ? snapshot.markets
-      : await fetchOnchainMarkets({ force: true });
+    let allMarkets;
+    if (snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 30 * 60 * 1000) {
+      allMarkets = snapshot.markets;
+    } else {
+      try {
+        allMarkets = await fetchOnchainMarkets({ force: true });
+      } catch (chainError) {
+        // Every RPC leg can fail at once when all providers are out of credit and the public
+        // endpoint is rate-limited. A stale snapshot beats a 500: image work doesn't need
+        // block-fresh data, and the run keeps the workflow green until an endpoint recovers.
+        if (snapshot && snapshot.markets.length > 0) {
+          logger.warn('backfill-market-images', 'chain read failed; using stale snapshot', {
+            ageMs: snapshot.ageMs,
+            error: chainError instanceof Error ? chainError.message.slice(0, 160) : String(chainError),
+          });
+          allMarkets = snapshot.markets;
+        } else {
+          throw chainError;
+        }
+      }
+    }
 
     // Markets whose stored override is ALREADY a good image — skip these so we don't reprocess
     // them every run. Crucially, a market whose override is only a branded-SVG fallback stays

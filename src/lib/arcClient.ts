@@ -30,8 +30,17 @@ export const ARC_USDC_DECIMALS = 6;
 /** Arc's native gas accounting uses EVM-native 18-decimal precision. */
 export const ARC_NATIVE_USDC_DECIMALS = 18;
 
-/** Arc public RPC — always the last-resort fallback (rate-limited, but always available). */
-const ARC_PUBLIC_RPC = 'https://rpc.testnet.arc.network';
+/**
+ * Keyless public Arc RPCs — the always-available tail of the fallback chain. All three join the
+ * ranked pool, so when every keyed provider is out of credit the app still has multiple public
+ * legs to spread load across (each is individually rate-limited), and the health ranking keeps
+ * whichever is fastest at the front.
+ */
+const ARC_PUBLIC_RPCS = [
+  'https://rpc.testnet.arc.network',
+  'https://5042002.rpc.thirdweb.com',
+  'https://arc-testnet.drpc.org',
+];
 
 /**
  * Ordered Arc RPC endpoints: dedicated providers first (dRPC, then QuikNode), the public RPC
@@ -68,7 +77,7 @@ export function arcRpcUrls(override?: string): string[] {
   // healthy high-limit endpoint immediately — dRPC/QuikNode sit later because their free tiers
   // exhaust monthly/daily and a dead leg in between costs ~2s per failover hop. The rate-limited
   // public RPC is always the last-resort tail.
-  const ordered = [alchemy, ...numbered, drpc, quiknode, override, ARC_PUBLIC_RPC]
+  const ordered = [alchemy, ...numbered, drpc, quiknode, override, ...ARC_PUBLIC_RPCS]
     .map((url) => url?.trim())
     .filter((url): url is string => Boolean(url));
   return Array.from(new Set(ordered));
