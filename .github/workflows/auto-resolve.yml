@@ -27,8 +27,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # The endpoint self-limits to a ~170s work budget (notifications/reputation moved post-
+      # response), so healthy runs answer well inside --max-time; one retry covers transient blips.
       - name: Trigger auto-resolve cron
         run: |
           curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/auto-resolve" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -w "\nHTTP %{http_code}\n" --max-time 290
+            -w "\nHTTP %{http_code}\n" --max-time 290 \
+            --retry 1 --retry-delay 10 --retry-all-errors
