@@ -149,12 +149,21 @@ export function createArcChain(rpcUrls?: string[]) {
   } as const;
 }
 
+// MEMOIZED: the ranked transport learns endpoint health from its background samples — but only if
+// the SAME transport instance is reused. Creating a fresh client per call (the old behavior) reset
+// that knowledge every time, so every trade re-walked the dead legs before finding a live endpoint;
+// that walk was the multi-second lag before the wallet prompt whenever providers were out.
+let cachedReadClient: ReturnType<typeof createPublicClient> | null = null;
+let cachedReadClientKey = '';
+
 export function createArcReadClient() {
   const config = getArcConfig();
   if (!config.rpcUrl) return null;
+  if (cachedReadClient && cachedReadClientKey === config.rpcUrl) return cachedReadClient;
   const rpcUrls = config.rpcUrls.length > 0 ? config.rpcUrls : arcRpcUrls(config.rpcUrl);
 
-  return createPublicClient({
+  cachedReadClientKey = config.rpcUrl;
+  return cachedReadClient = createPublicClient({
     chain: createArcChain(rpcUrls),
     transport: arcReadTransport(config.rpcUrl),
     batch: ARC_READ_BATCH,

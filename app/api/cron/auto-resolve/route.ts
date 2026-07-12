@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Hex, Address } from 'viem';
-import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
+import { fetchOnchainMarkets, readMarketListSnapshot } from '@/lib/onchainMarkets';
 import { agentResolveMarket, agentCancelMarket, agentProposeResolution, agentSettleProposedResolution, agentReadTotalShares, getAgentAddress, agentProposeV3, agentSettleV3, agentPayWinners, agentReadLmsrBuyers, agentReadLmsrPaused, agentUnpauseLmsrMarket } from '@/lib/agentWallet';
 import { verifyBearer } from '@/lib/authCompare';
 import { callLlmJson, extractJsonObject } from '@/lib/llmFallback';
@@ -440,7 +440,26 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'AGENT_PRIVATE_KEY not set' }, { status: 500 });
     }
 
-    const allMarkets = await fetchOnchainMarkets();
+    // Snapshot-first, stale-tolerant market list. The resolver only needs the CANDIDATE set from
+    // the list (closed agent markets); every actual propose/settle re-reads that one market's
+    // on-chain state with small targeted calls that fit through throttled public RPCs. The old
+    // unconditional full chain read 500'd the entire cron under RPC saturation — which is why V3
+    // markets sat Closed with no proposal and payWinners never produced a receipt.
+    let allMarkets;
+    const snapshot = await readMarketListSnapshot();
+    if (snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 30 * 60 * 1000) {
+      allMarkets = snapshot.markets;
+    } else {
+      try {
+        allMarkets = await fetchOnchainMarkets();
+      } catch (chainError) {
+        if (snapshot && snapshot.markets.length > 0) {
+          allMarkets = snapshot.markets;
+        } else {
+          throw chainError;
+        }
+      }
+    }
     const now = Date.now();
     const expired = allMarkets.filter((market) => {
       if (market.status === 'Resolved' || market.status === 'Canceled') return false;

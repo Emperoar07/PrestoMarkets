@@ -86,9 +86,14 @@ function getArcChain() {
 // Read-only client for pre-trade safety checks that must run regardless of wallet mode —
 // the Circle and passkey paths never build a wallet-bound client, so gates that live behind
 // getClients() (EOA-only) would silently not apply to them.
+let sharedGateReadClient: ReturnType<typeof createPublicClient> | null = null;
+
 function getReadClient() {
+  // Memoized: the ranked transport's endpoint-health knowledge lives on the instance — a fresh
+  // client per call re-walked dead providers on every pre-trade check (see getClients note).
+  if (sharedGateReadClient) return sharedGateReadClient;
   const config = getArcConfig();
-  return createPublicClient({
+  return sharedGateReadClient = createPublicClient({
     chain: getArcChain(),
     transport: arcReadTransport(config.rpcUrl || undefined),
     batch: ARC_READ_BATCH,
@@ -188,6 +193,8 @@ function getCloseTimestamp(closeDate: string) {
   return BigInt(closeTime);
 }
 
+let sharedTradeReadClient: ReturnType<typeof createPublicClient> | null = null;
+
 async function getClients() {
   const config = requireConfig();
 
@@ -233,13 +240,20 @@ async function getClients() {
     }
   }
 
-  const publicClient = createPublicClient({
-    chain,
-    transport: arcReadTransport(config.rpcUrl),
-    batch: ARC_READ_BATCH,
-    // Sub-second Arc finality: poll fast so trade/approve receipts confirm in the UI promptly.
-    pollingInterval: 800,
-  });
+  // Reuse ONE read client across trades: the ranked transport's endpoint-health knowledge lives on
+  // the transport instance, so a fresh client per trade re-walked every dead provider before the
+  // wallet prompt could appear — the "takes forever to pop a transaction" lag. The wallet client
+  // stays per-call (accounts/chain can change); reads don't.
+  if (!sharedTradeReadClient) {
+    sharedTradeReadClient = createPublicClient({
+      chain,
+      transport: arcReadTransport(config.rpcUrl),
+      batch: ARC_READ_BATCH,
+      // Sub-second Arc finality: poll fast so trade/approve receipts confirm in the UI promptly.
+      pollingInterval: 800,
+    });
+  }
+  const publicClient = sharedTradeReadClient;
 
   return { account, config, publicClient, walletClient };
 }
