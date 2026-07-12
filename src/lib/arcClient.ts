@@ -104,14 +104,31 @@ export function arcShouldThrow(error: unknown): boolean {
 }
 
 /**
- * Fallback HTTP transport across the ordered Arc RPCs. viem's `fallback` advances to the next
- * endpoint on error (so a throttled/down provider transparently fails over), each leg batches
- * JSON-RPC calls into a single request, and a per-endpoint timeout makes a hanging provider fail
- * over fast instead of stalling on the default 10s.
+ * Smart failover transport: viem RANKS the endpoints in the background (an eth_blockNumber ping
+ * per endpoint every 60s, scored ~70% stability / ~30% latency) and reorders the chain live. An
+ * exhausted provider sinks to the bottom within one sample round — so requests stop paying its
+ * dead-leg latency — and it climbs back automatically once its credit refills. No manual
+ * reordering, no redeploys: the healthiest endpoint always leads.
+ * Per-request, `fallback` still advances past errors (arcShouldThrow covers quota/rate-limit
+ * codes) with a per-endpoint timeout so one hung leg can't stall a call.
  */
+export function arcFallbackTransport(urls: string[], opts: { timeout?: number } = {}) {
+  const transports = urls.map((url) => http(url, { batch: true, timeout: opts.timeout ?? ARC_RPC_TIMEOUT_MS }));
+  return fallback(transports, {
+    rank: {
+      interval: 60_000,
+      sampleCount: 5,
+      timeout: 2_000,
+      weights: { stability: 0.7, latency: 0.3 },
+      // eth_blockNumber instead of the default net_listening — universally supported by Arc providers.
+      ping: ({ transport }) => transport.request({ method: 'eth_blockNumber' }) as Promise<unknown>,
+    },
+    shouldThrow: arcShouldThrow,
+  });
+}
+
 export function arcReadTransport(rpcUrl?: string) {
-  const transports = arcRpcUrls(rpcUrl).map((url) => http(url, { batch: true, timeout: ARC_RPC_TIMEOUT_MS }));
-  return fallback(transports, { rank: false, shouldThrow: arcShouldThrow });
+  return arcFallbackTransport(arcRpcUrls(rpcUrl));
 }
 
 export function createArcChain(rpcUrls?: string[]) {

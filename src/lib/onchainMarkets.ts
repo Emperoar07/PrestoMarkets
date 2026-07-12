@@ -1,6 +1,6 @@
 import { createPublicClient, fallback, formatUnits, http, isAddress, type Address } from 'viem';
 import { getArcConfig, getArcChainId, collateralSymbolForAddress } from './arcConfig';
-import { createArcChain, arcShouldThrow } from './arcClient';
+import { createArcChain, arcFallbackTransport } from './arcClient';
 import { erc20Abi, prestoLmsrMarketAbi, prestoLmsrMarketFactoryAbi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from './contracts';
 import { isSafeResolutionUri, parseMarketMetadata } from './marketMetadata';
 import { stripSourceFromDescription } from './sourcePrivacy';
@@ -507,7 +507,7 @@ async function readOnchainMarkets() {
     // (each batch request returns in a few seconds) while abandoning a leg that isn't keeping up.
     // arcShouldThrow makes failover advance past rate-limit/daily-quota errors (which viem otherwise
     // maps to -32003 and refuses to fail over on) so a throttled provider can't strand the read.
-    transport: fallback(config.rpcUrls.map((url) => http(url, { timeout: 7_000 })), { rank: false, shouldThrow: arcShouldThrow }),
+    transport: arcFallbackTransport(config.rpcUrls, { timeout: 7_000 }),
     batch: {
       multicall: {
         batchSize: 16_384,
@@ -656,7 +656,7 @@ export async function fetchOnchainMarket(
     // (each batch request returns in a few seconds) while abandoning a leg that isn't keeping up.
     // arcShouldThrow makes failover advance past rate-limit/daily-quota errors (which viem otherwise
     // maps to -32003 and refuses to fail over on) so a throttled provider can't strand the read.
-    transport: fallback(config.rpcUrls.map((url) => http(url, { timeout: 7_000 })), { rank: false, shouldThrow: arcShouldThrow }),
+    transport: arcFallbackTransport(config.rpcUrls, { timeout: 7_000 }),
     batch: { multicall: { batchSize: 16_384, wait: 10 } },
   });
   try {
