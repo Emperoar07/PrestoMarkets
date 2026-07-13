@@ -11,7 +11,7 @@
 import { agentCreateMarket } from './agentWallet';
 import { callLlmJson, extractJsonObject } from './llmFallback';
 import { AGENT_PLATFORM_CONTEXT } from './agentContext';
-import { fetchOnchainMarkets } from './onchainMarkets';
+import { fetchOnchainMarkets, readMarketListSnapshot } from './onchainMarkets';
 import { sanitizeFeedText } from './feedSanitizer';
 import { fetchPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
 import { resolveSubjectImageUrl, brandedMarketImage, detectCountryFlagUrl } from './marketSubjectImage';
@@ -2434,20 +2434,38 @@ function weightedRandomPick<T>(items: { item: T; weight: number }[]): T | null {
   return items[items.length - 1].item;
 }
 
-export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Promise<PipelineResult[]> {
+export async function runAgentPipeline(input: { trends?: TrendItem[]; deadlineMs?: number } = {}): Promise<PipelineResult[]> {
+  // Wall-clock deadline: without it the pipeline ran past Vercel's 300s kill on slow RPC days —
+  // the tick's curl timed out, the function died mid-run, and NO markets were created for days.
+  // Loops stop at the deadline and return partial results; the next tick continues.
+  const deadlineMs = input.deadlineMs ?? Number.POSITIVE_INFINITY;
+  const outOfTime = () => Date.now() > deadlineMs;
+
   const trends = input.trends?.length ? input.trends : await fetchTrends();
   let existingMarkets: AppMarket[];
-  try {
-    // Force a fresh read so a market created on a recent tick (or by the seed cron) is always in
-    // the dedup set — a stale 60s cache here is how the same fixture slips through as a duplicate.
-    existingMarkets = await fetchOnchainMarkets({ force: true });
-  } catch (error) {
-    return [{
-      ok: false,
-      topic: '(pipeline)',
-      stage: 'chain-state',
-      reason: `Could not read existing Arc markets; refusing to create until chain state is available. ${error instanceof Error ? error.message : String(error)}`,
-    }];
+  // Dedup set: a FRESH snapshot (<10 min — refreshed continuously by /api/markets and the image
+  // cron) is instant and safely covers the 2h-apart ticks; the forced chain read is the fallback,
+  // not the default, because on a throttled RPC it alone can eat most of the run's budget.
+  const snapshot = await readMarketListSnapshot().catch(() => null);
+  if (snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 10 * 60 * 1000) {
+    existingMarkets = snapshot.markets as AppMarket[];
+  } else {
+    try {
+      existingMarkets = await fetchOnchainMarkets({ force: true });
+    } catch (error) {
+      // Any-age snapshot still beats refusing to run — same-run dedup plus the fixture-key check
+      // covers the tick gap, and creating against slightly stale state is recoverable (dedupe cron).
+      if (snapshot && snapshot.markets.length > 0) {
+        existingMarkets = snapshot.markets as AppMarket[];
+      } else {
+        return [{
+          ok: false,
+          topic: '(pipeline)',
+          stage: 'chain-state',
+          reason: `Could not read existing Arc markets; refusing to create until chain state is available. ${error instanceof Error ? error.message : String(error)}`,
+        }];
+      }
+    }
   }
   const results: PipelineResult[] = [];
 
@@ -2499,6 +2517,10 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   // World Cup fixtures get reserved headroom above the regular cap, so ordinary trend markets
   // can never crowd a match out of existence. The fixture lane is still bounded.
   for (const trend of fixtureTrends) {
+    if (outOfTime()) {
+      results.push({ ok: false, topic: trend.topic, stage: 'time-budget', reason: 'Run deadline reached; remaining fixtures continue next tick.' });
+      break;
+    }
     if (liveActive >= AGENT_ACTIVE_MARKET_CAP + WORLD_CUP_CAP_RESERVE) {
       results.push({ ok: false, topic: trend.topic, stage: 'cap', reason: 'Fixture cap reserve exhausted; remaining World Cup fixtures retry next tick.' });
       break;
@@ -2593,6 +2615,10 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
         });
         continue;
       }
+      if (outOfTime()) {
+        results.push({ ok: false, topic: trend.topic, stage: 'time-budget', reason: 'Run deadline reached during classification; remaining trends defer to next tick.' });
+        continue;
+      }
       if (classifyCalls >= CLASSIFY_CAP) {
         results.push({
           ok: false,
@@ -2644,7 +2670,7 @@ export async function runAgentPipeline(input: { trends?: TrendItem[] } = {}): Pr
   let liveNonFixtureActive = activeNonFixtureMarkets;
   const pool = [...topPool];
 
-  while (createdThisRun < AGENT_PER_RUN_CAP && liveNonFixtureActive < AGENT_ACTIVE_MARKET_CAP && pool.length > 0) {
+  while (createdThisRun < AGENT_PER_RUN_CAP && liveNonFixtureActive < AGENT_ACTIVE_MARKET_CAP && pool.length > 0 && !outOfTime()) {
     const picked = weightedRandomPick(pool.map((s) => ({
       item: s,
       weight: s.classification.momentumScore + agentTrendPriorityBoost(s.trend) / 100,

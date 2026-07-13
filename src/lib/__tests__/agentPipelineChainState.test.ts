@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../onchainMarkets', () => ({
   fetchOnchainMarkets: vi.fn().mockRejectedValue(new Error('Arc RPC unavailable')),
+  // No snapshot either — with BOTH sources unavailable the pipeline must still fail closed.
+  readMarketListSnapshot: vi.fn().mockResolvedValue(null),
 }));
 
 describe('agent pipeline chain-state safety', () => {

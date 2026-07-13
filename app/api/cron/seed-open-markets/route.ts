@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
+import { fetchOnchainMarkets, readMarketListSnapshot } from '@/lib/onchainMarkets';
 import { agentBuyShares, agentReadTotalShares, ensureAgentFunded, getAgentAddress, agentReadLmsrSeeded, agentSeedLmsrMarket, agentCancelMarket } from '@/lib/agentWallet';
 import { verifyBearer } from '@/lib/authCompare';
 
@@ -28,10 +28,21 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'AGENT_PRIVATE_KEY not set' }, { status: 500 });
     }
 
+    // Wall-clock budget so the run answers inside the workflow's 290s curl even on a slow RPC day;
+    // remaining markets are picked up by the next tick (the loop is idempotent).
+    const startedAt = Date.now();
+    const TIME_BUDGET_MS = 230_000;
+
     // Top up the agent from the faucet if it's low before spending on seeds.
     await ensureAgentFunded().catch(() => undefined);
 
-    const allMarkets = await fetchOnchainMarkets();
+    // Snapshot-first: seeding doesn't need block-fresh data (agentReadLmsrSeeded re-checks each
+    // market on-chain anyway), and the full chain read alone can eat the whole budget when the
+    // RPC pool is throttled.
+    const snapshot = await readMarketListSnapshot().catch(() => null);
+    const allMarkets = snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 30 * 60 * 1000
+      ? snapshot.markets
+      : await fetchOnchainMarkets();
     const open = allMarkets.filter((market) =>
       (market.status === 'Open' || market.status === 'Closing soon')
       && market.resolutionMode === 'Agent assisted'
@@ -42,6 +53,7 @@ export async function GET(req: NextRequest) {
     const lmsrFixed: Array<{ marketId: string; title: string; action: 'seeded' | 'canceled'; detail?: string }> = [];
 
     for (const market of open) {
+      if (Date.now() - startedAt > TIME_BUDGET_MS) break;
       // V3 LMSR markets are seeded with a single seed() call (the subsidy funds all outcomes). If a
       // market's seed never landed it is unbuyable (buy reverts NotSeeded), so seed it now — and if
       // the agent can't afford the seed, cancel it so users stop hitting reverts on a dead market.

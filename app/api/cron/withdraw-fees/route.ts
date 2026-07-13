@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { formatUnits } from 'viem';
-import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
+import { fetchOnchainMarkets, readMarketListSnapshot } from '@/lib/onchainMarkets';
 import { agentReadLmsrAccruedFees, agentWithdrawLmsrFees, getAgentAddress } from '@/lib/agentWallet';
 import { verifyBearer } from '@/lib/authCompare';
 
@@ -30,7 +30,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'AGENT_PRIVATE_KEY not set' }, { status: 500 });
     }
 
-    const all = await fetchOnchainMarkets();
+    const snapshot = await readMarketListSnapshot().catch(() => null);
+    const all = snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 30 * 60 * 1000
+      ? snapshot.markets
+      : await fetchOnchainMarkets();
     const amm = all.filter((market) => market.amm);
 
     const swept: Array<{ marketId: string; title: string; amount: string; txHash?: string }> = [];
@@ -38,7 +41,9 @@ export async function GET(req: NextRequest) {
     const errors: Array<{ marketId: string; error: string }> = [];
     let totalSwept6 = BigInt(0);
 
+    const startedAt = Date.now();
     for (const market of amm) {
+      if (Date.now() - startedAt > 230_000) break;
       const accrued = await agentReadLmsrAccruedFees(market.id);
       if (accrued === null) {
         errors.push({ marketId: market.id, error: 'read accruedFees6 failed' });
