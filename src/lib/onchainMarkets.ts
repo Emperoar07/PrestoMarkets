@@ -720,6 +720,58 @@ async function saveMarketListSnapshot(markets: AppMarket[]) {
 }
 
 /**
+ * Refresh ONLY the volume figures on a snapshot's live markets — one multicall round trip for the
+ * whole grid (V2 volume = totalCollateral, V3 = the pool's collateral balance), versus the 10-30s
+ * full read. Cards were showing volumes as old as the last successful full chain read; this keeps
+ * the number honest even when the snapshot itself is minutes old. Best-effort and time-boxed: on
+ * any failure the snapshot is served unpatched.
+ */
+export async function hydrateSnapshotVolumes(markets: AppMarket[], timeoutMs = 4_500): Promise<AppMarket[]> {
+  if (typeof window !== 'undefined') return markets;
+  const config = getArcConfig();
+  if (!config.rpcUrl) return markets;
+  const live = markets.filter((m) => (m.status === 'Open' || m.status === 'Closing soon') && isAddress(m.id));
+  if (live.length === 0) return markets;
+  try {
+    const client = createPublicClient({
+      chain: { ...createArcChain(config.rpcUrls), id: getArcChainId() },
+      transport: arcFallbackTransport(config.rpcUrls, { timeout: Math.min(timeoutMs, 4_000) }),
+      batch: { multicall: { batchSize: 16_384, wait: 10 } },
+    });
+    const usdc = config.usdcAddress as Address;
+    const reads = live.map((m) => (m.amm
+      ? client.readContract({
+          address: (m.collateralAddress && isAddress(m.collateralAddress) ? m.collateralAddress : usdc) as Address,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [m.id as Address],
+        })
+      : client.readContract({ address: m.id as Address, abi: prestoMarketAbi, functionName: 'totalCollateral' })
+    ) as Promise<bigint>);
+    const settled = await Promise.race([
+      Promise.allSettled(reads),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    ]);
+    if (!settled) return markets;
+    const freshVolume = new Map<string, string>();
+    settled.forEach((result, i) => {
+      if (result.status === 'fulfilled' && typeof result.value === 'bigint') {
+        freshVolume.set(live[i].id.toLowerCase(), formatOnchainUsd(result.value));
+      }
+    });
+    if (freshVolume.size === 0) return markets;
+    return markets.map((m) => {
+      const volume = freshVolume.get(m.id.toLowerCase());
+      if (!volume || volume === m.volume) return m;
+      // amm liquidity is the same pool figure; keep the two consistent on the card.
+      return m.amm ? { ...m, volume, liquidity: volume } : { ...m, volume };
+    });
+  } catch {
+    return markets;
+  }
+}
+
+/**
  * Latest persisted market list + its age. Used by /api/markets as the instant fast path on cold
  * instances; callers decide how stale is acceptable. null when no DB or no snapshot yet.
  */
