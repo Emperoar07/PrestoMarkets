@@ -12,6 +12,7 @@ import { marketMetadataOverrides, marketListCache, marketFlags } from './db/sche
 import { eq } from 'drizzle-orm';
 import { hasGoodImage } from './imageQuality';
 import { logger } from './logger';
+import { mergeSyncedMarket } from './marketSync';
 const MARKET_ADDRESS_BATCH_SIZE = 50;
 const MARKET_HYDRATION_BATCH_SIZE = 32; // Increased from 8 for faster parallel hydration
 const MAX_MARKETS = 500;
@@ -866,4 +867,14 @@ export async function readMarketListSnapshot(): Promise<{ markets: AppMarket[]; 
   } catch {
     return null;
   }
+}
+
+/** Persist one confirmed market read without forcing a full factory scan. */
+export async function patchMarketListSnapshot(fresh: AppMarket): Promise<void> {
+  if (typeof window !== 'undefined' || !hasDatabaseUrl()) return;
+  const snapshot = await readMarketListSnapshot();
+  if (!snapshot) return;
+  const merged = mergeSyncedMarket(snapshot.markets, fresh);
+  await getDb().update(marketListCache).set({ payload: merged }).where(eq(marketListCache.key, 'latest'));
+  if (marketCache) marketCache = { at: marketCache.at, markets: mergeSyncedMarket(marketCache.markets, fresh) };
 }

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAddress } from 'viem';
 import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
-import { getMarketProbabilityHistory } from '@/lib/marketHistory';
-import { listMarketSnapshots, mergeHistory } from '@/lib/marketSnapshots';
+import { listMarketSnapshots } from '@/lib/marketSnapshots';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,12 +20,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Valid market id is required.' }, { status: 400 });
   }
 
-  // Two complementary sources: trade events give intra-hour moves over the recent block
-  // window; stored snapshots give dense long-range (1W/1M/All) history.
-  const [events, snapshots] = await Promise.all([
-    getMarketProbabilityHistory(id).catch(() => []),
-    listMarketSnapshots(id).catch(() => []),
-  ]);
-  const history = mergeHistory(events, snapshots);
+  // Confirmed trade syncs and the scheduled recorder persist the contract's actual quoted odds.
+  // Serving those snapshots avoids per-view RPC log scans and, unlike parimutuel reconstruction,
+  // remains correct for LMSR buys and sells.
+  const history = await listMarketSnapshots(id).catch(() => []);
   return NextResponse.json({ history }, { headers: cacheHeaders });
 }

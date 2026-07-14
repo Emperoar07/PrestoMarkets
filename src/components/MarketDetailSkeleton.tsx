@@ -83,19 +83,6 @@ export function MarketDetailSkeleton() {
             {/* CTA */}
             <Bar className="mt-5 h-12 rounded-[12px]" />
           </div>
-
-          {/* Activity timeline stub */}
-          <div className="mt-6 rounded-[16px] border border-white/[0.05] bg-[#0c121d] p-5">
-            <Bar className="h-4 w-24" />
-            <div className="mt-4 space-y-3.5">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <div className="h-6 w-6 animate-pulse rounded-full bg-white/[0.05]" />
-                  <Bar className="h-3.5 flex-1" />
-                </div>
-              ))}
-            </div>
-          </div>
         </aside>
       </div>
     </main>

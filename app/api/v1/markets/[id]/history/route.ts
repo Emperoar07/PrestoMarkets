@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkFixedWindowRateLimit, getClientIp } from '@/lib/requestGuards';
-import { getMarketProbabilityHistory } from '@/lib/marketHistory';
+import { listMarketSnapshots } from '@/lib/marketSnapshots';
 import { getPublicApiHeaders, publicOptionsResponse } from '@/lib/publicApi';
 import { getPublicMarket } from '@/lib/publicMarketSource';
 import { toMarketProbabilityV1 } from '@/lib/apiContracts';
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ apiVersion: 1, error: 'Market not found.' }, { status: 404, headers });
   }
 
-  const history = await getMarketProbabilityHistory(market.id);
+  const history = await listMarketSnapshots(market.id);
   return NextResponse.json({
     apiVersion: 1,
     data: {

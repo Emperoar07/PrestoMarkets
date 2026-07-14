@@ -148,8 +148,7 @@ export const marketListCache = pgTable('market_list_cache', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// Periodic odds snapshots per market so charts have dense, truthful history over long ranges
-// (the on-chain event reconstruction only covers a short recent block window).
+// Confirmed-trade and periodic odds snapshots per market, used as the chart's truthful history.
 export const marketSnapshots = pgTable('market_snapshots', {
   marketId: text('market_id').notNull(),
   capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),

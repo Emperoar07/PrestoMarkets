@@ -1,7 +1,11 @@
 import { and, asc, eq, gte, lt, sql } from 'drizzle-orm';
 import { getDb, hasDatabaseUrl } from './db/client';
 import { marketSnapshots } from './db/schema';
-import type { ProbabilityPoint } from './marketHistory';
+
+export type ProbabilityPoint = {
+  t: number;
+  probabilities: number[];
+};
 
 // Keep ~90 days of snapshots so the table can't grow unbounded on testnet.
 const SNAPSHOT_RETENTION_DAYS = 90;
@@ -46,22 +50,6 @@ export async function listMarketSnapshots(marketId: string, sinceMs?: number): P
     t: row.capturedAt.getTime(),
     probabilities: Array.isArray(row.probabilities) ? row.probabilities : [],
   }));
-}
-
-/**
- * Merge event-derived history with stored snapshots into one ascending series.
- * Snapshots provide long-range density; trade events provide intra-hour moves.
- */
-export function mergeHistory(events: ProbabilityPoint[], snapshots: ProbabilityPoint[]): ProbabilityPoint[] {
-  const merged = [...events, ...snapshots].sort((a, b) => a.t - b.t);
-  // Drop near-duplicate timestamps (same minute, same source resolution) to keep payloads lean.
-  const out: ProbabilityPoint[] = [];
-  for (const point of merged) {
-    const prev = out[out.length - 1];
-    if (prev && Math.abs(point.t - prev.t) < 30_000) continue;
-    out.push(point);
-  }
-  return out.slice(-2_000);
 }
 
 /** Count helper used by the cron response for observability. */

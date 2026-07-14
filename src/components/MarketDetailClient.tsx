@@ -20,10 +20,6 @@ const MarketComments = dynamic(
   () => import('./MarketComments').then((m) => ({ default: m.MarketComments })),
   { ssr: false, loading: () => <div className="mt-8 h-40 rounded-[14px] bg-white/[0.02]" /> },
 );
-const MarketActivityTimeline = dynamic(
-  () => import('./MarketActivityTimeline').then((m) => ({ default: m.MarketActivityTimeline })),
-  { ssr: false, loading: () => <div className="mt-8 h-48 rounded-[14px] bg-white/[0.02]" /> },
-);
 import { ShareMarketButton } from './EmbedSnippetButton';
 import { WatchlistButton } from './WatchlistButton';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
@@ -43,6 +39,7 @@ import { parseUnits, formatUnits, type Address } from 'viem';
 import { collateralUnit } from '@/lib/arcConfig';
 import { identifyAsset } from '@/lib/priceResolution';
 import { detectCountryFlagUrl } from '@/lib/marketSubjectImage';
+import { scheduleMarketSnapshotSync } from '@/lib/marketSyncClient';
 import Link from 'next/link';
 import { ChevronDown, Loader2, AlertCircle, Lock, CheckCircle, Clock, XCircle } from 'lucide-react';
 
@@ -208,6 +205,21 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
 
   const [livePrice, setLivePrice] = useState<number | null>(null);
   const [isFetchingPrice, setIsFetchingPrice] = useState(false);
+
+  // Background page refreshes read the persisted snapshot rather than Arc. Confirmed transactions
+  // update it through /sync, so other viewers see fresh odds, volume and activity too.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'visible') void refreshMarket(marketId, { source: 'snapshot' });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 15_000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [marketId, refreshMarket]);
 
   // V3 LMSR live quote: fee-inclusive cost to buy (or refund to sell) the typed share quantity,
   // read on-chain and debounced. `value` is in collateral units (6dp); `avgPrice` is value / shares.
@@ -597,6 +609,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
       // background refresh, so patch just this market (sub-second) + the portfolio here. placeTrade /
       // addLiquidity already schedule their own refresh; this single-market read on top is cheap.
       if (result?.ok && marketId) {
+        scheduleMarketSnapshotSync(marketId, result.txHash);
         void refreshMarket(marketId);
         void refreshAccountPortfolio();
       }
@@ -868,8 +881,6 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
           </section>
 
           <section className="min-w-0 order-3 lg:order-none lg:col-start-1 lg:row-start-2">
-
-            <MarketActivityTimeline marketId={marketId} />
 
             <div className="mt-8">
               <h2 className="text-base font-black text-white">Market activity</h2>

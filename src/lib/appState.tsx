@@ -34,6 +34,7 @@ import type { Market, MarketType, ResolutionMode } from './markets';
 import type { PortfolioActivity, Position } from './portfolio';
 import type { StableSymbol } from './walletBalance';
 import { readPayWith, writePayWith } from './payWithStore';
+import { scheduleMarketSnapshotSync } from './marketSyncClient';
 
 type OutcomeLabel = string;
 
@@ -92,7 +93,7 @@ type AppStateValue = {
   isLoadingMarkets: boolean;
   isLoadingAccount: boolean;
   refreshMarkets: (options?: { force?: boolean }) => Promise<AppMarket[]>;
-  refreshMarket: (id: string) => Promise<void>;
+  refreshMarket: (id: string, options?: { source?: 'chain' | 'snapshot' }) => Promise<void>;
   refreshAccountPortfolio: () => Promise<void>;
   createMarket: (input: CreateMarketInput) => Promise<LiveActionResult>;
   placeTrade: (input: { marketId: string; outcome: OutcomeLabel; outcomeIndex?: number; amount: number; shares?: number; payWith?: StableSymbol }) => Promise<LiveActionResult>;
@@ -182,10 +183,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // instantly while the full refresh catches positions/portfolio in the background. Ordering fields
   // (createdSortKey/createdAt) come from the single read without creationInfo, so we keep them from
   // the existing market to avoid the card jumping position after a trade.
-  const refreshMarket = useCallback(async (id: string) => {
+  const refreshMarket = useCallback(async (id: string, options: { source?: 'chain' | 'snapshot' } = {}) => {
     const key = id.toLowerCase();
     const existing = marketsRef.current.find((m) => m.id.toLowerCase() === key);
-    const fresh = await fetchOnchainMarket(id, { isAmm: existing?.amm });
+    let fresh: AppMarket | null = null;
+    if (options.source === 'snapshot') {
+      try {
+        const response = await fetch(`/api/markets/${id}`, { cache: 'no-store' });
+        if (response.ok) {
+          const payload = await response.json() as { market?: AppMarket };
+          fresh = payload.market ?? null;
+        }
+      } catch {
+        return;
+      }
+    } else {
+      fresh = await fetchOnchainMarket(id, { isAmm: existing?.amm });
+    }
     if (!fresh) return;
     const merged = existing
       ? { ...fresh, createdSortKey: existing.createdSortKey, createdAt: existing.createdAt || fresh.createdAt }
@@ -252,17 +266,29 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [connectedWallet?.address, refreshMarkets, refreshAccountPortfolio]);
 
   const schedulePostTransactionRefresh = useCallback((marketId?: string) => {
-    // Non-blocking. If a specific market was traded, patch just that card first (sub-second) so its
-    // odds update almost instantly, then refresh once right away plus a couple of light follow-ups
-    // to catch RPC propagation and update positions/portfolio. Never blocks the trade return.
-    if (marketId) void refreshMarket(marketId);
+    // A confirmed market action needs one targeted chain read, not repeated full-factory scans.
+    // Follow-ups consume the receipt-verified persisted snapshot while account reads update the
+    // connected wallet. Creation still uses the full refresh path because its address is unknown.
+    if (marketId) {
+      void refreshMarket(marketId);
+      void refreshAccountPortfolio();
+      for (const delay of POST_TX_REFRESH_DELAYS_MS) {
+        window.setTimeout(() => {
+          void refreshMarket(marketId, { source: 'snapshot' });
+          void refreshAccountPortfolio();
+        }, delay);
+      }
+      window.dispatchEvent(new CustomEvent('presto:balances-refresh'));
+      return;
+    }
+
     void refreshAll({ force: true });
     for (const delay of POST_TX_REFRESH_DELAYS_MS) {
       window.setTimeout(() => {
         void refreshAll({ force: true });
       }, delay);
     }
-  }, [refreshAll, refreshMarket]);
+  }, [refreshAll, refreshMarket, refreshAccountPortfolio]);
 
   const createMarket = useCallback(async (input: CreateMarketInput) => {
     const result = await createLiveMarket(input satisfies CreateLiveMarketInput);
@@ -304,6 +330,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       });
       if (lmsrResult.ok && !lmsrResult.approvalOnly) {
         if (input.payWith) writePayWith(connectedWallet?.address, input.marketId, input.payWith);
+        scheduleMarketSnapshotSync(input.marketId, lmsrResult.txHash);
         schedulePostTransactionRefresh(input.marketId);
       }
       return lmsrResult;
@@ -321,6 +348,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       writePayWith(connectedWallet?.address, input.marketId, input.payWith);
     }
     if (result.ok && !result.approvalOnly) {
+      scheduleMarketSnapshotSync(input.marketId, result.txHash);
       // Notify market creator that someone traded on their market. Best effort.
       fetch(`/api/markets/${input.marketId}/trade-notify`, {
         method: 'POST',

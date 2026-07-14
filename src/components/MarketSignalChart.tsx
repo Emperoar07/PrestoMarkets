@@ -33,6 +33,7 @@ function buildStepPath(points: number[], width: number, height: number, offsetX:
 function MarketSignalChartComponent({ market, compact = false, live = false }: { market: MarketSignalChartMarket; compact?: boolean; live?: boolean }) {
   const [activeTab, setActiveTab] = useState<string>('1D');
   const [rawHistory, setRawHistory] = useState<Array<{ t: number; probabilities: number[] }> | null>(null);
+  const liveOddsKey = market.outcomes.map((outcome) => outcome.odds).join(',');
 
   useEffect(() => {
     if (!live || !market.id) return undefined;
@@ -48,7 +49,7 @@ function MarketSignalChartComponent({ market, compact = false, live = false }: {
     return () => {
       cancelled = true;
     };
-  }, [live, market.id]);
+  }, [live, market.id, liveOddsKey]);
 
   const filteredHistory = useMemo(() => {
     if (!rawHistory || rawHistory.length === 0) return null;
