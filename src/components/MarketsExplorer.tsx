@@ -8,7 +8,7 @@ import { WorldCupFixturesPanel } from './WorldCupFixturesPanel';
 // rows of the 4-column grid, so the first paint stays light even with hundreds of markets.
 const MARKETS_PAGE_SIZE = 12;
 import { MarketSignalChart } from './MarketSignalChart';
-import { SkeletonCard } from './SkeletonCard';
+import { BrandLoader } from './BrandLoader';
 import { QuickBuyModal } from './QuickBuyModal';
 import { FilterDropdown } from './FilterDropdown';
 import { ArrowUpDown, CalendarDays, CircleDot } from 'lucide-react';
@@ -373,10 +373,8 @@ export function MarketsExplorer() {
 
       {/* Market grid */}
       {isLoadingMarkets ? (
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <SkeletonCard key={i} />
-          ))}
+        <div className="flex min-h-[420px] items-center justify-center">
+          <BrandLoader />
         </div>
       ) : visibleMarkets.length > 0 ? (
         <>
