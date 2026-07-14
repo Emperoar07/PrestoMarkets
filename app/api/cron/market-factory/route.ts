@@ -5,8 +5,9 @@
  * Protected by CRON_SECRET. Vercel sends it as Authorization: Bearer <secret>.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { runAgentPipeline } from '@/lib/agentPipeline';
+import { appendNewMarketsToSnapshot } from '@/lib/onchainMarkets';
 import { verifyBearer } from '@/lib/authCompare';
 import { runWithCronLease } from '@/lib/cronLease';
 
@@ -40,6 +41,9 @@ export async function GET(req: NextRequest) {
     const results = leasedRun.value;
 
     const created = results.filter((r) => r.ok);
+    // Make freshly created markets visible on the grid immediately — the snapshot ingests them
+    // incrementally after the response instead of waiting for a successful full chain read.
+    if (created.length > 0) after(async () => { await appendNewMarketsToSnapshot().catch(() => undefined); });
     const rejected = results.filter((r) => !r.ok);
 
     return NextResponse.json({

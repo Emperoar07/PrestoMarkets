@@ -1,5 +1,5 @@
 import { NextResponse, after } from 'next/server';
-import { fetchOnchainMarkets, hydrateSnapshotVolumes, readMarketListSnapshot } from '@/lib/onchainMarkets';
+import { appendNewMarketsToSnapshot, fetchOnchainMarkets, hydrateSnapshotVolumes, readMarketListSnapshot } from '@/lib/onchainMarkets';
 import type { AppMarket } from '@/lib/appState';
 
 export const runtime = 'nodejs';
@@ -52,7 +52,12 @@ export async function GET() {
       let markets = snapshot.markets;
       if (snapshot.ageMs > 60_000) {
         markets = await hydrateSnapshotVolumes(markets);
-        after(async () => { await fetchOnchainMarkets({ force: true }).catch(() => undefined); });
+        after(async () => {
+        // Cheap incremental ingest first (new markets show within a minute even when the full
+        // read below keeps failing under RPC saturation), then attempt the full refresh.
+        await appendNewMarketsToSnapshot().catch(() => undefined);
+        await fetchOnchainMarkets({ force: true }).catch(() => undefined);
+      });
       }
       const isStale = snapshot.ageMs >= SNAPSHOT_MAX_AGE_MS;
       return NextResponse.json(
@@ -78,7 +83,12 @@ export async function GET() {
       // chain read. A STALE snapshot beats an empty grid: serve whatever we last knew (short CDN
       // cache so recovery shows fast) and keep retrying in the background.
       if (snapshot && snapshot.markets.length > 0) {
-        after(async () => { await fetchOnchainMarkets({ force: true }).catch(() => undefined); });
+        after(async () => {
+        // Cheap incremental ingest first (new markets show within a minute even when the full
+        // read below keeps failing under RPC saturation), then attempt the full refresh.
+        await appendNewMarketsToSnapshot().catch(() => undefined);
+        await fetchOnchainMarkets({ force: true }).catch(() => undefined);
+      });
         return NextResponse.json(
           { markets: slimImages(await hydrateSnapshotVolumes(snapshot.markets)), stale: true },
           { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=30, stale-while-revalidate=120' } },

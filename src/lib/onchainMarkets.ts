@@ -126,6 +126,36 @@ type MarketCreationInfo = {
   sortKey: number;
 };
 
+type FactoryEntry = {
+  address: Address;
+  abi: typeof prestoMarketFactoryAbi | typeof prestoMultiOutcomeMarketFactoryAbi | typeof prestoLmsrMarketFactoryAbi;
+  lmsr?: boolean;
+};
+
+// Every factory whose markets the app serves: the active USDC/EURC pairs (V1/V2 + V3 LMSR) plus
+// the retired ones, deduped by address — a factory present as both active and legacy during a
+// cutover must never be read twice or every one of its markets would double-list.
+function buildUniqueFactories(config: ReturnType<typeof getArcConfig>): FactoryEntry[] {
+  const factories = [
+    config.factoryAddress ? { address: config.factoryAddress as Address, abi: prestoMarketFactoryAbi } : null,
+    config.multiOutcomeFactoryAddress ? { address: config.multiOutcomeFactoryAddress as Address, abi: prestoMultiOutcomeMarketFactoryAbi } : null,
+    config.eurcFactoryAddress ? { address: config.eurcFactoryAddress as Address, abi: prestoMarketFactoryAbi } : null,
+    config.eurcMultiOutcomeFactoryAddress ? { address: config.eurcMultiOutcomeFactoryAddress as Address, abi: prestoMultiOutcomeMarketFactoryAbi } : null,
+    config.lmsrFactoryAddress && isAddress(config.lmsrFactoryAddress) ? { address: config.lmsrFactoryAddress as Address, abi: prestoLmsrMarketFactoryAbi, lmsr: true } : null,
+    config.eurcLmsrFactoryAddress && isAddress(config.eurcLmsrFactoryAddress) ? { address: config.eurcLmsrFactoryAddress as Address, abi: prestoLmsrMarketFactoryAbi, lmsr: true } : null,
+    ...config.legacyFactoryAddresses.map((address) => ({ address: address as Address, abi: prestoMarketFactoryAbi })),
+    ...config.legacyMultiOutcomeFactoryAddresses.map((address) => ({ address: address as Address, abi: prestoMultiOutcomeMarketFactoryAbi })),
+    ...config.legacyLmsrFactoryAddresses.filter((address) => isAddress(address)).map((address) => ({ address: address as Address, abi: prestoLmsrMarketFactoryAbi, lmsr: true })),
+  ].filter(Boolean) as FactoryEntry[];
+  const seen = new Set<string>();
+  return factories.filter((factory) => {
+    const key = factory.address.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function readMarket(
   client: ReturnType<typeof createPublicClient>,
   address: Address,
@@ -516,34 +546,12 @@ async function readOnchainMarkets() {
     },
   });
 
-  const factories = [
-    config.factoryAddress ? { address: config.factoryAddress as Address, abi: prestoMarketFactoryAbi } : null,
-    config.multiOutcomeFactoryAddress ? { address: config.multiOutcomeFactoryAddress as Address, abi: prestoMultiOutcomeMarketFactoryAbi } : null,
-    // EURC-collateral factories — euro markets read alongside USDC ones (collateral() tags each).
-    config.eurcFactoryAddress ? { address: config.eurcFactoryAddress as Address, abi: prestoMarketFactoryAbi } : null,
-    config.eurcMultiOutcomeFactoryAddress ? { address: config.eurcMultiOutcomeFactoryAddress as Address, abi: prestoMultiOutcomeMarketFactoryAbi } : null,
-    // V3 LMSR factories (USDC + EURC). Their markets read on the LMSR path (live price as odds).
-    config.lmsrFactoryAddress && isAddress(config.lmsrFactoryAddress) ? { address: config.lmsrFactoryAddress as Address, abi: prestoLmsrMarketFactoryAbi, lmsr: true } : null,
-    config.eurcLmsrFactoryAddress && isAddress(config.eurcLmsrFactoryAddress) ? { address: config.eurcLmsrFactoryAddress as Address, abi: prestoLmsrMarketFactoryAbi, lmsr: true } : null,
-    // Retired factories: their markets stay readable so positions and claims never disappear.
-    ...config.legacyFactoryAddresses.map((address) => ({ address: address as Address, abi: prestoMarketFactoryAbi })),
-    ...config.legacyMultiOutcomeFactoryAddresses.map((address) => ({ address: address as Address, abi: prestoMultiOutcomeMarketFactoryAbi })),
-    ...config.legacyLmsrFactoryAddresses.filter((address) => isAddress(address)).map((address) => ({ address: address as Address, abi: prestoLmsrMarketFactoryAbi, lmsr: true })),
-  ].filter(Boolean) as { address: Address; abi: typeof prestoMarketFactoryAbi | typeof prestoMultiOutcomeMarketFactoryAbi | typeof prestoLmsrMarketFactoryAbi; lmsr?: boolean }[];
-  // Never read the same factory twice (e.g. an address present as both active and legacy during a
-  // cutover would duplicate every one of its markets in the grid).
-  const seenFactories = new Set<string>();
-  const uniqueFactories = factories.filter((factory) => {
-    const key = factory.address.toLowerCase();
-    if (seenFactories.has(key)) return false;
-    seenFactories.add(key);
-    return true;
-  });
+  const uniqueFactories = buildUniqueFactories(config);
   const marketAddresses: Address[] = [];
   const lmsrMarkets = new Set<string>();
   const fallbackOrder = new Map<string, number>();
 
-  for (const factory of factories) {
+  for (const factory of uniqueFactories) {
     const marketCount = await withRetry(() => client.readContract({
       address: factory.address,
       abi: factory.abi,
@@ -716,6 +724,75 @@ async function saveMarketListSnapshot(markets: AppMarket[]) {
       .onConflictDoUpdate({ target: marketListCache.key, set: { payload: markets, updatedAt: new Date() } });
   } catch (err) {
     logger.warn('onchain-markets', 'market list snapshot save failed', { error: String(err) });
+  }
+}
+
+/**
+ * Incrementally ingest NEWLY CREATED markets into the snapshot without a full grid read. The full
+ * read (10-30s, thousands of calls) is what keeps failing under RPC saturation — which left every
+ * market created after the last successful read INVISIBLE on the grid for days even though the
+ * agent was creating fine. This instead enumerates factory market addresses (a few batched
+ * multicalls), hydrates only the ones the snapshot doesn't know (capped per run), and appends them
+ * WITHOUT bumping the snapshot's age — so freshness semantics for the full read stay honest.
+ */
+export async function appendNewMarketsToSnapshot(maxNew = 10): Promise<number> {
+  if (typeof window !== 'undefined' || !hasDatabaseUrl()) return 0;
+  try {
+    const snapshot = await readMarketListSnapshot();
+    if (!snapshot || snapshot.markets.length === 0) return 0;
+    const known = new Set(snapshot.markets.map((m) => m.id.toLowerCase()));
+
+    const config = getArcConfig();
+    if (!config.rpcUrl) return 0;
+    const client = createPublicClient({
+      chain: { ...createArcChain(config.rpcUrls), id: getArcChainId() },
+      transport: arcFallbackTransport(config.rpcUrls, { timeout: 7_000 }),
+      batch: { multicall: { batchSize: 16_384, wait: 10 } },
+    });
+
+    const missing: Array<{ address: Address; lmsr: boolean }> = [];
+    for (const factory of buildUniqueFactories(config)) {
+      const count = Number(await withRetry(() => client.readContract({
+        address: factory.address, abi: factory.abi, functionName: 'marketCount',
+      })));
+      const indices = Array.from({ length: Math.min(count, MAX_MARKETS) }, (_, i) => i);
+      for (let i = 0; i < indices.length; i += MARKET_ADDRESS_BATCH_SIZE) {
+        const batch = indices.slice(i, i + MARKET_ADDRESS_BATCH_SIZE);
+        const addresses = await Promise.all(batch.map((index) => withRetry(() => client.readContract({
+          address: factory.address, abi: factory.abi, functionName: 'markets', args: [BigInt(index)],
+        })))) as Address[];
+        for (const address of addresses) {
+          if (!known.has(address.toLowerCase())) missing.push({ address, lmsr: Boolean(factory.lmsr) });
+        }
+      }
+    }
+    if (missing.length === 0) return 0;
+
+    // Newest first (highest factory indices come last in enumeration → take from the end).
+    const batch = missing.slice(-maxNew);
+    const hydrated: AppMarket[] = [];
+    for (const entry of batch) {
+      try {
+        const market = await withRetry(() => (entry.lmsr ? readLmsrMarket : readMarket)(client, entry.address, snapshot.markets.length + hydrated.length));
+        hydrated.push(market);
+      } catch (err) {
+        logger.warn('onchain-markets', 'append: hydrate failed', { address: entry.address, error: String(err).slice(0, 120) });
+      }
+    }
+    if (hydrated.length === 0) return 0;
+    await applyImageOverrides(hydrated);
+    await applyMarketFlags(hydrated);
+
+    // Append WITHOUT touching updated_at: age keeps meaning "time since last FULL read".
+    const merged = [...snapshot.markets, ...hydrated.filter((m) => !known.has(m.id.toLowerCase()))];
+    await getDb().update(marketListCache).set({ payload: merged }).where(eq(marketListCache.key, 'latest'));
+    // Refresh the in-process cache too so warm instances serve the appended list.
+    if (marketCache) marketCache = { at: marketCache.at, markets: merged };
+    logger.info('onchain-markets', `append: ingested ${hydrated.length} new market(s) into the snapshot`);
+    return hydrated.length;
+  } catch (err) {
+    logger.warn('onchain-markets', 'append pass failed', { error: String(err).slice(0, 160) });
+    return 0;
   }
 }
 
