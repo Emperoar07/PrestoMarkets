@@ -9,6 +9,7 @@ import { getArcConfig } from '@/lib/arcConfig';
 import { ARC_USDC_DECIMALS, createArcReadClient } from '@/lib/arcClient';
 import { prestoLmsrMarketAbi, prestoMarketAbi, prestoMarketFactoryAbi, prestoMultiOutcomeMarketFactoryAbi } from '@/lib/contracts';
 import { parseMarketMetadata } from '@/lib/marketMetadata';
+import { readMarketListSnapshot } from '@/lib/onchainMarkets';
 import type { PortfolioActivity } from '@/lib/portfolio';
 import { getClientIp } from '@/lib/requestGuards';
 import { checkRateLimit } from '@/lib/rateLimitRedis';
@@ -131,13 +132,19 @@ async function readMarketSummary(client: ReturnType<typeof createPublicClient>, 
   };
 }
 
-async function hydrateTitles(client: ReturnType<typeof createPublicClient>, rows: ActivityRow[]) {
+async function hydrateTitles(
+  client: ReturnType<typeof createPublicClient>,
+  rows: ActivityRow[],
+  knownSummaries: Map<string, { title: string; outcomes: string[] }>,
+) {
   const addresses = Array.from(new Set(rows.map((row) => row.marketAddress).filter(Boolean))) as Address[];
   if (addresses.length === 0) return rows;
 
+  // Titles/outcomes come from the market-list snapshot when possible; only markets the snapshot
+  // doesn't know yet (freshly created) cost a chain read.
   const marketEntries = await Promise.all(addresses.map(async (address) => [
     address.toLowerCase(),
-    await readMarketSummary(client, address),
+    knownSummaries.get(address.toLowerCase()) ?? await readMarketSummary(client, address),
   ] as const));
   const summaries = new Map(marketEntries);
 
@@ -350,9 +357,23 @@ export async function GET(request: NextRequest) {
     ...config.legacyMultiOutcomeFactoryAddresses.filter((address) => isAddress(address)).map((address) => ({ address: address as Address, multiOutcome: true })),
   ].filter((factory): factory is { address: Address; multiOutcome: boolean } => factory !== null);
   const latestBlock = await client.getBlockNumber().catch(() => BigInt(0));
-  const marketAddresses = (await Promise.all(factoryAddresses.map((factory) => (
-    fetchFactoryMarkets(client, factory.address, factory.multiOutcome)
-  )))).flat();
+  // Market addresses come from the DB snapshot (already maintained for the grid) instead of
+  // re-enumerating every factory on-chain — that enumeration was ~1,500 individual eth_calls
+  // per request, which alone saturated the public RPC pool and made this page slow or 503.
+  // Chain enumeration remains only as the cold-start fallback when no snapshot exists yet.
+  const snapshotMarkets = (await readMarketListSnapshot().catch(() => null))?.markets ?? [];
+  const marketAddresses = snapshotMarkets.length > 0
+    ? snapshotMarkets.map((m) => m.id as Address).filter((address) => isAddress(address))
+    : (await Promise.all(factoryAddresses.map((factory) => (
+        fetchFactoryMarkets(client, factory.address, factory.multiOutcome)
+      )))).flat();
+  const knownSummaries = new Map(snapshotMarkets.map((m) => [
+    m.id.toLowerCase(),
+    {
+      title: m.title,
+      outcomes: m.outcomes && m.outcomes.length >= 2 ? m.outcomes.map((o) => o.label) : ['YES', 'NO'],
+    },
+  ]));
   const collected: ActivityRow[] = [];
   let rpcFailures = 0;
 
@@ -390,7 +411,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const pageRows = (await hydrateTitles(client, collected.slice(0, limit))).sort(sortRows);
+  const pageRows = (await hydrateTitles(client, collected.slice(0, limit), knownSummaries)).sort(sortRows);
   const oldest = pageRows[pageRows.length - 1];
   // Two distinct "more" cases. (1) More rows inside the range we already scanned — continue from
   // the oldest row on this page. (2) The per-request chunk budget ran out ABOVE block 0 — continue
