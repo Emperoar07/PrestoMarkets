@@ -374,7 +374,13 @@ async function callHuggingFace(input: LlmCallInput): Promise<ProviderResult | nu
  * validate the task-specific fields they require.
  */
 export async function callLlmJson(input: LlmCallInput): Promise<ProviderResult> {
-  const chain = [callAnthropic, callGemini, callGroq, callMistral, callOpenRouter, callCerebras, callTogether, callCloudflare, callHuggingFace];
+  // Reasoning (market resolution, drafting) tries Cloudflare Workers AI right after the premium
+  // providers: its default reasoning model is llama-3.3-70B, a much stronger judge than the fast
+  // 8B models the later free tiers default to, and its free tier is generous. Safety/classify
+  // calls keep the latency-ordered chain — small fast models are fine there.
+  const chain = input.task === 'reasoning'
+    ? [callAnthropic, callGemini, callCloudflare, callGroq, callMistral, callOpenRouter, callCerebras, callTogether, callHuggingFace]
+    : [callAnthropic, callGemini, callGroq, callMistral, callOpenRouter, callCerebras, callTogether, callCloudflare, callHuggingFace];
   for (const fn of chain) {
     const result = await fn(input);
     if (!result) continue;

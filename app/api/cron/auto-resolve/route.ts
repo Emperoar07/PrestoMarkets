@@ -380,7 +380,10 @@ Return JSON only:
     sources: allSources,
     liveEvidenceUsed: true,
     sourceBound: true,
-    oracle: 'claude-sonnet-4-6',
+    // Record whichever provider/model in the fallback chain actually judged the outcome
+    // (anthropic, gemini, cloudflare 70B, …) — the old hardcoded model name misattributed
+    // every resolution once the chain fell past Anthropic.
+    oracle: `${llmResult.provider}:${llmResult.model}`,
     autonomous: true,
   };
 
