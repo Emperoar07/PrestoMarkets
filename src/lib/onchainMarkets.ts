@@ -73,6 +73,21 @@ function getStatus(state: number, closeTime: bigint): MarketStatus {
   return 'Open';
 }
 
+// Cached market lists (DB snapshot + in-process) bake status in at write time; when full
+// refreshes lag under RPC saturation, markets whose closeTime has since passed keep reading
+// 'Open' — dead CLOSED cards stay on the active grid and the snapshot-first resolver never
+// picks them up. Time-derived statuses are pure functions of closeDate, so recompute them at
+// read time. Chain-derived finals (Resolved/Canceled) stay as written.
+export function refreshTimeDerivedStatus(market: AppMarket): AppMarket {
+  if (market.status === 'Resolved' || market.status === 'Canceled' || !market.closeDate) return market;
+  const closeMs = new Date(market.closeDate).getTime();
+  if (!Number.isFinite(closeMs)) return market;
+  const diff = closeMs - Date.now();
+  const status: MarketStatus = diff <= 0 ? 'Closed' : diff <= CLOSING_SOON_MS ? 'Closing soon' : 'Open';
+  if (status === market.status) return market;
+  return { ...market, status, closeLabel: getCloseLabel(status, BigInt(Math.floor(closeMs / 1000))) };
+}
+
 function getCloseLabel(status: MarketStatus, closeTime: bigint) {
   if (status === 'Resolved' || status === 'Canceled' || status === 'Closed') return status;
 
@@ -692,7 +707,7 @@ export async function fetchOnchainMarket(
 export async function fetchOnchainMarkets(options: { force?: boolean } = {}) {
   const now = Date.now();
   if (!options.force && marketCache && now - marketCache.at < MARKET_CACHE_TTL_MS) {
-    return marketCache.markets;
+    return marketCache.markets.map(refreshTimeDerivedStatus);
   }
 
   if (!options.force && marketFetchInFlight) {
@@ -863,7 +878,10 @@ export async function readMarketListSnapshot(): Promise<{ markets: AppMarket[]; 
       .limit(1);
     const row = rows[0];
     if (!row || !Array.isArray(row.payload)) return null;
-    return { markets: row.payload as AppMarket[], ageMs: Date.now() - new Date(row.updatedAt).getTime() };
+    return {
+      markets: (row.payload as AppMarket[]).map(refreshTimeDerivedStatus),
+      ageMs: Date.now() - new Date(row.updatedAt).getTime(),
+    };
   } catch {
     return null;
   }
