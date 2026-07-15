@@ -194,6 +194,15 @@ export function detectSportsTeamSearchName(text: string): string | undefined {
   return looksLikePerson ? undefined : candidate;
 }
 
+// Team badge for fixture outcome icons: country flag for national teams, TheSportsDB club
+// crest for clubs. Used by the agent pipeline to attach per-outcome images at creation so
+// match cards show team icons immediately instead of letter chips. 'Draw' stays blank.
+export async function resolveTeamOutcomeImage(team: string): Promise<string | undefined> {
+  const name = team?.trim();
+  if (!name || /^draw$/i.test(name)) return undefined;
+  return detectCountryFlagUrl(name) || (await fetchSportsTeamBadge(name));
+}
+
 async function fetchSportsTeamBadge(teamName: string): Promise<string | undefined> {
   if (!teamName) return undefined;
   try {

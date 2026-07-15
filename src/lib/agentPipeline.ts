@@ -14,7 +14,7 @@ import { AGENT_PLATFORM_CONTEXT } from './agentContext';
 import { fetchOnchainMarkets, readMarketListSnapshot } from './onchainMarkets';
 import { sanitizeFeedText } from './feedSanitizer';
 import { fetchPublicHttpUrl, isSafeHttpUrl } from './publicUrl';
-import { resolveSubjectImageUrl, brandedMarketImage, detectCountryFlagUrl } from './marketSubjectImage';
+import { resolveSubjectImageUrl, brandedMarketImage, detectCountryFlagUrl, resolveTeamOutcomeImage } from './marketSubjectImage';
 import { deriveDisplayType } from './marketDisplay';
 import { generateAiMarketImage } from './generateAiMarketImage';
 import { imageUrlLoads } from './imageLiveness';
@@ -2481,6 +2481,16 @@ async function createOnchain(
         category: classification.category,
         title: draft.title,
       });
+  // Fixture markets: attach each team's badge (country flag or club crest) as the per-outcome
+  // image at creation, so match cards show real team icons immediately instead of letter chips.
+  // 'Draw' stays blank. Best-effort — a miss leaves the client's flag/letter fallback.
+  let outcomeImages: (string | undefined)[] | undefined;
+  if (trend.kickoffTime && draft.outcomeOptions && draft.outcomeOptions.length >= 2) {
+    try {
+      const badges = await Promise.all(draft.outcomeOptions.map((label) => resolveTeamOutcomeImage(label)));
+      if (badges.some(Boolean)) outcomeImages = badges;
+    } catch { /* keep creating without outcome icons */ }
+  }
   const input: MarketDraft = {
     type: draft.type,
     title: draft.title,
@@ -2494,6 +2504,7 @@ async function createOnchain(
     resolutionMode: 'Agent assisted',
     imageURI,
     outcomeOptions: draft.outcomeOptions,
+    outcomeImages,
     // Euro-denominated topics settle in EURC (only when the EURC factory + agent flag are set).
     collateral: AGENT_EURC_ENABLED && isEuroDenominatedTrend(trend, draft) ? 'EURC' : 'USDC',
     agent: {
