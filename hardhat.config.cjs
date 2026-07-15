@@ -37,4 +37,23 @@ module.exports = {
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
     },
   },
+  // Source verification on Arc's Blockscout explorer (testnet.arcscan.app):
+  //   npx hardhat verify --network arc <address> <constructorArgs...>
+  // Blockscout doesn't require an API key, but hardhat-verify insists on a non-empty string.
+  etherscan: {
+    apiKey: { arc: 'blockscout', arcPublic: 'blockscout' },
+    customChains: [
+      {
+        network: 'arc',
+        chainId: 5042002,
+        urls: { apiURL: 'https://testnet.arcscan.app/api', browserURL: 'https://testnet.arcscan.app' },
+      },
+      {
+        network: 'arcPublic',
+        chainId: 5042002,
+        urls: { apiURL: 'https://testnet.arcscan.app/api', browserURL: 'https://testnet.arcscan.app' },
+      },
+    ],
+  },
+  sourcify: { enabled: false },
 };
