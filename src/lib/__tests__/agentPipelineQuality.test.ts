@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { __agentPipelineTestHooks } from '../agentPipeline';
+import { __agentPipelineTestHooks, isPlaceholderTeamName } from '../agentPipeline';
+
+describe('placeholder fixture teams', () => {
+  it('rejects undecided knockout-stage participants', () => {
+    expect(isPlaceholderTeamName('Semifinal 1 Loser')).toBe(true);
+    expect(isPlaceholderTeamName('Loser Semi-Final 2')).toBe(true);
+    expect(isPlaceholderTeamName('Winner Match 57')).toBe(true);
+    expect(isPlaceholderTeamName('Group A Runner-up')).toBe(true);
+    expect(isPlaceholderTeamName('TBD')).toBe(true);
+    expect(isPlaceholderTeamName('To Be Determined')).toBe(true);
+    expect(isPlaceholderTeamName('W57')).toBe(true);
+    expect(isPlaceholderTeamName('1A')).toBe(true);
+    expect(isPlaceholderTeamName('Winner Quarterfinal 3')).toBe(true);
+  });
+
+  it('accepts real team names', () => {
+    expect(isPlaceholderTeamName('France')).toBe(false);
+    expect(isPlaceholderTeamName('Wolverhampton Wanderers')).toBe(false);
+    expect(isPlaceholderTeamName('Real Madrid')).toBe(false);
+    expect(isPlaceholderTeamName('São Paulo')).toBe(false);
+    expect(isPlaceholderTeamName('1. FC Köln')).toBe(false);
+  });
+});
 
 describe('agent pipeline target shape planner', () => {
   const shape = (topic: string, query = '') => __agentPipelineTestHooks.planTargetShape({ topic, query, source: 'news', url: 'https://example.com' });

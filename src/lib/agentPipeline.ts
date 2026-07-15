@@ -720,6 +720,8 @@ async function fetchEspnSoccerSignals(): Promise<TrendItem[]> {
           const home = sanitizeFeedText(homeC?.team?.displayName || homeC?.team?.shortDisplayName || '');
           const away = sanitizeFeedText(awayC?.team?.displayName || awayC?.team?.shortDisplayName || '');
           if (!home || !away) return [];
+          // Knockout fixtures listed before their participants exist ("Semifinal 1 Loser").
+          if (isPlaceholderTeamName(home) || isPlaceholderTeamName(away)) return [];
 
           // Only upcoming matches (ESPN state 'pre'); skip in-play ('in') and finished ('post').
           if ((event.status?.type?.state ?? 'pre') !== 'pre') return [];
@@ -755,10 +757,119 @@ async function fetchEspnSoccerSignals(): Promise<TrendItem[]> {
   return batches.flat();
 }
 
+// LLM-sourced fixture lane: Gemini with Google-Search grounding discovers officially scheduled
+// fixtures the structured providers (TheSportsDB / ESPN) miss — smaller competitions, newly
+// confirmed knockout pairings. Grounding is REQUIRED: an ungrounded model recalls stale or
+// invented fixtures, which is exactly the removed bad-fixture lane. If Gemini's reply isn't
+// parseable JSON, the generic fallback chain (Groq/Cerebras/Cloudflare/…) only REPAIRS the
+// grounded text into JSON — it never invents fixtures itself. Every fixture then passes the
+// same gates as provider fixtures: future kickoff inside the lookahead, real (non-placeholder)
+// team names, and matchup dedupe against the provider lanes, which win on conflicts because
+// they run first and carry match thumbnails and event URLs.
+async function fetchLlmFixtureSignals(): Promise<TrendItem[]> {
+  const key = (process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '').trim();
+  if (!key) return [];
+  const horizonDays = Math.min(GUARANTEED_LOOKAHEAD_DAYS, 7);
+  const prompt = `Today is ${new Date().toISOString().slice(0, 10)}. Using web search, list officially scheduled upcoming professional Football (soccer) and Basketball fixtures over the next ${horizonDays} days from major competitions (FIFA World Cup, top national leagues, continental cups, NBA).
+Rules:
+- Only matches that are CONFIRMED on the official schedule with BOTH participants decided.
+- Never include placeholder participants like "Winner of Match 57", "Semifinal 1 Loser", "TBD".
+- kickoffIso must be the scheduled kickoff in UTC (ISO 8601).
+- At most 12 fixtures. If you cannot verify any, return [].
+Return JSON only:
+[{"home":"Team A","away":"Team B","league":"Competition name","sport":"Soccer"|"Basketball","kickoffIso":"2026-07-16T19:00:00Z"}]`;
+
+  let text = '';
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          tools: [{ google_search: {} }],
+          generationConfig: { maxOutputTokens: 1024, temperature: 0.1 },
+        }),
+        signal: controller.signal,
+      });
+      if (!res.ok) return [];
+      const data = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+      text = (data.candidates?.[0]?.content?.parts ?? []).map((part) => part.text ?? '').join('');
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch {
+    return [];
+  }
+  if (!text.trim()) return [];
+
+  type LlmFixture = { home?: string; away?: string; league?: string; sport?: string; kickoffIso?: string };
+  let fixtures: LlmFixture[] = [];
+  const parseArray = (raw: string): LlmFixture[] | null => {
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (!match) return null;
+    try {
+      const parsed = JSON.parse(match[0]);
+      return Array.isArray(parsed) ? parsed as LlmFixture[] : null;
+    } catch {
+      return null;
+    }
+  };
+  fixtures = parseArray(text) ?? [];
+  if (fixtures.length === 0) {
+    // Grounded text that isn't clean JSON: have the fallback chain (Cloudflare et al.) extract it.
+    try {
+      const repaired = await callLlmJson({
+        task: 'safety',
+        prompt: `Extract the fixtures from the text below as a JSON array of {"home","away","league","sport","kickoffIso"}. Use ONLY fixtures stated in the text; do not add any. Return [] if none.\n\n${text.slice(0, 6000)}\n\nReturn JSON only.`,
+        maxTokens: 1024,
+      });
+      fixtures = parseArray(repaired.text) ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  const now = Date.now();
+  const horizonMs = now + (horizonDays + 1) * 86_400_000;
+  return fixtures.slice(0, 12).flatMap((fixture): TrendItem[] => {
+    const home = sanitizeFeedText(fixture.home ?? '');
+    const away = sanitizeFeedText(fixture.away ?? '');
+    if (!home || !away) return [];
+    if (isPlaceholderTeamName(home) || isPlaceholderTeamName(away)) return [];
+    const sport = fixture.sport === 'Basketball' ? 'Basketball' : 'Soccer';
+    const kickoff = fixture.kickoffIso ? new Date(fixture.kickoffIso) : null;
+    const kickoffMs = kickoff && !Number.isNaN(kickoff.getTime()) ? kickoff.getTime() : null;
+    // A fixture without a verifiable future kickoff inside the horizon is not tradeable evidence.
+    if (kickoffMs === null || kickoffMs <= now || kickoffMs > horizonMs) return [];
+    const league = sanitizeFeedText(fixture.league ?? '') || 'major competition';
+    const isWorldCup = sport === 'Soccer' && /world cup/i.test(league);
+    const fixtureImage = detectCountryFlagUrl(home) || detectCountryFlagUrl(away) || undefined;
+    return [{
+      topic: `${home} vs ${away}`,
+      query: `${home} (${sport === 'Soccer' ? 'Football' : sport}) vs ${away}. ${league} fixture.${sport === 'Soccer' ? ' Football fixtures must use Home / Draw / Away outcomes.' : ''}${isWorldCup ? ' FIFA World Cup fixture.' : ''}`,
+      source: 'llm-fixtures',
+      imageUrl: fixtureImage,
+      closeDate: new Date(kickoffMs + FIXTURE_CLOSE_AFTER_KICKOFF_MS).toISOString(),
+      kickoffTime: kickoff!.toISOString(),
+      // Not guaranteed: LLM-discovered fixtures go through the normal signal/classify gates,
+      // so a grounding mistake competes on quality instead of forcing a market.
+    }];
+  });
+}
+
 async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
   const apiKey = getSportsDbApiKey();
-  // No TheSportsDB key → fall back to ESPN's free public scoreboard so sports markets keep flowing.
-  if (!apiKey) return fetchEspnSoccerSignals();
+  // No TheSportsDB key → fall back to ESPN + the LLM-grounded lane so sports markets keep flowing.
+  if (!apiKey) {
+    const [espnOnly, llmOnly] = await Promise.all([
+      fetchEspnSoccerSignals().catch(() => [] as TrendItem[]),
+      fetchLlmFixtureSignals().catch(() => [] as TrendItem[]),
+    ]);
+    return dedupeFixtureTrends([...espnOnly, ...llmOnly]);
+  }
   const dates = [new Date(), new Date(Date.now() + 24 * 60 * 60 * 1000)];
   // World Cup priority: scan Soccer a full WEEK ahead so every World Cup fixture in the coming
   // week gets its market days before kickoff — a few missed ticks can never miss a match.
@@ -800,6 +911,8 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
         const home = sanitizeFeedText(event.strHomeTeam || '');
         const away = sanitizeFeedText(event.strAwayTeam || '');
         if (!home || !away) return [];
+        // Knockout fixtures listed before their participants exist ("Semifinal 1 Loser").
+        if (isPlaceholderTeamName(home) || isPlaceholderTeamName(away)) return [];
 
         // FIFA World Cup fixtures are marquee: every match on a match day must get a market,
         // so they ride the guaranteed lane instead of competing through the signal gates.
@@ -869,10 +982,30 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
   }));
 
   const batches = await Promise.all(requests);
-  // Run ESPN alongside TheSportsDB and merge — they cover different competitions, so together
-  // they catch more fixtures. Dedupe by normalized "home vs away" so one match isn't doubled.
-  const espn = await fetchEspnSoccerSignals().catch(() => [] as TrendItem[]);
-  return dedupeFixtureTrends([...batches.flat(), ...espn]);
+  // Run ESPN and the LLM-grounded lane alongside TheSportsDB and merge — they cover different
+  // competitions, so together they catch more fixtures. Dedupe by normalized "home vs away" so
+  // one match isn't doubled; structured providers come first so they win the dedupe.
+  const [espn, llm] = await Promise.all([
+    fetchEspnSoccerSignals().catch(() => [] as TrendItem[]),
+    fetchLlmFixtureSignals().catch(() => [] as TrendItem[]),
+  ]);
+  return dedupeFixtureTrends([...batches.flat(), ...espn, ...llm]);
+}
+
+// Knockout-stage fixtures are published before their participants are decided, with placeholder
+// team names ("Semifinal 1 Loser", "Winner Match 57", "TBD", "Group A Runner-up"). A market on
+// "S1L vs S2L" is untradeable and gets duplicated once the real names arrive — skip the fixture
+// until the provider names actual teams. Providers re-list the fixture with real names later,
+// and the lookahead scan picks it up then.
+export function isPlaceholderTeamName(name: string): boolean {
+  const n = name.trim();
+  if (!n) return true;
+  return /\b(winners?|losers?|runners?[- ]?up)\b/i.test(n)
+    || /\btb[dc]\b|to be (decided|determined|confirmed|announced)/i.test(n)
+    || /\b(semi[- ]?finals?|quarter[- ]?finals?|round of \d+|match \d+|game \d+|play[- ]?offs?)\b/i.test(n)
+    || /\bgroup [a-h]\b/i.test(n)
+    || /^[wl]\d+$/i.test(n) // W57 / L61 bracket codes
+    || /^[12][a-h]$/i.test(n); // 1A / 2C group-position codes
 }
 
 // Normalized matchup key — strips diacritics first so "Curaçao" and "Curacao" (ESPN vs
