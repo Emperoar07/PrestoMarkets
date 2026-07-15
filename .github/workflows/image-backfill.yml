@@ -18,7 +18,9 @@ on:
 jobs:
   backfill:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Must exceed curl's worst case (290s + 10s retry delay + 290s ≈ 590s) plus runner setup,
+    # or the job kills itself mid-retry and turns red even though the endpoint resumes next tick.
+    timeout-minutes: 12
     steps:
       # The endpoint self-limits to a ~220s work budget and returns partial progress, so a healthy
       # run answers well inside --max-time (it used to run past Vercel's 300s kill, which timed out
