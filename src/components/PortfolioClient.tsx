@@ -7,14 +7,13 @@ import { SiteFooter } from './SiteFooter';
 import { useAppState } from '@/lib/appState';
 import { useTransactions } from '@/lib/transactions';
 import { computePortfolioInsights } from '@/lib/portfolioInsights';
-import { 
-  Wallet, 
-  TrendingUp, 
-  Coins, 
-  CreditCard, 
-  Trophy, 
-  Clock, 
-  Lock, 
+import {
+  Wallet,
+  TrendingUp,
+  Coins,
+  Trophy,
+  Clock,
+  Lock,
   Eye,
   TrendingDown
 } from 'lucide-react';
@@ -125,7 +124,7 @@ export function PortfolioClient() {
 
         {/* Cockpit Stats Cards */}
         {connectedWallet && (
-          <section className="mt-8 grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+          <section className="mt-8 grid gap-4 grid-cols-1 sm:grid-cols-2">
             {/* Position Value */}
             <div className="rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-5 transition-all duration-200 hover:border-white/[0.08] hover:bg-white/[0.02]">
               <div className="flex items-center justify-between gap-3">
@@ -138,26 +137,6 @@ export function PortfolioClient() {
               <p className="mt-1.5 text-[11px] font-bold tracking-wide text-cyan">
                 {isLoadingAccount ? 'Syncing...' : `${positions.length} active position${positions.length === 1 ? '' : 's'}`}
               </p>
-            </div>
-
-            {/* Unrealized P&L */}
-            <div className="rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-5 transition-all duration-200 hover:border-white/[0.08] hover:bg-white/[0.02]">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[11px] font-extrabold text-[#64748b] uppercase tracking-wider">Unrealized P&L</span>
-                <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${
-                  insights.unrealizedPnl >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
-                }`}>
-                  {insights.unrealizedPnl >= 0 ? (
-                    <TrendingUp className="h-4.5 w-4.5" />
-                  ) : (
-                    <TrendingDown className="h-4.5 w-4.5" />
-                  )}
-                </span>
-              </div>
-              <p className={`mt-4 text-2xl font-black ${insights.unrealizedPnl < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                {insights.unrealizedPnl >= 0 ? '+' : ''}{formatUsd(insights.unrealizedPnl)}
-              </p>
-              <p className="mt-1.5 text-[11px] font-bold text-[#64748b] tracking-wide">Current valuation − cost</p>
             </div>
 
             {/* Realized P&L */}
@@ -180,31 +159,6 @@ export function PortfolioClient() {
               <p className="mt-1.5 text-[11px] font-bold text-[#64748b] tracking-wide">Settled + claimable rewards</p>
             </div>
 
-            {/* Cost Basis */}
-            <div className="rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-5 transition-all duration-200 hover:border-white/[0.08] hover:bg-white/[0.02]">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[11px] font-extrabold text-[#64748b] uppercase tracking-wider">Cost Basis</span>
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/10 text-purple-400">
-                  <CreditCard className="h-4.5 w-4.5" />
-                </span>
-              </div>
-              <p className="mt-4 text-2xl font-black text-white">{formatUsd(insights.totalCost)}</p>
-              <p className="mt-1.5 text-[11px] font-bold text-[#64748b] tracking-wide">Total capital invested</p>
-            </div>
-
-            {/* Claimable */}
-            <div className="rounded-xl border border-white/[0.04] bg-[#0d1626]/20 p-5 transition-all duration-200 hover:border-white/[0.08] hover:bg-white/[0.02]">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[11px] font-extrabold text-[#64748b] uppercase tracking-wider">Claimable</span>
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400">
-                  <Trophy className="h-4.5 w-4.5" />
-                </span>
-              </div>
-              <p className="mt-4 text-2xl font-black text-white">{formatUsd(insights.claimableValue)}</p>
-              <p className="mt-1.5 text-[11px] font-extrabold text-emerald-400 tracking-wide uppercase">
-                {insights.claimableCount} reward{insights.claimableCount === 1 ? '' : 's'} ready
-              </p>
-            </div>
           </section>
         )}
 

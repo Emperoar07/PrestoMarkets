@@ -222,11 +222,18 @@ export async function fetchAccountPortfolio(
     }
     // Auxiliary reads keep individual fallbacks — previewClaim/refund/claimed legitimately revert
     // on contract versions that don't expose them, which must not disturb the position itself.
-    const [claimPreview, refundable, hasClaimed] = await Promise.all([
-      withRpcRetry(() => client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewClaim', args: [account] })).catch(() => [BigInt(0), BigInt(0)] as const),
-      withRpcRetry(() => client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewRefund', args: [account] })).catch(() => BigInt(0)),
-      withRpcRetry(() => client.readContract({ address, abi: prestoMarketAbi, functionName: 'claimed', args: [account] })).catch(() => false),
-    ]);
+    // Skipped entirely for still-trading markets where this account holds nothing: an unsettled
+    // market can't owe a claim or refund, and dropping those three calls for the ~200 untouched
+    // markets removes most of the sync's RPC volume (the "Syncing..." slowness under throttling).
+    const holdsShares = outcomeShareValues.some((shares) => shares > BigInt(0));
+    const stillTrading = market.status === 'Open' || market.status === 'Closing soon';
+    const [claimPreview, refundable, hasClaimed] = !holdsShares && stillTrading
+      ? [[BigInt(0), BigInt(0)] as const, BigInt(0), false]
+      : await Promise.all([
+        withRpcRetry(() => client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewClaim', args: [account] })).catch(() => [BigInt(0), BigInt(0)] as const),
+        withRpcRetry(() => client.readContract({ address, abi: prestoMarketAbi, functionName: 'previewRefund', args: [account] })).catch(() => BigInt(0)),
+        withRpcRetry(() => client.readContract({ address, abi: prestoMarketAbi, functionName: 'claimed', args: [account] })).catch(() => false),
+      ]);
     const claimable = claimPreview[0];
     if (outcomeShareValues.some((shares) => shares > BigInt(0)) || claimable > BigInt(0) || refundable > BigInt(0) || hasClaimed) {
       interactedMarketIds.add(market.id.toLowerCase());
@@ -235,8 +242,7 @@ export async function fetchAccountPortfolio(
     const noIndex = outcomeLabels.findIndex((label) => label.toUpperCase() === 'NO');
     const yesShares = outcomeShareValues[yesIndex >= 0 ? yesIndex : 0] ?? BigInt(0);
     const noShares = outcomeShareValues[noIndex >= 0 ? noIndex : 1] ?? BigInt(0);
-    const hasShares = outcomeShareValues.some((shares) => shares > BigInt(0));
-    const costBasis = hasShares
+    const costBasis = holdsShares
       ? await withFallbackTimeout(
         fetchMarketCostBasis(client, address, account).catch(() => fallbackCostBasis()),
         costBasisTimeoutMs,
