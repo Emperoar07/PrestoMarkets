@@ -175,27 +175,35 @@ async function fetchRowsInRange(input: {
   // blank with no error.
   const guarded = <T>(p: Promise<T[]>): Promise<T[]> => p.catch(() => { onError(); return [] as T[]; });
 
+  // Do NOT pass the market list as an address filter: with 200+ markets the public Arc RPCs
+  // reject the oversized filter outright (413), which surfaced as a permanent 503 on this page.
+  // Every event here has the account as an indexed topic, so a signature+topic query already
+  // returns a tiny result set; we intersect with the known market addresses afterwards instead.
+  const knownMarkets = new Set(marketAddresses.map((address) => address.toLowerCase()));
+  const fromKnownMarkets = <T extends { address: string }>(logs: T[]): T[] =>
+    logs.filter((log) => knownMarkets.has(log.address.toLowerCase()));
+
   const [buys, claims, refunds, lmsrBuys, lmsrSells, lmsrWins, lmsrRefunds, createdGroups] = await Promise.all([
     marketAddresses.length
-      ? guarded(client.getLogs({ address: marketAddresses, event: sharesBoughtEvent, args: { recipient: account }, fromBlock, toBlock }))
+      ? guarded(client.getLogs({ event: sharesBoughtEvent, args: { recipient: account }, fromBlock, toBlock })).then(fromKnownMarkets)
       : Promise.resolve([]),
     marketAddresses.length
-      ? guarded(client.getLogs({ address: marketAddresses, event: claimedEvent, args: { user: account }, fromBlock, toBlock }))
+      ? guarded(client.getLogs({ event: claimedEvent, args: { user: account }, fromBlock, toBlock })).then(fromKnownMarkets)
       : Promise.resolve([]),
     marketAddresses.length
-      ? guarded(client.getLogs({ address: marketAddresses, event: refundedEvent, args: { user: account }, fromBlock, toBlock }))
+      ? guarded(client.getLogs({ event: refundedEvent, args: { user: account }, fromBlock, toBlock })).then(fromKnownMarkets)
       : Promise.resolve([]),
     marketAddresses.length
-      ? guarded(client.getLogs({ address: marketAddresses, event: lmsrSharesBoughtEvent, args: { buyer: account }, fromBlock, toBlock }))
+      ? guarded(client.getLogs({ event: lmsrSharesBoughtEvent, args: { buyer: account }, fromBlock, toBlock })).then(fromKnownMarkets)
       : Promise.resolve([]),
     marketAddresses.length
-      ? guarded(client.getLogs({ address: marketAddresses, event: lmsrSharesSoldEvent, args: { seller: account }, fromBlock, toBlock }))
+      ? guarded(client.getLogs({ event: lmsrSharesSoldEvent, args: { seller: account }, fromBlock, toBlock })).then(fromKnownMarkets)
       : Promise.resolve([]),
     marketAddresses.length
-      ? guarded(client.getLogs({ address: marketAddresses, event: lmsrWinnerPaidEvent, args: { winner: account }, fromBlock, toBlock }))
+      ? guarded(client.getLogs({ event: lmsrWinnerPaidEvent, args: { winner: account }, fromBlock, toBlock })).then(fromKnownMarkets)
       : Promise.resolve([]),
     marketAddresses.length
-      ? guarded(client.getLogs({ address: marketAddresses, event: lmsrRefundedEvent, args: { holder: account }, fromBlock, toBlock }))
+      ? guarded(client.getLogs({ event: lmsrRefundedEvent, args: { holder: account }, fromBlock, toBlock })).then(fromKnownMarkets)
       : Promise.resolve([]),
     Promise.all(factoryAddresses.map((factory) => (
       factory.multiOutcome
