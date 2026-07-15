@@ -409,7 +409,10 @@ Return JSON only:
   }
 
   const resolutionURI = `data:application/json,${encodeURIComponent(JSON.stringify(resolutionReport))}`;
-  const result = await proposeOrResolve(market.id, derivedIndex, resolutionURI);
+  // market.amm MUST reach proposeOrResolve: V3 LMSR markets have no proposeResolution/resolve,
+  // so omitting it sends them down the V2 path where both calls revert and the market is
+  // skipped every tick — the "closed but never settled" backlog.
+  const result = await proposeOrResolve(market.id, derivedIndex, resolutionURI, Boolean(market.amm));
   if (!result.ok) {
     return { ok: false, action: 'skipped', marketId: market.id, title: market.title, reason: result.error ?? 'Onchain resolve failed' };
   }
