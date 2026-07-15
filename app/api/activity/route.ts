@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   createPublicClient,
+  decodeEventLog,
+  encodeEventTopics,
   formatUnits,
   isAddress,
   type Address,
+  type AbiEvent,
+  type Hex,
 } from 'viem';
 import { getArcConfig } from '@/lib/arcConfig';
 import { ARC_USDC_DECIMALS, createArcReadClient } from '@/lib/arcClient';
@@ -20,8 +24,12 @@ export const runtime = 'nodejs';
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 25;
 const MAX_MARKETS = 500;
-const BLOCK_CHUNK = BigInt(7_200);
+// RPC-fallback scan only. thirdweb (one of the three public Arc RPCs) hard-caps getLogs at
+// 1,000 blocks, so a bigger chunk guarantees a slice of failing queries whenever the ranked
+// transport lands there.
+const BLOCK_CHUNK = BigInt(1_000);
 const MAX_CHUNKS = 8;
+const BLOCKSCOUT_API = 'https://testnet.arcscan.app/api';
 const activityCacheHeaders = { 'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=30' };
 
 const sharesBoughtEvent = prestoMarketAbi.find((e) => e.type === 'event' && e.name === 'SharesBought')!;
@@ -211,13 +219,32 @@ async function fetchRowsInRange(input: {
         : guarded(client.getLogs({ address: factory.address, event: marketCreatedEvent, args: { creator: account }, fromBlock, toBlock }))
     ))),
   ]);
-  const created = createdGroups.flat();
 
+  return buildActivityRows({
+    buys, claims, refunds, lmsrBuys, lmsrSells, lmsrWins, lmsrRefunds, created: createdGroups.flat(),
+  });
+}
+
+// Minimal log shape both sources produce: viem getLogs results and normalized Blockscout rows.
+type RawLog = {
+  address: string;
+  args: Record<string, unknown>;
+  blockNumber?: bigint | null;
+  logIndex?: number | null;
+  transactionHash?: Hex | null;
+};
+
+function buildActivityRows(groups: {
+  buys: RawLog[]; claims: RawLog[]; refunds: RawLog[];
+  lmsrBuys: RawLog[]; lmsrSells: RawLog[]; lmsrWins: RawLog[]; lmsrRefunds: RawLog[];
+  created: RawLog[];
+}): ActivityRow[] {
+  const { buys, claims, refunds, lmsrBuys, lmsrSells, lmsrWins, lmsrRefunds, created } = groups;
   return [
     ...buys.map((log) => ({
       label: 'Bought outcome',
       market: `Market ${truncateAddress(log.address)}`,
-      detail: formatUsdc(log.args.amount ?? BigInt(0)),
+      detail: formatUsdc((log.args.amount as bigint | undefined) ?? BigInt(0)),
       status: 'Confirmed' as const,
       time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
       kind: 'out' as const,
@@ -225,12 +252,12 @@ async function fetchRowsInRange(input: {
       blockNumber: log.blockNumber ?? BigInt(0),
       logIndex: log.logIndex ?? 0,
       marketAddress: log.address as Address,
-      outcomeIndex: Number(log.args.outcome ?? 0),
+      outcomeIndex: Number((log.args.outcome as number | bigint | undefined) ?? 0),
     })),
     ...claims.map((log) => ({
       label: 'Won payout',
       market: `Market ${truncateAddress(log.address)}`,
-      detail: `${formatUsdc(log.args.amount ?? BigInt(0))} payout`,
+      detail: `${formatUsdc((log.args.amount as bigint | undefined) ?? BigInt(0))} payout`,
       status: 'Confirmed' as const,
       time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
       kind: 'win' as const,
@@ -242,7 +269,7 @@ async function fetchRowsInRange(input: {
     ...refunds.map((log) => ({
       label: 'Refunded collateral',
       market: `Market ${truncateAddress(log.address)}`,
-      detail: formatUsdc(log.args.amount ?? BigInt(0)),
+      detail: formatUsdc((log.args.amount as bigint | undefined) ?? BigInt(0)),
       status: 'Confirmed' as const,
       time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
       kind: 'refund' as const,
@@ -254,7 +281,7 @@ async function fetchRowsInRange(input: {
     ...lmsrBuys.map((log) => ({
       label: 'Bought outcome',
       market: `Market ${truncateAddress(log.address)}`,
-      detail: formatUsdc(log.args.cost6 ?? BigInt(0)),
+      detail: formatUsdc((log.args.cost6 as bigint | undefined) ?? BigInt(0)),
       status: 'Confirmed' as const,
       time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
       kind: 'out' as const,
@@ -262,12 +289,12 @@ async function fetchRowsInRange(input: {
       blockNumber: log.blockNumber ?? BigInt(0),
       logIndex: log.logIndex ?? 0,
       marketAddress: log.address as Address,
-      outcomeIndex: Number(log.args.outcome ?? 0),
+      outcomeIndex: Number((log.args.outcome as number | bigint | undefined) ?? 0),
     })),
     ...lmsrSells.map((log) => ({
       label: 'Sold shares',
       market: `Market ${truncateAddress(log.address)}`,
-      detail: `${formatUsdc(log.args.refund6 ?? BigInt(0))} received`,
+      detail: `${formatUsdc((log.args.refund6 as bigint | undefined) ?? BigInt(0))} received`,
       status: 'Confirmed' as const,
       time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
       kind: 'in' as const,
@@ -281,7 +308,7 @@ async function fetchRowsInRange(input: {
     ...lmsrWins.map((log) => ({
       label: 'Won payout',
       market: `Market ${truncateAddress(log.address)}`,
-      detail: `${formatUsdc(log.args.amount6 ?? BigInt(0))} payout`,
+      detail: `${formatUsdc((log.args.amount6 as bigint | undefined) ?? BigInt(0))} payout`,
       status: 'Confirmed' as const,
       time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
       kind: 'win' as const,
@@ -293,7 +320,7 @@ async function fetchRowsInRange(input: {
     ...lmsrRefunds.map((log) => ({
       label: 'Refunded collateral',
       market: `Market ${truncateAddress(log.address)}`,
-      detail: formatUsdc(log.args.amount6 ?? BigInt(0)),
+      detail: formatUsdc((log.args.amount6 as bigint | undefined) ?? BigInt(0)),
       status: 'Confirmed' as const,
       time: `Block ${log.blockNumber?.toString() ?? 'pending'}`,
       kind: 'refund' as const,
@@ -318,6 +345,79 @@ async function fetchRowsInRange(input: {
       };
     }),
   ] satisfies ActivityRow[];
+}
+
+// ── Blockscout-indexed history (primary source) ────────────────────────────
+// The RPC path scans block windows and dies by a thousand cuts on the throttled public
+// endpoints (thirdweb caps getLogs at 1,000 blocks; empty recent windows read as "broken").
+// The explorer's indexed log search answers one signature+account query over the ENTIRE
+// chain history in ~1-2s, so it serves the page; the RPC scan remains the fallback.
+async function blockscoutLogs(event: AbiEvent, args: Record<string, unknown>, address?: Address): Promise<RawLog[]> {
+  const topics = encodeEventTopics({ abi: [event], eventName: event.name, args } as Parameters<typeof encodeEventTopics>[0]);
+  const params = new URLSearchParams({ module: 'logs', action: 'getLogs', fromBlock: '0', toBlock: 'latest' });
+  if (address) params.set('address', address);
+  const present: number[] = [];
+  topics.forEach((topic, index) => {
+    if (topic) { params.set(`topic${index}`, topic as string); present.push(index); }
+  });
+  for (let a = 0; a < present.length; a += 1) {
+    for (let b = a + 1; b < present.length; b += 1) {
+      params.set(`topic${present[a]}_${present[b]}_opr`, 'and');
+    }
+  }
+  const res = await fetch(`${BLOCKSCOUT_API}?${params.toString()}`, { signal: AbortSignal.timeout(15_000) });
+  if (!res.ok) throw new Error(`blockscout ${res.status}`);
+  const json = await res.json() as { status?: string; message?: string; result?: unknown };
+  if (!Array.isArray(json.result)) {
+    if (json.status === '0' && /no records/i.test(String(json.message ?? json.result ?? ''))) return [];
+    throw new Error(String(json.message ?? 'blockscout error'));
+  }
+  const rows: RawLog[] = [];
+  for (const raw of json.result as Array<{ address?: string; data?: Hex; topics?: Hex[]; blockNumber?: string; logIndex?: string; transactionHash?: Hex }>) {
+    try {
+      const decoded = decodeEventLog({ abi: [event], data: raw.data ?? '0x', topics: (raw.topics ?? []) as [Hex, ...Hex[]] });
+      rows.push({
+        address: String(raw.address ?? ''),
+        args: (decoded.args ?? {}) as Record<string, unknown>,
+        blockNumber: raw.blockNumber ? BigInt(raw.blockNumber) : BigInt(0),
+        // Etherscan-compat responses encode index 0 as "0x" (empty), which parses to NaN.
+        logIndex: Number.parseInt(raw.logIndex && raw.logIndex !== '0x' ? raw.logIndex : '0x0', 16),
+        transactionHash: raw.transactionHash,
+      });
+    } catch { /* skip undecodable rows */ }
+  }
+  return rows;
+}
+
+async function fetchRowsFromBlockscout(input: {
+  account: Address;
+  factoryAddresses: Array<{ address: Address; multiOutcome: boolean }>;
+  marketAddresses: Address[];
+}): Promise<ActivityRow[]> {
+  const { account, factoryAddresses, marketAddresses } = input;
+  const knownMarkets = new Set(marketAddresses.map((address) => address.toLowerCase()));
+  const fromKnownMarkets = (logs: RawLog[]) => logs.filter((log) => knownMarkets.has(log.address.toLowerCase()));
+
+  const [buys, claims, refunds, lmsrBuys, lmsrSells, lmsrWins, lmsrRefunds, createdGroups] = await Promise.all([
+    blockscoutLogs(sharesBoughtEvent as AbiEvent, { recipient: account }).then(fromKnownMarkets),
+    blockscoutLogs(claimedEvent as AbiEvent, { user: account }).then(fromKnownMarkets),
+    blockscoutLogs(refundedEvent as AbiEvent, { user: account }).then(fromKnownMarkets),
+    blockscoutLogs(lmsrSharesBoughtEvent as AbiEvent, { buyer: account }).then(fromKnownMarkets),
+    blockscoutLogs(lmsrSharesSoldEvent as AbiEvent, { seller: account }).then(fromKnownMarkets),
+    blockscoutLogs(lmsrWinnerPaidEvent as AbiEvent, { winner: account }).then(fromKnownMarkets),
+    blockscoutLogs(lmsrRefundedEvent as AbiEvent, { holder: account }).then(fromKnownMarkets),
+    Promise.all(factoryAddresses.map((factory) => (
+      blockscoutLogs(
+        (factory.multiOutcome ? multiOutcomeMarketCreatedEvent : marketCreatedEvent) as AbiEvent,
+        { creator: account },
+        factory.address,
+      )
+    ))),
+  ]);
+
+  return buildActivityRows({
+    buys, claims, refunds, lmsrBuys, lmsrSells, lmsrWins, lmsrRefunds, created: createdGroups.flat(),
+  });
 }
 
 function serializeRow(row: ActivityRow): PortfolioActivity {
@@ -382,6 +482,29 @@ export async function GET(request: NextRequest) {
       outcomes: m.outcomes && m.outcomes.length >= 2 ? m.outcomes.map((o) => o.label) : ['YES', 'NO'],
     },
   ]));
+  // Primary source: the explorer's indexed log search — full history in a handful of ~1s
+  // queries, immune to the public-RPC block caps and throttling that plagued the scan below.
+  try {
+    const allRows = (await fetchRowsFromBlockscout({ account, factoryAddresses, marketAddresses }))
+      .filter((row) => isBeforeCursor(row, cursor))
+      .sort(sortRows);
+    const pageRows = (await hydrateTitles(client, allRows.slice(0, limit), knownSummaries)).sort(sortRows);
+    const oldest = pageRows[pageRows.length - 1];
+    const nextCursor = allRows.length > limit && oldest
+      ? `${oldest.blockNumber.toString()}:${oldest.logIndex}`
+      : null;
+    return NextResponse.json({
+      ok: true,
+      items: pageRows.map(serializeRow),
+      nextCursor,
+      scannedFromBlock: '0',
+      scannedToBlock: latestBlock.toString(),
+      hasMore: nextCursor !== null,
+    }, { headers: activityCacheHeaders });
+  } catch {
+    // Explorer down/unreachable — fall through to the RPC block scan.
+  }
+
   const collected: ActivityRow[] = [];
   let rpcFailures = 0;
 
