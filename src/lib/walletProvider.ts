@@ -1,5 +1,10 @@
 import { isStringArray, assertAddress } from './typeGuards';
-import { clearCirclePasskeyWallet, connectCirclePasskeyWallet, restoreCirclePasskeyWallet } from './circlePasskey';
+
+// circlePasskey pulls in the whole Circle modular-wallets + viem account-abstraction stack
+// (~1MB of first-load JS when imported statically from here, since this module sits under the
+// app-shell providers). Import it lazily at the call sites instead — they are all async user
+// actions (connect / restore / disconnect), so the extra await costs nothing perceptible.
+const loadCirclePasskey = () => import('./circlePasskey');
 
 export type WalletProviderMode = 'circle-user-controlled' | 'circle-passkey' | 'external-eoa';
 
@@ -242,6 +247,7 @@ async function ensureArc(provider: EthereumProvider) {
 export async function getExistingExternalWallet(): Promise<ConnectedWallet | null> {
   const stored = getStoredConnectedWallet();
   if (stored?.mode === 'circle-passkey') {
+    const { restoreCirclePasskeyWallet } = await loadCirclePasskey();
     const restored = await restoreCirclePasskeyWallet();
     if (restored) {
       return { address: restored.address, mode: 'circle-passkey' };
@@ -263,6 +269,7 @@ export async function getExistingExternalWallet(): Promise<ConnectedWallet | nul
 }
 
 export async function disconnectExternalWallet() {
+  const { clearCirclePasskeyWallet } = await loadCirclePasskey();
   clearCirclePasskeyWallet();
 
   if (!window.ethereum) {
@@ -284,6 +291,7 @@ export async function disconnectExternalWallet() {
 
 export async function connectOfficialWalletProvider(input?: CircleWalletLoginInput): Promise<ConnectedWallet> {
   if (input?.method === 'passkey') {
+    const { connectCirclePasskeyWallet } = await loadCirclePasskey();
     const passkeyWallet = await connectCirclePasskeyWallet();
     const wallet: ConnectedWallet = { address: passkeyWallet.address, mode: 'circle-passkey' };
     setStoredConnectedWallet(wallet);

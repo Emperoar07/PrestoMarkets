@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useSignMessage } from 'wagmi';
 import { useAppState } from '@/lib/appState';
 import { broadcastSocialChanged, signInCircleWallet, signInExternalWallet } from '@/lib/socialSignIn';
-import { signCirclePasskeyMessage } from '@/lib/circlePasskey';
 
 export function SocialSignInButton({ onSignedIn }: { onSignedIn?: () => void }) {
   const { connectedWallet } = useAppState();
@@ -28,7 +27,10 @@ export function SocialSignInButton({ onSignedIn }: { onSignedIn?: () => void }) 
         // Passkey smart account signs the SIWE nonce via WebAuthn; the server verifies it with
         // ERC-1271/ERC-6492 (no ECDSA key, no Circle userToken session).
         setMessage('Confirm with your passkey…');
-        await signInExternalWallet(connectedWallet.address, (m) => signCirclePasskeyMessage(m));
+        await signInExternalWallet(connectedWallet.address, async (m) => {
+          const { signCirclePasskeyMessage } = await import('@/lib/circlePasskey');
+          return signCirclePasskeyMessage(m);
+        });
       } else {
         setMessage('Sign the message in your wallet.');
         await signInExternalWallet(connectedWallet.address, (m) => signMessageAsync({ message: m }));

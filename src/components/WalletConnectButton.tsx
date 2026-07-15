@@ -20,7 +20,7 @@ import {
 } from '@/lib/walletProvider';
 import { arcTestnetChain, walletConnectProjectId } from '@/lib/rainbowConfig';
 import { useSocialSession } from '@/lib/socialSessionContext';
-import { isCirclePasskeyConfigured, signCirclePasskeyMessage } from '@/lib/circlePasskey';
+import { isCirclePasskeyConfigured } from '@/lib/circlePasskeyConfig';
 import { broadcastSocialChanged, signInCircleWallet, signInExternalWallet } from '@/lib/socialSignIn';
 
 export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceArrowState }: { showAvatar?: boolean; hideDropdown?: boolean; onClick?: () => void; forceArrowState?: boolean }) {
@@ -156,7 +156,10 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
       try {
         if (connectedWallet.mode === 'circle-passkey') {
           setStatus('Confirm sign-in with your passkey…');
-          await signInExternalWallet(connectedWallet.address, (m) => signCirclePasskeyMessage(m));
+          await signInExternalWallet(connectedWallet.address, async (m) => {
+            const { signCirclePasskeyMessage } = await import('@/lib/circlePasskey');
+            return signCirclePasskeyMessage(m);
+          });
           broadcastSocialChanged();
         } else if (connectedWallet.mode === 'circle-user-controlled') {
           await signInCircleWallet(connectedWallet.address);

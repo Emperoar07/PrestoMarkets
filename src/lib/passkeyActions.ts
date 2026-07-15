@@ -11,11 +11,15 @@ import { arcTestnet } from 'viem/chains';
 import { collateralSymbolForAddress, collateralUnit, getArcConfig } from './arcConfig';
 import { ARC_READ_BATCH, arcReadTransport, withRpcRetry } from './arcClient';
 import { erc20Abi, prestoLmsrMarketAbi, prestoMarketAbi } from './contracts';
-import { getCirclePasskeyBundlerClient } from './circlePasskey';
 import { GATEWAY_MINTER } from './gatewayActions';
 import { requestCircleConfirmation, type CircleConfirmDetails } from './circleConfirm';
 import { encodeMemoWrappedCall, type PrestoMemoAction } from './arcMemos';
 import type { LiveActionResult, LmsrBuyInput, LmsrSellInput } from './liveActions';
+
+// Lazy: circlePasskey drags in the Circle modular-wallets + viem account-abstraction stack
+// (~1MB client JS). Every use here is inside an async action, so load it on first use.
+const getCirclePasskeyBundlerClient = async () =>
+  (await import('./circlePasskey')).getCirclePasskeyBundlerClient();
 
 const minTradeUsdc = 0.01;
 const withRetry = withRpcRetry;
@@ -186,7 +190,7 @@ export async function runPasskeyCalls(
     }
   }
 
-  const { bundlerClient } = getCirclePasskeyBundlerClient();
+  const { bundlerClient } = await getCirclePasskeyBundlerClient();
   const userOpCalls = calls.map((call) => ({ ...call, to: call.to as Hex }));
   // Circle's bundler + paymaster + modular RPC fail transiently ("sponsorship unavailable for a
   // moment", estimation errors, RPC blips) and the op usually succeeds on a retry — exactly the
@@ -264,7 +268,7 @@ export async function buyPasskeyShares(input: {
   try {
     const config = requireConfig();
     const publicClient = getPublicClient();
-    const { address } = getCirclePasskeyBundlerClient();
+    const { address } = await getCirclePasskeyBundlerClient();
 
     if (!isAddress(input.marketAddress)) {
       throw new Error('Market address is invalid.');
@@ -372,7 +376,7 @@ export async function buyPasskeyLmsrShares(input: LmsrBuyInput): Promise<LiveAct
   try {
     const config = requireConfig();
     const publicClient = getPublicClient();
-    const { address } = getCirclePasskeyBundlerClient();
+    const { address } = await getCirclePasskeyBundlerClient();
 
     if (!isAddress(input.marketAddress)) throw new Error('Market address is invalid.');
     const marketAddress = input.marketAddress as Address;
@@ -521,7 +525,7 @@ async function callPasskeyMarket(
     if (functionName === 'claim' || functionName === 'refund') {
       const config = requireConfig();
       const publicClient = getPublicClient();
-      const { address } = getCirclePasskeyBundlerClient();
+      const { address } = await getCirclePasskeyBundlerClient();
       const readBalance = () => publicClient.readContract({
         address: config.usdcAddress, abi: erc20Abi, functionName: 'balanceOf', args: [address],
       }) as Promise<bigint>;
@@ -561,7 +565,7 @@ export async function claimAllPasskeyMarkets(
     if (valid.length === 0) return { ok: false, message: 'Nothing to claim.' };
     const config = requireConfig();
     const publicClient = getPublicClient();
-    const { address } = getCirclePasskeyBundlerClient();
+    const { address } = await getCirclePasskeyBundlerClient();
     const readBalance = () => publicClient.readContract({
       address: config.usdcAddress, abi: erc20Abi, functionName: 'balanceOf', args: [address],
     }) as Promise<bigint>;

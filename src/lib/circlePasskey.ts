@@ -10,10 +10,14 @@ import {
 } from '@circle-fin/modular-wallets-core';
 import { getArcConfig } from './arcConfig';
 import { arcReadTransport, ARC_READ_BATCH } from './arcClient';
+import {
+  circlePasskeyClientKey as clientKey,
+  circlePasskeyClientUrl as clientUrl,
+  isCirclePasskeyConfigured,
+} from './circlePasskeyConfig';
 
-const clientKey = process.env.NEXT_PUBLIC_CIRCLE_CLIENT_KEY?.trim() || '';
-const clientUrl = process.env.NEXT_PUBLIC_CIRCLE_CLIENT_URL?.trim() || '';
-const placeholderValues = new Set(['', 'your_circle_client_key_here', 'your_circle_client_url_here']);
+export { isCirclePasskeyConfigured };
+
 const credentialStorageKey = 'presto.circle.passkeyCredential';
 
 // Persist the FULL WebAuthn credential (public key + id), per Circle's modular-wallets guidance,
@@ -40,9 +44,6 @@ let bundlerClientRef: CirclePasskeyBundlerClient | null = null;
 let addressRef: Address | null = null;
 let smartAccountRef: Awaited<ReturnType<typeof toCircleSmartAccount>> | null = null;
 
-export function isCirclePasskeyConfigured() {
-  return !placeholderValues.has(clientKey) && !placeholderValues.has(clientUrl);
-}
 
 function assertCirclePasskeyConfigured() {
   if (!isCirclePasskeyConfigured()) {
