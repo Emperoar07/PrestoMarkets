@@ -19,7 +19,8 @@ import { deriveDisplayType } from './marketDisplay';
 import { generateAiMarketImage } from './generateAiMarketImage';
 import { imageUrlLoads } from './imageLiveness';
 import { getDb, hasDatabaseUrl } from './db/client';
-import { marketMetadataOverrides } from './db/schema';
+import { agentCreations, marketMetadataOverrides } from './db/schema';
+import { gte } from 'drizzle-orm';
 import { logger } from './logger';
 import { assessTrendResearchQuality, formatResearchAssessment, getResearchDecision } from './agentResearch';
 import { formatExaEvidence, researchTrendWithExa, summarizeExaEvidence, type ExaEvidence } from './exaResearch';
@@ -1559,6 +1560,42 @@ function isDuplicateMarket(draft: GeminiDraft, trend: TrendItem, existingMarkets
   });
 }
 
+// Durable cross-run dedup ledger. The market-list snapshot ingests new markets via best-effort
+// background work that can lag for hours under RPC saturation — long enough for the next tick to
+// re-create the same fixture (the on-chain duplicate pairs). Creations are recorded here
+// synchronously (DB-only, no RPC) and merged into the dedup set at run start.
+const AGENT_CREATION_LEDGER_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+
+async function recordAgentCreation(marketId: string | undefined, title: string, trendUrl?: string): Promise<void> {
+  if (!marketId || !hasDatabaseUrl()) return;
+  try {
+    await getDb().insert(agentCreations)
+      .values({ marketId: marketId.toLowerCase(), title, trendUrl: trendUrl ?? null })
+      .onConflictDoNothing();
+  } catch (error) {
+    // Best-effort: a ledger miss only weakens dedup for one tick, never blocks creation.
+    logger.warn('agent-pipeline', 'Failed to record creation in dedup ledger', { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+/** Recent ledger rows as dedup stand-ins ({title, trendUrl, status} is all the checks read). */
+async function loadAgentCreationStubs(): Promise<AppMarket[]> {
+  if (!hasDatabaseUrl()) return [];
+  try {
+    const since = new Date(Date.now() - AGENT_CREATION_LEDGER_WINDOW_MS);
+    const rows = await getDb().select().from(agentCreations).where(gte(agentCreations.createdAt, since));
+    return rows.map((row) => ({
+      id: row.marketId,
+      title: row.title,
+      trendUrl: row.trendUrl ?? undefined,
+      status: 'Open',
+    } as unknown as AppMarket));
+  } catch (error) {
+    logger.warn('agent-pipeline', 'Failed to load creation ledger', { error: error instanceof Error ? error.message : String(error) });
+    return [];
+  }
+}
+
 // After the agent creates a market mid-run, record a lightweight stand-in so the SAME run's later
 // dedup checks (isDuplicateMarket / isSemanticDuplicateMarket) treat it as already existing.
 // existingMarkets is read ONCE at the start of the run, so without this two drafts for the same
@@ -2489,6 +2526,9 @@ async function createOnchain(
     return { ok: false, topic: trend.topic, stage: 'onchain', reason: result.error ?? 'Unknown' };
   }
 
+  // Synchronous (DB-only) so the ledger can never lag behind the chain like the snapshot can.
+  await recordAgentCreation(result.marketAddress, draft.title, trend.url);
+
   // No real subject image → it launched with a branded banner; generate a relevant AI image now and
   // store it as an override so the card shows a fitting picture immediately. Awaited (Vercel may
   // drop background work after the response) but best-effort, so it never fails the creation.
@@ -2602,9 +2642,18 @@ export async function runAgentPipeline(input: { trends?: TrendItem[]; deadlineMs
   }
   const results: PipelineResult[] = [];
 
+  // Merge the durable creation ledger into the dedup set: markets created in recent ticks that
+  // the snapshot hasn't ingested yet still count as existing. Ledger entries whose id is already
+  // in the list are skipped so the active-market caps aren't double-counted.
+  const knownIds = new Set(existingMarkets.map((m) => (m.id ?? '').toLowerCase()).filter(Boolean));
+  const ledgerStubs = (await loadAgentCreationStubs()).filter((stub) => !knownIds.has((stub.id ?? '').toLowerCase()));
+  // Count caps BEFORE adding stubs: a stub has no resolver/category fields, so it must never
+  // shift the active-cap math — it exists purely for the duplicate checks.
   const activeAgentMarkets = countActiveAgentMarkets(existingMarkets);
   const activeNonFixtureMarkets = countActiveNonFixtureAgentMarkets(existingMarkets);
   const typeMix = countAgentMarketTypeMix(existingMarkets);
+  // Fresh array: stubs join the dedup set without mutating the (possibly cached) snapshot list.
+  existingMarkets = [...existingMarkets, ...ledgerStubs];
   // The deterministic fixture lane covers every recognized football/basketball match (objectively
   // settleable from the official result), not just the World Cup. They skip the LLM classify/draft
   // and are shaped into Home/Draw/Away markets. World Cup fixtures sort first, then by kickoff.

@@ -201,6 +201,19 @@ export const limitOrders = pgTable('limit_orders', {
   marketStatusIdx: index('limit_orders_market_status_idx').on(table.marketId, table.status),
 }));
 
+// Durable ledger of agent-created markets, written synchronously in the creation loop.
+// Cross-run dedup merges these into the "existing markets" set at run start, so a lagging
+// market-list snapshot (best-effort background ingest under saturated RPCs) can never blind
+// the agent into creating the same fixture twice.
+export const agentCreations = pgTable('agent_creations', {
+  marketId: text('market_id').primaryKey(),
+  title: text('title').notNull(),
+  trendUrl: text('trend_url'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  createdAtIdx: index('agent_creations_created_at_idx').on(table.createdAt),
+}));
+
 export const circleGatewayEvents = pgTable('circle_gateway_events', {
   notificationId: text('notification_id').primaryKey(),
   subscriptionId: text('subscription_id'),
