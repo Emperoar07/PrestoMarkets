@@ -46,6 +46,9 @@ export async function GET(req: NextRequest) {
     // receipt wait) can outlast what's left of the run even with per-receipt timeouts.
     const outOfBudget = Symbol('outOfBudget');
     const raceBudget = async <T>(work: Promise<T>): Promise<T | typeof outOfBudget> => {
+      // The losing promise keeps running after the race; without a subscribed error handler a
+      // late rejection is "unhandled" and crashes the function (the connection-reset failures).
+      void work.catch(() => undefined);
       const remaining = 230_000 - (Date.now() - startedAt);
       if (remaining <= 0) return outOfBudget;
       return Promise.race([

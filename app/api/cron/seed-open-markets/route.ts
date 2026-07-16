@@ -61,6 +61,9 @@ export async function GET(req: NextRequest) {
     // stop the loop when one runs out — the next tick resumes (the loop is idempotent).
     const outOfBudget = Symbol('outOfBudget');
     const raceBudget = async <T>(work: Promise<T>): Promise<T | typeof outOfBudget> => {
+      // The losing promise keeps running after the race; without a subscribed error handler a
+      // late rejection is "unhandled" and crashes the function (the connection-reset failures).
+      void work.catch(() => undefined);
       const remaining = TIME_BUDGET_MS - (Date.now() - startedAt);
       if (remaining <= 0) return outOfBudget;
       return Promise.race([
