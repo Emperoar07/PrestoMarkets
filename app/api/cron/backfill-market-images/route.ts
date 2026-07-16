@@ -174,9 +174,20 @@ export async function GET(req: NextRequest) {
         // capped per run so the FLUX free tier isn't rate-limited — un-generated markets keep their
         // branded banner (not "good"), so they're retried on the next run until they get an image.
         let finalImage = validated;
-        if (!finalImage && aiGenerated < MAX_AI_IMAGES_PER_RUN) {
+        // AI generation chains providers at 35-40s timeouts each — a single market can burn
+        // ~150s. The loop's budget check only runs BETWEEN markets, so a generation that starts
+        // late used to sail past Vercel's 300s kill: the function died mid-run, curl saw zero
+        // bytes, and the workflow went red. Only start generating when enough budget remains.
+        const remainingMs = ROUTE_BUDGET_MS - (Date.now() - routeStart);
+        if (!finalImage && aiGenerated < MAX_AI_IMAGES_PER_RUN && remainingMs > 60_000) {
           aiGenerated += 1;
-          finalImage = (await generateAiMarketImage({ title: market.title, category: market.category })) ?? undefined;
+          // Hard-bound the generation to the time actually left (less a response reserve): the
+          // provider chain keeps trying in the background, but this run stops waiting and falls
+          // back to the branded banner, leaving the market eligible for the next run.
+          finalImage = (await Promise.race([
+            generateAiMarketImage({ title: market.title, category: market.category }),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), Math.min(remainingMs - 20_000, 150_000))),
+          ])) ?? undefined;
         }
         finalImage = finalImage || brandedMarketImage(market.title);
 
