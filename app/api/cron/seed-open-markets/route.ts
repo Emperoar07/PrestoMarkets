@@ -31,7 +31,10 @@ export async function GET(req: NextRequest) {
     // Wall-clock budget so the run answers inside the workflow's 290s curl even on a slow RPC day;
     // remaining markets are picked up by the next tick (the loop is idempotent).
     const startedAt = Date.now();
-    const TIME_BUDGET_MS = 230_000;
+    // 150s, NOT ~230s: responses that haven't started by ~180s get their connection reset by
+    // the platform proxy (observed repeatedly at exactly 181s), well before the 300s function
+    // maxDuration. Partial progress + next tick beats a dead connection.
+    const TIME_BUDGET_MS = 150_000;
 
     // Top up the agent from the faucet if it's low before spending on seeds. Bounded: the
     // faucet endpoint has hung before, and a pre-loop stall eats the whole run's budget.

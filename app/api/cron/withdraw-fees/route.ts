@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
       // The losing promise keeps running after the race; without a subscribed error handler a
       // late rejection is "unhandled" and crashes the function (the connection-reset failures).
       void work.catch(() => undefined);
-      const remaining = 230_000 - (Date.now() - startedAt);
+      const remaining = 150_000 - (Date.now() - startedAt);
       if (remaining <= 0) return outOfBudget;
       return Promise.race([
         work,
@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
       ]);
     };
     for (const market of amm) {
-      if (Date.now() - startedAt > 230_000) break;
+      if (Date.now() - startedAt > 150_000) break;
       const accrued = await raceBudget(agentReadLmsrAccruedFees(market.id));
       if (accrued === outOfBudget) break;
       if (accrued === null) {
