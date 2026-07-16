@@ -9,7 +9,7 @@
  */
 
 import { agentCreateMarket } from './agentWallet';
-import { callLlmJson, extractJsonObject } from './llmFallback';
+import { callLlmJson, extractJsonObject, setLlmDeadline } from './llmFallback';
 import { AGENT_PLATFORM_CONTEXT } from './agentContext';
 import { fetchOnchainMarkets, readMarketListSnapshot } from './onchainMarkets';
 import { sanitizeFeedText } from './feedSanitizer';
@@ -2624,7 +2624,22 @@ export async function runAgentPipeline(input: { trends?: TrendItem[]; deadlineMs
   // Loops stop at the deadline and return partial results; the next tick continues.
   const deadlineMs = input.deadlineMs ?? Number.POSITIVE_INFINITY;
   const outOfTime = () => Date.now() > deadlineMs;
+  // The loops below check the deadline BETWEEN steps, but one callLlmJson can legally chain
+  // ~9 providers x several models (~10s each) — a single call could eat the whole budget and
+  // push the run past Vercel's function kill. Give the LLM chain the same deadline (minus a
+  // response reserve) so in-flight calls stop waiting when time is up.
+  setLlmDeadline(Number.isFinite(deadlineMs) ? deadlineMs - 10_000 : null);
+  try {
+    return await runAgentPipelineInner(input, outOfTime);
+  } finally {
+    setLlmDeadline(null);
+  }
+}
 
+async function runAgentPipelineInner(
+  input: { trends?: TrendItem[]; deadlineMs?: number },
+  outOfTime: () => boolean,
+): Promise<PipelineResult[]> {
   const trends = input.trends?.length ? input.trends : await fetchTrends();
   let existingMarkets: AppMarket[];
   // Dedup set: a FRESH snapshot (<10 min — refreshed continuously by /api/markets and the image

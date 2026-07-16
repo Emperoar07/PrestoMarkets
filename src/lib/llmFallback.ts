@@ -53,6 +53,17 @@ function uniqueStrings(values: Array<string | undefined>): string[] {
 
 const LLM_PROVIDER_TIMEOUT_MS = 10_000;
 
+// Optional wall-clock deadline for the WHOLE fallback chain, set by deadline-bound callers
+// (the agent pipeline). Each provider request is individually capped at 10s, but the chain is
+// ~9 providers x up to 4 models — legally ~200s for ONE call when everything is throttled,
+// which is how the market-factory run blew past its 240s budget and Vercel's function kill.
+// Module scope is safe here: each cron route runs in its own function instance and the
+// pipeline holds a cron lease, so no concurrent caller shares this state.
+let llmDeadlineAt: number | null = null;
+export function setLlmDeadline(epochMs: number | null) {
+  llmDeadlineAt = epochMs && Number.isFinite(epochMs) ? epochMs : null;
+}
+
 async function callAnthropic(input: LlmCallInput): Promise<ProviderResult | null> {
   const key = envClean('ANTHROPIC_API_KEY');
   if (!key) return null;
@@ -382,7 +393,16 @@ export async function callLlmJson(input: LlmCallInput): Promise<ProviderResult> 
     ? [callAnthropic, callGemini, callCloudflare, callGroq, callMistral, callOpenRouter, callCerebras, callTogether, callHuggingFace]
     : [callAnthropic, callGemini, callGroq, callMistral, callOpenRouter, callCerebras, callTogether, callCloudflare, callHuggingFace];
   for (const fn of chain) {
-    const result = await fn(input);
+    // Respect the caller's wall-clock deadline: stop starting providers once it passes, and
+    // never wait on an in-flight provider longer than the time remaining.
+    const remainingMs = llmDeadlineAt === null ? Number.POSITIVE_INFINITY : llmDeadlineAt - Date.now();
+    if (remainingMs <= 0) break;
+    const result = Number.isFinite(remainingMs)
+      ? await Promise.race([
+        fn(input),
+        new Promise<null>((resolve) => { const t = setTimeout(() => resolve(null), remainingMs); (t as { unref?: () => void }).unref?.(); }),
+      ])
+      : await fn(input);
     if (!result) continue;
 
     try {
