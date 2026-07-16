@@ -33,7 +33,12 @@ export async function GET(req: NextRequest) {
     const snapshot = await readMarketListSnapshot().catch(() => null);
     const all = snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 30 * 60 * 1000
       ? snapshot.markets
-      : await fetchOnchainMarkets();
+      : await fetchOnchainMarkets().catch(() => {
+        // Same stale-tolerance as the other maintenance crons: accrued fees are re-read
+        // on-chain per market below, so an old list beats dying on a throttled RPC.
+        if (snapshot && snapshot.markets.length > 0) return snapshot.markets;
+        throw new Error('No market list available (chain read failed, no snapshot).');
+      });
     const amm = all.filter((market) => market.amm);
 
     const swept: Array<{ marketId: string; title: string; amount: string; txHash?: string }> = [];

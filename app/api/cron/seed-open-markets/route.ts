@@ -46,7 +46,13 @@ export async function GET(req: NextRequest) {
     const snapshot = await readMarketListSnapshot().catch(() => null);
     const allMarkets = snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 30 * 60 * 1000
       ? snapshot.markets
-      : await fetchOnchainMarkets();
+      : await fetchOnchainMarkets().catch(() => {
+        // Snapshot age only resets on a successful FULL chain read, so under sustained RPC
+        // throttling it is chronically "stale" — but per-market state is re-checked on-chain
+        // before every seed anyway, so an old list beats a 500 here.
+        if (snapshot && snapshot.markets.length > 0) return snapshot.markets;
+        throw new Error('No market list available (chain read failed, no snapshot).');
+      });
     const open = allMarkets.filter((market) =>
       (market.status === 'Open' || market.status === 'Closing soon')
       && market.resolutionMode === 'Agent assisted'
