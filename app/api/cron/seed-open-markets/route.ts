@@ -33,8 +33,12 @@ export async function GET(req: NextRequest) {
     const startedAt = Date.now();
     const TIME_BUDGET_MS = 230_000;
 
-    // Top up the agent from the faucet if it's low before spending on seeds.
-    await ensureAgentFunded().catch(() => undefined);
+    // Top up the agent from the faucet if it's low before spending on seeds. Bounded: the
+    // faucet endpoint has hung before, and a pre-loop stall eats the whole run's budget.
+    await Promise.race([
+      ensureAgentFunded().catch(() => undefined),
+      new Promise((resolve) => setTimeout(resolve, 20_000)),
+    ]);
 
     // Snapshot-first: seeding doesn't need block-fresh data (agentReadLmsrSeeded re-checks each
     // market on-chain anyway), and the full chain read alone can eat the whole budget when the
@@ -52,19 +56,35 @@ export async function GET(req: NextRequest) {
     const results: Array<{ marketId: string; title: string; seeded: number[]; errors: string[] }> = [];
     const lmsrFixed: Array<{ marketId: string; title: string; action: 'seeded' | 'canceled'; detail?: string }> = [];
 
+    // One market's writes (send + receipt, twice for approve+seed) can outlast the time left in
+    // the run even with per-receipt timeouts. Race each market against the remaining budget and
+    // stop the loop when one runs out — the next tick resumes (the loop is idempotent).
+    const outOfBudget = Symbol('outOfBudget');
+    const raceBudget = async <T>(work: Promise<T>): Promise<T | typeof outOfBudget> => {
+      const remaining = TIME_BUDGET_MS - (Date.now() - startedAt);
+      if (remaining <= 0) return outOfBudget;
+      return Promise.race([
+        work,
+        new Promise<typeof outOfBudget>((resolve) => setTimeout(() => resolve(outOfBudget), remaining)),
+      ]);
+    };
+
     for (const market of open) {
       if (Date.now() - startedAt > TIME_BUDGET_MS) break;
       // V3 LMSR markets are seeded with a single seed() call (the subsidy funds all outcomes). If a
       // market's seed never landed it is unbuyable (buy reverts NotSeeded), so seed it now — and if
       // the agent can't afford the seed, cancel it so users stop hitting reverts on a dead market.
       if (market.amm) {
-        const seeded = await agentReadLmsrSeeded(market.id);
+        const seeded = await raceBudget(agentReadLmsrSeeded(market.id));
+        if (seeded === outOfBudget) break;
         if (seeded === true || seeded === null) continue;
-        const seed = await agentSeedLmsrMarket(market.id);
+        const seed = await raceBudget(agentSeedLmsrMarket(market.id));
+        if (seed === outOfBudget) break;
         if (seed.ok) {
           lmsrFixed.push({ marketId: market.id, title: market.title, action: 'seeded' });
         } else {
-          const cancel = await agentCancelMarket(market.id);
+          const cancel = await raceBudget(agentCancelMarket(market.id));
+          if (cancel === outOfBudget) break;
           lmsrFixed.push({ marketId: market.id, title: market.title, action: 'canceled', detail: cancel.ok ? seed.error : `seed+cancel failed: ${cancel.error}` });
         }
         continue;
@@ -77,10 +97,12 @@ export async function GET(req: NextRequest) {
       const errors: string[] = [];
 
       for (let i = 0; i < outcomeCount; i++) {
-        const shares = await agentReadTotalShares(market.id, i);
+        const shares = await raceBudget(agentReadTotalShares(market.id, i));
+        if (shares === outOfBudget) break;
         if (shares === null) { errors.push(`read outcome ${i} failed`); continue; }
         if (shares > BigInt(0)) continue; // already backed — skip
-        const buy = await agentBuyShares(market.id, i, perOutcome);
+        const buy = await raceBudget(agentBuyShares(market.id, i, perOutcome));
+        if (buy === outOfBudget) break;
         if (buy.ok) seeded.push(i);
         else errors.push(`outcome ${i}: ${buy.error ?? 'buy failed'}`);
       }

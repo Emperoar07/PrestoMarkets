@@ -42,9 +42,21 @@ export async function GET(req: NextRequest) {
     let totalSwept6 = BigInt(0);
 
     const startedAt = Date.now();
+    // Race each market's reads/writes against the remaining budget: a single withdraw (send +
+    // receipt wait) can outlast what's left of the run even with per-receipt timeouts.
+    const outOfBudget = Symbol('outOfBudget');
+    const raceBudget = async <T>(work: Promise<T>): Promise<T | typeof outOfBudget> => {
+      const remaining = 230_000 - (Date.now() - startedAt);
+      if (remaining <= 0) return outOfBudget;
+      return Promise.race([
+        work,
+        new Promise<typeof outOfBudget>((resolve) => setTimeout(() => resolve(outOfBudget), remaining)),
+      ]);
+    };
     for (const market of amm) {
       if (Date.now() - startedAt > 230_000) break;
-      const accrued = await agentReadLmsrAccruedFees(market.id);
+      const accrued = await raceBudget(agentReadLmsrAccruedFees(market.id));
+      if (accrued === outOfBudget) break;
       if (accrued === null) {
         errors.push({ marketId: market.id, error: 'read accruedFees6 failed' });
         continue;
@@ -53,7 +65,8 @@ export async function GET(req: NextRequest) {
         if (accrued > BigInt(0)) skipped.push({ marketId: market.id, accrued: formatUnits(accrued, 6) });
         continue;
       }
-      const res = await agentWithdrawLmsrFees(market.id);
+      const res = await raceBudget(agentWithdrawLmsrFees(market.id));
+      if (res === outOfBudget) break;
       if (res.ok) {
         totalSwept6 += accrued;
         swept.push({ marketId: market.id, title: market.title, amount: formatUnits(accrued, 6), txHash: res.txHash });
