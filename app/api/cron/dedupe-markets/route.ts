@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
+import { fetchOnchainMarkets, readMarketListSnapshot } from '@/lib/onchainMarkets';
 import { agentCancelMarket, getAgentAddress } from '@/lib/agentWallet';
 import { verifyBearer } from '@/lib/authCompare';
 import { fixturePairKey } from '@/lib/agentPipeline';
@@ -30,7 +30,15 @@ export async function GET(req: NextRequest) {
     const agentAddress = getAgentAddress();
     if (!agentAddress) return NextResponse.json({ ok: false, error: 'AGENT_PRIVATE_KEY not set' }, { status: 500 });
 
-    const all = await fetchOnchainMarkets({ force: true });
+    // Snapshot-first: duplicate detection compares titles, which don't need block-fresh data.
+    // The forced chain read made this cron hang/500 whenever the RPC pool was degraded.
+    const snapshot = await readMarketListSnapshot().catch(() => null);
+    const all = snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 30 * 60 * 1000
+      ? snapshot.markets
+      : await fetchOnchainMarkets({ force: true }).catch(() => {
+        if (snapshot && snapshot.markets.length > 0) return snapshot.markets;
+        throw new Error('No market list available (chain read failed, no snapshot).');
+      });
     const active = all.filter((m) => m.status === 'Open' || m.status === 'Closing soon');
 
     // Group by fixture pair, else exact normalized title (so only near-identical questions group —
@@ -66,7 +74,11 @@ export async function GET(req: NextRequest) {
 
     const results: Array<{ cancel: string; title: string; action: string; error?: string; txHash?: string }> = [];
     if (apply) {
+      // Wall-clock budget: each cancel is a write + receipt wait; without a cap a long plan ran
+      // past the workflow's curl timeout. Remaining duplicates are picked up next tick.
+      const startedAt = Date.now();
       for (const p of plan) {
+        if (Date.now() - startedAt > 230_000) break;
         if (!p.agentOwned) { results.push({ cancel: p.cancel, title: p.title, action: 'skipped (not agent-resolved)' }); continue; }
         const r = await agentCancelMarket(p.cancel);
         results.push({ cancel: p.cancel, title: p.title, action: r.ok ? 'canceled' : 'failed', error: r.ok ? undefined : r.error, txHash: r.ok ? r.txHash : undefined });

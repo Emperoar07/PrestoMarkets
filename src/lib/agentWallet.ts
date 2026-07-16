@@ -166,7 +166,7 @@ export async function agentPauseLmsrMarket(marketAddress: string) {
     const hash = await walletClient.writeContract({
       account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'pause',
     });
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 1_000 }));
     return { ok: true as const, txHash: hash };
   } catch (error) {
     return { ok: false as const, error: error instanceof Error ? error.message : 'pause failed.' };
@@ -182,7 +182,7 @@ export async function agentUnpauseLmsrMarket(marketAddress: string) {
     const hash = await walletClient.writeContract({
       account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'unpause',
     });
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 1_000 }));
     return { ok: true as const, txHash: hash };
   } catch (error) {
     return { ok: false as const, error: error instanceof Error ? error.message : 'unpause failed.' };
@@ -252,7 +252,7 @@ export async function agentCreateMarket(input: CreateLiveMarketInput & { agentRe
         functionName: 'createMarket',
         args: [resolver, getCloseTimestamp(input.closeDate), metadataURI, getMarketKind(input.type), outcomeOptions.length, seed6],
       });
-      const receipt = await withRetry(() => publicClient.waitForTransactionReceipt({ hash: createHash }));
+      const receipt = await withRetry(() => publicClient.waitForTransactionReceipt({ hash: createHash, timeout: 90_000, pollingInterval: 1_000 }));
       const created = parseEventLogs({ abi: prestoLmsrMarketFactoryAbi, eventName: 'MarketCreated', logs: receipt.logs })[0] as { args?: { market?: unknown } } | undefined;
       const marketAddress = typeof created?.args?.market === 'string' && isAddress(created.args.market) ? created.args.market : undefined;
 
@@ -264,10 +264,10 @@ export async function agentCreateMarket(input: CreateLiveMarketInput & { agentRe
           const allowance = await publicClient.readContract({ address: usdc, abi: erc20Abi, functionName: 'allowance', args: [account.address, marketAddress as Address] }) as bigint;
           if (allowance < seed6) {
             const approveHash = await walletClient.writeContract({ account, address: usdc, abi: erc20Abi, functionName: 'approve', args: [marketAddress as Address, seed6] });
-            await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash }));
+            await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash, timeout: 90_000, pollingInterval: 1_000 }));
           }
           const seedHash = await walletClient.writeContract({ account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'seed' });
-          await withRetry(() => publicClient.waitForTransactionReceipt({ hash: seedHash }));
+          await withRetry(() => publicClient.waitForTransactionReceipt({ hash: seedHash, timeout: 90_000, pollingInterval: 1_000 }));
           seeded = await publicClient.readContract({ address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'seeded' }).catch(() => false) as boolean;
         } catch (err) {
           logger.error('agent-wallet', 'LMSR seed failed after create', { marketAddress, error: err instanceof Error ? err.message : String(err) });
@@ -307,7 +307,7 @@ export async function agentCreateMarket(input: CreateLiveMarketInput & { agentRe
       ],
     });
 
-    const receipt = await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    const receipt = await withRetry(() => publicClient.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 1_000 }));
     const created = parseEventLogs({
       abi: useMultiOutcome ? prestoMultiOutcomeMarketFactoryAbi : prestoMarketFactoryAbi,
       eventName: 'MarketCreated',
@@ -350,7 +350,7 @@ export async function agentResolveMarket(marketAddress: string, outcomeIndex: nu
       args: [outcomeIndex, resolutionURI],
     });
 
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 1_000 }));
     return { ok: true, txHash: hash };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Agent resolution failed.' };
@@ -373,7 +373,7 @@ export async function agentProposeResolution(marketAddress: string, outcomeIndex
       args: [outcomeIndex, resolutionURI],
     });
 
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 1_000 }));
     return { ok: true as const, txHash: hash };
   } catch (error) {
     return { ok: false as const, error: error instanceof Error ? error.message : 'Agent proposal failed.' };
@@ -394,7 +394,7 @@ export async function agentSettleProposedResolution(marketAddress: string) {
       functionName: 'settleProposedResolution',
     });
 
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 1_000 }));
     return { ok: true as const, txHash: hash };
   } catch (error) {
     return { ok: false as const, error: error instanceof Error ? error.message : 'Proposal settlement failed.' };
@@ -419,14 +419,14 @@ export async function agentProposeV3(marketAddress: string, outcomeIndex: number
       const allowance = await publicClient.readContract({ address: usdc, abi: erc20Abi, functionName: 'allowance', args: [account.address, market] }) as bigint;
       if (allowance < bond6) {
         const approveHash = await walletClient.writeContract({ account, address: usdc, abi: erc20Abi, functionName: 'approve', args: [market, bond6] });
-        await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash }));
+        await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash, timeout: 90_000, pollingInterval: 1_000 }));
       }
     }
 
     const hash = await walletClient.writeContract({
       account, address: market, abi: prestoLmsrMarketAbi, functionName: 'propose', args: [outcomeIndex, evidenceURI],
     });
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 1_000 }));
     return { ok: true as const, txHash: hash };
   } catch (error) {
     return { ok: false as const, error: error instanceof Error ? error.message : 'V3 proposal failed.' };
@@ -441,7 +441,7 @@ export async function agentSettleV3(marketAddress: string) {
     const hash = await walletClient.writeContract({
       account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'settle',
     });
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 1_000 }));
     return { ok: true as const, txHash: hash };
   } catch (error) {
     return { ok: false as const, error: error instanceof Error ? error.message : 'V3 settle failed.' };
@@ -470,7 +470,7 @@ export async function agentWithdrawLmsrFees(marketAddress: string) {
     const hash = await walletClient.writeContract({
       account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'withdrawFees',
     });
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 1_000 }));
     return { ok: true as const, txHash: hash };
   } catch (error) {
     return { ok: false as const, error: error instanceof Error ? error.message : 'withdrawFees failed.' };
@@ -485,7 +485,7 @@ export async function agentResolveDisputedV3(marketAddress: string, finalOutcome
     const hash = await walletClient.writeContract({
       account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'resolveDisputed', args: [finalOutcome, evidenceURI],
     });
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 1_000 }));
     return { ok: true as const, txHash: hash };
   } catch (error) {
     return { ok: false as const, error: error instanceof Error ? error.message : 'V3 dispute resolution failed.' };
@@ -532,7 +532,7 @@ export async function agentPayWinners(marketAddress: string, winners: string[]) 
       const hash = await walletClient.writeContract({
         account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'payWinners', args: [batch],
       });
-      await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+      await withRetry(() => publicClient.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 1_000 }));
       last = hash;
     }
     return { ok: true as const, paid: valid.length, txHash: last };
@@ -553,7 +553,7 @@ export async function agentCancelMarket(marketAddress: string) {
       functionName: 'cancel',
     });
 
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 1_000 }));
     return { ok: true, txHash: hash };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Agent cancellation failed.' };
@@ -573,7 +573,7 @@ export async function agentSettlePosition(marketAddress: string, action: 'claim'
       functionName: action,
     });
 
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 1_000 }));
     return { ok: true, txHash: hash };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : `Agent ${action} failed.` };
@@ -705,7 +705,7 @@ export async function agentBuyShares(
         functionName: 'approve',
         args: [market, amount],
       });
-      await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash }));
+      await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash, timeout: 90_000, pollingInterval: 1_000 }));
     }
 
     const hash = await walletClient.writeContract({
@@ -716,7 +716,7 @@ export async function agentBuyShares(
       args: [outcomeIndex, amount],
     });
 
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 1_000 }));
     return { ok: true, txHash: hash };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Liquidity buy failed.' };
@@ -762,7 +762,7 @@ export async function agentTransferUsdc(toAddress: string, amountUsdc: string) {
       args: [toAddress as Address, amount],
     });
 
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash }));
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 1_000 }));
     return { ok: true, txHash: hash };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'USDC transfer failed.' };
@@ -798,10 +798,10 @@ export async function agentSeedLmsrMarket(marketAddress: string) {
     const allowance = await publicClient.readContract({ address: usdc, abi: erc20Abi, functionName: 'allowance', args: [account.address, marketAddress as Address] }) as bigint;
     if (allowance < seed6) {
       const approveHash = await walletClient.writeContract({ account, address: usdc, abi: erc20Abi, functionName: 'approve', args: [marketAddress as Address, seed6] });
-      await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash }));
+      await withRetry(() => publicClient.waitForTransactionReceipt({ hash: approveHash, timeout: 90_000, pollingInterval: 1_000 }));
     }
     const seedHash = await walletClient.writeContract({ account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'seed' });
-    await withRetry(() => publicClient.waitForTransactionReceipt({ hash: seedHash }));
+    await withRetry(() => publicClient.waitForTransactionReceipt({ hash: seedHash, timeout: 90_000, pollingInterval: 1_000 }));
     return { ok: true as const, txHash: seedHash };
   } catch (error) {
     return { ok: false as const, error: error instanceof Error ? error.message : 'seed failed' };
