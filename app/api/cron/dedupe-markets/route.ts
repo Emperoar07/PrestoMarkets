@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchOnchainMarkets, readMarketListSnapshot } from '@/lib/onchainMarkets';
+import { loadMarketListBounded } from '@/lib/onchainMarkets';
 import { agentCancelMarket, getAgentAddress } from '@/lib/agentWallet';
 import { verifyBearer } from '@/lib/authCompare';
 import { fixturePairKey } from '@/lib/agentPipeline';
@@ -30,15 +30,9 @@ export async function GET(req: NextRequest) {
     const agentAddress = getAgentAddress();
     if (!agentAddress) return NextResponse.json({ ok: false, error: 'AGENT_PRIVATE_KEY not set' }, { status: 500 });
 
-    // Snapshot-first: duplicate detection compares titles, which don't need block-fresh data.
-    // The forced chain read made this cron hang/500 whenever the RPC pool was degraded.
-    const snapshot = await readMarketListSnapshot().catch(() => null);
-    const all = snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 30 * 60 * 1000
-      ? snapshot.markets
-      : await fetchOnchainMarkets({ force: true }).catch(() => {
-        if (snapshot && snapshot.markets.length > 0) return snapshot.markets;
-        throw new Error('No market list available (chain read failed, no snapshot).');
-      });
+    // Snapshot-first with a hard time bound: duplicate detection compares titles, which don't
+    // need block-fresh data.
+    const all = await loadMarketListBounded();
     const active = all.filter((m) => m.status === 'Open' || m.status === 'Closing soon');
 
     // Group by fixture pair, else exact normalized title (so only near-identical questions group —

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchOnchainMarkets, readMarketListSnapshot } from '@/lib/onchainMarkets';
+import { loadMarketListBounded } from '@/lib/onchainMarkets';
 import { recordMarketSnapshots, pruneOldSnapshots, countSnapshots } from '@/lib/marketSnapshots';
 import { verifyBearer } from '@/lib/authCompare';
 
@@ -16,15 +16,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Snapshot-first: odds snapshots only need the list's CURRENT hydrated odds (refreshed
-    // continuously by /api/markets); the forced chain read 500'd this cron under RPC throttle.
-    const snapshot = await readMarketListSnapshot().catch(() => null);
-    const markets = snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 30 * 60 * 1000
-      ? snapshot.markets
-      : await fetchOnchainMarkets({ force: true }).catch(() => {
-        if (snapshot && snapshot.markets.length > 0) return snapshot.markets;
-        throw new Error('No market list available (chain read failed, no snapshot).');
-      });
+    // Snapshot-first with a hard time bound: odds snapshots only need the list's CURRENT
+    // hydrated odds (refreshed continuously by /api/markets).
+    const markets = await loadMarketListBounded();
     const active = markets.filter((m) => m.status === 'Open' || m.status === 'Closing soon' || m.status === 'Closed');
 
     const rows = active.map((market) => ({

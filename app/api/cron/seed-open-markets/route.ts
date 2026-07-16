@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchOnchainMarkets, readMarketListSnapshot } from '@/lib/onchainMarkets';
+import { loadMarketListBounded } from '@/lib/onchainMarkets';
 import { agentBuyShares, agentReadTotalShares, ensureAgentFunded, getAgentAddress, agentReadLmsrSeeded, agentSeedLmsrMarket, agentCancelMarket } from '@/lib/agentWallet';
 import { verifyBearer } from '@/lib/authCompare';
 
@@ -52,16 +52,7 @@ export async function GET(req: NextRequest) {
     // Snapshot-first: seeding doesn't need block-fresh data (agentReadLmsrSeeded re-checks each
     // market on-chain anyway), and the full chain read alone can eat the whole budget when the
     // RPC pool is throttled.
-    const snapshot = await readMarketListSnapshot().catch(() => null);
-    const allMarkets = snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 30 * 60 * 1000
-      ? snapshot.markets
-      : await fetchOnchainMarkets().catch(() => {
-        // Snapshot age only resets on a successful FULL chain read, so under sustained RPC
-        // throttling it is chronically "stale" — but per-market state is re-checked on-chain
-        // before every seed anyway, so an old list beats a 500 here.
-        if (snapshot && snapshot.markets.length > 0) return snapshot.markets;
-        throw new Error('No market list available (chain read failed, no snapshot).');
-      });
+    const allMarkets = await loadMarketListBounded();
     const open = allMarkets.filter((market) =>
       (market.status === 'Open' || market.status === 'Closing soon')
       && market.resolutionMode === 'Agent assisted'

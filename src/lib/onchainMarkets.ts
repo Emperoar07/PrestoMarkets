@@ -887,6 +887,35 @@ export async function readMarketListSnapshot(): Promise<{ markets: AppMarket[]; 
   }
 }
 
+/**
+ * Market list for cron routes, with a hard time bound. Snapshot when fresh (<30min); otherwise
+ * the chain read RACED against `chainReadTimeoutMs` — under RPC throttling the full read can
+ * grind for minutes WITHOUT rejecting, which silently held cron responses past the platform's
+ * ~180s connection reset. On timeout/failure a stale snapshot is returned (crons re-check
+ * per-market state on-chain before acting, so an old list is safe); with no snapshot at all,
+ * this throws so the route 500s fast instead of dying silently.
+ */
+export async function loadMarketListBounded(chainReadTimeoutMs = 60_000): Promise<AppMarket[]> {
+  const snapshot = await Promise.race([
+    readMarketListSnapshot().catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 15_000)),
+  ]);
+  if (snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 30 * 60 * 1000) {
+    return snapshot.markets;
+  }
+  try {
+    const read = fetchOnchainMarkets({ force: true });
+    void read.catch(() => undefined); // abandoned on timeout — don't let a late rejection go unhandled
+    const fresh = await Promise.race([
+      read,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('chain read timed out')), chainReadTimeoutMs)),
+    ]);
+    if (fresh.length > 0) return fresh;
+  } catch { /* fall through to stale snapshot */ }
+  if (snapshot && snapshot.markets.length > 0) return snapshot.markets;
+  throw new Error('No market list available (chain read failed or timed out, no snapshot).');
+}
+
 /** Persist one confirmed market read without forcing a full factory scan. */
 export async function patchMarketListSnapshot(fresh: AppMarket): Promise<void> {
   if (typeof window !== 'undefined' || !hasDatabaseUrl()) return;

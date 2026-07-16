@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { formatUnits } from 'viem';
-import { fetchOnchainMarkets, readMarketListSnapshot } from '@/lib/onchainMarkets';
+import { loadMarketListBounded } from '@/lib/onchainMarkets';
 import { agentReadLmsrAccruedFees, agentWithdrawLmsrFees, getAgentAddress } from '@/lib/agentWallet';
 import { verifyBearer } from '@/lib/authCompare';
 
@@ -30,15 +30,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'AGENT_PRIVATE_KEY not set' }, { status: 500 });
     }
 
-    const snapshot = await readMarketListSnapshot().catch(() => null);
-    const all = snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 30 * 60 * 1000
-      ? snapshot.markets
-      : await fetchOnchainMarkets().catch(() => {
-        // Same stale-tolerance as the other maintenance crons: accrued fees are re-read
-        // on-chain per market below, so an old list beats dying on a throttled RPC.
-        if (snapshot && snapshot.markets.length > 0) return snapshot.markets;
-        throw new Error('No market list available (chain read failed, no snapshot).');
-      });
+    const all = await loadMarketListBounded();
     const amm = all.filter((market) => market.amm);
 
     const swept: Array<{ marketId: string; title: string; amount: string; txHash?: string }> = [];

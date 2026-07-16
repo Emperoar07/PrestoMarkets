@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchOnchainMarkets, readMarketListSnapshot } from '@/lib/onchainMarkets';
+import { loadMarketListBounded } from '@/lib/onchainMarkets';
 import {
   agentCancelMarket,
   agentPauseLmsrMarket,
@@ -71,16 +71,9 @@ export async function GET(req: NextRequest) {
         .split(',').map((s) => s.trim().toLowerCase()).filter((s) => s.startsWith('0x')),
     );
 
-    // Snapshot-first: deciding WHAT to pause doesn't need block-fresh data (the pause write
-    // itself is on-chain and idempotent). The forced chain read made this cron 500 whenever the
-    // RPC pool was degraded — exactly the days decided markets pile up.
-    const snapshot = await readMarketListSnapshot().catch(() => null);
-    const all = snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 30 * 60 * 1000
-      ? snapshot.markets as AppMarket[]
-      : await fetchOnchainMarkets({ force: true }).catch(() => {
-        if (snapshot && snapshot.markets.length > 0) return snapshot.markets as AppMarket[];
-        throw new Error('No market list available (chain read failed, no snapshot).');
-      });
+    // Snapshot-first with a hard time bound: deciding WHAT to pause doesn't need block-fresh
+    // data (the pause write itself is on-chain and idempotent).
+    const all = await loadMarketListBounded() as AppMarket[];
     const active = all.filter(isActive);
 
     // Build the target set: explicit flags + auto-detected finished fixtures.
