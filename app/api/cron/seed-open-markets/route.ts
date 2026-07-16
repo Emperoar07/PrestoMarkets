@@ -36,12 +36,18 @@ export async function GET(req: NextRequest) {
     // maxDuration. Partial progress + next tick beats a dead connection.
     const TIME_BUDGET_MS = 150_000;
 
+    // Stage bisector (?stage=start|fund|list): returns early after the named phase, so a hang
+    // can be located without log access. Harmless to keep — the route is cron-secret gated.
+    const stage = new URL(req.url).searchParams.get('stage');
+    if (stage === 'start') return NextResponse.json({ ok: true, stage, elapsedMs: Date.now() - startedAt });
+
     // Top up the agent from the faucet if it's low before spending on seeds. Bounded: the
     // faucet endpoint has hung before, and a pre-loop stall eats the whole run's budget.
     await Promise.race([
       ensureAgentFunded().catch(() => undefined),
       new Promise((resolve) => setTimeout(resolve, 20_000)),
     ]);
+    if (stage === 'fund') return NextResponse.json({ ok: true, stage, elapsedMs: Date.now() - startedAt });
 
     // Snapshot-first: seeding doesn't need block-fresh data (agentReadLmsrSeeded re-checks each
     // market on-chain anyway), and the full chain read alone can eat the whole budget when the
@@ -61,6 +67,8 @@ export async function GET(req: NextRequest) {
       && market.resolutionMode === 'Agent assisted'
       && market.resolverAddress?.toLowerCase() === agentAddress.toLowerCase(),
     );
+
+    if (stage === 'list') return NextResponse.json({ ok: true, stage, openCount: open.length, elapsedMs: Date.now() - startedAt });
 
     const results: Array<{ marketId: string; title: string; seeded: number[]; errors: string[] }> = [];
     const lmsrFixed: Array<{ marketId: string; title: string; action: 'seeded' | 'canceled'; detail?: string }> = [];
