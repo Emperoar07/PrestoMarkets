@@ -64,6 +64,36 @@ export function setLlmDeadline(epochMs: number | null) {
   llmDeadlineAt = epochMs && Number.isFinite(epochMs) ? epochMs : null;
 }
 
+// AgentRouter (agentrouter.org) — free-credit community gateway proxying frontier models
+// (Claude Opus 4.x, GPT-5) behind an OpenAI-compatible endpoint. When a key is configured this
+// is the strongest judge in the chain, so reasoning tries it right after the native Anthropic
+// key. Third-party relay: prompts transit their servers, so it only ever sees what every other
+// fallback provider already sees (market drafts/trends — no secrets, no user data).
+async function callAgentRouter(input: LlmCallInput): Promise<ProviderResult | null> {
+  const key = envClean('AGENTROUTER_API_KEY') || envClean('AGENT_ROUTER_TOKEN');
+  if (!key) return null;
+  const models = uniqueStrings([
+    envClean(input.task === 'reasoning' ? 'AGENTROUTER_REASONING_MODEL' : 'AGENTROUTER_SAFETY_MODEL'),
+    envClean('AGENTROUTER_MODEL'),
+    input.task === 'reasoning' ? 'claude-opus-4-8' : 'gpt-5',
+    'gpt-5',
+  ]);
+  return callOpenAiCompatibleModels({
+    baseUrl: 'https://agentrouter.org/v1',
+    apiKey: key,
+    models,
+    provider: 'agentrouter',
+    // Relay to frontier models (Opus/GPT-5): first-token latency is well above the 10s the
+    // fast free tiers get; still bounded by the chain's global deadline.
+    timeoutMs: 25_000,
+    basePayload: {
+      messages: [{ role: 'user', content: input.prompt }],
+      max_tokens: input.maxTokens ?? (input.task === 'reasoning' ? 1024 : 256),
+      temperature: input.temperature ?? 0.2,
+    },
+  });
+}
+
 async function callAnthropic(input: LlmCallInput): Promise<ProviderResult | null> {
   const key = envClean('ANTHROPIC_API_KEY');
   if (!key) return null;
@@ -158,9 +188,11 @@ async function callOpenAiCompatible(input: {
   model: string;
   provider: string;
   payload: OpenAiChatPayload;
+  timeoutMs?: number;
 }): Promise<ProviderResult | null> {
+  const timeoutMs = input.timeoutMs ?? LLM_PROVIDER_TIMEOUT_MS;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), LLM_PROVIDER_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const res = await fetch(`${input.baseUrl}/chat/completions`, {
@@ -183,7 +215,7 @@ async function callOpenAiCompatible(input: {
     return { text, provider: input.provider, model: input.model };
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
-      logger.warn('llm-fallback', `${input.provider} timeout after ${LLM_PROVIDER_TIMEOUT_MS}ms`);
+      logger.warn('llm-fallback', `${input.provider} timeout after ${timeoutMs}ms`);
       return null;
     }
     logger.warn('llm-fallback', `${input.provider} threw`, { error: err instanceof Error ? err.message : String(err) });
@@ -199,6 +231,7 @@ async function callOpenAiCompatibleModels(input: {
   models: string[];
   provider: string;
   basePayload: Omit<OpenAiChatPayload, 'model'>;
+  timeoutMs?: number;
 }): Promise<ProviderResult | null> {
   for (const model of input.models) {
     const result = await callOpenAiCompatible({
@@ -206,6 +239,7 @@ async function callOpenAiCompatibleModels(input: {
       apiKey: input.apiKey,
       model,
       provider: input.provider,
+      timeoutMs: input.timeoutMs,
       payload: {
         ...input.basePayload,
         model,
@@ -390,8 +424,8 @@ export async function callLlmJson(input: LlmCallInput): Promise<ProviderResult> 
   // 8B models the later free tiers default to, and its free tier is generous. Safety/classify
   // calls keep the latency-ordered chain — small fast models are fine there.
   const chain = input.task === 'reasoning'
-    ? [callAnthropic, callGemini, callCloudflare, callGroq, callMistral, callOpenRouter, callCerebras, callTogether, callHuggingFace]
-    : [callAnthropic, callGemini, callGroq, callMistral, callOpenRouter, callCerebras, callTogether, callCloudflare, callHuggingFace];
+    ? [callAnthropic, callAgentRouter, callGemini, callCloudflare, callGroq, callMistral, callOpenRouter, callCerebras, callTogether, callHuggingFace]
+    : [callAnthropic, callAgentRouter, callGemini, callGroq, callMistral, callOpenRouter, callCerebras, callTogether, callCloudflare, callHuggingFace];
   for (const fn of chain) {
     // Respect the caller's wall-clock deadline: stop starting providers once it passes, and
     // never wait on an in-flight provider longer than the time remaining.
