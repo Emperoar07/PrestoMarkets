@@ -841,9 +841,21 @@ export async function hydrateSnapshotVolumes(markets: AppMarket[], timeoutMs = 4
         })
       : client.readContract({ address: m.id as Address, abi: prestoMarketAbi, functionName: 'totalCollateral' })
     ) as Promise<bigint>);
-    const settled = await Promise.race([
-      Promise.allSettled(reads),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    // Also refresh chain-final STATE for non-final markets (incl. Closed): the snapshot's status
+    // only updates on a successful FULL read, which under sustained RPC throttling can be days
+    // old — settled markets sat on the grid as "Closed" long after resolving/canceling on-chain.
+    // Same multicall wave, one uint8 read per market.
+    const stateTargets = markets.filter(
+      (m) => (m.status === 'Open' || m.status === 'Closing soon' || m.status === 'Closed') && isAddress(m.id),
+    );
+    const stateReads = stateTargets.map((m) => client.readContract({
+      address: m.id as Address,
+      abi: m.amm ? prestoLmsrMarketAbi : prestoMarketAbi,
+      functionName: 'state',
+    }) as Promise<number | bigint>);
+    const [settled, settledStates] = await Promise.race([
+      Promise.all([Promise.allSettled(reads), Promise.allSettled(stateReads)]),
+      new Promise<[null, null]>((resolve) => setTimeout(() => resolve([null, null]), timeoutMs)),
     ]);
     if (!settled) return markets;
     const freshVolume = new Map<string, string>();
@@ -852,13 +864,37 @@ export async function hydrateSnapshotVolumes(markets: AppMarket[], timeoutMs = 4
         freshVolume.set(live[i].id.toLowerCase(), formatOnchainUsd(result.value));
       }
     });
-    if (freshVolume.size === 0) return markets;
-    return markets.map((m) => {
-      const volume = freshVolume.get(m.id.toLowerCase());
-      if (!volume || volume === m.volume) return m;
-      // amm liquidity is the same pool figure; keep the two consistent on the card.
-      return m.amm ? { ...m, volume, liquidity: volume } : { ...m, volume };
+    // Only ever move a market TO a final state (Resolved/Canceled) — never un-finalize.
+    const freshFinal = new Map<string, MarketStatus>();
+    (settledStates ?? []).forEach((result, i) => {
+      if (result.status !== 'fulfilled') return;
+      const s = Number(result.value);
+      const m = stateTargets[i];
+      const status: MarketStatus | null = m.amm
+        ? (s === 3 ? 'Resolved' : s === 4 ? 'Canceled' : null)
+        : (s === 1 ? 'Resolved' : s === 2 ? 'Canceled' : null);
+      if (status) freshFinal.set(m.id.toLowerCase(), status);
     });
+    if (freshVolume.size === 0 && freshFinal.size === 0) return markets;
+    const merged = markets.map((m) => {
+      const key = m.id.toLowerCase();
+      const volume = freshVolume.get(key);
+      const finalStatus = freshFinal.get(key);
+      if (!volume && !finalStatus) return m;
+      let next = m;
+      if (finalStatus && finalStatus !== m.status) next = { ...next, status: finalStatus, closeLabel: finalStatus };
+      if (volume && volume !== next.volume) {
+        // amm liquidity is the same pool figure; keep the two consistent on the card.
+        next = next.amm ? { ...next, volume, liquidity: volume } : { ...next, volume };
+      }
+      return next;
+    });
+    // Persist newly-final statuses so the snapshot-first crons (resolver, pause, seed) see them
+    // too — otherwise they keep re-processing markets that already settled on-chain.
+    if (freshFinal.size > 0 && hasDatabaseUrl()) {
+      void getDb().update(marketListCache).set({ payload: merged }).where(eq(marketListCache.key, 'latest')).catch(() => undefined);
+    }
+    return merged;
   } catch {
     return markets;
   }
