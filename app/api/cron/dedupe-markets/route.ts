@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
       // past the workflow's curl timeout. Remaining duplicates are picked up next tick.
       const startedAt = Date.now();
       for (const p of plan) {
-        if (Date.now() - startedAt > 230_000) break;
+        if (Date.now() - startedAt > 150_000) break;
         if (!p.agentOwned) { results.push({ cancel: p.cancel, title: p.title, action: 'skipped (not agent-resolved)' }); continue; }
         const r = await agentCancelMarket(p.cancel);
         results.push({ cancel: p.cancel, title: p.title, action: r.ok ? 'canceled' : 'failed', error: r.ok ? undefined : r.error, txHash: r.ok ? r.txHash : undefined });

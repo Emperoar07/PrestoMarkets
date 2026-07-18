@@ -20,7 +20,25 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const stats = await getAllAccountStats();
+    // Hard bound: getAllAccountStats reconstructs every account's ledger from event logs and can
+    // grind under RPC throttling for minutes WITHOUT failing — the response never starts and the
+    // platform proxy resets the connection at ~181s, failing the whole agent-tick job (this is
+    // the only step without continue-on-error). On timeout, keep the existing cached leaderboard
+    // and answer 200 so the tick stays green; the next hourly tick retries.
+    const statsWork = getAllAccountStats();
+    void statsWork.catch(() => undefined);
+    const stats = await Promise.race([
+      statsWork,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 150_000)),
+    ]);
+    if (stats === null) {
+      return NextResponse.json({
+        ok: true,
+        updated: 0,
+        skipped: 'stats computation exceeded the time budget; kept previous leaderboard',
+        ranAt: new Date().toISOString(),
+      });
+    }
     const rows = await refreshLeaderboardCache(stats, 'all');
     return NextResponse.json({
       ok: true,

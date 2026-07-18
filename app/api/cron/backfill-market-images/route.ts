@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse, after } from 'next/server';
-import { fetchOnchainMarkets, readMarketListSnapshot } from '@/lib/onchainMarkets';
+import { fetchOnchainMarkets, loadMarketListBounded } from '@/lib/onchainMarkets';
 import { verifyBearer } from '@/lib/authCompare';
 import { resolveSubjectImageUrl, brandedMarketImage } from '@/lib/marketSubjectImage';
 import { validateImageUrl } from '@/lib/agentPipeline';
@@ -43,34 +43,14 @@ export async function GET(req: NextRequest) {
     // providers are degraded — runs blew past the workflow's 290s curl timeout and every scheduled
     // run went red. Everything below subtracts from this one clock.
     const routeStart = Date.now();
-    const ROUTE_BUDGET_MS = 230_000;
+    // Must answer before the platform proxy resets silent responses at ~181s (observed).
+    const ROUTE_BUDGET_MS = 150_000;
 
-    // 1. Market list: snapshot-first. The backfill doesn't need block-fresh data — the DB snapshot
-    // (refreshed continuously by /api/markets) is instant, while a forced chain read on a cold
-    // lambda takes 30-150s+ depending on RPC health. Fall back to the chain only without a usable
-    // snapshot.
-    const snapshot = await readMarketListSnapshot();
-    let allMarkets;
-    if (snapshot && snapshot.markets.length > 0 && snapshot.ageMs < 30 * 60 * 1000) {
-      allMarkets = snapshot.markets;
-    } else {
-      try {
-        allMarkets = await fetchOnchainMarkets({ force: true });
-      } catch (chainError) {
-        // Every RPC leg can fail at once when all providers are out of credit and the public
-        // endpoint is rate-limited. A stale snapshot beats a 500: image work doesn't need
-        // block-fresh data, and the run keeps the workflow green until an endpoint recovers.
-        if (snapshot && snapshot.markets.length > 0) {
-          logger.warn('backfill-market-images', 'chain read failed; using stale snapshot', {
-            ageMs: snapshot.ageMs,
-            error: chainError instanceof Error ? chainError.message.slice(0, 160) : String(chainError),
-          });
-          allMarkets = snapshot.markets;
-        } else {
-          throw chainError;
-        }
-      }
-    }
+    // 1. Market list via the shared bounded loader: fresh snapshot instantly; chain read raced
+    // against a hard cap otherwise (it can grind for minutes WITHOUT rejecting under RPC
+    // throttling, which silently held this route past the platform's ~180s connection reset);
+    // stale snapshot as fallback — image work doesn't need block-fresh data.
+    const allMarkets = await loadMarketListBounded(45_000);
 
     // Markets whose stored override is ALREADY a good image — skip these so we don't reprocess
     // them every run. Crucially, a market whose override is only a branded-SVG fallback stays

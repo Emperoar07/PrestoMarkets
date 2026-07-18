@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     // 240s pipeline deadline: fits inside the workflow's 290s curl AND Vercel's 300s kill, so the
     // run always finishes cleanly with partial results instead of dying mid-creation (which is how
     // the agent silently stopped creating markets whenever the RPC pool was slow).
-    const leasedRun = await runWithCronLease('market-factory', 10 * 60 * 1000, () => runAgentPipeline({ deadlineMs: Date.now() + 240_000 }));
+    const leasedRun = await runWithCronLease('market-factory', 10 * 60 * 1000, () => runAgentPipeline({ deadlineMs: Date.now() + 145_000 }));
     if (!leasedRun.acquired) {
       return NextResponse.json({
         ok: true,
