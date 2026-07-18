@@ -504,7 +504,14 @@ export async function GET(req: NextRequest) {
     // simply reverts and is reported as skipped).
     const MARKET_DEADLINE_MS = 90_000;
 
-    for (const market of expired) {
+    // Rotate the starting point each tick: iteration used to follow snapshot order, so when only
+    // ~3 markets fit in the budget (evidence + LLM under RPC congestion), the SAME few markets at
+    // the head were reground every run and everything behind them starved — the backlog froze.
+    // Advancing the offset with the 15-min cadence walks the entire queue across ticks.
+    const offset = expired.length > 0 ? Math.floor(Date.now() / 900_000) % expired.length : 0;
+    const queue = [...expired.slice(offset), ...expired.slice(0, offset)];
+
+    for (const market of queue) {
       if (Date.now() - resolveStart > RESOLVE_BUDGET_MS) break;
       try {
         // Pending optimistic proposal: wait out the dispute window, then settle. A DISPUTED
