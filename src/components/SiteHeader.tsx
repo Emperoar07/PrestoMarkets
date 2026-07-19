@@ -7,6 +7,7 @@ import { BrandMark } from './BrandMark';
 import { WalletConnectButton } from './WalletConnectButton';
 import { AddUsdcDrawer } from './AddUsdcDrawer';
 import { fetchArcStableBalances, readCachedUsdcBalance, type StableSymbol } from '@/lib/walletBalance';
+import { isWorldCupActive } from '@/lib/worldCup';
 import { fetchAvailableUsdc, formatAvailableUsdc, readCachedAvailableUsdc } from '@/lib/unifiedBalance';
 import { getStoredConnectedWallet, subscribeConnectedWallet, disconnectExternalWallet, type ConnectedWallet } from '@/lib/walletProvider';
 import { extractMarketCategories, mergeTopicNavCategories, primaryViewCategories } from '@/lib/categories';
@@ -43,7 +44,10 @@ export function SiteHeader() {
   const showSearchBar = !isLandingPage && !isDocsPage;
   // Category tab row only on the markets explorer itself — not market detail pages, not
   // portfolio/activity/create. Keeps secondary pages uncluttered.
-  const showCategoryNav = pathname === '/markets' || pathname === '/world-cup';
+  // World Cup hub auto-retires when the tournament window ends (see lib/worldCup). Once inactive
+  // the pill and its category-nav treatment disappear so the app sheds that surface on its own.
+  const worldCupActive = isWorldCupActive();
+  const showCategoryNav = pathname === '/markets' || (pathname === '/world-cup' && worldCupActive);
   const isCreatePage = pathname === '/markets/create';
 
   const [searchValue, setSearchValue] = useState('');
@@ -704,17 +708,20 @@ export function SiteHeader() {
           <div className="mx-auto flex max-w-[1400px] items-center gap-2 px-4 md:px-7">
             <div ref={categoryScrollRef} className="scrollbar-hide min-w-0 flex-1 overflow-x-auto">
               <div className="flex items-center">
-                {/* Pinned World Cup hub — gold accent, Polymarket-style */}
-                <Link
-                  href="/world-cup"
-                  className={`flex min-w-fit items-center gap-1.5 px-4 py-3 text-[13px] font-bold transition-colors ${
-                    pathname === '/world-cup'
-                      ? 'border-b-2 border-amber-300 text-amber-200'
-                      : 'text-amber-200/85 hover:text-amber-100'
-                  }`}
-                >
-                  <span aria-hidden>⚽</span> World Cup
-                </Link>
+                {/* Pinned World Cup hub — gold accent, Polymarket-style. Hidden once the
+                    tournament window ends so the nav sheds it automatically. */}
+                {worldCupActive ? (
+                  <Link
+                    href="/world-cup"
+                    className={`flex min-w-fit items-center gap-1.5 px-4 py-3 text-[13px] font-bold transition-colors ${
+                      pathname === '/world-cup'
+                        ? 'border-b-2 border-amber-300 text-amber-200'
+                        : 'text-amber-200/85 hover:text-amber-100'
+                    }`}
+                  >
+                    <span aria-hidden>⚽</span> World Cup
+                  </Link>
+                ) : null}
                 {primaryViewCategories.map((cat) => (
                   <button
                     key={cat}

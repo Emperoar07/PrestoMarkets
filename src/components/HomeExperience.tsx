@@ -7,6 +7,7 @@ import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
 import { MarketCard } from './MarketCard';
 import { useAppState } from '@/lib/appState';
+import { isWorldCupActive } from '@/lib/worldCup';
 
 const mockWorldCupFixtures = [
   { teamA: 'Argentina', teamB: 'France', date: 'Today, 20:00 UTC', flagA: '🇦🇷', flagB: '🇫🇷', group: 'Group D • Match 1' },
@@ -33,7 +34,10 @@ const pillars = [
 
 export function HomeExperience() {
   const { markets } = useAppState();
-  const [activeTab, setActiveTab] = useState<'worldcup' | 'all'>('worldcup');
+  // World Cup hub auto-retires once the tournament window ends: default to the plain "all
+  // featured" view and drop the WC tab so the home page sheds that surface on its own.
+  const worldCupActive = isWorldCupActive();
+  const [activeTab, setActiveTab] = useState<'worldcup' | 'all'>(worldCupActive ? 'worldcup' : 'all');
   const featuredMarkets = markets.slice(0, 3);
 
   const hasInactiveMarket = featuredMarkets.some(
@@ -132,7 +136,7 @@ export function HomeExperience() {
         </section>
 
         <section className="mx-auto max-w-[1400px] px-4 py-6 md:px-7">
-          {!hasInactiveMarket ? (
+          {!hasInactiveMarket && worldCupActive ? (
             <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-white/[0.06] pb-4">
               <div className="flex items-center gap-2">
                 <Trophy className="h-5 w-5 text-cyan" />

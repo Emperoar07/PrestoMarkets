@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Trophy } from 'lucide-react';
 import type { AppMarket } from '@/lib/appState';
+import { isWorldCupActive } from '@/lib/worldCup';
 
 // How long after kickoff a fixture counts as "in play" for panel display (regulation + ET buffer).
 const LIVE_WINDOW_MS = 2.6 * 60 * 60 * 1000;
@@ -69,7 +70,9 @@ export function WorldCupFixturesPanel({ markets, onQuickBuy }: {
       .slice(0, MAX_FIXTURES);
   }, [markets, now]);
 
-  if (fixtures.length === 0) return null;
+  // Self-hides when no live fixtures remain; the retirement gate also drops it the moment the
+  // tournament window ends, even if a stale unresolved fixture lingers.
+  if (fixtures.length === 0 || !isWorldCupActive()) return null;
 
   let lastDay = '';
 

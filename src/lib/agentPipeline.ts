@@ -636,8 +636,12 @@ const sportsDbSports = [
 const MAJOR_SPORTS_LEAGUES = [
   'english premier league', 'spanish la liga', 'italian serie a', 'german bundesliga',
   'french ligue 1', 'uefa champions league', 'uefa europa league', 'uefa europa conference',
-  'american major league soccer', 'english football league championship', 'fa cup',
-  'copa del rey', 'dfb pokal', 'coppa italia', 'saudi pro league',
+  'american major league soccer', 'english football league championship', 'english championship',
+  'fa cup', 'efl cup', 'carabao cup', 'copa del rey', 'dfb pokal', 'coppa italia',
+  'saudi pro league', 'turkish super lig', 'portuguese primeira liga', 'primeira liga',
+  'dutch eredivisie', 'eredivisie', 'mexican liga mx', 'liga mx', 'brazilian serie a',
+  'argentine', 'liga profesional', 'copa libertadores', 'copa sudamericana',
+  'concacaf champions',
   // International football: World Cup, its qualifiers, and the major national-team competitions.
   // These are objectively settleable and give the agent live fixtures between club seasons.
   'fifa world cup', 'world cup qualif', 'uefa nations league', 'uefa euro', 'copa america',
@@ -661,7 +665,7 @@ function formatSportsDbDate(date: Date) {
 // further out so every upcoming match gets a market well before kickoff; club leagues scan a
 // shorter window. Both env-tunable so coverage can widen without a code change.
 const GUARANTEED_LOOKAHEAD_DAYS = Math.max(1, Number(process.env.PRESTO_FIXTURE_LOOKAHEAD_DAYS ?? 14));
-const CLUB_LOOKAHEAD_DAYS = Math.max(1, Number(process.env.PRESTO_CLUB_LOOKAHEAD_DAYS ?? 3));
+const CLUB_LOOKAHEAD_DAYS = Math.max(1, Number(process.env.PRESTO_CLUB_LOOKAHEAD_DAYS ?? 5));
 
 const ESPN_LEAGUES: Array<{ slug: string; label: string; guaranteed: boolean }> = [
   // International / World Cup lanes — guaranteed, scanned the full lookahead so no match is missed.
@@ -673,17 +677,34 @@ const ESPN_LEAGUES: Array<{ slug: string; label: string; guaranteed: boolean }> 
   { slug: 'fifa.worldq.caf', label: 'World Cup Qualifying - CAF', guaranteed: true },
   { slug: 'fifa.friendly', label: 'International Friendly', guaranteed: true },
   { slug: 'uefa.nations', label: 'UEFA Nations League', guaranteed: true },
-  // Club competitions — broader "other sports" coverage across the top leagues + continental cups.
+  // Continental club competitions.
   { slug: 'uefa.champions', label: 'UEFA Champions League', guaranteed: false },
   { slug: 'uefa.europa', label: 'UEFA Europa League', guaranteed: false },
+  { slug: 'uefa.europa.conf', label: 'UEFA Europa Conference League', guaranteed: false },
+  { slug: 'conmebol.libertadores', label: 'Copa Libertadores', guaranteed: false },
+  { slug: 'conmebol.sudamericana', label: 'Copa Sudamericana', guaranteed: false },
+  { slug: 'concacaf.champions', label: 'CONCACAF Champions Cup', guaranteed: false },
+  // Top domestic leagues.
   { slug: 'eng.1', label: 'English Premier League', guaranteed: false },
   { slug: 'esp.1', label: 'Spanish La Liga', guaranteed: false },
   { slug: 'ita.1', label: 'Italian Serie A', guaranteed: false },
   { slug: 'ger.1', label: 'German Bundesliga', guaranteed: false },
   { slug: 'fra.1', label: 'French Ligue 1', guaranteed: false },
+  { slug: 'eng.2', label: 'English Championship', guaranteed: false },
+  { slug: 'por.1', label: 'Portuguese Primeira Liga', guaranteed: false },
+  { slug: 'ned.1', label: 'Dutch Eredivisie', guaranteed: false },
   { slug: 'usa.1', label: 'American Major League Soccer', guaranteed: false },
   { slug: 'mex.1', label: 'Mexican Liga MX', guaranteed: false },
-  { slug: 'conmebol.libertadores', label: 'Copa Libertadores', guaranteed: false },
+  { slug: 'bra.1', label: 'Brazilian Serie A', guaranteed: false },
+  { slug: 'arg.1', label: 'Argentine Liga Profesional', guaranteed: false },
+  { slug: 'ksa.1', label: 'Saudi Pro League', guaranteed: false },
+  { slug: 'tur.1', label: 'Turkish Super Lig', guaranteed: false },
+  // Marquee domestic cups — produce the big knockout fixtures fans want to trade.
+  { slug: 'eng.fa', label: 'English FA Cup', guaranteed: false },
+  { slug: 'eng.league_cup', label: 'English EFL Cup', guaranteed: false },
+  { slug: 'esp.copa_del_rey', label: 'Copa del Rey', guaranteed: false },
+  { slug: 'ita.coppa_italia', label: 'Coppa Italia', guaranteed: false },
+  { slug: 'ger.dfb_pokal', label: 'DFB Pokal', guaranteed: false },
 ];
 
 // Close a fixture market 10 minutes after the match ends. A football match runs roughly 120 min of
