@@ -779,6 +779,80 @@ async function fetchEspnSoccerSignals(): Promise<TrendItem[]> {
   return batches.flat();
 }
 
+// Basketball games run ~2.5h of wall clock; add an overtime + reporting buffer so the market
+// closes after the final buzzer. close = tipoff + 210 min.
+const FIXTURE_CLOSE_AFTER_TIPOFF_MS = 210 * 60 * 1000;
+
+// ESPN basketball scoreboards — the deterministic basketball fixture lane, mirroring the soccer
+// one. Same public API, no key. Off-season leagues simply return no events, so listing them is
+// safe year-round: NBA (Oct–Jun), WNBA (May–Oct), college (Nov–Apr), EuroLeague (Oct–May).
+const ESPN_BASKETBALL_LEAGUES: Array<{ slug: string; label: string }> = [
+  { slug: 'nba', label: 'NBA' },
+  { slug: 'wnba', label: 'WNBA' },
+  { slug: 'mens-college-basketball', label: "NCAA Men's Basketball" },
+  { slug: 'womens-college-basketball', label: "NCAA Women's Basketball" },
+];
+
+async function fetchEspnBasketballSignals(): Promise<TrendItem[]> {
+  const today = new Date();
+  // Basketball schedules are near-term (no months-out knockout ties), so a short lookahead is
+  // plenty and keeps the request count sane across four leagues.
+  const days = Math.min(CLUB_LOOKAHEAD_DAYS, 4);
+  const requests = ESPN_BASKETBALL_LEAGUES.flatMap((league) =>
+    Array.from({ length: days }, (_, i) => new Date(today.getTime() + i * 86_400_000)).map(async (date) => {
+      const ymd = date.toISOString().slice(0, 10).replace(/-/g, '');
+      const url = `https://site.api.espn.com/apis/site/v2/sports/basketball/${league.slug}/scoreboard?dates=${ymd}`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      try {
+        const res = await fetch(url, { next: { revalidate: 900 }, signal: controller.signal });
+        if (!res.ok) return [] as TrendItem[];
+        const data = await res.json() as {
+          events?: Array<{
+            id?: string; date?: string;
+            status?: { type?: { state?: string } };
+            competitions?: Array<{ competitors?: Array<{ homeAway?: string; team?: { displayName?: string; shortDisplayName?: string; logo?: string } }> }>;
+          }>;
+        };
+        return (data.events ?? []).slice(0, 20).flatMap((event): TrendItem[] => {
+          const competitors = event.competitions?.[0]?.competitors ?? [];
+          const homeC = competitors.find((c) => c.homeAway === 'home');
+          const awayC = competitors.find((c) => c.homeAway === 'away');
+          const home = sanitizeFeedText(homeC?.team?.displayName || homeC?.team?.shortDisplayName || '');
+          const away = sanitizeFeedText(awayC?.team?.displayName || awayC?.team?.shortDisplayName || '');
+          if (!home || !away) return [];
+          if (isPlaceholderTeamName(home) || isPlaceholderTeamName(away)) return [];
+          // Only upcoming games (ESPN state 'pre'); skip in-play ('in') and finished ('post').
+          if ((event.status?.type?.state ?? 'pre') !== 'pre') return [];
+
+          const tipoff = event.date ? new Date(event.date) : null;
+          const tipoffMs = tipoff && !Number.isNaN(tipoff.getTime()) ? tipoff.getTime() : null;
+          if (tipoffMs !== null && tipoffMs <= Date.now()) return [];
+          const closeMs = tipoffMs !== null ? tipoffMs + FIXTURE_CLOSE_AFTER_TIPOFF_MS : null;
+
+          return [{
+            // "Basketball" in the query drives the two-outcome (no-draw) shaping and the Basketball
+            // category; the fixture is the signal, so it skips the LLM quality gates like soccer.
+            topic: `${home} vs ${away}`,
+            query: `${home} (Basketball) vs ${away}. ${league.label} fixture. Basketball has no draw — outcomes are the two teams only.`,
+            source: 'espn-basketball-fixtures',
+            url: event.id ? `https://www.espn.com/nba/game/_/gameId/${event.id}` : 'https://www.espn.com/nba/',
+            imageUrl: homeC?.team?.logo || awayC?.team?.logo || undefined,
+            ...(closeMs !== null ? { closeDate: new Date(closeMs).toISOString() } : {}),
+            ...(tipoff && !Number.isNaN(tipoff.getTime()) ? { kickoffTime: tipoff.toISOString() } : {}),
+          }];
+        });
+      } catch {
+        return [] as TrendItem[];
+      } finally {
+        clearTimeout(timeout);
+      }
+    }),
+  );
+  const batches = await Promise.all(requests);
+  return batches.flat();
+}
+
 // LLM-sourced fixture lane: Gemini with Google-Search grounding discovers officially scheduled
 // fixtures the structured providers (TheSportsDB / ESPN) miss — smaller competitions, newly
 // confirmed knockout pairings. Grounding is REQUIRED: an ungrounded model recalls stale or
@@ -886,11 +960,12 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
   const apiKey = getSportsDbApiKey();
   // No TheSportsDB key → fall back to ESPN + the LLM-grounded lane so sports markets keep flowing.
   if (!apiKey) {
-    const [espnOnly, llmOnly] = await Promise.all([
+    const [espnOnly, espnBball, llmOnly] = await Promise.all([
       fetchEspnSoccerSignals().catch(() => [] as TrendItem[]),
+      fetchEspnBasketballSignals().catch(() => [] as TrendItem[]),
       fetchLlmFixtureSignals().catch(() => [] as TrendItem[]),
     ]);
-    return dedupeFixtureTrends([...espnOnly, ...llmOnly]);
+    return dedupeFixtureTrends([...espnOnly, ...espnBball, ...llmOnly]);
   }
   const dates = [new Date(), new Date(Date.now() + 24 * 60 * 60 * 1000)];
   // World Cup priority: scan Soccer a full WEEK ahead so every World Cup fixture in the coming
@@ -1007,11 +1082,12 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
   // Run ESPN and the LLM-grounded lane alongside TheSportsDB and merge — they cover different
   // competitions, so together they catch more fixtures. Dedupe by normalized "home vs away" so
   // one match isn't doubled; structured providers come first so they win the dedupe.
-  const [espn, llm] = await Promise.all([
+  const [espn, espnBball, llm] = await Promise.all([
     fetchEspnSoccerSignals().catch(() => [] as TrendItem[]),
+    fetchEspnBasketballSignals().catch(() => [] as TrendItem[]),
     fetchLlmFixtureSignals().catch(() => [] as TrendItem[]),
   ]);
-  return dedupeFixtureTrends([...batches.flat(), ...espn, ...llm]);
+  return dedupeFixtureTrends([...batches.flat(), ...espn, ...espnBball, ...llm]);
 }
 
 // Knockout-stage fixtures are published before their participants are decided, with placeholder
