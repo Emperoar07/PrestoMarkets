@@ -1,0 +1,32 @@
+name: Ingest new markets
+
+# Makes newly-created markets appear on the grid. The market-list snapshot only gains new markets
+# via a full chain read (impossible for days under RPC saturation) or the cheap incremental ingest
+# this endpoint runs. Wired only as after() background work before, it never fired reliably (the
+# grid is CDN-cached, so most requests skip the function) and markets sat invisible for days. This
+# runs the ingest directly every 10 minutes.
+#
+# Required GitHub Actions secrets:
+#   APP_URL       - production base URL, e.g. https://presto-markets.vercel.app
+#   CRON_SECRET   - matches the CRON_SECRET env var set in Vercel
+
+on:
+  schedule:
+    # Every 10 minutes
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      # The endpoint self-limits to a ~90s work budget and is idempotent, so it answers well inside
+      # --max-time; one retry covers a transient blip and the next 10-minute run resumes anyway.
+      - name: Ingest new markets into the snapshot
+        run: |
+          curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/ingest-markets" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n" \
+            --max-time 150 --retry 1 --retry-delay 10 --retry-all-errors \
+            --fail-with-body
