@@ -8,6 +8,19 @@ import {
 const now = new Date('2026-06-10T12:00:00.000Z').getTime();
 
 describe('buildResolutionTrustState', () => {
+  it('uses the deployed 30-minute challenge window when a legacy proposal omits it', () => {
+    expect(DEFAULT_DISPUTE_WINDOW_MS).toBe(30 * 60 * 1000);
+    expect(buildResolutionTrustState({
+      marketStatus: 'Closed',
+      closeTimeMs: now - 60_000,
+      nowMs: now,
+      proposal: {
+        outcome: 'YES',
+        proposedAtMs: now - 30 * 60 * 1000 - 1,
+      },
+    }).status).toBe('ready_to_settle');
+  });
+
   it('keeps open markets in normal trading state before close', () => {
     expect(buildResolutionTrustState({
       marketStatus: 'Open',

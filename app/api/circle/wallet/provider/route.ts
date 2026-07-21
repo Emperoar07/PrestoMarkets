@@ -1,7 +1,22 @@
 import { NextResponse } from 'next/server';
 import { isAllowedContractExecution } from '@/lib/circleWalletPolicy';
 import { checkFixedWindowRateLimit, getClientIp, hasBrowserOriginSignal, isTrustedBrowserOrigin } from '@/lib/requestGuards';
+import { isCirclePinFlowEnabled } from '@/lib/circlePinPolicy';
 import crypto from 'node:crypto';
+
+// The identity-minting actions turn a caller-supplied userId into a Circle userToken, which is
+// then sufficient to claim a Presto session for that user's wallet WITHOUT the PIN (audit #1).
+// Per Circle's own guidance a PIN/userId does not verify identity, so this path must be OFF in
+// production unless the operator has opted in (CIRCLE_PIN_FLOW_ENABLED=true) after adding their
+// own front-door verification. Non-identity actions (wallets/contractExecution) still require a
+// valid userToken and are unaffected.
+const pinIdentityActions = new Set<CircleAction>(['createUser', 'session']);
+function circlePinFlowEnabled(): boolean {
+  return isCirclePinFlowEnabled({
+    nodeEnv: process.env.NODE_ENV,
+    configured: (process.env.CIRCLE_PIN_FLOW_ENABLED ?? '').trim(),
+  });
+}
 
 function hashUserId(rawUserId: string): string {
   const secret = process.env.CIRCLE_USER_SECRET || process.env.CIRCLE_API_KEY;
@@ -175,6 +190,10 @@ export async function POST(request: Request) {
 
     if (browserOriginActions.has(action) && !isTrustedBrowserOrigin(request.headers, configuredOrigins())) {
       return jsonError('This wallet action requires a same-origin browser request.', 403);
+    }
+
+    if (pinIdentityActions.has(action) && !circlePinFlowEnabled()) {
+      return jsonError('PIN-based Circle identity is disabled on this deployment. Sign in with a verified method.', 403);
     }
 
     if (action === 'config') {

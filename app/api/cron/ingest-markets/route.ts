@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { appendNewMarketsToSnapshot } from '@/lib/onchainMarkets';
+import {
+  appendNewMarketsToSnapshot,
+  hydrateSnapshotVolumes,
+  readMarketListSnapshot,
+  persistHydratedSnapshot,
+} from '@/lib/onchainMarkets';
 import { verifyBearer } from '@/lib/authCompare';
 
 export const runtime = 'nodejs';
@@ -33,7 +38,21 @@ export async function GET(req: NextRequest) {
       ingested += n;
       if (n === 0) break;
     }
-    return NextResponse.json({ ok: true, ran: new Date().toISOString(), ingested });
+
+    // Refresh volumes and heal chain-final statuses off the request path (audit #5): a single
+    // bounded multicall wave updates card volumes and flips markets that resolved/canceled
+    // on-chain, then persists. Previously this ran inline on /api/markets, blocking the grid on
+    // RPC; here it is cron-driven so no user request ever waits on a chain read. Best-effort.
+    let hydrated = 0;
+    try {
+      const snapshot = await readMarketListSnapshot();
+      if (snapshot && snapshot.markets.length > 0) {
+        const fresh = await hydrateSnapshotVolumes(snapshot.markets);
+        hydrated = await persistHydratedSnapshot(fresh);
+      }
+    } catch { /* leave the snapshot as-is; next run retries */ }
+
+    return NextResponse.json({ ok: true, ran: new Date().toISOString(), ingested, hydrated });
   } catch (error) {
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : 'Ingest failed' },

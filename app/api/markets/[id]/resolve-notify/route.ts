@@ -3,12 +3,18 @@ import { fetchOnchainMarkets } from '@/lib/onchainMarkets';
 import { listMarketWatchers } from '@/lib/socialDb';
 import { listMarketTraders } from '@/lib/marketIndexer';
 import { notifyMany } from '@/lib/notifications';
+import { verifyBearer } from '@/lib/authCompare';
 import { Address } from 'viem';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Notification fan-out is a server-side settlement side effect. Browser-provided
+  // outcomes are not authoritative and must never be able to notify a market.
+  if (!verifyBearer(request.headers.get('authorization'), process.env.CRON_SECRET)) {
+    return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
+  }
   const { id: marketId } = await params;
   if (!marketId) return NextResponse.json({ error: 'marketId is required.' }, { status: 400 });
 
@@ -28,6 +34,15 @@ export async function POST(
     const market = markets.find((m) => m.id.toLowerCase() === marketId.toLowerCase());
     if (!market) return NextResponse.json({ error: 'Market not found.' }, { status: 404 });
 
+    const onchainAction = market.status === 'Resolved'
+      ? 'resolved'
+      : market.status === 'Canceled'
+        ? 'canceled'
+        : null;
+    if (onchainAction !== body.action) {
+      return NextResponse.json({ error: 'Market is not in the requested final state.' }, { status: 409 });
+    }
+
     const watchers = await listMarketWatchers(marketId);
     const traders = await listMarketTraders(marketId as Address);
     const recipients = Array.from(new Set([...watchers, ...traders]));
@@ -39,7 +54,7 @@ export async function POST(
           ? `Market resolved: ${market.title}`
           : `Market canceled & refunded: ${market.title}`,
         body: body.action === 'resolved'
-          ? `Outcome: ${body.outcome ?? ''}. Claim your winnings if you held the winning side.`
+          ? `Outcome: ${market.winningOutcomeLabel ?? 'Unknown'}. Claim your winnings if you held the winning side.`
           : 'All participants can claim a refund.',
         marketId: market.id,
       }));

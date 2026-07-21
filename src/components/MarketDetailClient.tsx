@@ -576,8 +576,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
     proposal: market.proposal
       ? {
           outcome: market.proposal.outcomeLabel,
-          proposedAtMs: market.proposal.proposedAtMs,
-          evidenceURI: market.proposal.evidenceURI,
+           proposedAtMs: market.proposal.proposedAtMs,
+           disputeWindowMs: market.proposal.disputeWindowMs,
+           evidenceURI: market.proposal.evidenceURI,
           disputedAtMs: market.proposal.disputed ? market.proposal.proposedAtMs : undefined,
           proposer: market.proposal.proposer,
         }
@@ -585,7 +586,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   });
   // Disputes need skin in the game: a signed-in wallet holding shares in this market.
   const holdsPosition = Boolean(accountPreview?.outcomeShares?.some((share) => Number(share.shares) > 0));
-  const disputeWindowEndsAt = market.proposal ? new Date(market.proposal.proposedAtMs + 2 * 60 * 60 * 1000).toISOString() : undefined;
+  const disputeWindowEndsAt = market.proposal
+    ? new Date(market.proposal.proposedAtMs + (market.proposal.disputeWindowMs ?? 30 * 60 * 1000)).toISOString()
+    : undefined;
   const isClosedForResolution = resolutionTrustState.canPropose || market.closeLabel === 'Closed';
   const canAccessResolverActions = isResolver && !hasSettlementRecord;
   const canUseResolverActions = canAccessResolverActions && isClosedForResolution;

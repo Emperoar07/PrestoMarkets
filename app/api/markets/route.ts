@@ -1,5 +1,5 @@
 import { NextResponse, after } from 'next/server';
-import { appendNewMarketsToSnapshot, fetchOnchainMarkets, hydrateSnapshotVolumes, readMarketListSnapshot } from '@/lib/onchainMarkets';
+import { appendNewMarketsToSnapshot, fetchOnchainMarkets, readMarketListSnapshot } from '@/lib/onchainMarkets';
 import type { AppMarket } from '@/lib/appState';
 
 export const runtime = 'nodejs';
@@ -45,13 +45,10 @@ export async function GET() {
       // (fetchOnchainMarkets persists the new snapshot when the read lands); the previous
       // behavior of falling through to an INLINE chain read pinned requests for 25-30s whenever
       // the snapshot aged out under degraded RPCs.
-      // Volumes move with every trade but the snapshot only moves on a successful FULL read — so
-      // hydrate just the volume figures (one bounded multicall round trip for the whole grid)
-      // whenever the snapshot is older than a minute. Cheap enough to do inline; on failure the
-      // snapshot serves unpatched.
-      let markets = snapshot.markets;
+      // Never read the chain in a user request. Snapshot refreshes happen after the
+      // response so an overloaded RPC cannot hold the market grid on a skeleton.
+      const markets = snapshot.markets;
       if (snapshot.ageMs > 60_000) {
-        markets = await hydrateSnapshotVolumes(markets);
         after(async () => {
         // Cheap incremental ingest first (new markets show within a minute even when the full
         // read below keeps failing under RPC saturation), then attempt the full refresh.
@@ -90,7 +87,7 @@ export async function GET() {
         await fetchOnchainMarkets({ force: true }).catch(() => undefined);
       });
         return NextResponse.json(
-          { markets: slimImages(await hydrateSnapshotVolumes(snapshot.markets)), stale: true },
+          { markets: slimImages(snapshot.markets), stale: true },
           { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=30, stale-while-revalidate=120' } },
         );
       }

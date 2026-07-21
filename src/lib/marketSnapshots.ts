@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import { getDb, hasDatabaseUrl } from './db/client';
 import { marketSnapshots } from './db/schema';
 
@@ -44,9 +44,11 @@ export async function listMarketSnapshots(marketId: string, sinceMs?: number): P
     .select()
     .from(marketSnapshots)
     .where(where)
-    .orderBy(asc(marketSnapshots.capturedAt))
+    // Limit the newest window first, then restore chart order below. Otherwise a
+    // busy market eventually returned only its oldest points and appeared frozen.
+    .orderBy(desc(marketSnapshots.capturedAt))
     .limit(2_000);
-  return rows.map((row) => ({
+  return rows.reverse().map((row) => ({
     t: row.capturedAt.getTime(),
     probabilities: Array.isArray(row.probabilities) ? row.probabilities : [],
   }));

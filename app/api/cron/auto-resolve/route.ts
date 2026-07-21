@@ -25,7 +25,7 @@ type ResolutionResult =
 
 const DISPUTE_WINDOW_MS = 30 * 60 * 1000;
 
-// V2 markets get the optimistic path: publish a proposal anyone can dispute for 2 hours, then
+    // V2 markets get the optimistic path: publish a proposal anyone can dispute for 30 minutes, then
 // settle on a later tick. V1 markets lack proposeResolution and revert, so we fall back to the
 // direct resolve() — and a DISPUTED V2 proposal also lands here, where resolve() is the
 // contract-sanctioned escalation path.
@@ -580,7 +580,7 @@ export async function GET(req: NextRequest) {
                     : `Outcome proposed: ${market.title}`,
                   body: action === 'resolved' ? `Outcome: ${sideEffectResult.outcome}. Claim your winnings if you held the winning side.`
                     : action === 'canceled' ? 'All participants can claim a refund.'
-                    : `Proposed outcome: ${sideEffectResult.outcome}. Anyone can dispute on the market page for about 2 hours before it settles.`,
+                    : `Proposed outcome: ${sideEffectResult.outcome}. Anyone can dispute on the market page for 30 minutes before it settles.`,
                   marketId: market.id,
                 }));
               }

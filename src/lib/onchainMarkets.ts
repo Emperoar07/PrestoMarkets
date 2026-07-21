@@ -297,9 +297,10 @@ async function readMarket(
       ? {
           outcome: Number(proposedOutcomeRaw ?? 0),
           outcomeLabel: labels[Number(proposedOutcomeRaw ?? 0)] ?? `Outcome ${Number(proposedOutcomeRaw ?? 0) + 1}`,
-          proposer: proposalProposer,
-          proposedAtMs: Number(proposalTimeRaw ?? 0) * 1000,
-          disputed: Boolean(proposalDisputed),
+           proposer: proposalProposer,
+           proposedAtMs: Number(proposalTimeRaw ?? 0) * 1000,
+           disputeWindowMs: 30 * 60 * 1000,
+           disputed: Boolean(proposalDisputed),
           evidenceURI: typeof proposalURI === 'string' && isSafeResolutionUri(proposalURI) ? proposalURI : undefined,
         }
       : undefined,
@@ -440,9 +441,10 @@ async function readLmsrMarket(
       ? {
           outcome: Number(proposedOutcomeRaw ?? 0),
           outcomeLabel: labels[Number(proposedOutcomeRaw ?? 0)] ?? `Outcome ${Number(proposedOutcomeRaw ?? 0) + 1}`,
-          proposer: proposer as string,
-          proposedAtMs: challengeEndsAtRaw != null ? (Number(challengeEndsAtRaw) - 30 * 60) * 1000 : 0,
-          disputed: stateNum === 2,
+           proposer: proposer as string,
+           proposedAtMs: challengeEndsAtRaw != null ? (Number(challengeEndsAtRaw) - 30 * 60) * 1000 : 0,
+           disputeWindowMs: 30 * 60 * 1000,
+           disputed: stateNum === 2,
           evidenceURI: undefined,
         }
       : undefined,
@@ -897,6 +899,32 @@ export async function hydrateSnapshotVolumes(markets: AppMarket[], timeoutMs = 4
     return merged;
   } catch {
     return markets;
+  }
+}
+
+/**
+ * Persist volume/status-hydrated markets back into the snapshot WITHOUT bumping updated_at (age
+ * keeps meaning "time since last FULL read"). Used by the ingest cron to refresh card volumes and
+ * chain-final statuses off the request path (audit #5). Returns the count of markets whose volume
+ * or status actually changed, for observability. Best-effort; a DB failure is swallowed.
+ */
+export async function persistHydratedSnapshot(markets: AppMarket[]): Promise<number> {
+  if (typeof window !== 'undefined' || !hasDatabaseUrl() || markets.length === 0) return 0;
+  try {
+    const current = await readMarketListSnapshot();
+    let changed = markets.length;
+    if (current) {
+      const prev = new Map(current.markets.map((m) => [m.id.toLowerCase(), m]));
+      changed = markets.filter((m) => {
+        const p = prev.get(m.id.toLowerCase());
+        return !p || p.volume !== m.volume || p.status !== m.status;
+      }).length;
+    }
+    await getDb().update(marketListCache).set({ payload: markets }).where(eq(marketListCache.key, 'latest'));
+    if (marketCache) marketCache = { at: marketCache.at, markets };
+    return changed;
+  } catch {
+    return 0;
   }
 }
 

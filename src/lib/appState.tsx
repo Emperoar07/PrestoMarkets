@@ -61,6 +61,8 @@ export type AppMarket = Market & {
     outcomeLabel: string;
     proposer: string;
     proposedAtMs: number;
+    /** Read from the deployed market contract when available. */
+    disputeWindowMs?: number;
     disputed: boolean;
     evidenceURI?: string;
   };
@@ -349,13 +351,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
     if (result.ok && !result.approvalOnly) {
       scheduleMarketSnapshotSync(input.marketId, result.txHash);
-      // Notify market creator that someone traded on their market. Best effort.
-      fetch(`/api/markets/${input.marketId}/trade-notify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ outcome: input.outcome, amount: input.amount }),
-      }).catch((err) => console.error('Failed to dispatch trade notification:', err));
-
       // The tx is already confirmed on-chain here (buyLiveShares waited for the receipt), so return
       // immediately — the toast flips to "Confirmed" without waiting on a market re-read. Markets and
       // the YOUR POSITION block refresh in the BACKGROUND so the UI never blocks on the heavy read.
@@ -393,13 +388,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       resolutionURI: input.resolutionURI,
     });
     if (result.ok) {
-      // Notify watchers and traders of resolution. Best-effort.
-      fetch(`/api/markets/${input.marketId}/resolve-notify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'resolved', outcome: input.outcome }),
-      }).catch((err) => console.error('Failed to dispatch resolve notification:', err));
-
       schedulePostTransactionRefresh();
     }
     return result;
@@ -408,13 +396,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const cancelMarket = useCallback(async (marketId: string) => {
     const result = await cancelLiveMarket(marketId);
     if (result.ok) {
-      // Notify watchers and traders of cancellation. Best-effort.
-      fetch(`/api/markets/${marketId}/resolve-notify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'canceled' }),
-      }).catch((err) => console.error('Failed to dispatch cancel notification:', err));
-
       schedulePostTransactionRefresh();
     }
     return result;

@@ -6,7 +6,10 @@ import { getSocialSession } from '@/lib/socialSession';
 // signed in (and as which address) without reading the httpOnly session cookie.
 export async function GET(request: NextRequest) {
   const session = getSocialSession(request);
-  return NextResponse.json({ address: session?.address ?? null });
+  return NextResponse.json(
+    { address: session?.address ?? null },
+    { headers: { 'Cache-Control': 'private, no-store' } },
+  );
 }
 
 // Sign out: clear the session cookie.

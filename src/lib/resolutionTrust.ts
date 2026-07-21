@@ -1,6 +1,9 @@
 import type { MarketStatus } from './markets';
 
-export const DEFAULT_DISPUTE_WINDOW_MS = 2 * 60 * 60 * 1000;
+// All currently deployed optimistic-resolution contracts use a 30-minute window.
+// Prefer a per-market on-chain value when available, and keep this fallback aligned
+// with the contract for older market records.
+export const DEFAULT_DISPUTE_WINDOW_MS = 30 * 60 * 1000;
 
 export type ResolutionProposal = {
   outcome: string;
