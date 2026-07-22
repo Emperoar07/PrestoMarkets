@@ -51,14 +51,38 @@ async function applyFile(sql, file) {
   );
 }
 
+// Distinguish "the database is unreachable" (quota/rate-limit/network/5xx) from a real migration
+// SQL error. When the DB is simply down — e.g. Neon's free-tier data-transfer quota is exceeded
+// (HTTP 402) — the build must NOT fail: migrations are idempotent and retry on the next deploy, and
+// blocking the build would also block shipping the very code that lets the app survive the outage.
+// A genuine SQL/schema error still fails the build.
+function isDbUnavailable(err) {
+  const msg = String((err && (err.message || err)) || '').toLowerCase();
+  return (
+    msg.includes('402') || msg.includes('data transfer') || msg.includes('quota') ||
+    msg.includes('exceeded') || msg.includes('too many requests') || msg.includes('rate limit') ||
+    msg.includes('fetch failed') || msg.includes('econnrefused') || msg.includes('etimedout') ||
+    msg.includes('enotfound') || msg.includes('econnreset') || msg.includes('timeout') ||
+    /http status 5\d\d/.test(msg) || msg.includes('503') || msg.includes('502')
+  );
+}
+
 async function main() {
   const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   if (!url) throw new Error('DATABASE_URL (or POSTGRES_URL) is not set. Put it in .env.local or the environment.');
   const sql = neon(url);
 
-  // Migration journal: records which files have been applied so the no-arg mode can bring ANY
-  // database (fresh or lagging) fully up to date instead of only applying the newest file.
-  await sql.query('CREATE TABLE IF NOT EXISTS _migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');
+  // Probe reachability with the journal-table create (idempotent). If the DB is unreachable, skip
+  // the whole run so the build can proceed; migrations apply on a later deploy once the DB is back.
+  try {
+    await sql.query('CREATE TABLE IF NOT EXISTS _migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');
+  } catch (err) {
+    if (isDbUnavailable(err)) {
+      console.warn(`⚠️  Database unreachable (${String(err.message || err).slice(0, 120)}). Skipping migrations; they will apply on the next deploy once the DB is back.`);
+      return;
+    }
+    throw err;
+  }
 
   const file = process.argv[2];
   // --baseline: record every existing migration file as applied WITHOUT executing it. For
@@ -97,6 +121,10 @@ async function main() {
 }
 
 main().catch((err) => {
+  if (isDbUnavailable(err)) {
+    console.warn(`⚠️  Database unreachable during migration (${String(err.message || err).slice(0, 120)}). Skipping; will retry next deploy.`);
+    return; // exit 0 — do not block the build on an infra outage
+  }
   console.error('Migration failed:', err.message || err);
   process.exitCode = 1;
 });
