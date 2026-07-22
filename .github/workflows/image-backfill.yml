@@ -11,8 +11,11 @@ name: Image backfill
 
 on:
   schedule:
-    # Every 30 minutes
-    - cron: '*/30 * * * *'
+    # 3x/day (00:10, 08:10, 16:10 UTC). Images are attached at CREATION (agent pipeline resolves a
+    # team/subject image, else a branded banner), so this lane is now a periodic upgrade/repair pass
+    # for the rare miss — not a hot path. Running it every 30 min mostly re-scanned already-imaged
+    # markets and added load to the shared Neon/RPC free tiers for little gain.
+    - cron: '10 0,8,16 * * *'
   workflow_dispatch:
 
 jobs:

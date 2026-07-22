@@ -13,6 +13,12 @@ import { eq } from 'drizzle-orm';
 import { hasGoodImage } from './imageQuality';
 import { logger } from './logger';
 import { mergeSyncedMarket } from './marketSync';
+import {
+  slimSnapshotForStorage,
+  writeFilesystemSnapshot,
+  readFilesystemSnapshot,
+  readSeedSnapshot,
+} from './marketSnapshotFallback';
 const MARKET_ADDRESS_BATCH_SIZE = 50;
 const MARKET_HYDRATION_BATCH_SIZE = 32; // Increased from 8 for faster parallel hydration
 const MAX_MARKETS = 500;
@@ -734,14 +740,21 @@ export async function fetchOnchainMarkets(options: { force?: boolean } = {}) {
 // ── DB-backed market-list snapshot (cold-start fast path) ─────────────────────
 
 async function saveMarketListSnapshot(markets: AppMarket[]) {
-  if (typeof window !== 'undefined' || !hasDatabaseUrl()) return;
+  if (typeof window !== 'undefined') return;
+  // Filesystem tier first — free, Neon-independent, and instant. Written even when Neon is down so
+  // a warm instance keeps serving. Stores the SLIM payload (image refs, ~8x smaller).
+  writeFilesystemSnapshot(markets);
+  if (!hasDatabaseUrl()) return;
   try {
+    // Store slim in Neon too: the ~860KB base64-image payload read by 9 crons + every cache miss
+    // is what exhausted Neon's data-transfer quota (HTTP 402). Slim refs cut the row ~8x.
+    const slim = slimSnapshotForStorage(markets);
     await getDb()
       .insert(marketListCache)
-      .values({ key: 'latest', payload: markets, updatedAt: new Date() })
-      .onConflictDoUpdate({ target: marketListCache.key, set: { payload: markets, updatedAt: new Date() } });
+      .values({ key: 'latest', payload: slim, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: marketListCache.key, set: { payload: slim, updatedAt: new Date() } });
   } catch (err) {
-    logger.warn('onchain-markets', 'market list snapshot save failed', { error: String(err) });
+    logger.warn('onchain-markets', 'market list snapshot save failed (filesystem tier still holds it)', { error: String(err) });
   }
 }
 
@@ -803,9 +816,14 @@ export async function appendNewMarketsToSnapshot(maxNew = 10): Promise<number> {
 
     // Append WITHOUT touching updated_at: age keeps meaning "time since last FULL read".
     const merged = [...snapshot.markets, ...hydrated.filter((m) => !known.has(m.id.toLowerCase()))];
-    await getDb().update(marketListCache).set({ payload: merged }).where(eq(marketListCache.key, 'latest'));
-    // Refresh the in-process cache too so warm instances serve the appended list.
+    // Filesystem tier always (Neon-independent); Neon best-effort. Both slim.
+    writeFilesystemSnapshot(merged);
     if (marketCache) marketCache = { at: marketCache.at, markets: merged };
+    if (hasDatabaseUrl()) {
+      try {
+        await getDb().update(marketListCache).set({ payload: slimSnapshotForStorage(merged) }).where(eq(marketListCache.key, 'latest'));
+      } catch { /* Neon down — filesystem tier holds it */ }
+    }
     logger.info('onchain-markets', `append: ingested ${hydrated.length} new market(s) into the snapshot`);
     return hydrated.length;
   } catch (err) {
@@ -909,23 +927,25 @@ export async function hydrateSnapshotVolumes(markets: AppMarket[], timeoutMs = 4
  * or status actually changed, for observability. Best-effort; a DB failure is swallowed.
  */
 export async function persistHydratedSnapshot(markets: AppMarket[]): Promise<number> {
-  if (typeof window !== 'undefined' || !hasDatabaseUrl() || markets.length === 0) return 0;
-  try {
-    const current = await readMarketListSnapshot();
-    let changed = markets.length;
-    if (current) {
-      const prev = new Map(current.markets.map((m) => [m.id.toLowerCase(), m]));
-      changed = markets.filter((m) => {
-        const p = prev.get(m.id.toLowerCase());
-        return !p || p.volume !== m.volume || p.status !== m.status;
-      }).length;
-    }
-    await getDb().update(marketListCache).set({ payload: markets }).where(eq(marketListCache.key, 'latest'));
-    if (marketCache) marketCache = { at: marketCache.at, markets };
-    return changed;
-  } catch {
-    return 0;
+  if (typeof window !== 'undefined' || markets.length === 0) return 0;
+  const current = await readMarketListSnapshot();
+  let changed = markets.length;
+  if (current) {
+    const prev = new Map(current.markets.map((m) => [m.id.toLowerCase(), m]));
+    changed = markets.filter((m) => {
+      const p = prev.get(m.id.toLowerCase());
+      return !p || p.volume !== m.volume || p.status !== m.status;
+    }).length;
   }
+  // Filesystem tier always (Neon-independent); Neon best-effort. Both slim.
+  writeFilesystemSnapshot(markets);
+  if (marketCache) marketCache = { at: marketCache.at, markets };
+  if (hasDatabaseUrl()) {
+    try {
+      await getDb().update(marketListCache).set({ payload: slimSnapshotForStorage(markets) }).where(eq(marketListCache.key, 'latest'));
+    } catch { /* Neon down — filesystem tier holds it */ }
+  }
+  return changed;
 }
 
 /**
@@ -933,22 +953,37 @@ export async function persistHydratedSnapshot(markets: AppMarket[]): Promise<num
  * instances; callers decide how stale is acceptable. null when no DB or no snapshot yet.
  */
 export async function readMarketListSnapshot(): Promise<{ markets: AppMarket[]; ageMs: number } | null> {
-  if (typeof window !== 'undefined' || !hasDatabaseUrl()) return null;
-  try {
-    const rows = await getDb()
-      .select()
-      .from(marketListCache)
-      .where(eq(marketListCache.key, 'latest'))
-      .limit(1);
-    const row = rows[0];
-    if (!row || !Array.isArray(row.payload)) return null;
-    return {
-      markets: (row.payload as AppMarket[]).map(refreshTimeDerivedStatus),
-      ageMs: Date.now() - new Date(row.updatedAt).getTime(),
-    };
-  } catch {
-    return null;
+  if (typeof window !== 'undefined') return null;
+  // Tier 1: Neon (authoritative + cross-instance freshness) — bounded so a slow/failing DB can't
+  // hang the request; on any failure we fall through to the Neon-independent tiers below.
+  if (hasDatabaseUrl()) {
+    try {
+      const rows = await Promise.race([
+        getDb().select().from(marketListCache).where(eq(marketListCache.key, 'latest')).limit(1),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('snapshot read timeout')), 6_000)),
+      ]);
+      const row = rows[0];
+      if (row && Array.isArray(row.payload) && row.payload.length > 0) {
+        return {
+          markets: (row.payload as AppMarket[]).map(refreshTimeDerivedStatus),
+          ageMs: Date.now() - new Date(row.updatedAt).getTime(),
+        };
+      }
+    } catch {
+      /* Neon unavailable (e.g. 402 quota) — fall through to filesystem/seed */
+    }
   }
+  // Tier 2: filesystem (this instance's last good save) — Neon-independent.
+  const fsSnap = readFilesystemSnapshot();
+  if (fsSnap) {
+    return { markets: fsSnap.markets.map(refreshTimeDerivedStatus), ageMs: Date.now() - fsSnap.at };
+  }
+  // Tier 3: committed seed — cold-start floor so the grid is never empty / stuck loading.
+  const seed = readSeedSnapshot();
+  if (seed) {
+    return { markets: seed.markets.map(refreshTimeDerivedStatus), ageMs: Date.now() - seed.at };
+  }
+  return null;
 }
 
 /**
