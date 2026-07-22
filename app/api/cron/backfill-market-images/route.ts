@@ -55,9 +55,24 @@ export async function GET(req: NextRequest) {
     // Markets whose stored override is ALREADY a good image — skip these so we don't reprocess
     // them every run. Crucially, a market whose override is only a branded-SVG fallback stays
     // eligible, so we keep retrying for a real subject image instead of freezing it on the banner.
-    const overrideRows = await db
-      .select({ id: marketMetadataOverrides.marketId, imageUri: marketMetadataOverrides.imageUri })
-      .from(marketMetadataOverrides);
+    //
+    // This lane's whole job is reading+writing the overrides table, so it genuinely needs the DB.
+    // When the DB is unavailable (e.g. Neon over quota, HTTP 402) skip gracefully with a soft ok
+    // instead of a 500 that turns the scheduled workflow red — images are attached at creation, so
+    // this upgrade pass simply resumes on the next run once the DB is back.
+    let overrideRows: Array<{ id: string; imageUri: string }>;
+    try {
+      overrideRows = await db
+        .select({ id: marketMetadataOverrides.marketId, imageUri: marketMetadataOverrides.imageUri })
+        .from(marketMetadataOverrides);
+    } catch (dbErr) {
+      return NextResponse.json({
+        ok: true,
+        skipped: 'database-unavailable',
+        detail: String(dbErr instanceof Error ? dbErr.message : dbErr).slice(0, 140),
+        processedCount: 0,
+      });
+    }
     // "Settled" = the stored override is a real data-image (renders unconditionally). An http-URL
     // override is NOT settled by itself — it must also pass the liveness probe below, otherwise a
     // dead trusted-host link would freeze a market on a letter tile forever.
