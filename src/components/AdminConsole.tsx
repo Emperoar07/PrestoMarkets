@@ -44,6 +44,26 @@ const TICK_LABELS: Record<string, string> = {
   'leaderboard': 'Rebuild leaderboard',
 };
 
+// Turn a cron's JSON result into a one-line human summary for the tick button.
+function summarizeTick(result: unknown, ok: boolean): string {
+  if (!result || typeof result !== 'object') return ok ? 'done' : 'failed';
+  const r = result as Record<string, unknown>;
+  if (r.skipped) return `skipped (${String(r.skipped)})`;
+  if (r.error) return String(r.error).slice(0, 60);
+  const parts: string[] = [];
+  const add = (label: string, key: string) => { const v = r[key]; if (typeof v === 'number' && v > 0) parts.push(`${v} ${label}`); };
+  add('created', 'created'); add('resolved', 'resolved'); add('proposed', 'proposed'); add('canceled', 'canceled');
+  add('ingested', 'ingested'); add('hydrated', 'hydrated'); add('processed', 'processedCount');
+  add('seeded', 'marketsSeeded'); add('swept', 'sweptCount'); add('paused', 'pausedCount'); add('snapshotted', 'marketsSnapshotted');
+  // Result arrays (e.g. auto-resolve results, dedupe plan) — report how many the run touched.
+  if (parts.length === 0) {
+    if (typeof r.expired === 'number') parts.push(`${r.expired} expired scanned`);
+    if (Array.isArray(r.plan)) parts.push(`${r.plan.length} dup(s) found`);
+    if (typeof r.dripped === 'boolean') parts.push(r.dripped ? 'funded' : 'no drip needed');
+  }
+  return parts.length ? parts.join(', ') : (ok ? 'done, nothing to do' : 'failed');
+}
+
 const badgeClass = (status: string) =>
   status === 'Resolved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
   : status === 'Canceled' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
@@ -57,6 +77,20 @@ export function AdminConsole() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState<Array<{ t: number; msg: string; ok: boolean }>>([]);
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'volume' | 'title' | 'status' | 'closing'>('newest');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'Open' | 'Closed' | 'Resolved' | 'Canceled'>('all');
+  const [search, setSearch] = useState('');
+  const [tickRun, setTickRun] = useState<{ tick: string; startedAt: number } | null>(null);
+  const [nowMs, setNowMs] = useState(0);
+  const [tickResults, setTickResults] = useState<Record<string, { ok: boolean; summary: string; at: number }>>({});
+
+  // Elapsed-time ticker while a cron tick runs, so the button shows live progress (they take 60-250s).
+  useEffect(() => {
+    if (!tickRun) return;
+    setNowMs(Date.now());
+    const id = window.setInterval(() => setNowMs(Date.now()), 500);
+    return () => window.clearInterval(id);
+  }, [tickRun]);
 
   useEffect(() => {
     setWallet(getStoredConnectedWallet());
@@ -104,6 +138,48 @@ export function AdminConsole() {
     } finally { setBusy(null); }
   }, [pushLog, refresh]);
 
+  // Run a cron tick with live progress + a summarized result under the button.
+  const runTick = useCallback(async (tick: string) => {
+    if (tickRun) return;
+    setTickRun({ tick, startedAt: Date.now() });
+    const { ok, json } = await call(TICK_LABELS[tick] ?? tick, { op: 'tick', tick });
+    setTickResults((prev) => ({ ...prev, [tick]: { ok, summary: summarizeTick((json as { result?: unknown })?.result ?? json, ok), at: Date.now() } }));
+    setTickRun(null);
+  }, [call, tickRun]);
+
+  // Combined, filtered, searched, sorted creations list. Must run before the early returns below
+  // to satisfy the rules of hooks.
+  const visibleMarkets = useMemo(() => {
+    const all: AgentMarket[] = [...(data?.markets ?? []), ...(data?.ledgerOnly ?? [])];
+    const parseVol = (v?: string) => {
+      if (!v) return 0;
+      const n = parseFloat(v.replace(/[^0-9.]/g, ''));
+      const mult = /k/i.test(v) ? 1e3 : /m/i.test(v) ? 1e6 : 1;
+      return (Number.isFinite(n) ? n : 0) * mult;
+    };
+    // Actionable-first for status sort: Closed (awaiting resolve) → live → resolved → canceled.
+    const rank = (s: string) => (s === 'Closed' ? 0 : s === 'Open' || s === 'Closing soon' ? 1 : s === 'Resolved' ? 2 : s === 'Canceled' ? 3 : 4);
+    const time = (m: AgentMarket) => new Date(m.createdAt || m.closeDate || 0).getTime() || 0;
+    const q = search.trim().toLowerCase();
+    const filtered = all.filter((m) => {
+      if (q && !m.title.toLowerCase().includes(q)) return false;
+      if (filterStatus === 'all') return true;
+      if (filterStatus === 'Open') return m.status === 'Open' || m.status === 'Closing soon';
+      return m.status === filterStatus;
+    });
+    return filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'newest': return time(b) - time(a);
+        case 'oldest': return time(a) - time(b);
+        case 'volume': return parseVol(b.volume) - parseVol(a.volume);
+        case 'title': return a.title.localeCompare(b.title);
+        case 'status': return rank(a.status) - rank(b.status);
+        case 'closing': return new Date(a.closeDate || 0).getTime() - new Date(b.closeDate || 0).getTime();
+        default: return 0;
+      }
+    });
+  }, [data, search, filterStatus, sortBy]);
+
   // ── Access gates ──
   if (!connectedIsAdmin) {
     return (
@@ -150,21 +226,45 @@ export function AdminConsole() {
           <p className="-mt-2 break-all font-mono text-[11px] text-[#64748b]">agent {data.agentAddress}{data.guardianAddress ? ` · guardian ${data.guardianAddress}` : ''}</p>
         ) : null}
 
-        {/* Ticks */}
+        {/* Ticks — each runs the same /api/cron/* job the matching GitHub workflow runs, now, with live progress */}
         <section className="rounded-xl border border-white/[0.06] bg-[#0d1626]/30 p-4">
-          <h2 className="mb-3 text-[11px] font-extrabold uppercase tracking-wider text-[#64748b]">Agent & cron ticks</h2>
-          <div className="flex flex-wrap gap-2">
-            {(data?.ticks ?? Object.keys(TICK_LABELS)).map((tick) => (
-              <button
-                key={tick}
-                disabled={!!busy}
-                onClick={() => void call(TICK_LABELS[tick] ?? tick, { op: 'tick', tick })}
-                className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-bold text-[#e5edf8] transition-colors hover:border-cyan/40 hover:bg-cyan/10 disabled:opacity-40"
-              >
-                {busy === (TICK_LABELS[tick] ?? tick) ? 'Running…' : (TICK_LABELS[tick] ?? tick)}
-              </button>
-            ))}
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-[11px] font-extrabold uppercase tracking-wider text-[#64748b]">Agent &amp; cron ticks</h2>
+            {tickRun ? (
+              <span className="text-[11px] font-bold text-cyan">running {TICK_LABELS[tickRun.tick] ?? tickRun.tick} · {Math.max(0, Math.floor((nowMs - tickRun.startedAt) / 1000))}s</span>
+            ) : null}
           </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            {(data?.ticks ?? Object.keys(TICK_LABELS)).map((tick) => {
+              const running = tickRun?.tick === tick;
+              const res = tickResults[tick];
+              const elapsed = running ? Math.max(0, Math.floor((nowMs - (tickRun?.startedAt ?? nowMs)) / 1000)) : 0;
+              return (
+                <div key={tick} className={`flex flex-col gap-1 rounded-lg border p-2.5 transition-colors ${running ? 'border-cyan/40 bg-cyan/5' : 'border-white/[0.08] bg-white/[0.02]'}`}>
+                  <button
+                    disabled={!!tickRun}
+                    onClick={() => void runTick(tick)}
+                    className="flex items-center justify-between gap-2 text-left text-xs font-bold text-[#e5edf8] disabled:opacity-60"
+                  >
+                    <span className="truncate">{TICK_LABELS[tick] ?? tick}</span>
+                    {running ? <span className="shrink-0 text-[11px] font-black text-cyan">{elapsed}s</span> : null}
+                  </button>
+                  {running ? (
+                    <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                      <div className="h-full w-1/3 animate-[admin-progress_1.2s_ease-in-out_infinite] rounded-full bg-cyan" />
+                    </div>
+                  ) : res ? (
+                    <span className={`truncate text-[10px] font-bold ${res.ok ? 'text-emerald-400/90' : 'text-rose-400/90'}`} title={res.summary}>
+                      {res.ok ? '✓' : '✗'} {res.summary}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-[#475569]">idle</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <style>{`@keyframes admin-progress { 0% { transform: translateX(-120%); } 100% { transform: translateX(400%); } }`}</style>
         </section>
 
         {/* Create market — human form */}
@@ -172,19 +272,60 @@ export function AdminConsole() {
 
         {/* Markets + per-market actions */}
         <section className="rounded-xl border border-white/[0.06] bg-[#0d1626]/30 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-[11px] font-extrabold uppercase tracking-wider text-[#64748b]">Agent creations ({(data?.markets.length ?? 0) + (data?.ledgerOnly.length ?? 0)})</h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-[11px] font-extrabold uppercase tracking-wider text-[#64748b]">
+              Agent creations · {visibleMarkets.length}{' '}
+              <span className="text-[#475569]">of {(data?.markets.length ?? 0) + (data?.ledgerOnly.length ?? 0)}</span>
+            </h2>
             <button onClick={() => void refresh()} disabled={loading} className="text-xs font-bold text-cyan hover:underline disabled:opacity-40">{loading ? 'Loading…' : 'Refresh'}</button>
           </div>
-          <div className="flex flex-col gap-2">
-            {[...(data?.markets ?? []), ...(data?.ledgerOnly ?? [])].map((m) => (
+
+          {/* Sort / filter / search controls */}
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search title…"
+              className="min-w-[160px] flex-1 rounded border border-white/[0.1] bg-[#0b1220] px-3 py-1.5 text-xs text-white placeholder:text-[#475569] focus:border-cyan/50 focus:outline-none"
+            />
+            <div className="flex items-center gap-1">
+              {(['all', 'Open', 'Closed', 'Resolved', 'Canceled'] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setFilterStatus(s)}
+                  className={`rounded px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                    filterStatus === s ? 'bg-cyan/15 text-cyan border border-cyan/30' : 'border border-white/[0.08] bg-white/[0.03] text-[#94a3b8] hover:text-white'
+                  }`}
+                >{s === 'all' ? 'All' : s === 'Closed' ? 'Awaiting' : s}</button>
+              ))}
+            </div>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              className="rounded border border-white/[0.1] bg-[#0b1220] px-2 py-1.5 text-xs font-bold text-white focus:border-cyan/50 focus:outline-none"
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="closing">Closing soonest</option>
+              <option value="volume">Highest volume</option>
+              <option value="status">Status (actionable first)</option>
+              <option value="title">Title A–Z</option>
+            </select>
+          </div>
+
+          <div className="admin-no-scrollbar flex max-h-[560px] flex-col gap-2 overflow-y-auto">
+            {visibleMarkets.map((m) => (
               <MarketRow key={m.id} m={m} busy={!!busy} onAction={(action, outcomeIndex, evidenceURI) =>
                 call(`${action} ${m.title.slice(0, 24)}`, { op: 'market', action, marketId: m.id, outcomeIndex, evidenceURI })} />
             ))}
-            {data && data.markets.length === 0 && data.ledgerOnly.length === 0 ? (
-              <p className="py-6 text-center text-sm text-[#64748b]">No agent creations yet.</p>
+            {data && visibleMarkets.length === 0 ? (
+              <p className="py-6 text-center text-sm text-[#64748b]">
+                {(data.markets.length + data.ledgerOnly.length) === 0 ? 'No agent creations yet.' : 'No markets match the current filter.'}
+              </p>
             ) : null}
           </div>
+          {/* Scrollable panel with the scrollbar visually hidden (still scrolls via wheel/touch/keys). */}
+          <style>{`.admin-no-scrollbar{scrollbar-width:none;-ms-overflow-style:none}.admin-no-scrollbar::-webkit-scrollbar{display:none}`}</style>
         </section>
 
         {/* Action log */}
@@ -230,37 +371,63 @@ function MarketRow({ m, busy, onAction }: {
   const [outcome, setOutcome] = useState(0);
   const [uri, setUri] = useState('');
   const [open, setOpen] = useState(false);
+  const isFinal = m.status === 'Resolved' || m.status === 'Canceled';
   const settleable = m.status === 'Open' || m.status === 'Closing soon' || m.status === 'Closed';
+  const outcomeLabel = (m.outcomes[outcome] ?? `Outcome ${outcome}`);
+
+  // Irreversible on-chain actions — confirm before firing so a misclick can't settle/refund a market.
+  const confirmResolve = () => {
+    if (window.confirm(`Resolve "${m.title}"\n\nWinning outcome → ${outcome}: ${outcomeLabel}\n\n${m.amm ? 'This PROPOSES the outcome (settles after the dispute window).' : 'This resolves the market now.'}`)) {
+      onAction(m.amm ? 'propose' : 'resolve', outcome, uri);
+    }
+  };
+  const confirmCancel = () => {
+    if (window.confirm(`Cancel "${m.title}"?\n\nThis voids the market and refunds all holders. Irreversible.`)) onAction('cancel');
+  };
+  const confirmClose = () => {
+    if (window.confirm(`Close trading on "${m.title}"?\n\nThis pauses the market so no new trades land until it resolves.`)) onAction('pause');
+  };
 
   return (
     <div className="rounded-lg border border-white/[0.06] bg-[#0b1220]/60 p-3">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <button onClick={() => setOpen((v) => !v)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
           <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-extrabold uppercase ${badgeClass(m.status)}`}>{m.status}</span>
           {m.amm ? <span className="shrink-0 rounded bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-bold text-[#94a3b8]">V3</span> : null}
           {m.paused ? <span className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-400">PAUSED</span> : null}
           <span className="truncate text-[13px] font-bold text-[#e5edf8]">{m.title}</span>
         </button>
-        <a href={`/markets/${m.id}`} target="_blank" rel="noreferrer" className="shrink-0 text-[11px] font-bold text-cyan hover:underline">view</a>
+
+        {/* Always-visible lifecycle actions */}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {!isFinal ? (
+            <>
+              <select value={outcome} onChange={(e) => setOutcome(Number(e.target.value))} title="Winning outcome for Resolve" className="rounded border border-white/[0.1] bg-[#0b1220] px-1.5 py-1 text-[11px] text-white">
+                {(m.outcomes.length ? m.outcomes : ['Outcome 0', 'Outcome 1']).map((o, i) => <option key={i} value={i}>{i}: {o}</option>)}
+              </select>
+              <Action label={m.amm ? 'Resolve▸' : 'Resolve'} disabled={busy} onClick={confirmResolve} accent />
+              {m.amm && !m.paused ? <Action label="Close" disabled={busy} onClick={confirmClose} /> : null}
+              <Action label="Cancel" danger disabled={busy} onClick={confirmCancel} />
+            </>
+          ) : null}
+          <button onClick={() => setOpen((v) => !v)} className="rounded px-2 py-1.5 text-[11px] font-bold text-[#94a3b8] hover:text-white" title="More actions">⋯</button>
+          <a href={`/markets/${m.id}`} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-cyan hover:underline">view</a>
+        </div>
       </div>
 
       {open ? (
         <div className="mt-3 flex flex-col gap-2 border-t border-white/[0.06] pt-3">
           <div className="flex flex-wrap items-center gap-2">
-            <select value={outcome} onChange={(e) => setOutcome(Number(e.target.value))} className="rounded border border-white/[0.1] bg-[#0b1220] px-2 py-1.5 text-xs text-white">
-              {(m.outcomes.length ? m.outcomes : ['Outcome 0', 'Outcome 1']).map((o, i) => <option key={i} value={i}>{i}: {o}</option>)}
-            </select>
-            <input value={uri} onChange={(e) => setUri(e.target.value)} placeholder="evidence URL (optional)" className="flex-1 min-w-[160px] rounded border border-white/[0.1] bg-[#0b1220] px-2 py-1.5 text-xs text-white placeholder:text-[#475569]" />
+            <span className="text-[11px] font-bold text-[#64748b]">outcome {outcome}: {outcomeLabel}</span>
+            <input value={uri} onChange={(e) => setUri(e.target.value)} placeholder="evidence URL (optional, used by Resolve/Propose/Settle)" className="flex-1 min-w-[180px] rounded border border-white/[0.1] bg-[#0b1220] px-2 py-1.5 text-xs text-white placeholder:text-[#475569]" />
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {settleable && <Action label="Propose" disabled={busy} onClick={() => onAction('propose', outcome, uri)} />}
+            {settleable && m.amm && <Action label="Propose" disabled={busy} onClick={() => onAction('propose', outcome, uri)} />}
             <Action label="Settle" disabled={busy} onClick={() => onAction('settle', outcome, uri)} />
-            {!m.amm && settleable && <Action label="Resolve" disabled={busy} onClick={() => onAction('resolve', outcome, uri)} />}
             {m.amm && m.proposal?.disputed && <Action label="Resolve disputed" disabled={busy} onClick={() => onAction('resolveDisputed', outcome, uri)} />}
             {m.amm && <Action label="Seed" disabled={busy} onClick={() => onAction('seed')} />}
-            {m.amm && (m.paused ? <Action label="Unpause" disabled={busy} onClick={() => onAction('unpause')} /> : <Action label="Pause" disabled={busy} onClick={() => onAction('pause')} />)}
+            {m.amm && m.paused && <Action label="Unpause" disabled={busy} onClick={() => onAction('unpause')} />}
             {m.amm && <Action label="Withdraw fees" disabled={busy} onClick={() => onAction('withdrawFees')} />}
-            <Action label="Cancel" danger disabled={busy} onClick={() => onAction('cancel')} />
           </div>
         </div>
       ) : null}
@@ -268,13 +435,14 @@ function MarketRow({ m, busy, onAction }: {
   );
 }
 
-function Action({ label, onClick, disabled, danger }: { label: string; onClick: () => void; disabled?: boolean; danger?: boolean }) {
+function Action({ label, onClick, disabled, danger, accent }: { label: string; onClick: () => void; disabled?: boolean; danger?: boolean; accent?: boolean }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       className={`rounded px-2.5 py-1.5 text-[11px] font-bold transition-colors disabled:opacity-40 ${
-        danger ? 'border border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20'
+        accent ? 'border border-cyan/40 bg-cyan/15 text-cyan hover:bg-cyan/25'
+        : danger ? 'border border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20'
         : 'border border-white/[0.1] bg-white/[0.04] text-[#e5edf8] hover:border-cyan/40 hover:bg-cyan/10'
       }`}
     >{label}</button>
@@ -283,6 +451,7 @@ function Action({ label, onClick, disabled, danger }: { label: string; onClick: 
 
 function CreateMarketForm({ onCreate, busy }: { onCreate: (draft: Record<string, unknown>) => void; busy: boolean }) {
   const [type, setType] = useState<'Prediction' | 'Opinion'>('Prediction');
+  const [style, setStyle] = useState<'binary' | 'poll'>('binary');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
@@ -290,10 +459,12 @@ function CreateMarketForm({ onCreate, busy }: { onCreate: (draft: Record<string,
   const [source, setSource] = useState('');
   const [closeDate, setCloseDate] = useState('');
   const [collateral, setCollateral] = useState<'USDC' | 'EURC'>('USDC');
-  const [outcomes, setOutcomes] = useState<string[]>(['YES', 'NO']);
+  const [outcomes, setOutcomes] = useState<string[]>(['', '', '']);
   const [imageURI, setImageURI] = useState('');
 
-  const valid = title.trim() && rules.trim() && source.trim() && closeDate && outcomes.filter((o) => o.trim()).length >= 2;
+  const cleanOutcomes = outcomes.map((o) => o.trim()).filter(Boolean);
+  const outcomesValid = style === 'binary' || cleanOutcomes.length >= 3;
+  const valid = title.trim() && rules.trim() && source.trim() && closeDate && outcomesValid;
 
   const submit = () => {
     if (!valid) return;
@@ -308,7 +479,8 @@ function CreateMarketForm({ onCreate, busy }: { onCreate: (draft: Record<string,
       resolver: 'Presto Agent',
       resolutionMode: 'Agent assisted',
       imageURI: imageURI.trim() || undefined,
-      outcomeOptions: outcomes.map((o) => o.trim()).filter(Boolean),
+      // Binary deploys YES/NO; Multi-Outcome deploys the custom option set (3+).
+      outcomeOptions: style === 'binary' ? ['YES', 'NO'] : cleanOutcomes,
       collateral,
     });
   };
@@ -316,8 +488,26 @@ function CreateMarketForm({ onCreate, busy }: { onCreate: (draft: Record<string,
   return (
     <section className="rounded-xl border border-white/[0.06] bg-[#0d1626]/30 p-4">
       <h2 className="mb-3 text-[11px] font-extrabold uppercase tracking-wider text-[#64748b]">Create a market</h2>
+
+      {/* Market shape — binary vs multi-outcome poll (matches the main create page) */}
+      <div className="mb-4 grid gap-2 sm:grid-cols-2">
+        {([
+          ['binary', 'Binary market', 'Tradable YES / NO outcomes.'],
+          ['poll', 'Multi-outcome poll', 'Custom options (3+), e.g. teams or candidates.'],
+        ] as const).map(([value, label, hint]) => (
+          <button
+            key={value}
+            onClick={() => setStyle(value)}
+            className={`rounded-lg border p-3 text-left transition-colors ${style === value ? 'border-cyan/50 bg-cyan/10' : 'border-white/[0.08] bg-white/[0.02] hover:border-white/20'}`}
+          >
+            <p className={`text-sm font-black ${style === value ? 'text-cyan' : 'text-[#e5edf8]'}`}>{label}</p>
+            <p className="mt-0.5 text-[11px] text-[#94a3b8]">{hint}</p>
+          </button>
+        ))}
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Question / title" full><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Who will win X vs Y?" className={inputCls} /></Field>
+        <Field label="Question / title" full><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={style === 'poll' ? 'Who will win the tournament?' : 'Will X happen by <date>?'} className={inputCls} /></Field>
         <Field label="Description" full><textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="What traders are forecasting" className={inputCls} /></Field>
         <Field label="Resolution rules" full><textarea value={rules} onChange={(e) => setRules(e.target.value)} rows={2} placeholder="Exactly when each outcome wins, and when it cancels" className={inputCls} /></Field>
         <Field label="Source of truth"><input value={source} onChange={(e) => setSource(e.target.value)} placeholder="https://official-source…" className={inputCls} /></Field>
@@ -334,21 +524,31 @@ function CreateMarketForm({ onCreate, busy }: { onCreate: (draft: Record<string,
           </select>
         </Field>
         <Field label="Image URL (optional)"><input value={imageURI} onChange={(e) => setImageURI(e.target.value)} placeholder="leave blank to auto-resolve" className={inputCls} /></Field>
-        <Field label="Outcomes" full>
-          <div className="flex flex-col gap-1.5">
-            {outcomes.map((o, i) => (
-              <div key={i} className="flex gap-2">
-                <input value={o} onChange={(e) => setOutcomes((prev) => prev.map((v, j) => (j === i ? e.target.value : v)))} placeholder={`Outcome ${i + 1}`} className={inputCls} />
-                {outcomes.length > 2 ? <button onClick={() => setOutcomes((prev) => prev.filter((_, j) => j !== i))} className="rounded border border-rose-500/30 px-2 text-xs text-rose-300">✕</button> : null}
-              </div>
-            ))}
-            <button onClick={() => setOutcomes((prev) => [...prev, ''])} className="self-start text-[11px] font-bold text-cyan hover:underline">+ add outcome</button>
-          </div>
-        </Field>
+        {style === 'poll' ? (
+          <Field label={`Outcomes (${cleanOutcomes.length}/3+ required)`} full>
+            <div className="flex flex-col gap-1.5">
+              {outcomes.map((o, i) => (
+                <div key={i} className="flex gap-2">
+                  <input value={o} onChange={(e) => setOutcomes((prev) => prev.map((v, j) => (j === i ? e.target.value : v)))} placeholder={`Outcome ${i + 1}`} className={inputCls} />
+                  {outcomes.length > 2 ? <button onClick={() => setOutcomes((prev) => prev.filter((_, j) => j !== i))} className="rounded border border-rose-500/30 px-2 text-xs text-rose-300">✕</button> : null}
+                </div>
+              ))}
+              <button onClick={() => setOutcomes((prev) => [...prev, ''])} className="self-start text-[11px] font-bold text-cyan hover:underline">+ add outcome</button>
+            </div>
+          </Field>
+        ) : (
+          <Field label="Outcomes" full>
+            <div className="flex gap-2">
+              <span className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm font-bold text-emerald-400">YES</span>
+              <span className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm font-bold text-rose-400">NO</span>
+            </div>
+          </Field>
+        )}
       </div>
       <button onClick={submit} disabled={!valid || busy} className="mt-4 rounded-lg bg-cyan px-5 py-2.5 text-sm font-black text-black transition-opacity hover:bg-cyan/90 disabled:opacity-40">
-        {busy ? 'Working…' : 'Create market'}
+        {busy ? 'Working…' : `Create ${style === 'poll' ? 'multi-outcome' : 'binary'} market`}
       </button>
+      {!outcomesValid ? <p className="mt-2 text-[11px] font-bold text-amber-400">A multi-outcome poll needs at least 3 filled options.</p> : null}
     </section>
   );
 }

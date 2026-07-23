@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
       amm: Boolean(m.amm),
       volume: m.volume,
       closeDate: m.closeDate,
+      createdAt: m.createdAt ?? '',
       outcomes: m.outcomes.map((o) => o.label),
       paused: Boolean(m.paused),
       proposal: m.proposal ? { outcomeLabel: m.proposal.outcomeLabel, disputed: m.proposal.disputed } : null,
