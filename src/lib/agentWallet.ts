@@ -496,8 +496,15 @@ export async function agentResolveDisputedV3(marketAddress: string, finalOutcome
     try {
       return { ok: true as const, txHash: await write('guardian') };
     } catch (guardianErr) {
-      // Old market: resolveDisputed still gated on the resolver → retry with the agent key.
-      if (/NotGuardian|not.?guardian|revert/i.test(String(guardianErr))) {
+      // Fall back to the agent key ONLY on the one unambiguous signal that this is an OLD
+      // (resolver-gated) market: its resolveDisputed reverts `NotResolver` when the GUARDIAN calls
+      // it (old bytecode requires the resolver; the guardian is not the resolver). A new market
+      // never reverts NotResolver here — it checks NotGuardian — so this cannot mask a genuine
+      // guardian-auth failure or any other revert on new bytecode. Match the specific custom-error
+      // name, never a generic "revert" substring.
+      const msg = String(guardianErr);
+      const isOldResolverGated = /\bNotResolver\b/.test(msg) && !/\bNotGuardian\b/.test(msg);
+      if (isOldResolverGated) {
         return { ok: true as const, txHash: await write('agent') };
       }
       throw guardianErr;
