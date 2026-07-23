@@ -12,6 +12,7 @@ import { fetchAvailableUsdc, formatAvailableUsdc, readCachedAvailableUsdc } from
 import { getStoredConnectedWallet, subscribeConnectedWallet, disconnectExternalWallet, type ConnectedWallet } from '@/lib/walletProvider';
 import { extractMarketCategories, mergeTopicNavCategories, primaryViewCategories } from '@/lib/categories';
 import { useAppState } from '@/lib/appState';
+import { isAdminAddress } from '@/lib/adminAuth';
 import { useDisconnect } from 'wagmi';
 import { useSocialSession } from '@/lib/socialSessionContext';
 
@@ -53,6 +54,7 @@ export function SiteHeader() {
   const [searchValue, setSearchValue] = useState('');
   const [activeCategory, setActiveCategory] = useState('Trending');
   const [connectedWallet, setConnectedWallet] = useState<ConnectedWallet | null>(null);
+  const walletIsAdmin = isAdminAddress(connectedWallet?.address);
   const [balances, setBalances] = useState<Record<StableSymbol, string | null>>({ USDC: null });
   // Unified Available USDC (Arc + Gateway-supported testnets) — stale-while-revalidate.
   const [availableUsdc, setAvailableUsdc] = useState<string | null>(null);
@@ -407,6 +409,14 @@ export function SiteHeader() {
             </svg>
             DEX
           </a>
+          {walletIsAdmin ? (
+            <Link href="/admin" className={mobileNavLinkClass(pathname === '/admin')} onClick={() => setMobileMenuOpen(false)}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
+                <path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z" />
+              </svg>
+              Admin
+            </Link>
+          ) : null}
         </div>
       </div>
 
@@ -459,6 +469,14 @@ export function SiteHeader() {
                 <circle cx="12" cy="12" r="10" /><path d="M12 8v8M8 12h8" />
               </svg>
               Create Market
+            </Link>
+          ) : null}
+          {walletIsAdmin ? (
+            <Link href="/admin" className={`${navLinkClass(pathname === '/admin')} inline-flex items-center gap-1.5`}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-70">
+                <path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z" />
+              </svg>
+              Admin
             </Link>
           ) : null}
           {showWallet && connectedWallet ? (
