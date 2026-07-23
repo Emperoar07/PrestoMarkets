@@ -262,9 +262,13 @@ contract PrestoLmsrMarket is ReentrancyGuard, Pausable {
         emit Resolved(winningOutcome);
     }
 
-    /// @notice Resolver adjudicates a disputed proposal. The bond loser is slashed to the winner.
+    /// @notice The GUARDIAN (not the resolver) adjudicates a disputed proposal, so the party that
+    /// proposed the outcome is never the party that judges the dispute against it (audit #3:
+    /// independent optimistic arbitration). The guardian is the factory owner — a distinct key from
+    /// the agent-resolver that proposes — giving proposer/adjudicator separation with no new role.
+    /// The bond loser is slashed to the winner.
     function resolveDisputed(uint8 finalOutcome, string calldata evidenceURI) external nonReentrant {
-        if (msg.sender != resolver) revert NotResolver();
+        if (msg.sender != guardian) revert NotGuardian();
         if (state != State.Disputed) revert NotDisputed();
         if (finalOutcome >= outcomeCount) revert WrongOutcome();
         state = State.Resolved;
