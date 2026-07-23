@@ -18,6 +18,8 @@ import {
   writeFilesystemSnapshot,
   readFilesystemSnapshot,
   readSeedSnapshot,
+  writeUpstashSnapshot,
+  readUpstashSnapshot,
 } from './marketSnapshotFallback';
 const MARKET_ADDRESS_BATCH_SIZE = 50;
 const MARKET_HYDRATION_BATCH_SIZE = 32; // Increased from 8 for faster parallel hydration
@@ -744,6 +746,9 @@ async function saveMarketListSnapshot(markets: AppMarket[]) {
   // Filesystem tier first — free, Neon-independent, and instant. Written even when Neon is down so
   // a warm instance keeps serving. Stores the SLIM payload (image refs, ~8x smaller).
   writeFilesystemSnapshot(markets);
+  // Upstash cross-instance tier (optional, own quota) — fresh data reaches every instance even
+  // while Neon is down. Best-effort, inert without creds.
+  void writeUpstashSnapshot(markets);
   if (!hasDatabaseUrl()) return;
   try {
     // Store slim in Neon too: the ~860KB base64-image payload read by 9 crons + every cache miss
@@ -816,8 +821,9 @@ export async function appendNewMarketsToSnapshot(maxNew = 10): Promise<number> {
 
     // Append WITHOUT touching updated_at: age keeps meaning "time since last FULL read".
     const merged = [...snapshot.markets, ...hydrated.filter((m) => !known.has(m.id.toLowerCase()))];
-    // Filesystem tier always (Neon-independent); Neon best-effort. Both slim.
+    // Filesystem + Upstash tiers always (Neon-independent); Neon best-effort. All slim.
     writeFilesystemSnapshot(merged);
+    void writeUpstashSnapshot(merged);
     if (marketCache) marketCache = { at: marketCache.at, markets: merged };
     if (hasDatabaseUrl()) {
       try {
@@ -937,8 +943,9 @@ export async function persistHydratedSnapshot(markets: AppMarket[]): Promise<num
       return !p || p.volume !== m.volume || p.status !== m.status;
     }).length;
   }
-  // Filesystem tier always (Neon-independent); Neon best-effort. Both slim.
+  // Filesystem + Upstash tiers always (Neon-independent); Neon best-effort. All slim.
   writeFilesystemSnapshot(markets);
+  void writeUpstashSnapshot(markets);
   if (marketCache) marketCache = { at: marketCache.at, markets };
   if (hasDatabaseUrl()) {
     try {
@@ -973,12 +980,17 @@ export async function readMarketListSnapshot(): Promise<{ markets: AppMarket[]; 
       /* Neon unavailable (e.g. 402 quota) — fall through to filesystem/seed */
     }
   }
-  // Tier 2: filesystem (this instance's last good save) — Neon-independent.
+  // Tier 2: Upstash (cross-instance, fresher than a cold /tmp) — Neon-independent, optional.
+  const upstash = await readUpstashSnapshot();
+  if (upstash) {
+    return { markets: upstash.markets.map(refreshTimeDerivedStatus), ageMs: Date.now() - upstash.at };
+  }
+  // Tier 3: filesystem (this instance's last good save) — Neon-independent.
   const fsSnap = readFilesystemSnapshot();
   if (fsSnap) {
     return { markets: fsSnap.markets.map(refreshTimeDerivedStatus), ageMs: Date.now() - fsSnap.at };
   }
-  // Tier 3: committed seed — cold-start floor so the grid is never empty / stuck loading.
+  // Tier 4: committed seed — cold-start floor so the grid is never empty / stuck loading.
   const seed = readSeedSnapshot();
   if (seed) {
     return { markets: seed.markets.map(refreshTimeDerivedStatus), ageMs: Date.now() - seed.at };

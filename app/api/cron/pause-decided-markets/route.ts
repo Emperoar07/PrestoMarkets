@@ -107,7 +107,15 @@ export async function GET(req: NextRequest) {
     const frozen: Array<{ id: string; title: string; reason: string }> = [];
     for (const { market, reason } of targets) {
       if (!market.amm) {
-        if (cancelV2 && reason === 'flagged') {
+        // Legacy V1/V2 have no pause(), so a decided-but-open market can be farmed at stale odds
+        // DIRECTLY against the contract — the app's frozen flag only blocks Presto's own UI.
+        // Cancel on-chain whenever we can (audit #7: "cancel them when possible"): a match-finished
+        // fixture or an operator flag is a settled market, and cancel+refund removes the exploit for
+        // real. Only when cancel reverts (e.g. V1 MarketNotClosed before close) do we fall back to
+        // the UI freeze. Auto-cancel of the fixture-finished case no longer requires the cancelV2
+        // opt-in, because leaving a decided pauseless market tradeable is the vulnerability itself.
+        const shouldCancel = (cancelV2 && reason === 'flagged') || reason === 'match-finished';
+        if (shouldCancel) {
           const res = await agentCancelMarket(market.id);
           if (res.ok) { canceled.push({ id: market.id, title: market.title, txHash: res.txHash }); continue; }
           // Cancel not possible on this deployed contract (e.g. MarketNotClosed on V1) — freeze in

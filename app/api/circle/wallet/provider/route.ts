@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isAllowedContractExecution } from '@/lib/circleWalletPolicy';
 import { checkFixedWindowRateLimit, getClientIp, hasBrowserOriginSignal, isTrustedBrowserOrigin } from '@/lib/requestGuards';
+import { checkRateLimit as checkDurableRateLimit } from '@/lib/rateLimitRedis';
 import { isCirclePinFlowEnabled } from '@/lib/circlePinPolicy';
 import crypto from 'node:crypto';
 
@@ -194,6 +195,16 @@ export async function POST(request: Request) {
 
     if (pinIdentityActions.has(action) && !circlePinFlowEnabled()) {
       return jsonError('PIN-based Circle identity is disabled on this deployment. Sign in with a verified method.', 403);
+    }
+
+    // Durable, strict throttle on the identity-minting actions (createUser/session). These turn a
+    // caller-supplied userId into a Circle userToken (audit #1), so an attacker could brute-force or
+    // enumerate other users' identifiers. The per-instance Map above resets per lambda and does not
+    // stop a caller rotating across instances; this cross-instance limit does. failOpen so a store
+    // outage degrades to the per-instance limit rather than locking legitimate sign-in out.
+    if (pinIdentityActions.has(action)) {
+      const ok = await checkDurableRateLimit('circle-identity', ip, { limit: 12, windowSec: 60, failOpen: true });
+      if (!ok) return jsonError('Too many sign-in attempts. Please wait a minute and try again.', 429);
     }
 
     if (action === 'config') {

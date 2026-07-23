@@ -98,6 +98,55 @@ export function readFilesystemSnapshot(): FallbackSnapshot | null {
   }
 }
 
+// ── Upstash Redis tier (optional, cross-instance) ──────────────────────────
+// The filesystem tier is per-instance, so a cold lambda with Neon down only has the committed
+// seed until it refreshes from chain. Upstash Redis (REST, fetch-based — no node builtins, its own
+// free-tier quota independent of Neon) gives a SHARED tier every instance can read, so fresh data
+// propagates cross-instance even while Neon is down. Entirely optional: inert unless
+// UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN are set. Stores the slim payload (~77KB, far
+// under Upstash's value limit). Best-effort; never throws.
+const UPSTASH_KEY = 'presto:market-snapshot:latest';
+
+function upstashConfigured(): boolean {
+  return isServer
+    && !!process.env.UPSTASH_REDIS_REST_URL
+    && !!process.env.UPSTASH_REDIS_REST_TOKEN;
+}
+
+export async function writeUpstashSnapshot(markets: AppMarket[]): Promise<void> {
+  if (!upstashConfigured() || markets.length === 0) return;
+  try {
+    const { Redis } = await import('@upstash/redis');
+    const redis = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL!,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+    });
+    const payload: FallbackSnapshot = { markets: slimSnapshotForStorage(markets), at: Date.now() };
+    await redis.set(UPSTASH_KEY, JSON.stringify(payload));
+  } catch {
+    /* Upstash unavailable — other tiers still serve */
+  }
+}
+
+export async function readUpstashSnapshot(): Promise<FallbackSnapshot | null> {
+  if (!upstashConfigured()) return null;
+  try {
+    const { Redis } = await import('@upstash/redis');
+    const redis = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL!,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+    });
+    const raw = await redis.get<string | FallbackSnapshot>(UPSTASH_KEY);
+    if (!raw) return null;
+    // @upstash/redis may return the parsed object or the raw string depending on how it was stored.
+    const parsed: FallbackSnapshot = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!Array.isArray(parsed.markets) || parsed.markets.length === 0) return null;
+    return { markets: parsed.markets, at: Number(parsed.at) || 0 };
+  } catch {
+    return null;
+  }
+}
+
 /** Read the committed seed tier (the cold-start floor). Returns null when absent or unreadable. */
 export function readSeedSnapshot(): FallbackSnapshot | null {
   const mods = nodeModules();
