@@ -145,7 +145,7 @@ describe('PrestoLmsrMarket resolution', () => {
   });
 
   it('a frivolous dispute is slashed to the proposer', async () => {
-    const { usdc, market, resolver, bob, close, bond6 } = await deployMarket({ outcomes: 2 });
+    const { usdc, market, deployer, resolver, bob, close, bond6 } = await deployMarket({ outcomes: 2 });
     await buyShares(usdc, market, bob, 1, USDC(20)); // bob holds a position so he can dispute
     await advancePastClose(close);
 
@@ -158,15 +158,32 @@ describe('PrestoLmsrMarket resolution', () => {
     expect(await market.state()).to.equal(2); // Disputed
 
     // Resolver upholds the original proposal: dispute was frivolous.
-    await market.connect(resolver).resolveDisputed(0, 'ipfs://final');
+    await market.connect(deployer).resolveDisputed(0, 'ipfs://final');
     expect(await market.state()).to.equal(3);
     expect(await market.winningOutcome()).to.equal(0);
     // Proposer recovers their bond plus the disputer's bond.
     expect((await usdc.balanceOf(resolver.address)) - resolverBefore).to.equal(bond6);
   });
 
+  it('only the guardian (not the proposer/resolver) can adjudicate a dispute — audit #3', async () => {
+    const { usdc, market, deployer, resolver, bob, close, bond6 } = await deployMarket({ outcomes: 2 });
+    await buyShares(usdc, market, bob, 1, USDC(20));
+    await advancePastClose(close);
+    await usdc.connect(resolver).approve(await market.getAddress(), bond6);
+    await market.connect(resolver).propose(0, 'ipfs://evidence');
+    await usdc.connect(bob).approve(await market.getAddress(), bond6);
+    await market.connect(bob).dispute('i disagree');
+
+    // The resolver proposed the outcome, so it must NOT be able to judge the dispute against it.
+    await expect(market.connect(resolver).resolveDisputed(0, 'ipfs://final'))
+      .to.be.revertedWithCustomError(market, 'NotGuardian');
+    // The guardian (a distinct key) adjudicates.
+    await market.connect(deployer).resolveDisputed(0, 'ipfs://final');
+    expect(await market.state()).to.equal(3);
+  });
+
   it('an upheld dispute slashes the proposer to the disputer and flips the outcome', async () => {
-    const { usdc, market, resolver, bob, close, bond6 } = await deployMarket({ outcomes: 2 });
+    const { usdc, market, deployer, resolver, bob, close, bond6 } = await deployMarket({ outcomes: 2 });
     await buyShares(usdc, market, bob, 1, USDC(20)); // bob disputes and ends up the winner
     await advancePastClose(close);
 
@@ -176,7 +193,7 @@ describe('PrestoLmsrMarket resolution', () => {
     const bobAfterBond = await usdc.balanceOf(bob.address);
     await market.connect(bob).dispute('outcome 1 actually won');
 
-    await market.connect(resolver).resolveDisputed(1, 'ipfs://final');
+    await market.connect(deployer).resolveDisputed(1, 'ipfs://final');
     expect(await market.winningOutcome()).to.equal(1);
     // bobAfterBond is captured before the dispute pulls bond6; the payout returns 2*bond6,
     // so the net gain versus that snapshot is the slashed proposer bond (+bond6).

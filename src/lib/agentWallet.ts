@@ -479,14 +479,29 @@ export async function agentWithdrawLmsrFees(marketAddress: string) {
 
 // Adjudicate a disputed V3 proposal (resolver decides the final outcome).
 export async function agentResolveDisputedV3(marketAddress: string, finalOutcome: number, evidenceURI: string) {
-  try {
-    if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
-    const { account, publicClient, walletClient } = getClients();
+  // Dispute adjudication is a GUARDIAN action on the separated-adjudicator bytecode (audit #3): the
+  // proposer (agent-resolver) must not judge the dispute against its own proposal. Try the guardian
+  // key first (new markets require it); fall back to the agent/resolver key for older markets whose
+  // deployed bytecode still gates resolveDisputed on the resolver, so a mixed fleet keeps settling.
+  const write = async (which: 'guardian' | 'agent') => {
+    const { account, publicClient, walletClient } = which === 'guardian' ? getGuardianClients() : getClients();
     const hash = await walletClient.writeContract({
       account, address: marketAddress as Address, abi: prestoLmsrMarketAbi, functionName: 'resolveDisputed', args: [finalOutcome, evidenceURI],
     });
     await publicClient.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 1_000 });
-    return { ok: true as const, txHash: hash };
+    return hash;
+  };
+  try {
+    if (!isAddress(marketAddress)) throw new Error('Invalid market address.');
+    try {
+      return { ok: true as const, txHash: await write('guardian') };
+    } catch (guardianErr) {
+      // Old market: resolveDisputed still gated on the resolver → retry with the agent key.
+      if (/NotGuardian|not.?guardian|revert/i.test(String(guardianErr))) {
+        return { ok: true as const, txHash: await write('agent') };
+      }
+      throw guardianErr;
+    }
   } catch (error) {
     return { ok: false as const, error: error instanceof Error ? error.message : 'V3 dispute resolution failed.' };
   }
