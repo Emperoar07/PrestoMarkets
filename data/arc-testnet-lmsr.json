@@ -1,10 +1,10 @@
 {
   "chainName": "arc-testnet",
   "chainId": 5042002,
-  "lmsrMarketFactory": "0x0404ae860ed022A7098AcCCeF0eD7eA672Dc8283",
-  "lmsrEurcMarketFactory": "0x0A44a624823B7ef641d32f0978988495D2c3D240",
+  "lmsrMarketFactory": "0x6306F9EfE9be450d2658dF8ceb959D4A5be1070e",
+  "lmsrEurcMarketFactory": "0xd606cE208C13b4eE39F5A905E7028DAA39E7F03D",
   "usdc": "0x3600000000000000000000000000000000000000",
   "eurc": "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
-  "deployedAt": "2026-07-12T22:09:08.776Z",
+  "deployedAt": "2026-07-23T19:10:42.455Z",
   "deployer": "0x659eEAF9Be1fB881959D883385D03B0Ef5D778E0"
 }
