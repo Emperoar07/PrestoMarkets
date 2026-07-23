@@ -51,6 +51,16 @@ function unauthorized() {
   return NextResponse.json({ ok: false, error: 'Admin authorization required.' }, { status: 403 });
 }
 
+// Ticks that also have a GitHub Actions workflow_dispatch trigger, so the console can optionally
+// fire the REAL workflow run (visible in the Actions tab) instead of only calling the endpoint
+// directly. Value-add over the direct call: GitHub's runner history + its curl retry wrapper.
+const TICK_WORKFLOWS: Record<string, string> = {
+  'create-market': 'agent-tick.yml',
+  'auto-resolve': 'auto-resolve.yml',
+  'backfill-images': 'image-backfill.yml',
+  'ingest-markets': 'ingest-markets.yml',
+};
+
 async function loadMarkets() {
   const snap = await readMarketListSnapshot().catch(() => null);
   if (snap && snap.markets.length > 0) return snap.markets;
@@ -134,6 +144,7 @@ export async function GET(request: NextRequest) {
     guardianAddress,
     agentBalance,
     ticks: Object.keys(TICKS),
+    ghDispatchTicks: process.env.GH_WORKFLOW_TOKEN ? Object.keys(TICK_WORKFLOWS) : [],
     counts: {
       agentMarkets: agentMarkets.length,
       open: agentMarkets.filter((m) => m.status === 'Open' || m.status === 'Closing soon').length,
@@ -151,7 +162,7 @@ export async function POST(request: NextRequest) {
   if (!requireAdmin(request)) return unauthorized();
 
   let body: {
-    op?: 'tick' | 'market' | 'create';
+    op?: 'tick' | 'market' | 'create' | 'dispatch';
     tick?: string;
     action?: string;
     marketId?: string;
@@ -193,6 +204,29 @@ export async function POST(request: NextRequest) {
         });
       }
       return NextResponse.json(redactSecrets({ ok: false, tick: body.tick, error: err instanceof Error ? err.message : 'Tick failed.' }), { status: 502 });
+    }
+  }
+
+  // ── Fire the real GitHub Actions workflow (Actions-tab visibility) ──
+  if (body.op === 'dispatch') {
+    const wf = body.tick ? TICK_WORKFLOWS[body.tick] : undefined;
+    if (!wf) return NextResponse.json({ ok: false, error: `No GitHub workflow for this tick. Have: ${Object.keys(TICK_WORKFLOWS).join(', ')}` }, { status: 400 });
+    const token = process.env.GH_WORKFLOW_TOKEN;
+    const repo = process.env.GH_WORKFLOW_REPO || 'Emperoar07/PrestoMarkets';
+    if (!token) return NextResponse.json({ ok: false, error: 'GitHub dispatch not configured (set GH_WORKFLOW_TOKEN).' }, { status: 501 });
+    try {
+      const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${wf}/dispatches`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+        body: JSON.stringify({ ref: 'main' }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      // GitHub returns 204 No Content on success.
+      if (res.status === 204) return NextResponse.json({ ok: true, tick: body.tick, result: { ok: true, note: `Dispatched ${wf} on GitHub — check the Actions tab.` } });
+      const txt = await res.text().catch(() => '');
+      return NextResponse.json(redactSecrets({ ok: false, tick: body.tick, error: `GitHub ${res.status}: ${txt.slice(0, 160)}` }), { status: 502 });
+    } catch (err) {
+      return NextResponse.json({ ok: false, tick: body.tick, error: err instanceof Error ? err.message : 'Dispatch failed.' }, { status: 502 });
     }
   }
 

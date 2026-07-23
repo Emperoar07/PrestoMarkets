@@ -25,6 +25,7 @@ type AdminData = {
   guardianAddress: string | null;
   agentBalance: string;
   ticks: string[];
+  ghDispatchTicks?: string[];
   counts: Record<string, number>;
   markets: AgentMarket[];
   ledgerOnly: AgentMarket[];
@@ -283,6 +284,13 @@ export function AdminConsole() {
                   ) : (
                     <span className="text-[10px] text-[#475569]">idle</span>
                   )}
+                  {(data?.ghDispatchTicks ?? []).includes(tick) ? (
+                    <button
+                      onClick={() => void call(`Dispatch ${TICK_LABELS[tick] ?? tick} on GitHub`, { op: 'dispatch', tick })}
+                      className="mt-0.5 self-start text-[9px] font-bold text-[#64748b] hover:text-cyan"
+                      title="Fire the real GitHub Actions workflow (Actions tab)"
+                    >⑂ dispatch on GitHub</button>
+                  ) : null}
                 </div>
               );
             })}
