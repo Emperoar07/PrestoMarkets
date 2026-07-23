@@ -193,8 +193,13 @@ export async function POST(request: Request) {
       return jsonError('This wallet action requires a same-origin browser request.', 403);
     }
 
-    if (pinIdentityActions.has(action) && !circlePinFlowEnabled()) {
-      return jsonError('PIN-based Circle identity is disabled on this deployment. Sign in with a verified method.', 403);
+    // Audit #1: the vulnerable entry is PIN *registration* (createUser turns a caller-typed,
+    // guessable userId into a Circle identity). Gate ONLY createUser behind the flag — new PIN
+    // accounts are blocked in production — while leaving `session` open so existing PIN users can
+    // still sign in/renew and email/social/passkey (which never call createUser) are unaffected.
+    // The client PIN flow skips past a disabled createUser and proceeds to session.
+    if (action === 'createUser' && !circlePinFlowEnabled()) {
+      return jsonError('New PIN registration is disabled here. Use email, social, or passkey sign-in.', 403);
     }
 
     // Durable, strict throttle on the identity-minting actions (createUser/session). These turn a

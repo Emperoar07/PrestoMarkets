@@ -377,8 +377,22 @@ async function connectCircleUserControlledWalletProvider(input?: CircleWalletLog
   }
 
   const config = await getCircleConfig();
-  await callCircleWalletProvider({ action: 'createUser', userId });
-  const session = await callCircleWalletProvider<CircleLoginResult>({ action: 'session', userId });
+  // createUser may be disabled on this deployment (new PIN registration off — audit #1). That's
+  // fine for a RETURNING user: their Circle user already exists, so we skip straight to session.
+  // A brand-new user will then fail at session (no such user) with a clean "use another method"
+  // error, which is the intended outcome when PIN registration is off.
+  try {
+    await callCircleWalletProvider({ action: 'createUser', userId });
+  } catch (error) {
+    const disabled = error instanceof Error && /disabled|registration/i.test(error.message);
+    if (!disabled) throw error;
+  }
+  let session: CircleLoginResult;
+  try {
+    session = await callCircleWalletProvider<CircleLoginResult>({ action: 'session', userId });
+  } catch {
+    throw new Error('PIN sign-in is unavailable for a new user on this deployment. Use email, social, or passkey sign-in.');
+  }
 
   return finishCircleWalletLogin({ config, login: session, userHint: userId });
 }
