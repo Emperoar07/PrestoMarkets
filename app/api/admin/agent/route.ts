@@ -175,11 +175,23 @@ export async function POST(request: NextRequest) {
     try {
       const res = await fetch(`${origin}/api/cron/${route}`, {
         headers: { Authorization: `Bearer ${secret}` },
-        signal: AbortSignal.timeout(280_000),
+        // Bound BELOW the platform's ~180s edge-proxy reset. A long cron (market-factory,
+        // auto-resolve) keeps running server-side on its own maxDuration; we just stop waiting on
+        // it here and report "still running" so the client gets a clean response, not a timeout.
+        signal: AbortSignal.timeout(160_000),
       });
       const data = await res.json().catch(() => ({}));
       return NextResponse.json(redactSecrets({ ok: res.ok, tick: body.tick, status: res.status, result: data }));
     } catch (err) {
+      const aborted = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError' || /abort|timeout/i.test(err.message));
+      if (aborted) {
+        return NextResponse.json({
+          ok: true,
+          tick: body.tick,
+          status: 'running',
+          result: { ok: true, running: true, note: 'Still running on the server (long job). Refresh in a moment to see the effect.' },
+        });
+      }
       return NextResponse.json(redactSecrets({ ok: false, tick: body.tick, error: err instanceof Error ? err.message : 'Tick failed.' }), { status: 502 });
     }
   }

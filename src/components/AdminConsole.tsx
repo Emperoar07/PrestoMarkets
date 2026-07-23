@@ -80,17 +80,20 @@ export function AdminConsole() {
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'volume' | 'title' | 'status' | 'closing'>('newest');
   const [filterStatus, setFilterStatus] = useState<'all' | 'Open' | 'Closed' | 'Resolved' | 'Canceled'>('all');
   const [search, setSearch] = useState('');
-  const [tickRun, setTickRun] = useState<{ tick: string; startedAt: number } | null>(null);
+  // Multiple ticks can run at once — each keyed by its own start time.
+  const [running, setRunning] = useState<Record<string, number>>({});
   const [nowMs, setNowMs] = useState(0);
-  const [tickResults, setTickResults] = useState<Record<string, { ok: boolean; summary: string; at: number }>>({});
+  const [tickResults, setTickResults] = useState<Record<string, { ok: boolean; summary: string; detail: unknown; at: number }>>({});
+  const [expandedTick, setExpandedTick] = useState<string | null>(null);
+  const anyRunning = Object.keys(running).length > 0;
 
-  // Elapsed-time ticker while a cron tick runs, so the button shows live progress (they take 60-250s).
+  // Elapsed-time ticker while any cron tick runs, so buttons show live progress (they take 60-250s).
   useEffect(() => {
-    if (!tickRun) return;
+    if (!anyRunning) return;
     setNowMs(Date.now());
     const id = window.setInterval(() => setNowMs(Date.now()), 500);
     return () => window.clearInterval(id);
-  }, [tickRun]);
+  }, [anyRunning]);
 
   useEffect(() => {
     setWallet(getStoredConnectedWallet());
@@ -138,14 +141,33 @@ export function AdminConsole() {
     } finally { setBusy(null); }
   }, [pushLog, refresh]);
 
-  // Run a cron tick with live progress + a summarized result under the button.
+  // Run a cron tick. Concurrent-safe: only blocks re-running the SAME tick; different ticks run in
+  // parallel. Records the full result so the card can show the per-action outcome detail. Does NOT
+  // go through the shared `busy` gate (which is for one-at-a-time per-market actions).
   const runTick = useCallback(async (tick: string) => {
-    if (tickRun) return;
-    setTickRun({ tick, startedAt: Date.now() });
-    const { ok, json } = await call(TICK_LABELS[tick] ?? tick, { op: 'tick', tick });
-    setTickResults((prev) => ({ ...prev, [tick]: { ok, summary: summarizeTick((json as { result?: unknown })?.result ?? json, ok), at: Date.now() } }));
-    setTickRun(null);
-  }, [call, tickRun]);
+    if (running[tick]) return;
+    setRunning((p) => ({ ...p, [tick]: Date.now() }));
+    try {
+      const res = await fetch('/api/admin/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ op: 'tick', tick }),
+      });
+      const json = await res.json().catch(() => ({}));
+      const ok = res.ok && json.ok !== false;
+      const detail = (json as { result?: unknown }).result ?? json;
+      const summary = summarizeTick(detail, ok);
+      setTickResults((prev) => ({ ...prev, [tick]: { ok, summary, detail, at: Date.now() } }));
+      pushLog(`${TICK_LABELS[tick] ?? tick}: ${ok ? '✓' : '✗'} ${summary}`, ok);
+      void refresh();
+    } catch (err) {
+      const summary = err instanceof Error ? err.message : 'failed';
+      setTickResults((prev) => ({ ...prev, [tick]: { ok: false, summary, detail: null, at: Date.now() } }));
+      pushLog(`${TICK_LABELS[tick] ?? tick}: ✗ ${summary}`, false);
+    } finally {
+      setRunning((prev) => { const next = { ...prev }; delete next[tick]; return next; });
+    }
+  }, [running, pushLog, refresh]);
 
   // Combined, filtered, searched, sorted creations list. Must run before the early returns below
   // to satisfy the rules of hooks.
@@ -226,47 +248,56 @@ export function AdminConsole() {
           <p className="-mt-2 break-all font-mono text-[11px] text-[#64748b]">agent {data.agentAddress}{data.guardianAddress ? ` · guardian ${data.guardianAddress}` : ''}</p>
         ) : null}
 
-        {/* Ticks — each runs the same /api/cron/* job the matching GitHub workflow runs, now, with live progress */}
+        {/* Ticks — each runs the same /api/cron/* job the matching GitHub workflow runs, now. Multiple
+            can run at once; each shows live progress and a clickable outcome detail. */}
         <section className="rounded-xl border border-white/[0.06] bg-[#0d1626]/30 p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-[11px] font-extrabold uppercase tracking-wider text-[#64748b]">Agent &amp; cron ticks</h2>
-            {tickRun ? (
-              <span className="text-[11px] font-bold text-cyan">running {TICK_LABELS[tickRun.tick] ?? tickRun.tick} · {Math.max(0, Math.floor((nowMs - tickRun.startedAt) / 1000))}s</span>
-            ) : null}
+            {anyRunning ? <span className="text-[11px] font-bold text-cyan">{Object.keys(running).length} running</span> : null}
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
             {(data?.ticks ?? Object.keys(TICK_LABELS)).map((tick) => {
-              const running = tickRun?.tick === tick;
+              const startedAt = running[tick];
+              const isRunning = !!startedAt;
               const res = tickResults[tick];
-              const elapsed = running ? Math.max(0, Math.floor((nowMs - (tickRun?.startedAt ?? nowMs)) / 1000)) : 0;
+              const elapsed = isRunning ? Math.max(0, Math.floor((nowMs - startedAt) / 1000)) : 0;
+              const isOpen = expandedTick === tick;
               return (
-                <button
-                  key={tick}
-                  disabled={!!tickRun}
-                  onClick={() => void runTick(tick)}
-                  className={`flex w-full flex-col gap-1 rounded-lg border p-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                    running ? 'border-cyan/40 bg-cyan/5' : 'border-white/[0.08] bg-white/[0.02] hover:border-cyan/40 hover:bg-cyan/10'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2 text-xs font-bold text-[#e5edf8]">
+                <div key={tick} className={`flex flex-col gap-1 rounded-lg border p-2.5 transition-colors ${isRunning ? 'border-cyan/40 bg-cyan/5' : isOpen ? 'border-cyan/30 bg-white/[0.03]' : 'border-white/[0.08] bg-white/[0.02] hover:border-cyan/40 hover:bg-cyan/[0.06]'}`}>
+                  <button
+                    onClick={() => void runTick(tick)}
+                    className="flex items-center justify-between gap-2 text-left text-xs font-bold text-[#e5edf8]"
+                  >
                     <span className="truncate">{TICK_LABELS[tick] ?? tick}</span>
-                    {running ? <span className="shrink-0 text-[11px] font-black text-cyan">{elapsed}s</span> : null}
-                  </div>
-                  {running ? (
+                    {isRunning ? <span className="shrink-0 text-[11px] font-black text-cyan">{elapsed}s</span> : <span className="shrink-0 text-[10px] text-cyan/70">run ▸</span>}
+                  </button>
+                  {isRunning ? (
                     <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]">
                       <div className="h-full w-1/3 animate-[admin-progress_1.2s_ease-in-out_infinite] rounded-full bg-cyan" />
                     </div>
                   ) : res ? (
-                    <span className={`truncate text-[10px] font-bold ${res.ok ? 'text-emerald-400/90' : 'text-rose-400/90'}`} title={res.summary}>
-                      {res.ok ? '✓' : '✗'} {res.summary}
-                    </span>
+                    <button onClick={() => setExpandedTick(isOpen ? null : tick)} className={`flex items-center justify-between gap-1 text-left text-[10px] font-bold ${res.ok ? 'text-emerald-400/90' : 'text-rose-400/90'}`} title="Show outcome detail">
+                      <span className="truncate">{res.ok ? '✓' : '✗'} {res.summary}</span>
+                      <span className="shrink-0 text-[#475569]">{isOpen ? '▾' : '▸'}</span>
+                    </button>
                   ) : (
                     <span className="text-[10px] text-[#475569]">idle</span>
                   )}
-                </button>
+                </div>
               );
             })}
           </div>
+
+          {/* Outcome detail for the expanded tick */}
+          {expandedTick && tickResults[expandedTick] ? (
+            <div className="mt-3 rounded-lg border border-white/[0.08] bg-[#0b1220] p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[11px] font-extrabold uppercase tracking-wide text-[#64748b]">{TICK_LABELS[expandedTick] ?? expandedTick} — outcome</span>
+                <button onClick={() => setExpandedTick(null)} className="text-[11px] font-bold text-cyan hover:underline">close</button>
+              </div>
+              <TickDetail detail={tickResults[expandedTick].detail} />
+            </div>
+          ) : null}
           <style>{`@keyframes admin-progress { 0% { transform: translateX(-120%); } 100% { transform: translateX(400%); } }`}</style>
         </section>
 
@@ -362,6 +393,56 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border border-white/[0.05] bg-[#0d1626]/20 p-4">
       <p className="text-[11px] font-extrabold uppercase tracking-wider text-[#64748b]">{label}</p>
       <p className="mt-2 text-xl font-black text-white">{value}</p>
+    </div>
+  );
+}
+
+// Renders a cron tick's full outcome: the top-level counts line, then a per-item list of what the
+// run actually did (each market resolved/created/canceled/skipped with its reason), falling back to
+// a note/error or raw JSON.
+function TickDetail({ detail }: { detail: unknown }) {
+  if (!detail || typeof detail !== 'object') return <p className="text-[11px] text-[#94a3b8]">No detail returned.</p>;
+  const r = detail as Record<string, unknown>;
+  const rawList = Array.isArray(r.results) ? r.results : Array.isArray(r.plan) ? r.plan : Array.isArray(r.updates) ? r.updates : null;
+  const counts = Object.entries(r).filter(([k, v]) =>
+    (typeof v === 'number' || typeof v === 'boolean') && !['ran', 'ranAt'].includes(k));
+  return (
+    <div className="flex flex-col gap-2">
+      {counts.length > 0 ? (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+          {counts.slice(0, 10).map(([k, v]) => (
+            <span key={k}><span className="text-[#64748b]">{k}:</span> <span className="font-bold text-white">{String(v)}</span></span>
+          ))}
+        </div>
+      ) : null}
+      {rawList && rawList.length > 0 ? (
+        <div className="admin-no-scrollbar flex max-h-[240px] flex-col gap-1 overflow-y-auto">
+          {rawList.map((item, i) => {
+            const it = (item ?? {}) as Record<string, unknown>;
+            const action = String(it.action ?? '');
+            const ok = it.ok !== false && action !== 'skipped' && action !== 'failed';
+            const label = String(it.action ?? it.title ?? it.marketId ?? it.cancel ?? `item ${i + 1}`);
+            const reason = String(it.reason ?? it.outcome ?? it.error ?? it.txHash ?? it.title ?? '');
+            return (
+              <div key={i} className="flex items-start gap-2 rounded border border-white/[0.05] bg-white/[0.02] px-2 py-1 text-[10.5px]">
+                <span className={ok ? 'text-emerald-400' : 'text-amber-400/80'}>{ok ? '✓' : '•'}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="font-bold text-[#e5edf8]">{label}</span>
+                  {reason && reason !== label ? <span className="text-[#94a3b8]"> — {reason.slice(0, 140)}</span> : null}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : r.note ? (
+        <p className="text-[11px] text-amber-300/90">{String(r.note)}</p>
+      ) : r.error ? (
+        <p className="text-[11px] text-rose-400">{String(r.error)}</p>
+      ) : counts.length === 0 ? (
+        <pre className="admin-no-scrollbar max-h-[200px] overflow-auto whitespace-pre-wrap break-all rounded bg-black/30 p-2 text-[10px] text-[#94a3b8]">{JSON.stringify(detail, null, 1).slice(0, 2000)}</pre>
+      ) : (
+        <p className="text-[11px] text-[#64748b]">Nothing to act on this run.</p>
+      )}
     </div>
   );
 }
