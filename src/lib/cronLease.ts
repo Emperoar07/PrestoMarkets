@@ -55,16 +55,28 @@ export async function runWithCronLease<T>(
   ttlMs: number,
   fn: () => Promise<T>,
 ): Promise<{ acquired: true; value: T } | { acquired: false }> {
-  const lease = hasDatabaseUrl()
-    ? await tryAcquireDbCronLease(key, ttlMs)
-    : tryAcquireLocalCronLease(key, ttlMs);
+  // Prefer the durable DB lease (cross-instance), but if the DB is unavailable (e.g. Neon over
+  // quota, HTTP 402) fall back to the in-process lease so the job still runs instead of the whole
+  // cron 500ing on the lease query. Track which store actually granted it so release matches.
+  let usedDb = hasDatabaseUrl();
+  let lease: Lease;
+  if (usedDb) {
+    try {
+      lease = await tryAcquireDbCronLease(key, ttlMs);
+    } catch {
+      usedDb = false;
+      lease = tryAcquireLocalCronLease(key, ttlMs);
+    }
+  } else {
+    lease = tryAcquireLocalCronLease(key, ttlMs);
+  }
 
   if (!lease.acquired) return { acquired: false };
 
   try {
     return { acquired: true, value: await fn() };
   } finally {
-    if (hasDatabaseUrl()) {
+    if (usedDb) {
       await releaseDbCronLease(key, lease.owner).catch(() => {});
     } else {
       releaseLocalCronLease(key, lease.owner);

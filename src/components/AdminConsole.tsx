@@ -240,15 +240,18 @@ export function AdminConsole() {
               const res = tickResults[tick];
               const elapsed = running ? Math.max(0, Math.floor((nowMs - (tickRun?.startedAt ?? nowMs)) / 1000)) : 0;
               return (
-                <div key={tick} className={`flex flex-col gap-1 rounded-lg border p-2.5 transition-colors ${running ? 'border-cyan/40 bg-cyan/5' : 'border-white/[0.08] bg-white/[0.02]'}`}>
-                  <button
-                    disabled={!!tickRun}
-                    onClick={() => void runTick(tick)}
-                    className="flex items-center justify-between gap-2 text-left text-xs font-bold text-[#e5edf8] disabled:opacity-60"
-                  >
+                <button
+                  key={tick}
+                  disabled={!!tickRun}
+                  onClick={() => void runTick(tick)}
+                  className={`flex w-full flex-col gap-1 rounded-lg border p-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    running ? 'border-cyan/40 bg-cyan/5' : 'border-white/[0.08] bg-white/[0.02] hover:border-cyan/40 hover:bg-cyan/10'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 text-xs font-bold text-[#e5edf8]">
                     <span className="truncate">{TICK_LABELS[tick] ?? tick}</span>
                     {running ? <span className="shrink-0 text-[11px] font-black text-cyan">{elapsed}s</span> : null}
-                  </button>
+                  </div>
                   {running ? (
                     <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]">
                       <div className="h-full w-1/3 animate-[admin-progress_1.2s_ease-in-out_infinite] rounded-full bg-cyan" />
@@ -260,7 +263,7 @@ export function AdminConsole() {
                   ) : (
                     <span className="text-[10px] text-[#475569]">idle</span>
                   )}
-                </div>
+                </button>
               );
             })}
           </div>
