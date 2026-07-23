@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { formatUnits, isAddress, type Address } from 'viem';
 import { requireAdmin } from '@/lib/adminAuth.server';
+import { redactSecrets } from '@/lib/redactSecrets';
 import {
   getAgentAddress,
   getGuardianAddress,
@@ -176,9 +177,9 @@ export async function POST(request: NextRequest) {
         signal: AbortSignal.timeout(280_000),
       });
       const data = await res.json().catch(() => ({}));
-      return NextResponse.json({ ok: res.ok, tick: body.tick, status: res.status, result: data });
+      return NextResponse.json(redactSecrets({ ok: res.ok, tick: body.tick, status: res.status, result: data }));
     } catch (err) {
-      return NextResponse.json({ ok: false, tick: body.tick, error: err instanceof Error ? err.message : 'Tick failed.' }, { status: 502 });
+      return NextResponse.json(redactSecrets({ ok: false, tick: body.tick, error: err instanceof Error ? err.message : 'Tick failed.' }), { status: 502 });
     }
   }
 
@@ -189,7 +190,7 @@ export async function POST(request: NextRequest) {
   if (body.op === 'create') {
     if (!body.draft || !body.draft.title) return NextResponse.json({ ok: false, error: 'draft.title is required.' }, { status: 400 });
     const result = await agentCreateMarket(body.draft);
-    return NextResponse.json(result);
+    return NextResponse.json(redactSecrets(result));
   }
 
   // ── Per-market agent action ──
@@ -208,25 +209,21 @@ export async function POST(request: NextRequest) {
     const outcomeIndex = Number.isInteger(body.outcomeIndex) ? body.outcomeIndex! : 0;
     const uri = body.evidenceURI ?? '';
 
+    let result: { ok: boolean; txHash?: string; error?: string };
     switch (action) {
-      case 'cancel': return NextResponse.json(await agentCancelMarket(marketId));
-      case 'seed': return NextResponse.json(await agentSeedLmsrMarket(marketId));
-      case 'pause': return NextResponse.json(await agentPauseLmsrMarket(marketId));
-      case 'unpause': return NextResponse.json(await agentUnpauseLmsrMarket(marketId));
-      case 'withdrawFees': return NextResponse.json(await agentWithdrawLmsrFees(marketId));
-      case 'propose':
-        return NextResponse.json(isAmm
-          ? await agentProposeV3(marketId, outcomeIndex, uri)
-          : await agentProposeResolution(marketId, outcomeIndex, uri));
-      case 'settle':
-        return NextResponse.json(isAmm
-          ? await agentSettleV3(marketId)
-          : await agentSettleProposedResolution(marketId));
-      case 'resolve': return NextResponse.json(await agentResolveMarket(marketId, outcomeIndex, uri));
-      case 'resolveDisputed': return NextResponse.json(await agentResolveDisputedV3(marketId, outcomeIndex, uri));
+      case 'cancel': result = await agentCancelMarket(marketId); break;
+      case 'seed': result = await agentSeedLmsrMarket(marketId); break;
+      case 'pause': result = await agentPauseLmsrMarket(marketId); break;
+      case 'unpause': result = await agentUnpauseLmsrMarket(marketId); break;
+      case 'withdrawFees': result = await agentWithdrawLmsrFees(marketId); break;
+      case 'propose': result = isAmm ? await agentProposeV3(marketId, outcomeIndex, uri) : await agentProposeResolution(marketId, outcomeIndex, uri); break;
+      case 'settle': result = isAmm ? await agentSettleV3(marketId) : await agentSettleProposedResolution(marketId); break;
+      case 'resolve': result = await agentResolveMarket(marketId, outcomeIndex, uri); break;
+      case 'resolveDisputed': result = await agentResolveDisputedV3(marketId, outcomeIndex, uri); break;
       default:
         return NextResponse.json({ ok: false, error: `Unknown market action: ${action}` }, { status: 400 });
     }
+    return NextResponse.json(redactSecrets(result));
   }
 
   return NextResponse.json({ ok: false, error: 'Unknown op. Use tick | market | create.' }, { status: 400 });
