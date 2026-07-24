@@ -362,39 +362,11 @@ async function connectCircleUserControlledWalletProvider(input?: CircleWalletLog
     return connectCircleSocialWallet(input.provider);
   }
 
-  if (input.method !== 'pin') {
-    return null;
-  }
-
-  const userId = input.userId.trim();
-
-  if (!userId) {
-    throw new Error('Enter a user ID or email to continue with Circle PIN.');
-  }
-
-  if (userId.length < 5) {
-    throw new Error('Circle PIN user ID must be at least 5 characters.');
-  }
-
-  const config = await getCircleConfig();
-  // createUser may be disabled on this deployment (new PIN registration off — audit #1). That's
-  // fine for a RETURNING user: their Circle user already exists, so we skip straight to session.
-  // A brand-new user will then fail at session (no such user) with a clean "use another method"
-  // error, which is the intended outcome when PIN registration is off.
-  try {
-    await callCircleWalletProvider({ action: 'createUser', userId });
-  } catch (error) {
-    const disabled = error instanceof Error && /disabled|registration/i.test(error.message);
-    if (!disabled) throw error;
-  }
-  let session: CircleLoginResult;
-  try {
-    session = await callCircleWalletProvider<CircleLoginResult>({ action: 'session', userId });
-  } catch {
-    throw new Error('PIN sign-in is unavailable for a new user on this deployment. Use email, social, or passkey sign-in.');
-  }
-
-  return finishCircleWalletLogin({ config, login: session, userHint: userId });
+  // PIN sign-in is RETIRED (audit #1). A user-typed userId does not verify identity (Circle's own
+  // guidance), so a guessed username could mint another user's Presto session. Removed from the UI;
+  // this guard closes any remaining programmatic caller. Existing PIN users re-onboard via the
+  // Circle-authenticated methods (email OTP / social / passkey), all of which remain available.
+  throw new Error('PIN sign-in has been retired. Please sign in with email, social, or passkey.');
 }
 
 async function connectCircleEmailWallet(email: string) {

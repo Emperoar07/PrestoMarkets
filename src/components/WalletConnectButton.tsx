@@ -38,8 +38,7 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
   const [showConnectPanel, setShowConnectPanel] = useState(false);
   const [showRecoveryHelp, setShowRecoveryHelp] = useState(false);
   const [email, setEmail] = useState('');
-  const [pinUserId, setPinUserId] = useState('');
-  const [circleMethod, setCircleMethod] = useState<'email' | 'pin' | 'passkey'>('email');
+  const [circleMethod, setCircleMethod] = useState<'email' | 'passkey'>('email');
   const [authMode, setAuthMode] = useState<'signup' | 'login'>('signup');
   const [copied, setCopied] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -182,11 +181,6 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
   function continueWithCircleMethod() {
     if (circleMethod === 'email') {
       void connectWallet({ method: 'email', email });
-      return;
-    }
-
-    if (circleMethod === 'pin') {
-      void connectWallet({ method: 'pin', userId: pinUserId });
       return;
     }
 
@@ -495,7 +489,7 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
 
               {/* Capsule tab method switcher */}
               <div className="mt-5 flex gap-1 border border-white/[0.06] bg-[#0c1322] p-1 rounded-xl w-full">
-                {(['email', 'pin', 'passkey'] as const).map((method) => {
+                {(['email', 'passkey'] as const).map((method) => {
                   const isActive = circleMethod === method;
                   return (
                     <button
@@ -508,7 +502,7 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
                           : 'text-[#94a3b8] hover:bg-white/[0.04] hover:text-[#f1f5f9]'
                       }`}
                     >
-                      {method === 'pin' ? 'PIN' : method}
+                      {method}
                     </button>
                   );
                 })}
@@ -532,24 +526,6 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
                 </div>
               ) : null}
 
-              {circleMethod === 'pin' ? (
-                <div className="mt-4.5">
-                  <label className="block text-[11.5px] font-black uppercase tracking-wider text-[#64748b]">
-                    User ID or Email
-                  </label>
-                  <input
-                    type="text"
-                    value={pinUserId}
-                    onChange={(event) => setPinUserId(event.target.value)}
-                    placeholder="Enter your account ID"
-                    className="mt-2 w-full rounded-xl border border-white/[0.06] bg-[#0d1626]/20 px-3.5 py-2.5 text-[13.5px] font-bold text-white outline-none transition-all placeholder:text-[#475569] focus:border-cyan/40 focus:bg-[#0d1626]/35 focus:ring-1 focus:ring-cyan/40"
-                  />
-                  <p className="mt-2.5 text-xs text-[#64748b] leading-relaxed">
-                    Circle will open a secure PIN challenge for your account.
-                  </p>
-                </div>
-              ) : null}
-
               {circleMethod === 'passkey' ? (
                 <div className="mt-4.5 rounded-xl border border-cyan/20 bg-cyan/[0.06] p-4">
                   <div className="flex items-start gap-3">
@@ -563,7 +539,7 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
                       </p>
                       {!passkeyReady ? (
                         <p className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/[0.06] px-2.5 py-1.5 text-[11px] font-bold leading-5 text-amber-200/90">
-                          Passkey sign-in is coming soon to this domain. Use Email or PIN for now.
+                          Passkey sign-in is coming soon to this domain. Use Email for now.
                         </p>
                       ) : null}
                     </div>
@@ -579,10 +555,8 @@ export function WalletConnectButton({ showAvatar, hideDropdown, onClick, forceAr
                 disabled={isPending || (circleMethod === 'passkey' && !passkeyReady)}
                 className="w-full rounded-xl bg-cyan py-3 text-xs font-black uppercase tracking-wider text-[#07111f] transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50 shadow-lg shadow-cyan/10"
               >
-                {circleMethod === 'pin'
-                  ? 'Continue with PIN'
-                  : circleMethod === 'passkey'
-                    ? (passkeyReady ? 'Continue with Passkey' : 'Passkey coming soon')
+                {circleMethod === 'passkey'
+                  ? (passkeyReady ? 'Continue with Passkey' : 'Passkey coming soon')
                   : authMode === 'signup' ? 'Sign up' : 'Log in'}
               </button>
 
