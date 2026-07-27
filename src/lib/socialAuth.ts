@@ -48,48 +48,56 @@ export function normalizeSocialAddress(value: string | undefined | null): string
   return getAddress(value as Address).toLowerCase();
 }
 
+function generateNonceRandomHex(): string {
+  try {
+    if (typeof globalThis.crypto?.getRandomValues === 'function') {
+      const bytes = new Uint8Array(16);
+      globalThis.crypto.getRandomValues(bytes);
+      return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch {
+    /* fallback to node crypto */
+  }
+  return randomBytes(16).toString('hex');
+}
+
 export async function createNonce(address: string, now = Date.now()): Promise<string> {
   const normalized = normalizeSocialAddress(address);
   if (!normalized) {
     throw new Error('Valid address is required.');
   }
-  const nonce = randomBytes(16).toString('hex');
   const expiresAt = now + SIWE_NONCE_TTL_MS;
-
-  if (hasDatabaseUrl()) {
-    try {
-      await getDb()
-        .insert(siweNonces)
-        .values({ address: normalized, nonce, expiresAt: new Date(expiresAt) })
-        .onConflictDoUpdate({ target: siweNonces.address, set: { nonce, expiresAt: new Date(expiresAt) } });
-      return nonce;
-    } catch (err) {
-      console.warn('SIWE nonce DB insert failed, falling back to in-memory store:', err);
-    }
-  }
-
-  nonceStore.set(normalized, { nonce, expiresAt });
-  return nonce;
+  const rand = generateNonceRandomHex();
+  const secret = getSessionSecret();
+  const payload = `${normalized}:${expiresAt}:${rand}`;
+  const sig = signPayload(payload, secret);
+  return base64UrlEncode(`${payload}:${sig}`);
 }
 
 export async function consumeNonce(address: string, nonce: string, now = Date.now()): Promise<boolean> {
   const normalized = normalizeSocialAddress(address);
-  if (!normalized) return false;
+  if (!normalized || !nonce) return false;
 
-  if (hasDatabaseUrl()) {
-    try {
-      const [row] = await getDb().delete(siweNonces).where(eq(siweNonces.address, normalized)).returning();
-      if (row) {
-        return row.nonce === nonce && row.expiresAt.getTime() >= now;
-      }
-    } catch (err) {
-      console.warn('SIWE nonce DB delete failed, checking in-memory store:', err);
+  try {
+    const raw = base64UrlDecode(nonce).toString('utf8');
+    const parts = raw.split(':');
+    if (parts.length !== 4) return false;
+    const [storedAddress, expiresAtStr, rand, sig] = parts;
+    const expiresAt = parseInt(expiresAtStr, 10);
+    if (!storedAddress || !expiresAt || !sig || storedAddress !== normalized) return false;
+    if (expiresAt < now) return false;
+
+    const secret = getSessionSecret();
+    const expectedSig = signPayload(`${storedAddress}:${expiresAt}:${rand}`, secret);
+    const sigBuf = Buffer.from(sig);
+    const expectedBuf = Buffer.from(expectedSig);
+    if (sigBuf.length !== expectedBuf.length || !timingSafeEqual(sigBuf, expectedBuf)) {
+      return false;
     }
+    return true;
+  } catch {
+    return false;
   }
-
-  const stored = nonceStore.get(normalized);
-  nonceStore.delete(normalized);
-  return Boolean(stored && stored.nonce === nonce && stored.expiresAt >= now);
 }
 
 export function buildSiweMessage(input: {
