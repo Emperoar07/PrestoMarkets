@@ -22,10 +22,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Valid address is required.' }, { status: 400 });
   }
 
-  const origin = request.headers.get('origin') || `https://${request.headers.get('host') ?? 'presto-markets.vercel.app'}`;
-  const nonce = await createNonce(address);
-  return NextResponse.json({
-    nonce,
-    message: buildSiweMessage({ address, nonce, origin }),
-  });
+  try {
+    const origin = request.headers.get('origin') || `https://${request.headers.get('host') ?? 'presto-markets.vercel.app'}`;
+    const nonce = await createNonce(address);
+    return NextResponse.json({
+      nonce,
+      message: buildSiweMessage({ address, nonce, origin }),
+    });
+  } catch (error) {
+    console.error('Error in /api/auth/nonce:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Could not create sign-in nonce.' },
+      { status: 500 }
+    );
+  }
 }

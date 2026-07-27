@@ -57,13 +57,18 @@ export async function createNonce(address: string, now = Date.now()): Promise<st
   const expiresAt = now + SIWE_NONCE_TTL_MS;
 
   if (hasDatabaseUrl()) {
-    await getDb()
-      .insert(siweNonces)
-      .values({ address: normalized, nonce, expiresAt: new Date(expiresAt) })
-      .onConflictDoUpdate({ target: siweNonces.address, set: { nonce, expiresAt: new Date(expiresAt) } });
-  } else {
-    nonceStore.set(normalized, { nonce, expiresAt });
+    try {
+      await getDb()
+        .insert(siweNonces)
+        .values({ address: normalized, nonce, expiresAt: new Date(expiresAt) })
+        .onConflictDoUpdate({ target: siweNonces.address, set: { nonce, expiresAt: new Date(expiresAt) } });
+      return nonce;
+    } catch (err) {
+      console.warn('SIWE nonce DB insert failed, falling back to in-memory store:', err);
+    }
   }
+
+  nonceStore.set(normalized, { nonce, expiresAt });
   return nonce;
 }
 
@@ -72,9 +77,14 @@ export async function consumeNonce(address: string, nonce: string, now = Date.no
   if (!normalized) return false;
 
   if (hasDatabaseUrl()) {
-    // Atomic single-use: delete-and-return so a replay finds nothing.
-    const [row] = await getDb().delete(siweNonces).where(eq(siweNonces.address, normalized)).returning();
-    return Boolean(row && row.nonce === nonce && row.expiresAt.getTime() >= now);
+    try {
+      const [row] = await getDb().delete(siweNonces).where(eq(siweNonces.address, normalized)).returning();
+      if (row) {
+        return row.nonce === nonce && row.expiresAt.getTime() >= now;
+      }
+    } catch (err) {
+      console.warn('SIWE nonce DB delete failed, checking in-memory store:', err);
+    }
   }
 
   const stored = nonceStore.get(normalized);
