@@ -5,7 +5,15 @@ import { useSignMessage } from 'wagmi';
 import { useAppState } from '@/lib/appState';
 import { broadcastSocialChanged, signInCircleWallet, signInExternalWallet } from '@/lib/socialSignIn';
 
-export function SocialSignInButton({ onSignedIn }: { onSignedIn?: () => void }) {
+export function SocialSignInButton({
+  onSignedIn,
+  label = 'Sign in to write',
+  buttonClassName,
+}: {
+  onSignedIn?: () => void;
+  label?: string;
+  buttonClassName?: string;
+}) {
   const { connectedWallet } = useAppState();
   const { signMessageAsync } = useSignMessage();
   const [message, setMessage] = useState('');
@@ -47,14 +55,14 @@ export function SocialSignInButton({ onSignedIn }: { onSignedIn?: () => void }) 
   }
 
   return (
-    <div className="flex flex-col items-start gap-2">
+    <div className="flex flex-col items-center gap-2">
       <button
         type="button"
         onClick={() => void signIn()}
         disabled={isSigning || !connectedWallet}
-        className="rounded-[8px] border border-cyan/30 bg-cyan/10 px-3 py-2 text-xs font-black text-cyan transition-colors hover:bg-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"
+        className={buttonClassName || "rounded-[8px] border border-cyan/30 bg-cyan/10 px-4 py-2.5 text-xs font-black text-cyan transition-colors hover:bg-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"}
       >
-        {isSigning ? 'Signing...' : 'Sign in to write'}
+        {isSigning ? 'Signing...' : label}
       </button>
       {message ? <p className="text-xs text-muted">{message}</p> : null}
     </div>

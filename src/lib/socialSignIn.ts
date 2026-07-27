@@ -14,8 +14,8 @@ export async function signInExternalWallet(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ address }),
   });
-  const nonceBody = await nonceRes.json();
-  if (!nonceRes.ok) throw new Error(nonceBody.error ?? 'Could not create sign-in nonce.');
+  const nonceBody = await nonceRes.json().catch(() => ({}));
+  if (!nonceRes.ok) throw new Error(nonceBody.error ?? `Could not create sign-in nonce (HTTP ${nonceRes.status}).`);
 
   const signature = await signMessage(nonceBody.message);
   const verifyRes = await fetch('/api/auth/verify', {
@@ -23,8 +23,8 @@ export async function signInExternalWallet(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ address, nonce: nonceBody.nonce, message: nonceBody.message, signature }),
   });
-  const verifyBody = await verifyRes.json();
-  if (!verifyRes.ok) throw new Error(verifyBody.error ?? 'Sign-in failed.');
+  const verifyBody = await verifyRes.json().catch(() => ({}));
+  if (!verifyRes.ok) throw new Error(verifyBody.error ?? `Sign-in failed (${verifyBody.error || `HTTP ${verifyRes.status}`}).`);
 }
 
 /**
@@ -42,7 +42,7 @@ export async function signInCircleWallet(address: string): Promise<void> {
     body: JSON.stringify({ address, userToken: session.userToken }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? 'Circle sign-in failed.');
+  if (!res.ok) throw new Error(data.error ?? `Circle sign-in failed (HTTP ${res.status}).`);
 }
 
 export function broadcastSocialChanged() {

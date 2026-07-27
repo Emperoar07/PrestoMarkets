@@ -38,12 +38,17 @@ const ESPN_SOCCER_LEAGUES = [
   'uefa.euro', 'uefa.nations', 'conmebol.america', 'concacaf.gold',
   'eng.1', 'esp.1', 'ita.1', 'ger.1', 'fra.1', 'uefa.champions',
 ];
+// ESPN uses the SAME scoreboard shape for basketball, just different sport path + league slugs.
+const ESPN_BASKETBALL_LEAGUES = ['nba', 'wnba', 'mens-college-basketball', 'womens-college-basketball'];
 
-async function fetchEspnLive(home: string, away: string, dateYmd: string, signal: AbortSignal): Promise<LiveScore | null> {
+type LiveSport = 'soccer' | 'basketball';
+
+async function fetchEspnLive(home: string, away: string, dateYmd: string, signal: AbortSignal, sport: LiveSport = 'soccer'): Promise<LiveScore | null> {
   if (!home || !away || !/^\d{8}$/.test(dateYmd)) return null;
+  const leagues = sport === 'basketball' ? ESPN_BASKETBALL_LEAGUES : ESPN_SOCCER_LEAGUES;
   const results = await Promise.all(
-    ESPN_SOCCER_LEAGUES.map((slug) =>
-      fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}/scoreboard?dates=${dateYmd}`,
+    leagues.map((slug) =>
+      fetch(`https://site.api.espn.com/apis/site/v2/sports/${sport}/${slug}/scoreboard?dates=${dateYmd}`,
         { next: { revalidate: 15 }, signal })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null)),
@@ -227,6 +232,7 @@ export async function GET(request: NextRequest) {
   const home = searchParams.get('home')?.trim() || undefined;
   const away = searchParams.get('away')?.trim() || undefined;
   const dateParam = searchParams.get('date')?.trim() || undefined; // YYYYMMDD or YYYY-MM-DD
+  const sport: LiveSport = searchParams.get('sport')?.trim().toLowerCase() === 'basketball' ? 'basketball' : 'soccer';
   const hasId = Boolean(id && /^\d+$/.test(id));
 
   // Need either a TheSportsDB event id OR home+away team names (for the keyless ESPN lookup).

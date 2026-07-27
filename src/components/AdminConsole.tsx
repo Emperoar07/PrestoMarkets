@@ -6,6 +6,7 @@ import { SiteFooter } from './SiteFooter';
 import { useSocialSession } from '@/lib/socialSessionContext';
 import { isAdminAddress } from '@/lib/adminAuth';
 import { getStoredConnectedWallet, subscribeConnectedWallet, type ConnectedWallet } from '@/lib/walletProvider';
+import { SocialSignInButton } from './SocialSignInButton';
 
 type AgentMarket = {
   id: string;
@@ -219,12 +220,16 @@ export function AdminConsole() {
   if (!sessionIsAdmin) {
     return (
       <Shell>
-        <div className="rounded-xl border border-white/[0.06] bg-[#0d1626]/40 p-8 text-center">
-          <h1 className="text-xl font-black text-white">Verify ownership</h1>
-          <p className="mt-2 text-sm text-[#94a3b8]">Sign a message to prove you control the admin wallet.</p>
-          <button onClick={() => requireSignIn()} className="mt-4 rounded-lg bg-cyan px-5 py-2.5 text-sm font-bold text-black hover:bg-cyan/90">
-            Sign in as admin
-          </button>
+        <div className="mx-auto max-w-md rounded-xl border border-white/[0.06] bg-[#0d1626]/40 p-8 text-center">
+          <h1 className="text-xl font-black text-white">Verify Admin Ownership</h1>
+          <p className="mt-2 text-sm text-[#94a3b8]">Sign a single gasless message to prove you control the admin wallet and authenticate your session.</p>
+          <div className="mt-6 flex justify-center">
+            <SocialSignInButton
+              label="Sign in as admin"
+              buttonClassName="rounded-lg bg-cyan px-6 py-2.5 text-sm font-bold text-black hover:bg-cyan/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              onSignedIn={() => void refresh()}
+            />
+          </div>
         </div>
       </Shell>
     );
