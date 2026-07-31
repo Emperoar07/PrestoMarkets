@@ -21,3 +21,5 @@ skills-lock.json
 
 # Superpowers planning artifacts (specs/plans) — keep local, do not commit
 docs/superpowers/
+
+.env*
