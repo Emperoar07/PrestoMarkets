@@ -84,7 +84,7 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
 
 function getClients() {
   // Accept both names so existing Vercel configs with PRESTO_AGENT_PRIVATE_KEY still work
-  const pk = process.env.AGENT_PRIVATE_KEY ?? process.env.PRESTO_AGENT_PRIVATE_KEY;
+  const pk = process.env.AGENT_PRIVATE_KEY ?? process.env.PRESTO_AGENT_PRIVATE_KEY ?? process.env.PRIVATE_KEY;
   if (!pk) throw new Error('AGENT_PRIVATE_KEY is not set — agent wallet unavailable.');
 
   const config = getArcConfig();
@@ -853,7 +853,7 @@ export async function agentReadTotalShares(marketAddress: string, outcomeIndex: 
 }
 
 export function getAgentAddress(): string | null {
-  const pk = process.env.AGENT_PRIVATE_KEY ?? process.env.PRESTO_AGENT_PRIVATE_KEY;
+  const pk = process.env.AGENT_PRIVATE_KEY ?? process.env.PRESTO_AGENT_PRIVATE_KEY ?? process.env.PRIVATE_KEY;
   if (!pk) return null;
   try {
     return privateKeyToAccount(pk as Hex).address;
