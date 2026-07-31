@@ -69,7 +69,10 @@ function isDbUnavailable(err) {
 
 async function main() {
   const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
-  if (!url) throw new Error('DATABASE_URL (or POSTGRES_URL) is not set. Put it in .env.local or the environment.');
+  if (!url) {
+    console.warn('⚠️  DATABASE_URL (or POSTGRES_URL) is not set. Skipping migrations during build.');
+    return;
+  }
   const sql = neon(url);
 
   // Probe reachability with the journal-table create (idempotent). If the DB is unreachable, skip
