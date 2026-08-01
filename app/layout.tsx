@@ -20,6 +20,13 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Presto Markets',
   description: 'Prediction and opinion markets on Arc.',
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico' },
+    ],
+    apple: [{ url: '/icon.svg' }],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
