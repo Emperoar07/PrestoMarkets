@@ -41,6 +41,21 @@ const embedSecurityHeaders = securityHeaders
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  compress: true,
+  productionBrowserSourceMaps: false,
+  images: {
+    formats: ['image/avif', 'image/webp'],
+  },
+  experimental: {
+    optimizePackageImports: [
+      'lucide-react',
+      'recharts',
+      'date-fns',
+      'viem',
+      'framer-motion',
+      'drizzle-orm',
+    ],
+  },
   // Ship the committed market-list seed (the Neon-independent cold-start floor) inside the API
   // route bundles. Without this, the runtime fs.readFileSync(process.cwd()/data/markets-seed.json)
   // in the snapshot fallback would 404 in the serverless function and the grid could still hang
