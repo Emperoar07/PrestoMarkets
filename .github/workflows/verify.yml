@@ -19,7 +19,7 @@ jobs:
         with:
           # Match the Node/npm that generates package-lock.json (npm 11) so `npm ci` interprets
           # optional native deps (utf-8-validate/bufferutil) identically and stays in sync.
-          node-version: 24
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
