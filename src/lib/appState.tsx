@@ -158,7 +158,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       let nextMarkets: AppMarket[] | null = null;
       if (!options.force) {
         try {
-          const res = await fetch('/api/markets');
+          const apiBase = typeof window !== 'undefined' && window.location.hostname.endsWith('.pages.dev')
+            ? 'https://presto-markets.vercel.app'
+            : '';
+          const res = await fetch(`${apiBase}/api/markets`);
           if (res.ok) {
             const data = await res.json() as { markets?: AppMarket[] };
             if (Array.isArray(data.markets) && data.markets.length > 0) nextMarkets = data.markets;
