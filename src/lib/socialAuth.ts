@@ -74,9 +74,12 @@ export async function createNonce(address: string, now = Date.now()): Promise<st
   return base64UrlEncode(`${payload}:${sig}`);
 }
 
+const consumedNoncesSet = new Set<string>();
+
 export async function consumeNonce(address: string, nonce: string, now = Date.now()): Promise<boolean> {
   const normalized = normalizeSocialAddress(address);
   if (!normalized || !nonce) return false;
+  if (consumedNoncesSet.has(nonce)) return false;
 
   try {
     const raw = base64UrlDecode(nonce).toString('utf8');
@@ -94,6 +97,7 @@ export async function consumeNonce(address: string, nonce: string, now = Date.no
     if (sigBuf.length !== expectedBuf.length || !timingSafeEqual(sigBuf, expectedBuf)) {
       return false;
     }
+    consumedNoncesSet.add(nonce);
     return true;
   } catch {
     return false;
