@@ -48,6 +48,21 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     '/api/**': ['./data/markets-seed.json'],
   },
+  async redirects() {
+    return [
+      {
+        source: '/:path((?!api/).*)',
+        has: [
+          {
+            type: 'host',
+            value: 'presto-markets.vercel.app',
+          },
+        ],
+        destination: 'https://presto-markets.pages.dev/:path*',
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {
