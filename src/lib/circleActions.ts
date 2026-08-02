@@ -1,5 +1,5 @@
 import { createPublicClient, encodeFunctionData, formatUnits, isAddress, parseEventLogs, parseUnits, type Address, type Hex } from 'viem';
-import { arcTestnet } from 'viem/chains';
+import { arcTestnet } from './chains';
 import { getArcConfig, collateralSymbolForAddress, collateralUnit } from './arcConfig';
 import { ARC_READ_BATCH, arcReadTransport } from './arcClient';
 import { buildMarketMetadataURI } from './marketMetadata';

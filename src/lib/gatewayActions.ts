@@ -32,7 +32,7 @@ import {
   type Chain,
   type Hex,
 } from 'viem';
-import { baseSepolia, sepolia, avalancheFuji, arbitrumSepolia, arcTestnet } from 'viem/chains';
+import { arbitrumSepolia, arcTestnet, avalancheFuji, baseSepolia, sepolia } from './chains';
 import { encodeMemoWrappedCall } from './arcMemos';
 
 const GATEWAY_API_TESTNET = 'https://gateway-api-testnet.circle.com/v1';

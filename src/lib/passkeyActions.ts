@@ -7,7 +7,7 @@ import {
   type Address,
   type Hex,
 } from 'viem';
-import { arcTestnet } from 'viem/chains';
+import { arcTestnet } from './chains';
 import { collateralSymbolForAddress, collateralUnit, getArcConfig } from './arcConfig';
 import { ARC_READ_BATCH, arcReadTransport, withRpcRetry } from './arcClient';
 import { erc20Abi, prestoLmsrMarketAbi, prestoMarketAbi } from './contracts';

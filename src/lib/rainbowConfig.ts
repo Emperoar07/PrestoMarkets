@@ -1,7 +1,7 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { fallback, http } from 'wagmi';
-import { arcTestnet } from 'wagmi/chains';
 import { arcRpcUrls } from './arcClient';
+import { arcTestnet } from './chains';
 
 // All configured Arc RPCs (dedicated dRPC/QuikNode first, public last). The public RPC is heavily
 // rate-limited (HTTP 429), so wagmi MUST fail over across endpoints — using a single public http

@@ -1,6 +1,6 @@
 import { createBundlerClient, toWebAuthnAccount } from 'viem/account-abstraction';
 import { createPublicClient, parseGwei, type Address, type CustomTransport, type Hex, type PublicClient } from 'viem';
-import { arcTestnet } from 'viem/chains';
+import { arcTestnet } from './chains';
 import {
   toCircleSmartAccount,
   toModularTransport,

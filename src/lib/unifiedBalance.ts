@@ -9,7 +9,7 @@
  */
 
 import { createPublicClient, erc20Abi, formatUnits, http, isAddress, type Address } from 'viem';
-import { baseSepolia, sepolia, avalancheFuji, arbitrumSepolia } from 'viem/chains';
+import { arbitrumSepolia, avalancheFuji, baseSepolia, sepolia } from './chains';
 import { getArcConfig } from './arcConfig';
 import { ARC_USDC_DECIMALS, createArcReadClient } from './arcClient';
 

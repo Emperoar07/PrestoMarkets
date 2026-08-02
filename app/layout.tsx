@@ -18,8 +18,20 @@ import { Suspense } from 'react';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://presto-markets.pages.dev'),
   title: 'Presto Markets',
   description: 'Prediction and opinion markets on Arc.',
+  openGraph: {
+    title: 'Presto Markets',
+    description: 'Prediction and opinion markets on Arc.',
+    images: ['/icon.svg'],
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Presto Markets',
+    description: 'Prediction and opinion markets on Arc.',
+    images: ['/icon.svg'],
+  },
   icons: {
     icon: [
       { url: '/icon.svg', type: 'image/svg+xml' },

@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createPublicClient, getAddress, isAddress, verifyMessage, type Address } from 'viem';
-import { arcTestnet } from 'viem/chains';
+import { arcTestnet } from './chains';
 import { eq } from 'drizzle-orm';
 import { getArcConfig } from './arcConfig';
 import { arcReadTransport } from './arcClient';

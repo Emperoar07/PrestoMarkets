@@ -8,7 +8,7 @@ import {
   type Address,
   type Hex,
 } from 'viem';
-import { arcTestnet } from 'viem/chains';
+import { arcTestnet } from './chains';
 import { getArcConfig } from './arcConfig';
 import { arcReadTransport } from './arcClient';
 
