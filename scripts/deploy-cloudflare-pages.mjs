@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { copyFile, mkdir, rm } from 'node:fs/promises';
+import { cp, copyFile, mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,6 +9,7 @@ const wranglerBin = path.join(root, 'node_modules', 'wrangler', 'bin', 'wrangler
 
 await rm(outputDir, { recursive: true, force: true });
 await mkdir(outputDir, { recursive: true });
+await cp(path.join(root, '.open-next', 'assets'), outputDir, { recursive: true });
 await copyFile(path.join(root, 'cloudflare', 'pages', 'worker.mjs'), path.join(outputDir, '_worker.js'));
 
 execFileSync(process.execPath, [

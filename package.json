@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "next build --webpack && node -e \"const fs=require('fs'); fs.rmSync('.next/cache', { recursive: true, force: true }); if (fs.existsSync('.next/static') && fs.existsSync('.next/server/app')) { fs.mkdirSync('.next/server/app/_next', { recursive: true }); fs.cpSync('.next/static', '.next/server/app/_next/static', { recursive: true }); if (fs.existsSync('public/_redirects')) { fs.copyFileSync('public/_redirects', '.next/server/app/_redirects'); } }\"",
+    "build": "next build --webpack && node -e \"require('fs').rmSync('.next/cache', { recursive: true, force: true })\" && node scripts/prepare-cloudflare-pages-git-output.mjs",
     "build:cloudflare": "node scripts/build-worker-market-seed.mjs && opennextjs-cloudflare build && node scripts/bundle-cloudflare-shards.mjs && node -e \"require('fs').rmSync('.open-next/assets/_redirects', { force: true })\"",
     "refresh:worker-seed": "node scripts/build-worker-market-seed.mjs",
     "preview:cloudflare": "npm run build:cloudflare && opennextjs-cloudflare preview",
