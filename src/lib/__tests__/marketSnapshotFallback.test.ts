@@ -8,6 +8,7 @@ import {
   writeFilesystemSnapshot,
   readFilesystemSnapshot,
 } from '../marketSnapshotFallback';
+import * as snapshotFallback from '../marketSnapshotFallback';
 import type { AppMarket } from '../appState';
 
 const mk = (over: Partial<AppMarket>): AppMarket => ({
@@ -59,5 +60,19 @@ describe('filesystem snapshot tier', () => {
 
   it('never throws on an empty list', () => {
     expect(() => writeFilesystemSnapshot([])).not.toThrow();
+  });
+});
+
+describe('committed seed tier', () => {
+  it('loads the seed from the bundle without relying on a runtime filesystem', async () => {
+    const readBundledSeedSnapshot = (
+      snapshotFallback as unknown as {
+        readBundledSeedSnapshot?: () => Promise<{ markets: AppMarket[]; at: number } | null>;
+      }
+    ).readBundledSeedSnapshot;
+
+    expect(typeof readBundledSeedSnapshot).toBe('function');
+    const snapshot = await readBundledSeedSnapshot?.();
+    expect(snapshot?.markets.length).toBeGreaterThan(0);
   });
 });

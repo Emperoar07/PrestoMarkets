@@ -12,6 +12,12 @@ cache
 artifacts
 
 .vercel
+.open-next
+.wrangler
+.cloudflare-build
+.dev.vars*
+cloudflare-env.d.ts
+.wrangler-preview.*
 
 # Agent skill installs (machine-local; managed by `npx skills add` / graphify)
 .agents/skills/

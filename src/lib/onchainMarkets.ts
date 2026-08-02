@@ -17,7 +17,7 @@ import {
   slimSnapshotForStorage,
   writeFilesystemSnapshot,
   readFilesystemSnapshot,
-  readSeedSnapshot,
+  readBundledSeedSnapshot,
   writeUpstashSnapshot,
   readUpstashSnapshot,
 } from './marketSnapshotFallback';
@@ -991,7 +991,7 @@ export async function readMarketListSnapshot(): Promise<{ markets: AppMarket[]; 
     return { markets: fsSnap.markets.map(refreshTimeDerivedStatus), ageMs: Date.now() - fsSnap.at };
   }
   // Tier 4: committed seed — cold-start floor so the grid is never empty / stuck loading.
-  const seed = readSeedSnapshot();
+  const seed = await readBundledSeedSnapshot();
   if (seed) {
     return { markets: seed.markets.map(refreshTimeDerivedStatus), ageMs: Date.now() - seed.at };
   }

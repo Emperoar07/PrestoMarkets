@@ -61,7 +61,7 @@ const nextConfig: NextConfig = {
   // in the snapshot fallback would 404 in the serverless function and the grid could still hang
   // when Neon is down. Traced as an asset (not parsed into JS) so it doesn't bloat cold start.
   outputFileTracingIncludes: {
-    '/api/**': ['./data/markets-seed.json'],
+    '/api/**': ['./data/markets-worker-seed.json'],
   },
   async redirects() {
     return [

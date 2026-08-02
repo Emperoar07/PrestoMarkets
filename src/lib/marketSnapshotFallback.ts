@@ -8,7 +8,7 @@
 //   1. Filesystem (os.tmpdir()) — written on every successful snapshot save, read when Neon fails.
 //      Per-instance and ephemeral, but survives across warm invocations, so a lambda that has
 //      served once keeps serving instantly even with Neon down.
-//   2. Committed seed (data/markets-seed.json) — a slim last-known-good list shipped with the
+//   2. Committed seed (data/markets-worker-seed.json) — a compact last-known-good list shipped with the
 //      build. The cold-start floor: a fresh instance with Neon down and no /tmp copy still returns
 //      a non-empty grid instead of hanging, then self-refreshes from chain into /tmp.
 //
@@ -47,11 +47,6 @@ function nodeModules(): { fs: NodeFs; os: NodeOs; path: NodePath } | null {
 
 function tmpSnapshotPath(mods: { os: NodeOs; path: NodePath }): string {
   return mods.path.join(mods.os.tmpdir(), 'presto-market-snapshot.json');
-}
-
-function seedSnapshotPath(mods: { path: NodePath }): string {
-  // Committed at repo root under data/. cwd is the project root in both dev and the Vercel runtime.
-  return mods.path.join(process.cwd(), 'data', 'markets-seed.json');
 }
 
 /**
@@ -147,13 +142,17 @@ export async function readUpstashSnapshot(): Promise<FallbackSnapshot | null> {
   }
 }
 
-/** Read the committed seed tier (the cold-start floor). Returns null when absent or unreadable. */
-export function readSeedSnapshot(): FallbackSnapshot | null {
-  const mods = nodeModules();
-  if (!mods) return null;
+/**
+ * Read the committed seed tier from the application bundle. A runtime fs lookup works on Node
+ * serverless hosts but not in Cloudflare Workers, where the project directory is not a normal
+ * filesystem. The compact seed avoids embedding the full historical archive in every Worker while
+ * giving OpenNext a concrete asset to trace into the server bundle.
+ */
+export async function readBundledSeedSnapshot(): Promise<FallbackSnapshot | null> {
+  if (!isServer) return null;
   try {
-    const raw = mods.fs.readFileSync(seedSnapshotPath(mods), 'utf8');
-    const parsed = JSON.parse(raw) as { markets?: AppMarket[]; at?: number };
+    const module = await import('../../data/markets-worker-seed.json');
+    const parsed = module.default as { markets?: AppMarket[]; at?: number };
     if (!Array.isArray(parsed.markets) || parsed.markets.length === 0) return null;
     return { markets: parsed.markets, at: Number(parsed.at) || 0 };
   } catch {
