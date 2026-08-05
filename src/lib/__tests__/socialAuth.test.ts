@@ -21,6 +21,7 @@ import {
   consumeNonce,
   createNonce,
   createSessionToken,
+  getSessionSecret,
   normalizeSocialAddress,
   validateSiweMessageFields,
   verifySessionToken,
@@ -105,5 +106,33 @@ describe('socialAuth', () => {
       .toBe('0x0000000000000000000000000000000000000001');
     expect(verifySessionToken(`${token.slice(0, -1)}x`, { secret: 'test-secret', now: 1_001 }))
       .toBeNull();
+  });
+
+  it('fails closed when no session secret is configured', async () => {
+    // getSessionSecret() has deliberately no committed fallback: a public literal would let anyone
+    // forge a presto_session cookie. With the secret unset, nonce issuance must throw (never mint a
+    // nonce we cannot verify) and nonce consumption must refuse rather than accept unverifiable input.
+    const address = '0x0000000000000000000000000000000000000004';
+    const saved = {
+      presto: process.env.PRESTO_SESSION_SECRET,
+      auth: process.env.AUTH_SECRET,
+      nextAuth: process.env.NEXTAUTH_SECRET,
+    };
+    delete process.env.PRESTO_SESSION_SECRET;
+    delete process.env.AUTH_SECRET;
+    delete process.env.NEXTAUTH_SECRET;
+    try {
+      expect(getSessionSecret()).toBe('');
+      await expect(createNonce(address)).rejects.toThrow(/PRESTO_SESSION_SECRET/);
+      // A nonce shaped correctly but signed with some other key must not be accepted with no secret.
+      expect(await consumeNonce(address, 'Zm9vOjk5OTk5OTk5OTk5OTk6YWJjOnNpZw')).toBe(false);
+    } finally {
+      if (saved.presto === undefined) delete process.env.PRESTO_SESSION_SECRET;
+      else process.env.PRESTO_SESSION_SECRET = saved.presto;
+      if (saved.auth === undefined) delete process.env.AUTH_SECRET;
+      else process.env.AUTH_SECRET = saved.auth;
+      if (saved.nextAuth === undefined) delete process.env.NEXTAUTH_SECRET;
+      else process.env.NEXTAUTH_SECRET = saved.nextAuth;
+    }
   });
 });

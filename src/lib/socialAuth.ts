@@ -69,6 +69,10 @@ export async function createNonce(address: string, now = Date.now()): Promise<st
   const expiresAt = now + SIWE_NONCE_TTL_MS;
   const rand = generateNonceRandomHex();
   const secret = getSessionSecret();
+  if (!secret) {
+    // Signing with an empty key would let anyone mint a valid nonce. Fail closed.
+    throw new Error('PRESTO_SESSION_SECRET is required to issue sign-in nonces.');
+  }
   const payload = `${normalized}:${expiresAt}:${rand}`;
   const sig = signPayload(payload, secret);
   return base64UrlEncode(`${payload}:${sig}`);
@@ -91,6 +95,7 @@ export async function consumeNonce(address: string, nonce: string, now = Date.no
     if (expiresAt < now) return false;
 
     const secret = getSessionSecret();
+    if (!secret) return false; // unconfigured: never accept a nonce we cannot verify
     const expectedSig = signPayload(`${storedAddress}:${expiresAt}:${rand}`, secret);
     const sigBuf = Buffer.from(sig);
     const expectedBuf = Buffer.from(expectedSig);
@@ -230,12 +235,19 @@ export async function verifySiweSignature(input: {
   }
 }
 
+/**
+ * HMAC key for session cookies and SIWE nonces. There is deliberately NO fallback: a committed
+ * literal is public, so anyone could forge a `presto_session` cookie for any address and act as
+ * that user. ADMIN_PRIVATE_KEY is also excluded — signing keys must not double as session keys.
+ * Returns '' when unconfigured; every caller must treat that as "refuse to issue/accept sessions".
+ */
 export function getSessionSecret(): string {
-  return process.env.PRESTO_SESSION_SECRET
+  return (
+    process.env.PRESTO_SESSION_SECRET
     ?? process.env.AUTH_SECRET
     ?? process.env.NEXTAUTH_SECRET
-    ?? process.env.ADMIN_PRIVATE_KEY
-    ?? 'presto-markets-session-fallback-secret-2026';
+    ?? ''
+  ).trim();
 }
 
 export function createSessionToken(address: string, options: {

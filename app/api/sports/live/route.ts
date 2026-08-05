@@ -262,13 +262,16 @@ export async function GET(request: NextRequest) {
 
     const espnDate = (dateParam?.replace(/-/g, '') || (base.timestamp ?? '').slice(0, 10).replace(/-/g, '')) || '';
 
-    // All sources best-effort and parallel; none fails the request. ESPN is keyless.
+    // All sources best-effort and parallel; none fails the request. ESPN is keyless and covers
+    // both soccer and basketball. football-data.org / API-Football are soccer-only, so they're
+    // skipped for basketball (they'd only add latency and never match).
+    const isSoccer = sport === 'soccer';
     const [espn, footballData, apiFootball] = await Promise.all([
       (base.homeTeam && base.awayTeam)
-        ? fetchEspnLive(base.homeTeam, base.awayTeam, espnDate, controller.signal).catch(() => null)
+        ? fetchEspnLive(base.homeTeam, base.awayTeam, espnDate, controller.signal, sport).catch(() => null)
         : Promise.resolve(null),
-      fetchFootballData(base, controller.signal).catch(() => null),
-      fetchApiFootball(base, controller.signal).catch(() => null),
+      isSoccer ? fetchFootballData(base, controller.signal).catch(() => null) : Promise.resolve(null),
+      isSoccer ? fetchApiFootball(base, controller.signal).catch(() => null) : Promise.resolve(null),
     ]);
 
     // Prefer a source actually reporting a live/finished score over the not-started baseline.

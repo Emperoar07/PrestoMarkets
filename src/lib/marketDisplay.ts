@@ -31,6 +31,26 @@ export function looksLikeDateOption(option: string): boolean {
   return DATE_LIKE.test(option.trim());
 }
 
+/** Which ESPN sport tree a fixture's live score lives on. */
+export type LiveSport = 'soccer' | 'basketball';
+
+const BASKETBALL_RE = /basketball|\bnba\b|\bwnba\b|\bncaab\b/i;
+
+/**
+ * Pick the sport for a fixture's live-score lookup. ESPN keeps soccer and basketball on separate
+ * scoreboard trees, so querying the wrong one silently returns no match (no score, and decided
+ * markets never detected as finished). Categories are tagged at creation ('Basketball'); the title
+ * is the fallback for markets created before that tagging existed.
+ */
+export function liveSportForMarket(market: {
+  category?: string;
+  categories?: string[];
+  title?: string;
+}): LiveSport {
+  const blob = [market.category, ...(market.categories ?? []), market.title].filter(Boolean).join(' ');
+  return BASKETBALL_RE.test(blob) ? 'basketball' : 'soccer';
+}
+
 export function deriveDisplayType(market: DisplayInput): DisplayType {
   if (market.displayType) return market.displayType; // explicit agent classification wins
 

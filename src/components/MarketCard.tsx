@@ -6,7 +6,7 @@ import type { Market } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
 import { useAppState } from '@/lib/appState';
 import { prefetchMarketDetail } from '@/lib/marketPrefetch';
-import { deriveDisplayType } from '@/lib/marketDisplay';
+import { deriveDisplayType, liveSportForMarket } from '@/lib/marketDisplay';
 import { detectCountryFlagUrl } from '@/lib/marketSubjectImage';
 import { useLiveScore } from '@/lib/useLiveScore';
 import { Countdown } from './Countdown';
@@ -102,6 +102,7 @@ function MarketCardComponent({
     kickoffTime: market.kickoffTime,
     trendUrl: market.trendUrl,
     status: market.status,
+    sport: liveSportForMarket(market),
     enabled: isSportsFixture,
   });
   const matchIsLive = Boolean(live?.isLive);

@@ -193,13 +193,15 @@ export async function POST(request: Request) {
       return jsonError('This wallet action requires a same-origin browser request.', 403);
     }
 
-    // Audit #1: the vulnerable entry is PIN *registration* (createUser turns a caller-typed,
-    // guessable userId into a Circle identity). Gate ONLY createUser behind the flag — new PIN
-    // accounts are blocked in production — while leaving `session` open so existing PIN users can
-    // still sign in/renew and email/social/passkey (which never call createUser) are unaffected.
-    // The client PIN flow skips past a disabled createUser and proceeds to session.
-    if (action === 'createUser' && !circlePinFlowEnabled()) {
-      return jsonError('New PIN registration is disabled here. Use email, social, or passkey sign-in.', 403);
+    // Audit #1 + #4: BOTH identity-minting actions must be gated, not just registration. `session`
+    // turns a caller-supplied userId into a Circle userToken, and that userToken alone is enough to
+    // enumerate the victim's wallets and claim a Presto session for them WITHOUT the PIN — so
+    // leaving it open (as this previously did, to keep legacy PIN sign-in working) let anyone who
+    // could guess a userId take over that wallet. Guessing is cheap: the raw userId is user-typed,
+    // typically an email. Both actions now fail closed in production unless the operator opts in
+    // after adding their own front-door verification. Email/social/passkey never hit this path.
+    if (pinIdentityActions.has(action) && !circlePinFlowEnabled()) {
+      return jsonError('PIN sign-in is disabled here. Use email, social, or passkey sign-in.', 403);
     }
 
     // Durable, strict throttle on the identity-minting actions (createUser/session). These turn a

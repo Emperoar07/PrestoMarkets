@@ -29,6 +29,7 @@ import { useTransactions } from '@/lib/transactions';
 import { agentResolutionGuardrails, buildAgentResolutionPrompt, buildAgentResolutionReport } from '@/lib/agentResolution';
 import type { MarketStatus } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
+import { liveSportForMarket } from '@/lib/marketDisplay';
 import { LMSR_BUY_SLIPPAGE_BPS, LMSR_SELL_SLIPPAGE_BPS, addSlippageBps, buildFixedShareQuote, lmsrBuyTotalCost6, subtractSlippageBps } from '@/lib/marketUtils';
 import { buildResolutionTrustState } from '@/lib/resolutionTrust';
 import { disputeLiveResolution, buyLmsrShares, sellLmsrShares } from '@/lib/liveActions';
@@ -424,6 +425,9 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const homeColor = getOutcomeColor(homeEntry?.index ?? 0);
   const awayColor = getOutcomeColor(awayEntry?.index ?? 1);
   const matchDateYmd = kickoffMs ? new Date(kickoffMs).toISOString().slice(0, 10).replace(/-/g, '') : null;
+  // ESPN keeps basketball on a separate sport tree from soccer, so the live lookup must say which
+  // one to search.
+  const liveSport = market ? liveSportForMarket(market) : 'soccer';
 
   const [liveData, setLiveData] = useState<{
     homeScore: string | null;
@@ -460,6 +464,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
         if (homeTeamName) params.set('home', homeTeamName);
         if (awayTeamName) params.set('away', awayTeamName);
         if (matchDateYmd) params.set('date', matchDateYmd);
+        if (liveSport !== 'soccer') params.set('sport', liveSport);
         const res = await fetch(`/api/sports/live?${params.toString()}`);
         if (res.ok) {
           const data = await res.json();
@@ -483,9 +488,14 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
       if (interval) clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idEvent, homeTeamName, awayTeamName, matchDateYmd, kickoffMs, market?.status]);
+  }, [idEvent, homeTeamName, awayTeamName, matchDateYmd, kickoffMs, market?.status, liveSport]);
 
-  if (!market) {
+  // An outcome-less market is unrenderable: every trade control below reads activeOutcome/yesOutcome
+  // directly, so an empty `outcomes` array throws during render and Next swaps the whole route for
+  // its global-error screen ("This page couldn't load"). Outcomes go missing whenever the onchain
+  // read degrades — e.g. a NaN outcomeCount makes `Array.from({ length: NaN })` an empty label list.
+  // Treat it exactly like a market we haven't loaded yet so the user gets a retry, not a blank page.
+  if (!market || !market.outcomes?.length) {
     // On a cold load/refresh the onchain markets are still being fetched, so `market` is
     // momentarily undefined. Show a loading state until the fetch settles, and only then
     // fall back to "not found" — otherwise a hard refresh of a real market flashes an error.
@@ -542,7 +552,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   // Fixed-share parimutuel: 1 USDC = 1 share. Payout if this outcome wins is an estimate derived from current implied odds, not a priced-share quote.
   const fixedShareQuote = buildFixedShareQuote({
     amountUsdc: amountValue,
-    oddsPercent: Number(activeOutcome.odds),
+    oddsPercent: Number(activeOutcome?.odds ?? 50),
   });
   const liquiditySideAmount = amountValue > 0 ? amountValue / market.outcomes.length : 0;
 
@@ -559,7 +569,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   const accountPreview = new Map(Object.entries(accountPreviews)).get(market.id);
   // Shares the connected wallet holds in the selected outcome — the sell ceiling for V3 markets.
   const activeOutcomeShares = Number(
-    accountPreview?.outcomeShares?.find((s) => s.label === activeOutcome.label)?.shares ?? 0,
+    accountPreview?.outcomeShares?.find((s) => s.label === activeOutcome?.label)?.shares ?? 0,
   );
 
   const claimableAmount = Number(accountPreview?.claimable.replace(/[$,]/g, '') || 0);
@@ -586,8 +596,15 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
   });
   // Disputes need skin in the game: a signed-in wallet holding shares in this market.
   const holdsPosition = Boolean(accountPreview?.outcomeShares?.some((share) => Number(share.shares) > 0));
-  const disputeWindowEndsAt = market.proposal
-    ? new Date(market.proposal.proposedAtMs + (market.proposal.disputeWindowMs ?? 30 * 60 * 1000)).toISOString()
+  // `new Date(NaN).toISOString()` throws a RangeError that would take the whole page down with it,
+  // and proposedAtMs is not guaranteed to be a finite number: the LMSR reader derives it from
+  // challengeEndsAt (NaN if that read degrades) and snapshot JSON can carry it as a string or omit
+  // it. Only publish a deadline we can actually format; every consumer already null-checks this.
+  const disputeWindowEndsAtMs = market.proposal
+    ? Number(market.proposal.proposedAtMs) + (Number(market.proposal.disputeWindowMs) || 30 * 60 * 1000)
+    : Number.NaN;
+  const disputeWindowEndsAt = Number.isFinite(disputeWindowEndsAtMs)
+    ? new Date(disputeWindowEndsAtMs).toISOString()
     : undefined;
   const isClosedForResolution = resolutionTrustState.canPropose || market.closeLabel === 'Closed';
   const canAccessResolverActions = isResolver && !hasSettlementRecord;
@@ -888,7 +905,7 @@ export function MarketDetailClient({ marketId }: { marketId: string }) {
             <div className="mt-8">
               <h2 className="text-base font-black text-white">Market activity</h2>
               <div className="mt-4 grid gap-x-10 gap-y-4 border-t border-white/[0.06] pt-4 md:grid-cols-3">
-                {market.activity.map((item) => (
+                {(market.activity ?? []).map((item) => (
                   <div key={item.label}>
                     <p className="text-xs font-bold text-muted">{item.label}</p>
                     <p className="mt-1 text-xl font-black text-white">{item.value}</p>

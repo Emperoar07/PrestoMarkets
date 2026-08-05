@@ -18,6 +18,12 @@ function responseWithHeaders(response, additions) {
   });
 }
 
+function isHtmlFallbackForAsset(request, response) {
+  if (request.method === 'HEAD') return false;
+  const contentType = response.headers.get('Content-Type') || '';
+  return response.ok && contentType.toLowerCase().includes('text/html');
+}
+
 async function fetchMarketList(request, upstreamRequest, ctx) {
   const cache = globalThis.caches?.default;
   if (!cache) return fetch(upstreamRequest);
@@ -52,7 +58,7 @@ export default {
     // route-sharded OpenNext Workers, including API routes and HTML documents.
     if (isStaticAsset(request, incoming.pathname) && env?.ASSETS) {
       const asset = await env.ASSETS.fetch(request);
-      if (asset.status !== 404) {
+      if (asset.status !== 404 && !isHtmlFallbackForAsset(request, asset)) {
         return responseWithHeaders(asset, {
           'Cache-Control': incoming.pathname.startsWith('/_next/static/')
             ? 'public, max-age=31536000, immutable'

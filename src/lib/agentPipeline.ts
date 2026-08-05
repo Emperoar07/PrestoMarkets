@@ -95,6 +95,48 @@ function isFootballTrend(trend: TrendItem): boolean {
   ].some((term) => haystack.includes(term));
 }
 
+/** Which sport a fixture trend belongs to, for balancing market creation across sports. */
+function fixtureSportKey(trend: TrendItem): string {
+  const haystack = `${trend.source} ${trend.topic} ${trend.query}`.toLowerCase();
+  if (/basketball|\bnba\b|\bwnba\b|ncaab/.test(haystack)) return 'basketball';
+  if (/tennis|atp|wta|grand slam/.test(haystack)) return 'tennis';
+  if (isFootballTrend(trend)) return 'football';
+  return 'other';
+}
+
+/**
+ * Round-robin a kickoff-sorted fixture list across sports so no single sport eats the whole
+ * per-tick creation budget. Soccer supplies most of the fixtures, so a plain kickoff sort meant
+ * basketball (and anything else) never got created. Guaranteed fixtures (World Cup) are kept
+ * strictly ahead of everything else — they have their own reserved headroom above the cap.
+ *
+ * Input must already be sorted (guaranteed first, then kickoff); relative order WITHIN each sport
+ * is preserved, so the earliest kickoff of each sport still goes first.
+ */
+export function interleaveBySport(fixtures: TrendItem[]): TrendItem[] {
+  const guaranteed = fixtures.filter((f) => f.guaranteedFixture);
+  const rest = fixtures.filter((f) => !f.guaranteedFixture);
+
+  // Preserve first-appearance order of the sports so the earliest kickoff overall still leads.
+  const bySport = new Map<string, TrendItem[]>();
+  for (const fixture of rest) {
+    const key = fixtureSportKey(fixture);
+    const bucket = bySport.get(key);
+    if (bucket) bucket.push(fixture);
+    else bySport.set(key, [fixture]);
+  }
+
+  const queues = [...bySport.values()];
+  const interleaved: TrendItem[] = [];
+  for (let round = 0; interleaved.length < rest.length; round += 1) {
+    for (const queue of queues) {
+      const next = queue[round];
+      if (next) interleaved.push(next);
+    }
+  }
+  return [...guaranteed, ...interleaved];
+}
+
 // High-engagement consumer themes Presto wants to lead with: crypto/DeFi price & protocol
 // milestones, and major tech makers hitting concrete milestones (launches, ships, IPOs, records).
 const CONSUMER_PRIORITY_TERMS = [
@@ -2781,7 +2823,7 @@ async function runAgentPipelineInner(
   // settleable from the official result), not just the World Cup. They skip the LLM classify/draft
   // and are shaped into Home/Draw/Away markets. World Cup fixtures sort first, then by kickoff.
   const seenFixtureKeys = new Set<string>();
-  const fixtureTrends = trends
+  const rankedFixtures = trends
     .filter((trend) => trend.guaranteedFixture || (Boolean(trend.kickoffTime) && isFootballBasketballTrend(trend)))
     .sort((a, b) =>
       (a.guaranteedFixture === b.guaranteedFixture ? 0 : a.guaranteedFixture ? -1 : 1)
@@ -2797,6 +2839,14 @@ async function runAgentPipelineInner(
       seenFixtureKeys.add(key);
       return true;
     });
+  // Soccer contributes far more fixtures than every other sport combined (six ESPN soccer
+  // competitions vs four basketball leagues, plus the World Cup lane), so a straight kickoff sort
+  // let one sport consume the whole per-tick budget and basketball never reached creation.
+  // Round-robin across sports instead: each pass takes the next-earliest fixture from every sport
+  // that still has one, so the sports share the budget while kickoff order holds within a sport.
+  // World Cup fixtures keep absolute priority — they own the reserved headroom above the cap.
+  const fixtureTrends = interleaveBySport(rankedFixtures);
+
   // Bail only when there's genuinely nothing to create: the regular (non-fixture) lane is at its
   // cap AND either there are no fixtures to add or the total is past the fixture reserve ceiling.
   if (

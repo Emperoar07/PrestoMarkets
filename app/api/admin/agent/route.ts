@@ -137,6 +137,7 @@ export async function GET(request: NextRequest) {
         createdAt: l.createdAt,
       };
     });
+  const combinedAgentMarkets = [...agentMarkets, ...ledgerOnly];
 
   return NextResponse.json({
     ok: true,
@@ -146,11 +147,11 @@ export async function GET(request: NextRequest) {
     ticks: Object.keys(TICKS),
     ghDispatchTicks: process.env.GH_WORKFLOW_TOKEN ? Object.keys(TICK_WORKFLOWS) : [],
     counts: {
-      agentMarkets: agentMarkets.length,
-      open: agentMarkets.filter((m) => m.status === 'Open' || m.status === 'Closing soon').length,
-      closed: agentMarkets.filter((m) => m.status === 'Closed').length,
-      resolved: agentMarkets.filter((m) => m.status === 'Resolved').length,
-      canceled: agentMarkets.filter((m) => m.status === 'Canceled').length,
+      agentMarkets: combinedAgentMarkets.length,
+      open: combinedAgentMarkets.filter((m) => m.status === 'Open' || m.status === 'Closing soon').length,
+      closed: combinedAgentMarkets.filter((m) => m.status === 'Closed').length,
+      resolved: combinedAgentMarkets.filter((m) => m.status === 'Resolved').length,
+      canceled: combinedAgentMarkets.filter((m) => m.status === 'Canceled').length,
       ledger: ledger.length,
     },
     markets: agentMarkets,

@@ -42,6 +42,13 @@ type OutcomeLabel = string;
 // Arc finalizes transactions in sub-second blocks, but public RPCs need time to surface state changes.
 // These delays balance responsiveness with RPC propagation latency.
 const POST_TX_REFRESH_DELAYS_MS = [2_500, 8_000]; // A couple of background follow-ups to catch RPC propagation
+const MARKET_CACHE_KEY = 'presto:markets:v1';
+const MARKET_CACHE_MAX_AGE_MS = 5 * 60_000;
+
+type CachedMarketsPayload = {
+  at: number;
+  markets: AppMarket[];
+};
 
 export type AppMarket = Market & {
   source: 'onchain';
@@ -110,6 +117,28 @@ type AppStateValue = {
 
 const appStateContext = createContext<AppStateValue | null>(null);
 
+function readCachedMarkets(): AppMarket[] | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(MARKET_CACHE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as CachedMarketsPayload;
+    if (!Array.isArray(cached.markets) || Date.now() - cached.at > MARKET_CACHE_MAX_AGE_MS) return null;
+    return cached.markets;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedMarkets(markets: AppMarket[]) {
+  if (typeof window === 'undefined' || markets.length === 0) return;
+  try {
+    window.localStorage.setItem(MARKET_CACHE_KEY, JSON.stringify({ at: Date.now(), markets }));
+  } catch {
+    // localStorage can be unavailable in private modes; the API snapshot remains the source.
+  }
+}
+
 export function formatCompactUsd(value: number) {
   if (value > 0 && value < 0.01) {
     return '<$0.01';
@@ -147,14 +176,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const refreshMarkets = useCallback(async (options: { force?: boolean } = {}) => {
     // Stale-while-revalidate: only show loading if we have no markets yet
     if (marketsRef.current.length === 0) {
-      setIsLoadingMarkets(true);
+      const cached = readCachedMarkets();
+      if (cached && cached.length > 0) {
+        marketsRef.current = cached;
+        setMarkets(cached);
+        setIsLoadingMarkets(false);
+      } else {
+        setIsLoadingMarkets(true);
+      }
     }
 
     try {
-      // Normal loads pull the pre-computed list from the cached server endpoint: the ~13s cold
-      // on-chain read runs once on the server (shared via its 60s cache + the CDN) instead of in
-      // every browser, so the grid paints in well under a second on a warm cache. `force` (used
-      // after a trade/settlement, when freshness matters) reads on-chain directly to skip the cache.
+      // Normal loads pull the pre-computed list from the cached server endpoint. Browsers should
+      // never run a full factory scan on page load: on Cloudflare that can pin the grid in skeleton
+      // state while public RPCs are slow. `force` remains reserved for explicit post-create/admin
+      // flows where an address may not be in the snapshot yet.
       let nextMarkets: AppMarket[] | null = null;
       if (!options.force) {
         try {
@@ -164,13 +200,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             if (Array.isArray(data.markets) && data.markets.length > 0) nextMarkets = data.markets;
           }
         } catch {
-          // endpoint unavailable — fall through to a direct client-side read
+          // endpoint unavailable — keep the current snapshot/cache and let the next refresh retry
         }
       }
       // fetchOnchainMarkets already merges image overrides at the source, so markets are stable.
-      if (!nextMarkets) nextMarkets = await fetchOnchainMarkets(options);
+      if (!nextMarkets && options.force) nextMarkets = await fetchOnchainMarkets(options);
+      if (!nextMarkets) return marketsRef.current;
       marketsRef.current = nextMarkets;
       setMarkets(nextMarkets);
+      writeCachedMarkets(nextMarkets);
       return nextMarkets;
     } catch (error) {
       console.warn('Unable to load onchain markets', error);

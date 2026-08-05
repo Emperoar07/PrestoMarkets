@@ -7,6 +7,7 @@ import {
   getGuardianAddress,
 } from '@/lib/agentWallet';
 import { verifyBearer } from '@/lib/authCompare';
+import { liveSportForMarket } from '@/lib/marketDisplay';
 import { getDb, hasDatabaseUrl } from '@/lib/db/client';
 import { marketFlags } from '@/lib/db/schema';
 import type { AppMarket } from '@/lib/appState';
@@ -43,6 +44,10 @@ async function fixtureIsFinished(origin: string, market: AppMarket): Promise<boo
   if (home) params.set('home', home);
   if (away) params.set('away', away);
   params.set('date', new Date(kickoff).toISOString().slice(0, 10).replace(/-/g, ''));
+  // Basketball fixtures resolve off ESPN's basketball scoreboards; without this the soccer-only
+  // lookup never reports FINISHED and decided basketball markets stay tradeable.
+  const sport = liveSportForMarket(market);
+  if (sport !== 'soccer') params.set('sport', sport);
   try {
     const res = await fetch(`${origin}/api/sports/live?${params.toString()}`, { signal: AbortSignal.timeout(8_000) });
     if (!res.ok) return false;

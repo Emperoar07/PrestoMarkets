@@ -204,25 +204,25 @@ export function AdminConsole() {
     });
   }, [data, search, filterStatus, sortBy]);
 
-  // ── Access gates ──
-  if (!connectedIsAdmin) {
-    return (
-      <Shell>
-        <div className="rounded-xl border border-white/[0.06] bg-[#0d1626]/40 p-8 text-center">
-          <h1 className="text-xl font-black text-white">Admin only</h1>
-          <p className="mt-2 text-sm text-[#94a3b8]">
-            {wallet ? 'This wallet is not an admin.' : 'Connect the admin wallet to continue.'}
-          </p>
-        </div>
-      </Shell>
-    );
-  }
+  // ── Access gate ──
+  // The server authorizes every /api/admin/agent call on the SIWE-signed social session alone
+  // (requireAdmin → getSocialSession), so the UI gates on the SAME thing. We must NOT hard-block on
+  // a separately-injected walletProvider wallet: an admin who signs in socially (embedded/Circle
+  // wallet) — or on a device where no injected wallet is stored — has a valid admin session but no
+  // `wallet`, and the old connected-wallet pre-gate locked them out of their own console forever.
+  // If a wallet IS connected and it's a non-admin, we still say so as a hint; otherwise we surface
+  // the sign-in flow (which itself requires the wallet signature, so it stays self-gating).
   if (!sessionIsAdmin) {
+    const connectedNonAdmin = Boolean(wallet && !connectedIsAdmin);
     return (
       <Shell>
         <div className="mx-auto max-w-md rounded-xl border border-white/[0.06] bg-[#0d1626]/40 p-8 text-center">
           <h1 className="text-xl font-black text-white">Verify Admin Ownership</h1>
-          <p className="mt-2 text-sm text-[#94a3b8]">Sign a single gasless message to prove you control the admin wallet and authenticate your session.</p>
+          <p className="mt-2 text-sm text-[#94a3b8]">
+            {connectedNonAdmin
+              ? 'The connected wallet is not an admin. Sign in with the admin wallet to continue.'
+              : 'Sign a single gasless message to prove you control the admin wallet and authenticate your session.'}
+          </p>
           <div className="mt-6 flex justify-center">
             <SocialSignInButton
               label="Sign in as admin"

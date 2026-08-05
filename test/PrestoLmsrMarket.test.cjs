@@ -331,3 +331,73 @@ describe('PrestoLmsrMarket pause and cancel', () => {
     expect((await usdc.balanceOf(resolver.address)) - resolverAfterBond).to.equal(bond6);
   });
 });
+
+describe('PrestoLmsrMarket share-amount bounds (audit: free-drain)', () => {
+  // int256(shares6) * 1e12 wraps NEGATIVE once shares6 exceeds type(int256).max / 1e12. That made
+  // the LMSR cost delta negative, the old `if (costWad < 0) costWad = 0` clamp reported a price of
+  // ZERO, and buy() still credited the full uint256 to userShares6 — free winning shares, then
+  // claim() drained the pool. Both the cast bound and the removed clamp are asserted here.
+  const OVERFLOW_SHARES = (2n ** 255n - 1n) / (10n ** 12n) + 1n; // first value that wraps
+
+  it('buyCost reverts instead of quoting zero for a cast-overflowing amount', async () => {
+    const { market } = await deployMarket({ outcomes: 2 });
+    await expect(market.buyCost(0, OVERFLOW_SHARES)).to.be.revertedWithCustomError(market, 'InvalidAmount');
+  });
+
+  it('buy cannot mint free shares with a cast-overflowing amount', async () => {
+    const { usdc, market, alice } = await deployMarket({ outcomes: 2, seed: 100, feeBps: 150 });
+    await buyShares(usdc, market, alice, 0, USDC(30)); // one honest trade first
+
+    const [, , , bob] = await ethers.getSigners();
+    const poolBefore = await usdc.balanceOf(await market.getAddress());
+    await usdc.connect(bob).approve(await market.getAddress(), USDC(1_000_000));
+
+    await expect(market.connect(bob).buy(0, OVERFLOW_SHARES, USDC(1_000_000)))
+      .to.be.revertedWithCustomError(market, 'InvalidAmount');
+
+    // No shares credited, no collateral moved.
+    expect(await market.sharesOf(0, bob.address)).to.equal(0n);
+    expect(await usdc.balanceOf(await market.getAddress())).to.equal(poolBefore);
+  });
+
+  it('sellRefund and sell reject a cast-overflowing amount', async () => {
+    const { market, alice } = await deployMarket({ outcomes: 2 });
+    await expect(market.sellRefund(0, OVERFLOW_SHARES)).to.be.revertedWithCustomError(market, 'InvalidAmount');
+    await expect(market.connect(alice).sell(0, OVERFLOW_SHARES, 0)).to.be.revertedWithCustomError(market, 'InvalidAmount');
+  });
+
+  it('rejects zero-share trades', async () => {
+    const { market, alice } = await deployMarket({ outcomes: 2 });
+    await expect(market.buyCost(0, 0n)).to.be.revertedWithCustomError(market, 'InvalidAmount');
+    await expect(market.connect(alice).buy(0, 0n, USDC(10))).to.be.revertedWithCustomError(market, 'InvalidAmount');
+  });
+
+  it('still prices and executes ordinary trades unchanged', async () => {
+    const { usdc, market, alice } = await deployMarket({ outcomes: 2 });
+    const shares = USDC(50);
+    const cost = await market.buyCost(0, shares);
+    expect(cost).to.be.greaterThan(0n);
+    await usdc.connect(alice).approve(await market.getAddress(), cost * 2n);
+    await market.connect(alice).buy(0, shares, cost * 2n);
+    expect(await market.sharesOf(0, alice.address)).to.equal(shares);
+  });
+});
+
+describe('PrestoLmsrMarket cancel bounds (audit: cancel after close)', () => {
+  it('the resolver cannot cancel once the market has closed', async () => {
+    const { usdc, market, resolver, alice, close } = await deployMarket({ outcomes: 2 });
+    await buyShares(usdc, market, alice, 0, USDC(25));
+    await advancePastClose(close);
+
+    // Past close the resolver must propose/settle — cancelling here would let them watch the real
+    // outcome land and then void every winning position instead of paying it.
+    await expect(market.connect(resolver).cancel()).to.be.revertedWithCustomError(market, 'MarketClosed');
+    expect(await market.state()).to.equal(0); // still Open
+  });
+
+  it('the resolver can still cancel before close', async () => {
+    const { market, resolver } = await deployMarket({ outcomes: 2 });
+    await market.connect(resolver).cancel();
+    expect(await market.state()).to.equal(4); // Canceled
+  });
+});

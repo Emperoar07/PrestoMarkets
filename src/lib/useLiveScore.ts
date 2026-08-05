@@ -15,6 +15,9 @@ export type LiveScoreState = {
 
 const FINISHED_RE = /finished|full.?time|\bft\b|\baet\b|\bpen\b/i;
 const LIVE_WORD_RE = /live|half|1st|2nd|in[- ]?play|\d+'/i;
+// ESPN reports a 0-0 scoreline for a fixture that hasn't tipped off/kicked off yet, so a score
+// alone doesn't mean in-play — an explicit not-started status vetoes the "live" read.
+const NOT_STARTED_RE = /not started|scheduled|\bpre\b/i;
 // Only the card-level watcher polls inside this window after kickoff. A fixture whose market is
 // still open days after the game ended must not keep pinging the live endpoint.
 const LIVE_WINDOW_MS = 4 * 60 * 60 * 1000;
@@ -22,8 +25,9 @@ const POLL_MS = 45_000;
 
 /**
  * Lightweight live-score watcher for sports-fixture cards. Reuses the keyless `/api/sports/live`
- * endpoint (ESPN-backed). Fetches only once a match has kicked off, the market is still open, and
- * we're inside the ~4h live window — then polls until full time. Returns null until data arrives.
+ * endpoint (ESPN-backed, soccer + basketball). Fetches only once a match has kicked off, the market
+ * is still open, and we're inside the ~4h live window — then polls until full time. Returns null
+ * until data arrives.
  */
 export function useLiveScore(opts: {
   homeTeam?: string;
@@ -31,9 +35,11 @@ export function useLiveScore(opts: {
   kickoffTime?: string;
   trendUrl?: string;
   status?: string;
+  /** Which ESPN sport tree to query. Defaults to soccer. */
+  sport?: 'soccer' | 'basketball';
   enabled?: boolean;
 }): LiveScoreState | null {
-  const { homeTeam, awayTeam, kickoffTime, trendUrl, status, enabled = true } = opts;
+  const { homeTeam, awayTeam, kickoffTime, trendUrl, status, sport = 'soccer', enabled = true } = opts;
   const [data, setData] = useState<LiveScoreState | null>(null);
 
   const idEvent = trendUrl?.match(/event\/(\d+)/)?.[1] ?? null;
@@ -62,6 +68,7 @@ export function useLiveScore(opts: {
       if (home) params.set('home', home);
       if (away) params.set('away', away);
       params.set('date', new Date(kickoffMs!).toISOString().slice(0, 10).replace(/-/g, ''));
+      if (sport !== 'soccer') params.set('sport', sport);
       try {
         const res = await fetch(`/api/sports/live?${params.toString()}`);
         if (!res.ok || cancelled) return;
@@ -69,7 +76,7 @@ export function useLiveScore(opts: {
         const text = `${d?.status ?? ''} ${d?.progress ?? ''}`;
         const finished = FINISHED_RE.test(text);
         const hasScore = d?.homeScore != null && d?.awayScore != null;
-        const isLive = !finished && (hasScore || LIVE_WORD_RE.test(text));
+        const isLive = !finished && !NOT_STARTED_RE.test(text) && (hasScore || LIVE_WORD_RE.test(text));
         setData({
           isLive,
           finished,
@@ -90,7 +97,7 @@ export function useLiveScore(opts: {
       cancelled = true;
       if (interval) clearInterval(interval);
     };
-  }, [enabled, isOpen, idEvent, kickoffMs]);
+  }, [enabled, isOpen, idEvent, kickoffMs, sport]);
 
   return data;
 }

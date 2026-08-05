@@ -74,6 +74,20 @@ contract PrestoLmsrMarket is ReentrancyGuard, Pausable {
     error NotCancelable();
     error TimeoutNotReached();
     error NotCanceled();
+    error InvalidAmount();
+
+    /// @dev Largest share amount (6dp) that still fits in int256 after the *1e12 WAD scaling.
+    /// Any shares6 above this wraps the cast negative, which flips the LMSR cost negative and —
+    /// with the old `if (costWad < 0) costWad = 0` clamp — minted shares for a price of ZERO.
+    /// The bound is far above any real trade, so honest flow is unaffected.
+    uint256 internal constant MAX_SHARES6 = uint256(type(int256).max) / 1e12;
+
+    /// @dev Reject amounts that would overflow the signed WAD cast. Zero is rejected too: it moves
+    /// no shares and only wastes gas / emits a misleading event.
+    modifier validShares(uint256 shares6) {
+        if (shares6 == 0 || shares6 > MAX_SHARES6) revert InvalidAmount();
+        _;
+    }
 
     modifier onlyOpen() {
         if (state != State.Open) revert MarketClosed();
@@ -161,7 +175,7 @@ contract PrestoLmsrMarket is ReentrancyGuard, Pausable {
     }
 
     /// @notice Collateral (6dp) needed to buy `shares6` of `outcome`, fee excluded. Rounds up.
-    function buyCost(uint8 outcome, uint256 shares6) public view returns (uint256) {
+    function buyCost(uint8 outcome, uint256 shares6) public view validShares(shares6) returns (uint256) {
         if (outcome >= outcomeCount) revert WrongOutcome();
         int256[] memory q2 = q; // memory copy of the storage array
         int256 deltaWad = int256(shares6) * 1e12;
@@ -169,7 +183,10 @@ contract PrestoLmsrMarket is ReentrancyGuard, Pausable {
         q2[outcome] += deltaWad;
         int256 afterCost = _cost(q2);
         int256 costWad = afterCost - before;
-        if (costWad < 0) costWad = 0;
+        // Buying can only ever RAISE the LMSR cost, so a negative delta means the arithmetic
+        // overflowed. Revert instead of clamping to 0 — the old clamp turned that overflow into
+        // free shares rather than surfacing it.
+        if (costWad < 0) revert InvalidAmount();
         return (uint256(costWad) + 1e12 - 1) / 1e12; // round 6dp up
     }
 
@@ -178,7 +195,7 @@ contract PrestoLmsrMarket is ReentrancyGuard, Pausable {
     }
 
     /// @notice Buy `shares6` of `outcome`, paying LMSR cost + fee, guarded by `maxCost6`.
-    function buy(uint8 outcome, uint256 shares6, uint256 maxCost6) external nonReentrant whenNotPaused onlyOpen {
+    function buy(uint8 outcome, uint256 shares6, uint256 maxCost6) external nonReentrant whenNotPaused onlyOpen validShares(shares6) {
         if (!seeded) revert NotSeeded();
         if (outcome >= outcomeCount) revert WrongOutcome();
         uint256 cost = buyCost(outcome, shares6);
@@ -193,7 +210,7 @@ contract PrestoLmsrMarket is ReentrancyGuard, Pausable {
     }
 
     /// @notice Collateral (6dp) returned for selling `shares6` of `outcome`, fee excluded. Rounds down.
-    function sellRefund(uint8 outcome, uint256 shares6) public view returns (uint256) {
+    function sellRefund(uint8 outcome, uint256 shares6) public view validShares(shares6) returns (uint256) {
         if (outcome >= outcomeCount) revert WrongOutcome();
         int256[] memory q2 = q;
         int256 before = _cost(q2);
@@ -205,7 +222,7 @@ contract PrestoLmsrMarket is ReentrancyGuard, Pausable {
     }
 
     /// @notice Sell `shares6` of `outcome` back to the maker for the LMSR refund minus fee.
-    function sell(uint8 outcome, uint256 shares6, uint256 minRefund6) external nonReentrant whenNotPaused onlyOpen {
+    function sell(uint8 outcome, uint256 shares6, uint256 minRefund6) external nonReentrant whenNotPaused onlyOpen validShares(shares6) {
         if (shares6 > userShares6[outcome][msg.sender]) revert InsufficientShares();
         uint256 refund6 = sellRefund(outcome, shares6);
         uint256 fee = _fee6(refund6);
@@ -327,9 +344,14 @@ contract PrestoLmsrMarket is ReentrancyGuard, Pausable {
     }
 
     /// @notice Resolver voids the market before close; holders then refund at LMSR value.
+    /// @dev Must be BEFORE closeTime. Without that bound the resolver could watch the real-world
+    /// outcome settle and then cancel instead of proposing, voiding every winning position at will
+    /// — the resolver picks "pay out" or "undo" after the fact. Past close the only exits are
+    /// propose/settle or the permissionless timeoutCancel hatch.
     function cancel() external nonReentrant {
         if (msg.sender != resolver) revert NotResolver();
         if (state != State.Open) revert NotCancelable();
+        if (block.timestamp >= closeTime) revert MarketClosed();
         state = State.Canceled;
         emit MarketCanceled();
     }

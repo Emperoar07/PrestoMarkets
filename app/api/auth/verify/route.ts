@@ -21,6 +21,9 @@ export async function POST(request: NextRequest) {
   }
 
   const secret = getSessionSecret();
+  if (!secret) {
+    return NextResponse.json({ error: 'PRESTO_SESSION_SECRET is required.' }, { status: 503 });
+  }
 
   let body: { address?: string; nonce?: string; message?: string; signature?: string };
   try {

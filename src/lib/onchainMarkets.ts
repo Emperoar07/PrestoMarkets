@@ -13,6 +13,7 @@ import { eq } from 'drizzle-orm';
 import { hasGoodImage } from './imageQuality';
 import { logger } from './logger';
 import { mergeSyncedMarket } from './marketSync';
+import { buildMarketVolumes } from './marketVolume';
 import {
   slimSnapshotForStorage,
   writeFilesystemSnapshot,
@@ -233,7 +234,12 @@ async function readMarket(
     .readContract({ address, abi: prestoMarketAbi, functionName: 'outcomeCount' })
     .then((value) => Number(value))
     .catch(() => outcomeLabels.length > 2 ? outcomeLabels.length : 2);
-  const cappedOutcomeCount = Math.max(2, Math.min(outcomeCount, 12));
+  // Number(value) yields NaN without rejecting, so .catch above cannot cover it — and a NaN count
+  // collapses Array.from({ length: NaN }) to an empty label list (outcome-less, unrenderable market).
+  const safeOutcomeCount = Number.isFinite(outcomeCount)
+    ? outcomeCount
+    : (outcomeLabels.length > 2 ? outcomeLabels.length : 2);
+  const cappedOutcomeCount = Math.max(2, Math.min(safeOutcomeCount, 12));
   const labels = Array.from({ length: cappedOutcomeCount }, (_, i) => outcomeLabels[i] ?? `Outcome ${i + 1}`);
   const shares = await Promise.all(
     labels.map((_, outcomeIndex) => client.readContract({
@@ -374,7 +380,13 @@ async function readLmsrMarket(
 
   const metadata = parseMarketMetadata(metadataURI as string);
   const outcomeLabels = metadata?.outcomeOptions && metadata.outcomeOptions.length >= 2 ? metadata.outcomeOptions : ['YES', 'NO'];
-  const cappedOutcomeCount = Math.max(2, Math.min(Number(outcomeCountRaw), 12));
+  // Number(outcomeCountRaw) is NaN if that read ever degrades, and Math.max(2, NaN) is NaN — which
+  // makes Array.from({ length: NaN }) an EMPTY label list, so the market ships with zero outcomes
+  // and the detail page crashes on render. Fall back to the metadata's own option count instead.
+  const rawOutcomeCount = Number(outcomeCountRaw);
+  const cappedOutcomeCount = Number.isFinite(rawOutcomeCount)
+    ? Math.max(2, Math.min(rawOutcomeCount, 12))
+    : Math.max(2, Math.min(outcomeLabels.length, 12));
   const labels = Array.from({ length: cappedOutcomeCount }, (_, i) => outcomeLabels[i] ?? `Outcome ${i + 1}`);
 
   // Live LMSR prices = the market's current odds. Pool collateral balance is the liquidity figure.
@@ -412,7 +424,10 @@ async function readLmsrMarket(
     categories: metadata?.categories && metadata.categories.length > 0
       ? metadata.categories
       : (metadata?.category ? [metadata.category] : undefined),
-    volume: formatOnchainUsd(poolValue),
+    // The pool balance is LIQUIDITY, not turnover. Volume starts at $0 and is filled in by
+    // hydrateSnapshotVolumes from the SharesBought/SharesSold logs — showing the pool here would
+    // label a seeded-but-untraded market with its own subsidy as if it were traded volume.
+    volume: formatOnchainUsd(BigInt(0)),
     liquidity: formatOnchainUsd(poolValue),
     closeLabel: getCloseLabel(status, closeTime as bigint),
     status,
@@ -621,12 +636,36 @@ async function readOnchainMarkets() {
     markets.push(...batchMarkets);
   }
 
+  // Fill in real traded volume for every AMM market (Open through Resolved) from the trade logs —
+  // one batched scan across all of them. The per-market build sets volume to $0; this is where the
+  // honest turnover figure comes from. Live-only hydrateSnapshotVolumes refreshes it later for open
+  // markets, but resolved/closed markets it never revisits get their final volume here.
+  await applyTradedVolumes(markets);
+
   // Apply metadata overrides (updated market images) here, at the single cached source, so every
   // consumer gets merged markets and cards never flip between tile and image across renders.
   await applyImageOverrides(markets);
   await applyMarketFlags(markets);
 
   return markets;
+}
+
+// Sum SharesBought.cost6 + SharesSold.refund6 per AMM market and write it onto market.volume.
+// Best-effort: a log-scan failure leaves the $0 initial figure rather than throwing the whole read.
+async function applyTradedVolumes(markets: AppMarket[]) {
+  if (typeof window !== 'undefined') return;
+  const ammAddresses = markets.filter((m) => m.amm && isAddress(m.id)).map((m) => m.id as Address);
+  if (ammAddresses.length === 0) return;
+  try {
+    const volumes = await buildMarketVolumes(ammAddresses);
+    if (volumes.size === 0) return;
+    for (const m of markets) {
+      const traded = volumes.get(m.id.toLowerCase());
+      if (traded !== undefined) m.volume = formatOnchainUsd(traded);
+    }
+  } catch (err) {
+    logger.warn('onchain-markets', 'traded-volume merge failed', { error: String(err) });
+  }
 }
 
 // Merge app-level flags (currently 'frozen') into the market list. Server-only best-effort read —
@@ -884,12 +923,20 @@ export async function hydrateSnapshotVolumes(markets: AppMarket[], timeoutMs = 4
       new Promise<[null, null]>((resolve) => setTimeout(() => resolve([null, null]), timeoutMs)),
     ]);
     if (!settled) return markets;
-    const freshVolume = new Map<string, string>();
+    const freshPool = new Map<string, string>();
     settled.forEach((result, i) => {
       if (result.status === 'fulfilled' && typeof result.value === 'bigint') {
-        freshVolume.set(live[i].id.toLowerCase(), formatOnchainUsd(result.value));
+        freshPool.set(live[i].id.toLowerCase(), formatOnchainUsd(result.value));
       }
     });
+    // Real traded volume for V3/LMSR markets: the pool balance above is LIQUIDITY, not turnover,
+    // so it can't double as the volume figure. Summed from SharesBought.cost6 + SharesSold.refund6
+    // in one batched log scan across every AMM market. Best-effort — on failure the card keeps its
+    // previous volume rather than showing the pool balance mislabeled.
+    const ammAddresses = live.filter((m) => m.amm).map((m) => m.id as Address);
+    const tradedVolume = ammAddresses.length > 0
+      ? await buildMarketVolumes(ammAddresses).catch(() => new Map<string, bigint>())
+      : new Map<string, bigint>();
     // Only ever move a market TO a final state (Resolved/Canceled) — never un-finalize.
     const freshFinal = new Map<string, MarketStatus>();
     (settledStates ?? []).forEach((result, i) => {
@@ -901,17 +948,28 @@ export async function hydrateSnapshotVolumes(markets: AppMarket[], timeoutMs = 4
         : (s === 1 ? 'Resolved' : s === 2 ? 'Canceled' : null);
       if (status) freshFinal.set(m.id.toLowerCase(), status);
     });
-    if (freshVolume.size === 0 && freshFinal.size === 0) return markets;
+    if (freshPool.size === 0 && freshFinal.size === 0) return markets;
     const merged = markets.map((m) => {
       const key = m.id.toLowerCase();
-      const volume = freshVolume.get(key);
+      const pool = freshPool.get(key);
       const finalStatus = freshFinal.get(key);
-      if (!volume && !finalStatus) return m;
+      if (!pool && !finalStatus) return m;
       let next = m;
       if (finalStatus && finalStatus !== m.status) next = { ...next, status: finalStatus, closeLabel: finalStatus };
-      if (volume && volume !== next.volume) {
-        // amm liquidity is the same pool figure; keep the two consistent on the card.
-        next = next.amm ? { ...next, volume, liquidity: volume } : { ...next, volume };
+      if (pool) {
+        if (next.amm) {
+          // V3: the pool balance is LIQUIDITY. Volume is real turnover from the trade logs — a
+          // seeded-but-untraded market is $0 volume, not the size of its subsidy.
+          const traded = tradedVolume.get(key);
+          const volume = traded === undefined ? next.volume : formatOnchainUsd(traded);
+          if (pool !== next.liquidity || volume !== next.volume) {
+            next = { ...next, liquidity: pool, volume };
+          }
+        } else if (pool !== next.volume) {
+          // V2: totalCollateral IS cumulative money in (parimutuel has no sell side), so it is
+          // the honest volume figure for these markets.
+          next = { ...next, volume: pool };
+        }
       }
       return next;
     });

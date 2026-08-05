@@ -1,5 +1,54 @@
 import { describe, expect, it } from 'vitest';
-import { __agentPipelineTestHooks, isPlaceholderTeamName } from '../agentPipeline';
+import { __agentPipelineTestHooks, interleaveBySport, isPlaceholderTeamName } from '../agentPipeline';
+
+describe('fixture sport balancing', () => {
+  const fixture = (topic: string, sportWord: string, kickoffTime: string, guaranteedFixture = false) => ({
+    topic,
+    query: `${topic}. ${sportWord} fixture.`,
+    source: `espn-${sportWord.toLowerCase()}-fixtures`,
+    kickoffTime,
+    ...(guaranteedFixture ? { guaranteedFixture } : {}),
+  });
+
+  it('round-robins across sports so one sport cannot take the whole budget', () => {
+    // Kickoff-sorted input where soccer supplies every early slot — the pre-fix ordering.
+    const sorted = [
+      fixture('Arsenal vs Chelsea', 'Soccer', '2026-08-04T12:00:00Z'),
+      fixture('Liverpool vs Everton', 'Soccer', '2026-08-04T13:00:00Z'),
+      fixture('Real Madrid vs Sevilla', 'Soccer', '2026-08-04T14:00:00Z'),
+      fixture('Lakers vs Celtics', 'Basketball', '2026-08-04T15:00:00Z'),
+      fixture('Heat vs Knicks', 'Basketball', '2026-08-04T16:00:00Z'),
+    ];
+
+    const ordered = interleaveBySport(sorted);
+
+    // A basketball game must appear within the first two slots, not behind all three soccer games.
+    expect(ordered.slice(0, 2).map((f) => f.topic)).toContain('Lakers vs Celtics');
+    // Nothing is dropped, and order within a sport still follows kickoff.
+    expect(ordered).toHaveLength(5);
+    const soccerOrder = ordered.filter((f) => /Soccer/.test(f.query)).map((f) => f.topic);
+    expect(soccerOrder).toEqual(['Arsenal vs Chelsea', 'Liverpool vs Everton', 'Real Madrid vs Sevilla']);
+  });
+
+  it('keeps guaranteed World Cup fixtures ahead of the interleaved sports', () => {
+    const ordered = interleaveBySport([
+      fixture('France vs Spain', 'Soccer', '2026-08-05T18:00:00Z', true),
+      fixture('Lakers vs Celtics', 'Basketball', '2026-08-04T15:00:00Z'),
+      fixture('Arsenal vs Chelsea', 'Soccer', '2026-08-04T12:00:00Z'),
+    ]);
+
+    expect(ordered[0].topic).toBe('France vs Spain');
+    expect(ordered).toHaveLength(3);
+  });
+
+  it('is a no-op for a single-sport list', () => {
+    const sorted = [
+      fixture('Arsenal vs Chelsea', 'Soccer', '2026-08-04T12:00:00Z'),
+      fixture('Liverpool vs Everton', 'Soccer', '2026-08-04T13:00:00Z'),
+    ];
+    expect(interleaveBySport(sorted).map((f) => f.topic)).toEqual(sorted.map((f) => f.topic));
+  });
+});
 
 describe('placeholder fixture teams', () => {
   it('rejects undecided knockout-stage participants', () => {
