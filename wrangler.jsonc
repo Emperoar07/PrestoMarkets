@@ -1,0 +1,13 @@
+{
+  // Root config consumed only by `opennextjs-cloudflare build` to emit the standalone
+  // runtime under `.open-next/`. The deployed Workers do NOT use this file — scripts/
+  // prepare-cloudflare-workers.mjs generates a self-contained wrangler.<shard>.json per
+  // route shard (its own name, compat flags, date and assets binding) under
+  // .cloudflare-build/, and scripts/deploy-cloudflare-workers.mjs deploys those. Keep the
+  // compat settings here in sync with prepare-cloudflare-workers.mjs.
+  "name": "presto-markets-app",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-08-02",
+  "compatibility_flags": ["nodejs_compat", "allow_importable_env", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" }
+}
