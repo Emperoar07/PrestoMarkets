@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveDisplayType, looksLikeDateOption } from '../marketDisplay';
+import { deriveDisplayType, looksLikeDateOption, cardMetric } from '../marketDisplay';
 
 const base = { type: 'Prediction' as const, category: 'Crypto', title: '', pollOptions: undefined };
 
@@ -38,5 +38,31 @@ describe('deriveDisplayType', () => {
 
   it('respects an explicit agent-set displayType', () => {
     expect(deriveDisplayType({ ...base, displayType: 'sports_live', title: 'Knicks vs Spurs' })).toBe('sports_live');
+  });
+});
+
+describe('cardMetric', () => {
+  // Volume/liquidity are pre-formatted strings; "$0" is the exact zero sentinel (a real $0.005
+  // formats as "<$0.01", never "$0"). Preference: real turnover → seeded depth → New.
+  it('prefers traded volume when a market has any turnover', () => {
+    expect(cardMetric({ volume: '$1.2K', liquidity: '$180' })).toEqual({ value: '$1.2K', label: 'Vol.' });
+  });
+
+  it('falls back to liquidity when volume is $0 but the pool is seeded', () => {
+    // The whole point of the change: 218 untraded-but-seeded LMSR cards show depth, not a bare $0.
+    expect(cardMetric({ volume: '$0', liquidity: '$180' })).toEqual({ value: '$180', label: 'Liq.' });
+  });
+
+  it('shows New when a market has neither traded nor been seeded', () => {
+    expect(cardMetric({ volume: '$0', liquidity: '$0' })).toEqual({ value: 'New', label: '' });
+  });
+
+  it('treats sub-cent turnover ("<$0.01") as real volume, not zero', () => {
+    expect(cardMetric({ volume: '<$0.01', liquidity: '$5' })).toEqual({ value: '<$0.01', label: 'Vol.' });
+  });
+
+  it('tolerates missing/blank fields as New', () => {
+    expect(cardMetric({})).toEqual({ value: 'New', label: '' });
+    expect(cardMetric({ volume: '', liquidity: undefined })).toEqual({ value: 'New', label: '' });
   });
 });

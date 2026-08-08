@@ -6,7 +6,7 @@ import type { Market } from '@/lib/markets';
 import { getOutcomeColor } from '@/lib/outcomeColors';
 import { useAppState } from '@/lib/appState';
 import { prefetchMarketDetail } from '@/lib/marketPrefetch';
-import { deriveDisplayType, liveSportForMarket } from '@/lib/marketDisplay';
+import { cardMetric, deriveDisplayType, liveSportForMarket } from '@/lib/marketDisplay';
 import { detectCountryFlagUrl } from '@/lib/marketSubjectImage';
 import { useLiveScore } from '@/lib/useLiveScore';
 import { Countdown } from './Countdown';
@@ -77,6 +77,9 @@ function MarketCardComponent({
   const isFrozen = Boolean(market.paused || market.frozen);
   const isLive = (market.status === 'Open' || isClosingSoon) && !isFrozen;
   const isResolved = market.status === 'Resolved';
+  // Footer metric: real turnover when traded, else seeded liquidity, else "New" — never a bare $0
+  // (most on-chain markets are seeded-but-untraded fixtures, so volume is a truthful but dead $0).
+  const metric = cardMetric(market);
   const displayType = deriveDisplayType(market);
   const isListLayout = displayType === 'multi_outcome' || displayType === 'date_ladder';
   const isPulse = displayType === 'pulse_gauge';
@@ -135,7 +138,9 @@ function MarketCardComponent({
 
   const footer = (
     <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/[0.04] pt-1.5">
-      <span className="text-[10px] font-semibold text-[#475569]">{market.volume} Vol.</span>
+      <span className="text-[10px] font-semibold text-[#475569]">
+        {metric.value}{metric.label ? ` ${metric.label}` : ''}
+      </span>
       {matchIsLive ? (
         <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-red-400">
           <span className="h-1 w-1 rounded-full bg-red-500 animate-pulse" />
@@ -393,9 +398,11 @@ function MarketCardComponent({
           )}
         </div>
 
-        {/* Metadata row (only volume) */}
+        {/* Metadata row (traded volume, else seeded liquidity, else New) */}
         <div className="mt-2 flex items-center justify-between gap-2 border-t border-white/[0.04] pt-1.5 shrink-0">
-          <span className="text-[10px] font-semibold text-[#475569]">{market.volume} Vol.</span>
+          <span className="text-[10px] font-semibold text-[#475569]">
+            {metric.value}{metric.label ? ` ${metric.label}` : ''}
+          </span>
           <div className="flex items-center gap-2">
             {isLive ? (
               <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider ${isClosingSoon ? 'text-amber-400 animate-pulse' : 'text-[#475569]'}`}>

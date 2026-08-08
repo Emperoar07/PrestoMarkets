@@ -65,3 +65,21 @@ export function deriveDisplayType(market: DisplayInput): DisplayType {
 
   return 'binary';
 }
+
+/**
+ * The single metric a market card shows in its footer.
+ *
+ * Most on-chain markets are seeded LMSR fixtures that have never been traded, so their real VOLUME
+ * (turnover) is a truthful $0 — a grid of "$0 Vol." reads as broken even though it is correct. This
+ * picks the most meaningful non-zero number instead: genuine turnover when the market has traded,
+ * otherwise its seeded LIQUIDITY (pool depth, populated for ~92% of markets), otherwise "New".
+ *
+ * Inputs are pre-formatted USD strings from formatOnchainUsd; "$0" is the exact zero sentinel (a
+ * real $0.005 formats as "<$0.01", never "$0"), so a plain string compare is sufficient — no parse.
+ */
+export function cardMetric(market: { volume?: string; liquidity?: string }): { value: string; label: string } {
+  const nonZero = (s: string | undefined): s is string => Boolean(s) && s !== '$0';
+  if (nonZero(market.volume)) return { value: market.volume, label: 'Vol.' };
+  if (nonZero(market.liquidity)) return { value: market.liquidity, label: 'Liq.' };
+  return { value: 'New', label: '' };
+}

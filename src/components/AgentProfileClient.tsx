@@ -15,6 +15,7 @@ import {
   LayoutGrid,
   ExternalLink
 } from 'lucide-react';
+import { cardMetric } from '@/lib/marketDisplay';
 
 type AgentProfile = {
   ok: boolean;
@@ -183,6 +184,7 @@ export function AgentProfileClient() {
                   : status === 'Resolved' ? 'text-cyan bg-cyan/10 border-cyan/20'
                   : status === 'Canceled' ? 'text-rose-400 bg-rose-400/10 border-rose-400/20'
                   : 'text-[#94a3b8] bg-white/[0.04] border-white/[0.08]';
+                const metric = cardMetric(market);
                 return (
                   <Link
                     key={market.id}
@@ -203,7 +205,7 @@ export function AgentProfileClient() {
                       </span>
                       <span className="mt-1.5 flex items-center gap-2">
                         <span className={`rounded-full border px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wider ${badge}`}>{status}</span>
-                        <span className="text-[10px] font-semibold text-[#64748b]">{market.volume} Vol.</span>
+                        <span className="text-[10px] font-semibold text-[#64748b]">{metric.label ? `${metric.value} ${metric.label}` : metric.value}</span>
                         {market.closeLabel ? <span className="text-[10px] font-semibold text-[#475569]">· {market.closeLabel}</span> : null}
                       </span>
                     </span>
