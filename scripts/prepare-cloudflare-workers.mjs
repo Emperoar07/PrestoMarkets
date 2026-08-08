@@ -41,7 +41,6 @@ export const services = [
   ['marketDetail', 'presto-markets-market-detail'],
   ['embed', 'presto-markets-embed'],
   ['account', 'presto-markets-account'],
-  ['worldCup', 'presto-markets-world-cup'],
 ];
 
 const configuredShards = new Set(services.map(([shard]) => shard));

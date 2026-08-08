@@ -32,7 +32,6 @@ function serverFor(pathname, env) {
   if (pathname.startsWith('/embed/markets/')) return env.EMBED_WORKER;
   if (pathname.startsWith('/markets/') && pathname !== '/markets/create') return env.MARKET_DETAIL_WORKER;
   if (pathname === '/admin' || pathname.startsWith('/u/')) return env.ACCOUNT_WORKER;
-  if (pathname === '/world-cup') return env.WORLD_CUP_WORKER;
   if (pathname === '/') return env.SITE_HOME_WORKER;
   if (pathname === '/markets' || pathname === '/markets/create') return env.SITE_MARKETS_WORKER;
   if (pathname === '/portfolio') return env.SITE_PORTFOLIO_WORKER;

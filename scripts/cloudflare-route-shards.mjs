@@ -98,10 +98,9 @@ export const cloudflareRouteShards = {
   marketDetail: ['markets/[id]/page.js'],
   embed: ['embed/markets/[id]/page.js'],
   account: ['admin/page.js', 'u/[address]/page.js'],
-  worldCup: ['world-cup/page.js'],
 };
 
 export const cloudflarePageShards = new Set([
   'siteHome', 'siteMarkets', 'sitePortfolio', 'siteInfo', 'siteInsights', 'siteProfile',
-  'marketDetail', 'embed', 'account', 'worldCup',
+  'marketDetail', 'embed', 'account',
 ]);

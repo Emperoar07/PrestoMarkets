@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MarketCard } from './MarketCard';
-import { WorldCupFixturesPanel } from './WorldCupFixturesPanel';
 
 // How many market cards to mount per page (initial render + each scroll reveal). 12 = three
 // rows of the 4-column grid, so the first paint stays light even with hundreds of markets.
@@ -379,10 +378,6 @@ export function MarketsExplorer() {
       ) : visibleMarkets.length > 0 ? (
         <>
           <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            <WorldCupFixturesPanel
-              markets={markets}
-              onQuickBuy={(m, outcome) => setQuickBuyTarget({ market: m, outcome })}
-            />
             {shownMarkets.map((market) => (
               <MarketCard
                 key={market.id}
