@@ -8,6 +8,20 @@ const out = path.join(root, '.cloudflare-build');
 const workers = path.join(out, 'workers');
 const compatibilityFlags = ['nodejs_compat', 'allow_importable_env', 'global_fetch_strictly_public'];
 
+// Shared D1 binding — every shard and the router bind the same database so `getDb()` resolves it
+// via getCloudflareContext() regardless of which Worker serves the request. The id is the D1
+// database's UUID (an identifier, not a secret).
+const d1Databases = [
+  { binding: 'DB', database_name: 'presto-markets-db', database_id: '20b734c5-71f3-46b0-97ec-578fd203c112' },
+];
+
+// NOTE: raising per-shard CPU with `limits.cpu_ms` requires the Workers PAID plan — the Free plan
+// rejects it (API error 100328) AND enforces a fixed CPU ceiling that the full on-chain read
+// (factory scan + trade-log decode across all markets) exceeds. That is why D1's marketListCache
+// cannot self-populate on the free plan: the read that writes it is CPU-killed. Until the account
+// is on a paid plan, D1 is populated by an OFF-Worker harvest (scripts/harvest-d1-snapshot.mjs)
+// and kept fresh by the bounded ingest-markets cron, which does fit the free CPU budget.
+
 export const services = [
   ['agentRead', 'presto-markets-agent-read'],
   ['agentWrite', 'presto-markets-agent-write'],
@@ -60,6 +74,7 @@ export default {
     observability: { enabled: true },
     placement: { mode: 'smart' },
     services: [{ binding: 'WORKER_SELF_REFERENCE', service: workerName }],
+    d1_databases: d1Databases,
   };
   if (servesPages) workerConfig.assets = { directory: '../.open-next/assets', binding: 'ASSETS' };
   await writeFile(path.join(out, `wrangler.${shard}.json`), JSON.stringify(workerConfig, null, 2));
@@ -77,6 +92,7 @@ await writeFile(path.join(out, 'wrangler.router.json'), JSON.stringify({
   workers_dev: true,
   assets: { directory: '../.open-next/assets', binding: 'ASSETS' },
   services: bindings,
+  d1_databases: d1Databases,
   observability: { enabled: true },
   placement: { mode: 'smart' },
 }, null, 2));

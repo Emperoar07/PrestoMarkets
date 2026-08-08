@@ -56,30 +56,29 @@ export async function checkRateLimit(
     }
   }
 
-  // Durable middle tier: a Postgres fixed window (single atomic upsert per check). Cross-instance
+  // Durable middle tier: a D1 (SQLite) fixed window (single atomic upsert per check). Cross-instance
   // like Upstash — an attacker spread across serverless instances no longer multiplies the limit —
-  // at the cost of one ~50-150ms DB roundtrip, acceptable for the mutation routes this guards.
+  // at the cost of one DB roundtrip, acceptable for the mutation routes this guards.
   if (hasDatabaseUrl()) {
     try {
       const bucket = `${endpoint}:${key}`;
       const windowSec = Math.max(1, Math.floor(options.windowSec));
-      const result = await getDb().execute(sql`
-        INSERT INTO rate_limits (bucket, window_start, count) VALUES (${bucket}, now(), 1)
-        ON CONFLICT (bucket) DO UPDATE SET
-          count = CASE WHEN rate_limits.window_start < now() - make_interval(secs => ${windowSec}) THEN 1 ELSE rate_limits.count + 1 END,
-          window_start = CASE WHEN rate_limits.window_start < now() - make_interval(secs => ${windowSec}) THEN now() ELSE rate_limits.window_start END
+      const nowSec = Math.floor(Date.now() / 1000);
+      const row = await getDb().get<{ count: number }>(sql`
+        INSERT INTO rate_limits (bucket, window_start, count) VALUES (${bucket}, ${nowSec}, 1)
+        ON CONFLICT(bucket) DO UPDATE SET
+          count = CASE WHEN rate_limits.window_start < ${nowSec - windowSec} THEN 1 ELSE rate_limits.count + 1 END,
+          window_start = CASE WHEN rate_limits.window_start < ${nowSec - windowSec} THEN ${nowSec} ELSE rate_limits.window_start END
         RETURNING count
       `);
-      const rows = (result as unknown as { rows?: Array<{ count: number }> }).rows
-        ?? (result as unknown as Array<{ count: number }>);
-      const count = Number(Array.isArray(rows) ? rows[0]?.count : undefined);
+      const count = Number(row?.count);
       // Opportunistic cleanup so stale buckets don't accumulate forever (~1% of checks).
       if (Math.random() < 0.01) {
-        void getDb().execute(sql`DELETE FROM rate_limits WHERE window_start < now() - interval '1 day'`).catch(() => undefined);
+        void getDb().run(sql`DELETE FROM rate_limits WHERE window_start < ${nowSec - 86_400}`).catch(() => undefined);
       }
       if (Number.isFinite(count)) return count <= options.limit;
     } catch (error) {
-      console.error(`[rate-limit] Postgres limiter error on ${endpoint}:`, error);
+      console.error(`[rate-limit] D1 limiter error on ${endpoint}:`, error);
       // fall through to in-memory
     }
   }

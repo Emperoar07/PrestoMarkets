@@ -1,186 +1,175 @@
 import {
-  boolean,
-  index,
-  integer,
-  jsonb,
-  numeric,
-  pgEnum,
-  pgTable,
-  primaryKey,
-  serial,
+  sqliteTable as table,
   text,
-  timestamp,
+  integer,
+  index,
   uniqueIndex,
-} from 'drizzle-orm/pg-core';
+  primaryKey,
+} from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
 
-export const siweNonces = pgTable('siwe_nonces', {
+// D1 (SQLite) schema. Timestamp columns store Unix seconds and drizzle returns/accepts a Date
+// via mode:'timestamp'. jsonb → text mode:'json' (parsed on read, stringified on write). pg enums
+// → text with a TS-only `enum` option. numeric → text to preserve the exact decimal-string contract
+// callers already rely on (String(row.x)). serial → integer autoincrement.
+const NOW = sql`(unixepoch())`;
+
+export const siweNonces = table('siwe_nonces', {
   address: text('address').primaryKey(),
   nonce: text('nonce').notNull(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
 });
 
-export const cronLeases = pgTable('cron_leases', {
+export const cronLeases = table('cron_leases', {
   key: text('key').primaryKey(),
   owner: text('owner').notNull(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(NOW),
 });
 
-export const commentKindEnum = pgEnum('comment_kind', ['comment', 'source_update']);
-export const alertChannelEnum = pgEnum('alert_channel', ['inapp', 'email']);
-export const leaderboardPeriodEnum = pgEnum('leaderboard_period', ['all', '30d']);
-
-export const profiles = pgTable('profiles', {
+export const profiles = table('profiles', {
   address: text('address').primaryKey(),
   handle: text('handle'),
   bio: text('bio').notNull().default(''),
   avatarUrl: text('avatar_url').notNull().default(''),
-  optInLeaderboard: boolean('opt_in_leaderboard').notNull().default(false),
+  optInLeaderboard: integer('opt_in_leaderboard', { mode: 'boolean' }).notNull().default(false),
   // Optional email + global opt-in for off-app (email) notification delivery.
   email: text('email'),
-  emailNotifications: boolean('email_notifications').notNull().default(false),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  handleUnique: uniqueIndex('profiles_handle_unique').on(table.handle),
+  emailNotifications: integer('email_notifications', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(NOW),
+}, (t) => ({
+  handleUnique: uniqueIndex('profiles_handle_unique').on(t.handle),
 }));
 
-export const notificationTypeEnum = pgEnum('notification_type', [
-  'comment_reply',
-  'comment_like',
-  'market_resolved',
-  'market_canceled',
-  'system',
-]);
-
-export const notifications = pgTable('notifications', {
-  id: serial('id').primaryKey(),
+export const notifications = table('notifications', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
   address: text('address').notNull(), // recipient, lowercased
-  type: notificationTypeEnum('type').notNull(),
+  type: text('type', {
+    enum: ['comment_reply', 'comment_like', 'market_resolved', 'market_canceled', 'system'],
+  }).notNull(),
   title: text('title').notNull(),
   body: text('body').notNull().default(''),
   marketId: text('market_id'),
   link: text('link'),
-  read: boolean('read').notNull().default(false),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  byRecipient: index('notifications_address_read_created').on(table.address, table.read, table.createdAt),
+  read: integer('read', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(NOW),
+}, (t) => ({
+  byRecipient: index('notifications_address_read_created').on(t.address, t.read, t.createdAt),
 }));
 
-export const comments = pgTable('comments', {
-  id: serial('id').primaryKey(),
+export const comments = table('comments', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
   marketId: text('market_id').notNull(),
   authorAddress: text('author_address').notNull(),
   parentId: integer('parent_id'),
   body: text('body').notNull(),
-  kind: commentKindEnum('kind').notNull().default('comment'),
-  hidden: boolean('hidden').notNull().default(false),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  editedAt: timestamp('edited_at', { withTimezone: true }),
+  kind: text('kind', { enum: ['comment', 'source_update'] }).notNull().default('comment'),
+  hidden: integer('hidden', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(NOW),
+  editedAt: integer('edited_at', { mode: 'timestamp' }),
 });
 
-export const commentLikes = pgTable('comment_likes', {
+export const commentLikes = table('comment_likes', {
   address: text('address').notNull(),
   commentId: integer('comment_id').references(() => comments.id, { onDelete: 'cascade' }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.address, table.commentId] }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(NOW),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.address, t.commentId] }),
 }));
 
-export const watchlist = pgTable('watchlist', {
+export const watchlist = table('watchlist', {
   address: text('address').notNull(),
   marketId: text('market_id').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.address, table.marketId] }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(NOW),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.address, t.marketId] }),
 }));
 
-export const alertPrefs = pgTable('alert_prefs', {
+export const alertPrefs = table('alert_prefs', {
   address: text('address').notNull(),
   marketId: text('market_id').notNull(),
-  types: jsonb('types').$type<{
+  types: text('types', { mode: 'json' }).$type<{
     closeSoon: boolean;
     priceMove: boolean;
     resolved: boolean;
     claim: boolean;
   }>().notNull(),
-  channel: alertChannelEnum('channel').notNull().default('inapp'),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.address, table.marketId] }),
+  channel: text('channel', { enum: ['inapp', 'email'] }).notNull().default('inapp'),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.address, t.marketId] }),
 }));
 
-export const leaderboardCache = pgTable('leaderboard_cache', {
+export const leaderboardCache = table('leaderboard_cache', {
   address: text('address').notNull(),
-  period: leaderboardPeriodEnum('period').notNull(),
-  realizedPnl: numeric('realized_pnl', { precision: 18, scale: 6 }).notNull().default('0'),
+  period: text('period', { enum: ['all', '30d'] }).notNull(),
+  realizedPnl: text('realized_pnl').notNull().default('0'),
   marketsTraded: integer('markets_traded').notNull().default(0),
   resolvedCorrect: integer('resolved_correct').notNull().default(0),
-  brier: numeric('brier', { precision: 12, scale: 6 }).notNull().default('0'),
-  accuracy: numeric('accuracy', { precision: 12, scale: 6 }).notNull().default('0'),
+  brier: text('brier').notNull().default('0'),
+  accuracy: text('accuracy').notNull().default('0'),
   createdCount: integer('created_count').notNull().default(0),
   rank: integer('rank').notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.address, table.period] }),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(NOW),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.address, t.period] }),
 }));
 
-export const marketMetadataOverrides = pgTable('market_metadata_overrides', {
+export const marketMetadataOverrides = table('market_metadata_overrides', {
   marketId: text('market_id').primaryKey(),
   imageUri: text('image_uri').notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(NOW),
 });
 
 // App-level market flags. 'frozen' blocks trading in the UI for decided markets whose deployed
 // contract offers no pause/early-cancel (old V1/V2) — written by the pause-decided-markets cron,
 // merged into the market list by the reader, enforced by placeTrade + the trade panels.
-export const marketFlags = pgTable('market_flags', {
+export const marketFlags = table('market_flags', {
   marketId: text('market_id').primaryKey(),
   flag: text('flag').notNull(),
   reason: text('reason'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(NOW),
 });
 
 // Latest full market-list snapshot (single row, key='latest'). Serverless instances are often cold
 // (no in-process cache) and the full on-chain read takes 10-30s — the skeleton screen users see on
 // load. Serving this snapshot instead takes ~300ms; a background refresh keeps it current.
-export const marketListCache = pgTable('market_list_cache', {
+export const marketListCache = table('market_list_cache', {
   key: text('key').primaryKey(),
-  payload: jsonb('payload').notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  payload: text('payload', { mode: 'json' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(NOW),
 });
 
 // Confirmed-trade and periodic odds snapshots per market, used as the chart's truthful history.
-export const marketSnapshots = pgTable('market_snapshots', {
+export const marketSnapshots = table('market_snapshots', {
   marketId: text('market_id').notNull(),
-  capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+  capturedAt: integer('captured_at', { mode: 'timestamp' }).notNull().default(NOW),
   /** Per-outcome implied probabilities (0..1), index-aligned with the market's outcomes. */
-  probabilities: jsonb('probabilities').$type<number[]>().notNull(),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.marketId, table.capturedAt] }),
+  probabilities: text('probabilities', { mode: 'json' }).$type<number[]>().notNull(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.marketId, t.capturedAt] }),
 }));
 
 // Partner-registered webhook endpoints that receive market settlement events (resolved /
 // canceled / proposed). Each delivery is signed with the subscription's secret (HMAC-SHA256).
-export const webhookSubscriptions = pgTable('webhook_subscriptions', {
-  id: serial('id').primaryKey(),
+export const webhookSubscriptions = table('webhook_subscriptions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
   /** Owner wallet address (the signed-in creator of the subscription). */
   owner: text('owner').notNull(),
   url: text('url').notNull(),
   secret: text('secret').notNull(),
   /** Event types this endpoint subscribes to, e.g. ['market_resolved','market_canceled']. */
-  eventTypes: jsonb('event_types').$type<string[]>().notNull(),
-  active: boolean('active').notNull().default(true),
+  eventTypes: text('event_types', { mode: 'json' }).$type<string[]>().notNull(),
+  active: integer('active', { mode: 'boolean' }).notNull().default(true),
   failureCount: integer('failure_count').notNull().default(0),
   lastStatus: text('last_status'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  ownerIdx: index('webhook_subscriptions_owner_idx').on(table.owner),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(NOW),
+}, (t) => ({
+  ownerIdx: index('webhook_subscriptions_owner_idx').on(t.owner),
 }));
 
 // Client-watched limit orders for V3 LMSR markets. The server only stores intent; a client-side
 // watcher polls the live price and fires the trade through the user's wallet when the limit is hit.
-export const limitOrderStatusEnum = pgEnum('limit_order_status', ['open', 'filled', 'canceled', 'expired', 'failed']);
-
-export const limitOrders = pgTable('limit_orders', {
+export const limitOrders = table('limit_orders', {
   id: text('id').primaryKey(), // uuid (client-generated)
   owner: text('owner').notNull(), // lowercased wallet address
   marketId: text('market_id').notNull(), // lowercased market contract address
@@ -188,43 +177,51 @@ export const limitOrders = pgTable('limit_orders', {
   outcomeLabel: text('outcome_label').notNull(),
   side: text('side').notNull(), // 'buy' | 'sell'
   limitPriceBps: integer('limit_price_bps').notNull(), // 0..10000 (e.g. 4500 = 45c)
-  shares: numeric('shares', { precision: 24, scale: 6 }).notNull(),
+  shares: text('shares').notNull(),
   slippageBps: integer('slippage_bps').notNull().default(200),
-  status: limitOrderStatusEnum('status').notNull().default('open'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }),
-  filledAt: timestamp('filled_at', { withTimezone: true }),
+  status: text('status', { enum: ['open', 'filled', 'canceled', 'expired', 'failed'] }).notNull().default('open'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(NOW),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }),
+  filledAt: integer('filled_at', { mode: 'timestamp' }),
   txHash: text('tx_hash'),
   lastError: text('last_error'),
-}, (table) => ({
-  ownerStatusIdx: index('limit_orders_owner_status_idx').on(table.owner, table.status),
-  marketStatusIdx: index('limit_orders_market_status_idx').on(table.marketId, table.status),
+}, (t) => ({
+  ownerStatusIdx: index('limit_orders_owner_status_idx').on(t.owner, t.status),
+  marketStatusIdx: index('limit_orders_market_status_idx').on(t.marketId, t.status),
 }));
 
 // Durable ledger of agent-created markets, written synchronously in the creation loop.
 // Cross-run dedup merges these into the "existing markets" set at run start, so a lagging
 // market-list snapshot (best-effort background ingest under saturated RPCs) can never blind
 // the agent into creating the same fixture twice.
-export const agentCreations = pgTable('agent_creations', {
+export const agentCreations = table('agent_creations', {
   marketId: text('market_id').primaryKey(),
   title: text('title').notNull(),
   trendUrl: text('trend_url'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  createdAtIdx: index('agent_creations_created_at_idx').on(table.createdAt),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(NOW),
+}, (t) => ({
+  createdAtIdx: index('agent_creations_created_at_idx').on(t.createdAt),
 }));
 
-export const circleGatewayEvents = pgTable('circle_gateway_events', {
+export const circleGatewayEvents = table('circle_gateway_events', {
   notificationId: text('notification_id').primaryKey(),
   subscriptionId: text('subscription_id'),
   notificationType: text('notification_type').notNull(),
   eventType: text('event_type').notNull(),
   txHash: text('tx_hash'),
   walletAddress: text('wallet_address'),
-  payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
-  receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
-  processedAt: timestamp('processed_at', { withTimezone: true }),
-}, (table) => ({
-  typeIdx: index('circle_gateway_events_type_idx').on(table.eventType),
-  walletIdx: index('circle_gateway_events_wallet_idx').on(table.walletAddress),
+  payload: text('payload', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  receivedAt: integer('received_at', { mode: 'timestamp' }).notNull().default(NOW),
+  processedAt: integer('processed_at', { mode: 'timestamp' }),
+}, (t) => ({
+  typeIdx: index('circle_gateway_events_type_idx').on(t.eventType),
+  walletIdx: index('circle_gateway_events_wallet_idx').on(t.walletAddress),
 }));
+
+// Durable cross-instance fixed-window rate limiter (middle tier between Upstash and in-memory).
+// window_start is Unix seconds; the limiter compares it as a plain integer.
+export const rateLimits = table('rate_limits', {
+  bucket: text('bucket').primaryKey(),
+  windowStart: integer('window_start').notNull(),
+  count: integer('count').notNull().default(0),
+});

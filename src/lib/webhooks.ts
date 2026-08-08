@@ -120,7 +120,8 @@ export async function dispatchWebhookEvent(event: WebhookEvent): Promise<void> {
     const subs = await getDb().select().from(webhookSubscriptions)
       .where(and(
         eq(webhookSubscriptions.active, true),
-        sql`${webhookSubscriptions.eventTypes} @> ${JSON.stringify([event.type])}::jsonb`,
+        // SQLite: event_types is a JSON text array; match rows where it contains this event type.
+        sql`EXISTS (SELECT 1 FROM json_each(${webhookSubscriptions.eventTypes}) WHERE value = ${event.type})`,
       ));
     await Promise.allSettled(subs.map((sub) => deliver(sub, event)));
   } catch (error) {

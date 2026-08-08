@@ -9,5 +9,8 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-08-02",
   "compatibility_flags": ["nodejs_compat", "allow_importable_env", "global_fetch_strictly_public"],
-  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" }
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "presto-markets-db", "database_id": "20b734c5-71f3-46b0-97ec-578fd203c112" }
+  ]
 }
