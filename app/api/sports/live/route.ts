@@ -4,8 +4,8 @@ import { getSportsDbApiKey } from '@/lib/sportsProvider';
 
 // Live match data with a multi-source chain for accuracy:
 //   1. TheSportsDB event lookup (always available, free key) — names, date, baseline score.
-//   2. football-data.org (when FOOTBALL_DATA_API_KEY is set) — minute-accurate scores for the
-//      World Cup and major competitions; cross-matched by team names + date.
+//   2. football-data.org (when FOOTBALL_DATA_API_KEY is set) — minute-accurate scores for
+//      major competitions; cross-matched by team names + date.
 //   3. API-Football / api-sports.io (when API_FOOTBALL_KEY is set) — broadest live coverage
 //      incl. internationals & qualifiers; cross-matched by team names + date.
 // A source that reports a live/finished score wins over a not-started baseline; later providers

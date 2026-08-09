@@ -30,7 +30,7 @@ describe('fixture sport balancing', () => {
     expect(soccerOrder).toEqual(['Arsenal vs Chelsea', 'Liverpool vs Everton', 'Real Madrid vs Sevilla']);
   });
 
-  it('keeps guaranteed World Cup fixtures ahead of the interleaved sports', () => {
+  it('keeps guaranteed international fixtures ahead of the interleaved sports', () => {
     const ordered = interleaveBySport([
       fixture('France vs Spain', 'Soccer', '2026-08-05T18:00:00Z', true),
       fixture('Lakers vs Celtics', 'Basketball', '2026-08-04T15:00:00Z'),
@@ -80,7 +80,7 @@ describe('agent pipeline target shape planner', () => {
   });
   it('plans a multi-outcome race for elections/winners', () => {
     expect(shape('Who will win the Peru presidential election?')).toMatch(/multi-outcome/i);
-    expect(shape('2026 World Cup winner')).toMatch(/multi-outcome/i);
+    expect(shape('2026 Champions League winner')).toMatch(/multi-outcome/i);
   });
   it('plans pulse for directional/short-window', () => {
     expect(shape('Bitcoin up or down next hour?')).toMatch(/pulse/i);

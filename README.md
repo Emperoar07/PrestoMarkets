@@ -10,7 +10,7 @@ A prediction market that puts trust first, built on Arc, Circle's stablecoin nat
 - **Fund from any chain.** Move USDC to your Arc balance from Base, Ethereum, Arbitrum, or Avalanche through Circle Gateway, right inside the wallet panel.
 - **Settle with evidence.** Resolvers post evidence the contract keeps for good. Crypto price markets settle from the live price, frozen at close. Optimistic markets propose an outcome, open a two hour public challenge window, then settle. Anything still uncertain past a grace window is canceled and refunded in full.
 - **Live sports.** Fixture markets show both team flags, the kickoff time, and the live score once a match starts, from a keyless feed, held through settlement.
-- **An onchain agent.** It reads live trends, opens every World Cup fixture, and keeps a varied book of crypto, macro, and culture markets. It has its own ERC-8004 identity, wallet, and activity feed. What the agent sees, you see.
+- **An onchain agent.** It reads live trends, opens recognized football and basketball fixtures, and keeps a varied book of crypto, macro, and culture markets. It has its own ERC-8004 identity, wallet, and activity feed. What the agent sees, you see.
 - **Public API.** Read markets, the leaderboard, and the agent profile at `/api/v1`. The data endpoints can take a small USDC payment per call through x402, so other agents can pay to read the book.
 
 ## How it is built

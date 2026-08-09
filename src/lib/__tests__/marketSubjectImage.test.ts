@@ -16,7 +16,7 @@ describe('marketSubjectImage', () => {
   it('detects sports club and team names from market wording', () => {
     expect(detectSportsTeamSearchName('Will Arsenal beat Chelsea?')).toBe('Arsenal');
     expect(detectSportsTeamSearchName('Los Angeles Lakers vs Boston Celtics')).toBe('Los Angeles Lakers');
-    expect(detectSportsTeamSearchName('Will Lamine Yamal play in Spain World Cup opener?')).toBeUndefined();
+    expect(detectSportsTeamSearchName('Will Lamine Yamal play in Spain Euro opener?')).toBeUndefined();
   });
 
   it('keeps country flags and person/org subject extraction as fallbacks', () => {

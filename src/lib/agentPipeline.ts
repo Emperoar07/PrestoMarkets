@@ -50,7 +50,7 @@ export type TrendItem = {
   /** Server-side Exa evidence bundle used for classification, drafting, and provenance notes. */
   exaEvidence?: ExaEvidence;
   /**
-   * Guaranteed-creation lane: marquee fixtures (FIFA World Cup) that must become a market on
+   * Guaranteed-creation lane: marquee fixtures (international matches) that must become a market on
    * every match day, bypassing the signal/classify gates. Dedup and the active cap still apply.
    */
   guaranteedFixture?: boolean;
@@ -91,7 +91,6 @@ function isFootballTrend(trend: TrendItem): boolean {
     'champions league',
     'mls',
     'fifa',
-    'world cup',
   ].some((term) => haystack.includes(term));
 }
 
@@ -107,7 +106,7 @@ function fixtureSportKey(trend: TrendItem): string {
 /**
  * Round-robin a kickoff-sorted fixture list across sports so no single sport eats the whole
  * per-tick creation budget. Soccer supplies most of the fixtures, so a plain kickoff sort meant
- * basketball (and anything else) never got created. Guaranteed fixtures (World Cup) are kept
+ * basketball (and anything else) never got created. Guaranteed fixtures (international) are kept
  * strictly ahead of everything else — they have their own reserved headroom above the cap.
  *
  * Input must already be sorted (guaranteed first, then kickoff); relative order WITHIN each sport
@@ -684,9 +683,9 @@ const MAJOR_SPORTS_LEAGUES = [
   'dutch eredivisie', 'eredivisie', 'mexican liga mx', 'liga mx', 'brazilian serie a',
   'argentine', 'liga profesional', 'copa libertadores', 'copa sudamericana',
   'concacaf champions',
-  // International football: World Cup, its qualifiers, and the major national-team competitions.
-  // These are objectively settleable and give the agent live fixtures between club seasons.
-  'fifa world cup', 'world cup qualif', 'uefa nations league', 'uefa euro', 'copa america',
+  // International football: the major national-team competitions. These are objectively settleable
+  // and give the agent live fixtures between club seasons.
+  'uefa nations league', 'uefa euro', 'copa america',
   'africa cup of nations', 'concacaf', 'international friendl', 'friendlies',
   'nba', 'euroleague', 'wnba',
 ];
@@ -700,23 +699,17 @@ function formatSportsDbDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-// Free, no-key fallback: ESPN's public scoreboard API. Covers global soccer incl. the World Cup
-// and qualifiers, with team logos — so sports markets keep being created even without a
-// TheSportsDB key. Same TrendItem shape (guaranteed lane for World Cup / international fixtures).
-// Fixture lookahead windows (days from today). Guaranteed lanes (World Cup / international) scan
+// Free, no-key fallback: ESPN's public scoreboard API. Covers global soccer incl. international
+// fixtures, with team logos — so sports markets keep being created even without a
+// TheSportsDB key. Same TrendItem shape (guaranteed lane for international fixtures).
+// Fixture lookahead windows (days from today). Guaranteed lanes (international) scan
 // further out so every upcoming match gets a market well before kickoff; club leagues scan a
 // shorter window. Both env-tunable so coverage can widen without a code change.
 const GUARANTEED_LOOKAHEAD_DAYS = Math.max(1, Number(process.env.PRESTO_FIXTURE_LOOKAHEAD_DAYS ?? 14));
 const CLUB_LOOKAHEAD_DAYS = Math.max(1, Number(process.env.PRESTO_CLUB_LOOKAHEAD_DAYS ?? 5));
 
 const ESPN_LEAGUES: Array<{ slug: string; label: string; guaranteed: boolean }> = [
-  // International / World Cup lanes — guaranteed, scanned the full lookahead so no match is missed.
-  { slug: 'fifa.world', label: 'FIFA World Cup', guaranteed: true },
-  { slug: 'fifa.worldq.uefa', label: 'World Cup Qualifying - UEFA', guaranteed: true },
-  { slug: 'fifa.worldq.conmebol', label: 'World Cup Qualifying - CONMEBOL', guaranteed: true },
-  { slug: 'fifa.worldq.concacaf', label: 'World Cup Qualifying - CONCACAF', guaranteed: true },
-  { slug: 'fifa.worldq.afc', label: 'World Cup Qualifying - AFC', guaranteed: true },
-  { slug: 'fifa.worldq.caf', label: 'World Cup Qualifying - CAF', guaranteed: true },
+  // International lanes — guaranteed, scanned the full lookahead so no match is missed.
   { slug: 'fifa.friendly', label: 'International Friendly', guaranteed: true },
   { slug: 'uefa.nations', label: 'UEFA Nations League', guaranteed: true },
   // Continental club competitions.
@@ -801,7 +794,7 @@ async function fetchEspnSoccerSignals(): Promise<TrendItem[]> {
 
           return [{
             topic: `${home} vs ${away}`,
-            query: `${home} (Football) vs ${away}. ${league.label} fixture. Football fixtures must use Home / Draw / Away outcomes.${league.slug === 'fifa.world' ? ' FIFA World Cup fixture.' : ''}`,
+            query: `${home} (Football) vs ${away}. ${league.label} fixture. Football fixtures must use Home / Draw / Away outcomes.`,
             source: 'thesportsdb-football',
             url: event.id ? `https://www.espn.com/soccer/match/_/gameId/${event.id}` : 'https://www.espn.com/soccer/',
             imageUrl: fixtureImage,
@@ -908,7 +901,7 @@ async function fetchLlmFixtureSignals(): Promise<TrendItem[]> {
   const key = (process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '').trim();
   if (!key) return [];
   const horizonDays = Math.min(GUARANTEED_LOOKAHEAD_DAYS, 7);
-  const prompt = `Today is ${new Date().toISOString().slice(0, 10)}. Using web search, list officially scheduled upcoming professional Football (soccer) and Basketball fixtures over the next ${horizonDays} days from major competitions (FIFA World Cup, top national leagues, continental cups, NBA).
+  const prompt = `Today is ${new Date().toISOString().slice(0, 10)}. Using web search, list officially scheduled upcoming professional Football (soccer) and Basketball fixtures over the next ${horizonDays} days from major competitions (top national leagues, continental cups, international fixtures, NBA).
 Rules:
 - Only matches that are CONFIRMED on the official schedule with BOTH participants decided.
 - Never include placeholder participants like "Winner of Match 57", "Semifinal 1 Loser", "TBD".
@@ -983,11 +976,10 @@ Return JSON only:
     // A fixture without a verifiable future kickoff inside the horizon is not tradeable evidence.
     if (kickoffMs === null || kickoffMs <= now || kickoffMs > horizonMs) return [];
     const league = sanitizeFeedText(fixture.league ?? '') || 'major competition';
-    const isWorldCup = sport === 'Soccer' && /world cup/i.test(league);
     const fixtureImage = detectCountryFlagUrl(home) || detectCountryFlagUrl(away) || undefined;
     return [{
       topic: `${home} vs ${away}`,
-      query: `${home} (${sport === 'Soccer' ? 'Football' : sport}) vs ${away}. ${league} fixture.${sport === 'Soccer' ? ' Football fixtures must use Home / Draw / Away outcomes.' : ''}${isWorldCup ? ' FIFA World Cup fixture.' : ''}`,
+      query: `${home} (${sport === 'Soccer' ? 'Football' : sport}) vs ${away}. ${league} fixture.${sport === 'Soccer' ? ' Football fixtures must use Home / Draw / Away outcomes.' : ''}`,
       source: 'llm-fixtures',
       imageUrl: fixtureImage,
       closeDate: new Date(kickoffMs + FIXTURE_CLOSE_AFTER_KICKOFF_MS).toISOString(),
@@ -1010,13 +1002,13 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
     return dedupeFixtureTrends([...espnOnly, ...espnBball, ...llmOnly]);
   }
   const dates = [new Date(), new Date(Date.now() + 24 * 60 * 60 * 1000)];
-  // World Cup priority: scan Soccer a full WEEK ahead so every World Cup fixture in the coming
-  // week gets its market days before kickoff — a few missed ticks can never miss a match.
-  // Days beyond tomorrow only admit World Cup fixtures (guard below) so the regular trend lane
-  // isn't flooded with far-out club fixtures.
+  // International priority: scan Soccer a full WEEK ahead so every international fixture in the
+  // coming week gets its market days before kickoff — a few missed ticks can never miss a match.
+  // Days beyond tomorrow only admit guaranteed (international) fixtures (guard below) so the
+  // regular trend lane isn't flooded with far-out club fixtures.
   const soccerDates = Array.from({ length: GUARANTEED_LOOKAHEAD_DAYS }, (_, i) => new Date(Date.now() + i * 86_400_000));
   const requests = sportsDbSports.flatMap((sport) => (sport.sport === 'Soccer' ? soccerDates : dates).map(async (date, dateIndex) => {
-    const isExtendedDay = dateIndex >= 2; // beyond today + tomorrow → World Cup only
+    const isExtendedDay = dateIndex >= 2; // beyond today + tomorrow → guaranteed (international) only
     const day = formatSportsDbDate(date);
     const url = `https://www.thesportsdb.com/api/v1/json/${apiKey}/eventsday.php?d=${day}&s=${encodeURIComponent(sport.sport)}`;
 
@@ -1053,23 +1045,20 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
         // Knockout fixtures listed before their participants exist ("Semifinal 1 Loser").
         if (isPlaceholderTeamName(home) || isPlaceholderTeamName(away)) return [];
 
-        // FIFA World Cup fixtures are marquee: every match on a match day must get a market,
-        // so they ride the guaranteed lane instead of competing through the signal gates.
+        // International matches (national teams) — Nations League, friendlies, and continental
+        // qualifiers between countries — ride the guaranteed lane instead of competing through
+        // the signal gates. We detect them when both sides resolve to a country flag (e.g.
+        // Brazil vs Qatar, Switzerland vs Morocco), which catches them regardless of the exact
+        // league label.
         const league = event.strLeague ?? '';
-        const isWorldCupFixture = sport.sport === 'Soccer' && /world cup/i.test(league);
-
-        // International matches (national teams) — World Cup qualifiers, Nations League, and
-        // friendlies between countries — also ride the guaranteed lane. We detect them when
-        // both sides resolve to a country flag (e.g. Brazil vs Qatar, Switzerland vs Morocco),
-        // which catches them regardless of the exact league label.
         const isInternationalFixture = sport.sport === 'Soccer'
           && Boolean(detectCountryFlagUrl(home))
           && Boolean(detectCountryFlagUrl(away))
-          && (/world cup|qualif|nations league|friendl|international|euro|copa|afcon|concacaf|conmebol|uefa|caf|afc/i.test(league) || isWorldCupFixture);
+          && /qualif|nations league|friendl|international|euro|copa|afcon|concacaf|conmebol|uefa|caf|afc/i.test(league);
 
-        const isGuaranteed = isWorldCupFixture || isInternationalFixture;
+        const isGuaranteed = isInternationalFixture;
 
-        // The week-ahead scan exists for guaranteed (World Cup / international) fixtures only —
+        // The week-ahead scan exists for guaranteed (international) fixtures only —
         // other club fixtures stay same/next-day.
         if (isExtendedDay && !isGuaranteed) return [];
 
@@ -1093,13 +1082,13 @@ async function fetchSportsScoreSignals(): Promise<TrendItem[]> {
         const closeMs = kickoffMs !== null ? kickoffMs + FIXTURE_CLOSE_AFTER_KICKOFF_MS : null;
 
         // Fixtures must always carry a real image: prefer the match thumbnail, else the home
-        // team's country flag (World Cup teams are countries), so a fixture never falls back to
+        // team's country flag (international teams are countries), so a fixture never falls back to
         // the generic branded banner.
         const fixtureImage = event.strThumb || detectCountryFlagUrl(home) || detectCountryFlagUrl(away) || undefined;
 
         return [{
           topic: `${home} vs ${away}`,
-          query: `${home} (${sport.category}) vs ${away}. Match ${event.strStatus || 'upcoming'}. Football fixtures must use Home / Draw / Away outcomes.${isWorldCupFixture ? ' FIFA World Cup fixture.' : ''}`,
+          query: `${home} (${sport.category}) vs ${away}. Match ${event.strStatus || 'upcoming'}. Football fixtures must use Home / Draw / Away outcomes.`,
           source: sport.source,
           url: `https://www.thesportsdb.com/event/${event.idEvent}`,
           imageUrl: fixtureImage,
@@ -2292,7 +2281,7 @@ Copy rules for readable market writeups:
   "not started"):
   - Football/soccer match result: "Who will win <Home> vs <Away>?" with exactly three
     outcomeOptions ["<Home>", "Draw", "<Away>"]. Name the real teams. Draw must be its own
-    backed outcome, including World Cup fixtures.
+    backed outcome.
   - Basketball match result: "Who will win <Home> vs <Away>?" with exactly two outcomeOptions
     ["<Home>", "<Away>"]. Basketball has no draw outcome.
   - League/competition winner (multi-outcome): "Who will win <league/competition>?" with one
@@ -2343,8 +2332,8 @@ Pick the SHORTEST horizon that still gives the source time to resolve; DO NOT de
   a specific future scheduled event — a tournament winner (decided by the FINAL), a league/season
   champion (decided by the last decisive match), an election winner (decided on/just after election
   day), an award, or a "who will win <competition>" market — the closeDate MUST be at or just after
-  that deciding event, even if it is weeks away. Example: "Who will win the World Cup?" closes just
-  after the World Cup final, never on a generic 7- or 30-day window. Closing such a market early is a
+  that deciding event, even if it is weeks away. Example: "Who will win the Champions League?" closes
+  just after the final, never on a generic 7- or 30-day window. Closing such a market early is a
   bug: the result would already be public while the market is still open.
 
 If the trend looks like a 24h news cycle, do NOT set a 30-day close. Pick today or tomorrow.
@@ -2696,16 +2685,19 @@ const CONFIDENCE_THRESHOLD = 0.8;
 // not burst-create multiple markets in a single cron invocation. With cron daily this means
 // at most 1 new market per day; if you upgrade to sub-daily cron it caps the burst per tick.
 // Up to 10 regular markets per tick (was 6) — the signal gates stay the quality filter, the cap
-// just stops a single run from flooding. World Cup fixtures don't count against this.
+// just stops a single run from flooding. Guaranteed fixtures don't count against this.
 const AGENT_PER_RUN_CAP = Math.max(1, Number(process.env.PRESTO_AGENT_PER_RUN_CAP ?? 20));
 // Cap the number of *active* NON-FIXTURE agent markets (Open or Closing soon) — i.e. the regular
 // trend lane (crypto, politics, culture…). Sports fixtures are counted and capped separately (see
-// WORLD_CUP_CAP_RESERVE) so a busy match day never crowds out diverse markets, and vice-versa.
+// FIXTURE_CAP_RESERVE) so a busy match day never crowds out diverse markets, and vice-versa.
 // Raised from 2 so the agent keeps a varied open book instead of only fixtures.
 const AGENT_ACTIVE_MARKET_CAP = Math.max(0, Number(process.env.PRESTO_AGENT_ACTIVE_MARKET_CAP ?? 48));
-// Reserved headroom above the active cap purely for World Cup fixtures, so a full week of
-// matches (group stage can be ~16) all get markets without crowding out regular trend markets.
-const WORLD_CUP_CAP_RESERVE = Math.max(0, Number(process.env.PRESTO_WORLD_CUP_FIXTURE_RESERVE ?? 80));
+// Reserved headroom above the active cap purely for guaranteed sports fixtures, so a full week of
+// international matches all get markets without crowding out regular trend markets. The legacy env
+// name is still honoured as a fallback so existing deployments keep their configured reserve.
+const FIXTURE_CAP_RESERVE = Math.max(0, Number(
+  process.env.PRESTO_FIXTURE_CAP_RESERVE ?? process.env.PRESTO_WORLD_CUP_FIXTURE_RESERVE ?? 80,
+));
 
 function countAgentMarketTypeMix(markets: AppMarket[]): { Prediction: number; Opinion: number } {
   const out = { Prediction: 0, Opinion: 0 };
@@ -2724,7 +2716,7 @@ function countActiveAgentMarkets(markets: AppMarket[]): number {
 }
 
 // Active agent markets that are NOT sports fixtures (the regular trend lane). Fixtures carry the
-// sports_live display type; counting them separately keeps the regular cap honest so World Cup
+// sports_live display type; counting them separately keeps the regular cap honest so fixture
 // matches don't consume the diversity budget.
 function countActiveNonFixtureAgentMarkets(markets: AppMarket[]): number {
   return markets.filter((m) =>
@@ -2820,18 +2812,18 @@ async function runAgentPipelineInner(
   // Fresh array: stubs join the dedup set without mutating the (possibly cached) snapshot list.
   existingMarkets = [...existingMarkets, ...ledgerStubs];
   // The deterministic fixture lane covers every recognized football/basketball match (objectively
-  // settleable from the official result), not just the World Cup. They skip the LLM classify/draft
-  // and are shaped into Home/Draw/Away markets. World Cup fixtures sort first, then by kickoff.
+  // settleable from the official result). They skip the LLM classify/draft and are shaped into
+  // Home/Draw/Away markets. Guaranteed (international) fixtures sort first, then by kickoff.
   const seenFixtureKeys = new Set<string>();
   const rankedFixtures = trends
     .filter((trend) => trend.guaranteedFixture || (Boolean(trend.kickoffTime) && isFootballBasketballTrend(trend)))
     .sort((a, b) =>
       (a.guaranteedFixture === b.guaranteedFixture ? 0 : a.guaranteedFixture ? -1 : 1)
       || Date.parse(a.kickoffTime ?? '') - Date.parse(b.kickoffTime ?? ''))
-    // Collapse the same match arriving from multiple sources (a guaranteed World Cup entry AND an
-    // ESPN/TheSportsDB version come through different code paths, so dedupeFixtureTrends never saw
-    // them together) before the loop, so we don't even attempt to create it twice. Guaranteed
-    // fixtures sort first, so the kept copy is the World Cup-tagged one.
+    // Collapse the same match arriving from multiple sources (a guaranteed international entry AND
+    // an ESPN/TheSportsDB version come through different code paths, so dedupeFixtureTrends never
+    // saw them together) before the loop, so we don't even attempt to create it twice. Guaranteed
+    // fixtures sort first, so the kept copy is the guaranteed-tagged one.
     .filter((trend) => {
       const key = fixturePairKey(trend.topic) ?? fixtureMatchupKey(trend.topic);
       if (!key) return true;
@@ -2839,19 +2831,19 @@ async function runAgentPipelineInner(
       seenFixtureKeys.add(key);
       return true;
     });
-  // Soccer contributes far more fixtures than every other sport combined (six ESPN soccer
-  // competitions vs four basketball leagues, plus the World Cup lane), so a straight kickoff sort
-  // let one sport consume the whole per-tick budget and basketball never reached creation.
+  // Soccer contributes far more fixtures than every other sport combined (many ESPN soccer
+  // competitions vs four basketball leagues, plus the international lane), so a straight kickoff
+  // sort let one sport consume the whole per-tick budget and basketball never reached creation.
   // Round-robin across sports instead: each pass takes the next-earliest fixture from every sport
   // that still has one, so the sports share the budget while kickoff order holds within a sport.
-  // World Cup fixtures keep absolute priority — they own the reserved headroom above the cap.
+  // Guaranteed fixtures keep absolute priority — they own the reserved headroom above the cap.
   const fixtureTrends = interleaveBySport(rankedFixtures);
 
   // Bail only when there's genuinely nothing to create: the regular (non-fixture) lane is at its
   // cap AND either there are no fixtures to add or the total is past the fixture reserve ceiling.
   if (
     activeNonFixtureMarkets >= AGENT_ACTIVE_MARKET_CAP
-    && (fixtureTrends.length === 0 || activeAgentMarkets >= AGENT_ACTIVE_MARKET_CAP + WORLD_CUP_CAP_RESERVE)
+    && (fixtureTrends.length === 0 || activeAgentMarkets >= AGENT_ACTIVE_MARKET_CAP + FIXTURE_CAP_RESERVE)
   ) {
     return [{
       ok: false,
@@ -2863,27 +2855,27 @@ async function runAgentPipelineInner(
 
   let liveActive = activeAgentMarkets;
 
-  // ── Guaranteed lane: FIFA World Cup fixtures ──
-  // Every World Cup match on a match day gets its own market, created deterministically from
-  // the binary match-result template (no LLM classify/safety gates — the fixture is the signal).
+  // ── Guaranteed lane: recognized football/basketball fixtures ──
+  // Every guaranteed match on a match day gets its own market, created deterministically from
+  // the match-result template (no LLM classify/safety gates — the fixture is the signal).
   // Dedup still applies so re-runs skip fixtures that already have a market, and the active-market
   // cap remains the hard ceiling. The per-run cap is intentionally NOT applied here so a 4-match
-  // group-stage day gets all 4 markets in one tick.
-  // World Cup fixtures get reserved headroom above the regular cap, so ordinary trend markets
+  // match day gets all 4 markets in one tick.
+  // Guaranteed fixtures get reserved headroom above the regular cap, so ordinary trend markets
   // can never crowd a match out of existence. The fixture lane is still bounded.
   for (const trend of fixtureTrends) {
     if (outOfTime()) {
       results.push({ ok: false, topic: trend.topic, stage: 'time-budget', reason: 'Run deadline reached; remaining fixtures continue next tick.' });
       break;
     }
-    if (liveActive >= AGENT_ACTIVE_MARKET_CAP + WORLD_CUP_CAP_RESERVE) {
-      results.push({ ok: false, topic: trend.topic, stage: 'cap', reason: 'Fixture cap reserve exhausted; remaining World Cup fixtures retry next tick.' });
+    if (liveActive >= AGENT_ACTIVE_MARKET_CAP + FIXTURE_CAP_RESERVE) {
+      results.push({ ok: false, topic: trend.topic, stage: 'cap', reason: 'Fixture cap reserve exhausted; remaining fixtures retry next tick.' });
       break;
     }
     try {
       const draft = fallbackTemplateFromTrend(trend, 'Prediction');
       if (!draft) {
-        results.push({ ok: false, topic: trend.topic, stage: 'draft', reason: 'World Cup fixture could not be shaped into a match-result template.' });
+        results.push({ ok: false, topic: trend.topic, stage: 'draft', reason: 'Fixture could not be shaped into a match-result template.' });
         continue;
       }
       if (isDuplicateMarket(draft, trend, existingMarkets)) {
@@ -2895,19 +2887,18 @@ async function runAgentPipelineInner(
         results.push({ ok: false, topic: trend.topic, stage: 'draft-quality', reason: qualityIssue });
         continue;
       }
-      // Tag World Cup fixtures with a 'World Cup' category so the /world-cup page picks them up
-      // (it matches on title/categories); other recognized fixtures stay plain Football/Sports.
-      const isWc = Boolean(trend.guaranteedFixture);
+      // All recognized fixtures tag plain Football/Sports — guaranteed (international) fixtures
+      // ride the reserved headroom but carry no special category.
       const result = await createOnchain(
         draft,
         trend,
         {
           worthy: true,
           momentumScore: 0.95,
-          category: isWc ? 'World Cup' : 'Football',
-          categories: isWc ? ['World Cup', 'Football', 'Sports'] : ['Football', 'Sports'],
+          category: 'Football',
+          categories: ['Football', 'Sports'],
           suggestedMarketType: 'Prediction',
-          reason: isWc ? 'Guaranteed FIFA World Cup fixture.' : 'Recognized football/basketball fixture.',
+          reason: trend.guaranteedFixture ? 'Guaranteed international fixture.' : 'Recognized football/basketball fixture.',
         },
         { pass: true, confidence: 0.95, reason: 'Deterministic Home / Draw / Away template; settles from the official fixture result.' },
       );
@@ -3040,7 +3031,7 @@ async function runAgentPipelineInner(
       let draft: GeminiDraft;
       // Sports fixtures ("Home vs Away") are deterministic: always shape them into a
       // Home/Draw/Away (or Home/Away) result market instead of letting the LLM turn them into
-      // a binary "Will X beat Y?" question. Matches the World Cup guaranteed lane.
+      // a binary "Will X beat Y?" question. Matches the guaranteed fixture lane.
       const fixtureTemplate = /\bvs\.?\b/i.test(trend.topic) && isFootballBasketballTrend(trend)
         ? fallbackTemplateFromTrend(trend, 'Prediction')
         : null;

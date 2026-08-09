@@ -18,7 +18,7 @@ export const maxDuration = 300;
 // Freeze trading on markets whose result is already decided BEFORE their close time, so the stale
 // price can't be exploited while they wait to resolve. Two sources of targets:
 //   1. Explicit list (?markets=0x..,0x..) — operator-flagged decided markets. This is the reliable
-//      path for outcomes the sports feed can't infer (e.g. "Will TEAM win the World Cup?" once the
+//      path for outcomes the sports feed can't infer (e.g. "Will TEAM win the tournament?" once the
 //      team is eliminated, or squad-selection questions).
 //   2. Auto: sports fixtures (kickoffTime) still Open whose match the live feed reports FINISHED.
 // Pausing is guardian-only and only exists on V3 (LMSR) markets — V2 has no pause, so those are

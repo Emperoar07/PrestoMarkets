@@ -8,7 +8,7 @@ const live = [
   'Sign in with a device passkey, an app wallet PIN, or an external EVM wallet. Passkey and app wallet trades are gasless through the Circle bundler.',
   'Markets settle in USDC or EURC, so you can run dollar or euro questions.',
   'Move USDC to your Arc balance from other chains through Circle Gateway, right in the wallet panel.',
-  'The agent runs on an ERC-8004 identity (ID 16339). It opens every World Cup fixture and keeps a varied book of crypto, macro, and culture markets.',
+  'The agent runs on an ERC-8004 identity (ID 16339). It opens recognized football and basketball fixtures and keeps a varied book of crypto, macro, and culture markets.',
   'Sports markets carry a live fixture header with both team flags and live scores from a keyless feed.',
   'Crypto price markets settle straight from the live price, frozen at close.',
   'A public agent API at /api/v1, with optional USDC nanopayments through x402.',
