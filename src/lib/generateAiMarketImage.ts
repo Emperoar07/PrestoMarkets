@@ -1,5 +1,23 @@
-import sharp from 'sharp';
 import { logger } from './logger';
+
+// sharp is a NATIVE Node addon that cannot load on Cloudflare workerd — a static top-level import
+// throws at module-eval and 500s the whole route before it even runs (this crashed the
+// market-factory cron). Load it lazily instead: Node (local dev, the off-Worker harvest) gets the
+// real compressor; the Worker catches the load failure and serves the provider image un-resized.
+type SharpFactory = typeof import('sharp');
+let sharpModule: SharpFactory | null | undefined;
+async function loadSharp(): Promise<SharpFactory | null> {
+  if (sharpModule !== undefined) return sharpModule;
+  try {
+    // sharp is `export =` (CJS); under esModuleInterop the callable may arrive as `.default` or as
+    // the namespace itself, so accept either.
+    const mod = (await import('sharp')) as SharpFactory & { default?: SharpFactory };
+    sharpModule = mod.default ?? mod;
+  } catch {
+    sharpModule = null; // native module unavailable (e.g. Cloudflare Workers) — caller falls back
+  }
+  return sharpModule;
+}
 
 // AI image generation for markets that have no real subject image (flag/coin/crest/article photo).
 // Instead of falling back to a generic branded banner, the agent generates a relevant illustration
@@ -149,13 +167,35 @@ export async function generateAiMarketImage(input: { title: string; category?: s
     ?? (await generateWithPollinations(prompt));
   if (!raw || raw.length === 0) return null;
 
-  try {
-    // Compress to a small 4:3 JPEG so the data-URI stays light (it lives in the DB override and in
-    // the /api/markets payload). ~640x480 q72 keeps it well under ~60KB.
-    const jpeg = await sharp(raw).resize(640, 480, { fit: 'cover' }).jpeg({ quality: 72 }).toBuffer();
-    return `data:image/jpeg;base64,${jpeg.toString('base64')}`;
-  } catch (err) {
-    logger.warn('ai-image', 'image compress failed', { error: err instanceof Error ? err.message : String(err) });
-    return null;
+  const sharpFn = await loadSharp();
+  if (sharpFn) {
+    try {
+      // Compress to a small 4:3 JPEG so the data-URI stays light (it lives in the DB override and in
+      // the /api/markets payload). ~640x480 q72 keeps it well under ~60KB.
+      const jpeg = await sharpFn(raw).resize(640, 480, { fit: 'cover' }).jpeg({ quality: 72 }).toBuffer();
+      return `data:image/jpeg;base64,${jpeg.toString('base64')}`;
+    } catch (err) {
+      logger.warn('ai-image', 'image compress failed', { error: err instanceof Error ? err.message : String(err) });
+      return null;
+    }
   }
+
+  // No sharp (Cloudflare Workers): can't resize. Most providers already return a compact ~1024px
+  // JPEG, so use it as-is when it's light enough for the override row + /api/markets payload;
+  // otherwise skip and let the branded banner stand (the image-backfill cron fills a proper
+  // compressed image off-Worker later). ~180KB keeps a single override well within the slim budget.
+  const RAW_DATA_URI_MAX_BYTES = 180 * 1024;
+  if (raw.length > RAW_DATA_URI_MAX_BYTES) return null;
+  const mime = detectImageMime(raw);
+  if (!mime) return null;
+  return `data:${mime};base64,${raw.toString('base64')}`;
+}
+
+// Minimal magic-byte sniff so the un-resized fallback emits a correct data-URI mime.
+function detectImageMime(buf: Buffer): string | null {
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  if (buf.length >= 4 && buf.toString('ascii', 0, 4) === 'GIF8') return 'image/gif';
+  return null;
 }
