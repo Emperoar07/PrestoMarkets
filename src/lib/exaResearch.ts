@@ -200,9 +200,12 @@ export async function researchTrendWithExa(trend: ExaTrendInput): Promise<ExaEvi
     numResults: 4,
     contents: {
       highlights,
+      // Exa's /search now 400s when both livecrawl and maxAgeHours are sent ("Cannot set both
+      // 'livecrawl' and 'maxAgeHours'. Use 'maxAgeHours' instead (livecrawl is deprecated)"). That
+      // rejection was silently starving the pipeline of evidence -> [research] source too weak. We
+      // keep maxAgeHours, which already forces a fresh crawl inside its window (24h sports / 72h
+      // markets / 168h default), and drop the deprecated livecrawl pair here.
       maxAgeHours: policy.maxAgeHours,
-      livecrawl: policy.livecrawl,
-      livecrawlTimeout: 4_000,
       extras: { imageLinks: 2 },
     },
   });

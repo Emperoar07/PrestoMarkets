@@ -25,6 +25,24 @@ const { config, buildDir } = await compileConfig();
 const options = getNormalizedOptions(config, buildDir);
 const projectOptions = { minify: true, sourceDir: nextAppDir };
 
+// Windows flakes EPERM/EBUSY on a directory rename when antivirus/indexing (or the cp() that just
+// populated the dir) still holds a transient handle inside it. The rename is valid — it only needs a
+// moment. Retry with backoff so the multi-shard swap can't die mid-flight and strand the tree with
+// no `default` dir (which is exactly what wedged the build here). No-op cost on Linux/CI where the
+// first attempt always succeeds.
+async function renameWithRetry(from, to, attempts = 8) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (err) {
+      const transient = err && (err.code === 'EPERM' || err.code === 'EBUSY' || err.code === 'EACCES');
+      if (!transient || attempt === attempts - 1) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+    }
+  }
+}
+
 async function exists(file) {
   try {
     await access(file);
@@ -117,13 +135,13 @@ for (const shard of shards) {
   // Next's dynamic loader so OpenNext can regenerate that switch after pruning.
   await copyFile(originalWebpackRuntime, path.join(shardDir, '.next', 'server', 'webpack-runtime.js'));
   await pruneShard(shardDir, cloudflareRouteShards[shard], cloudflarePageShards.has(shard));
-  await rename(defaultDir, parkedDefaultDir);
-  await rename(shardDir, defaultDir);
+  await renameWithRetry(defaultDir, parkedDefaultDir);
+  await renameWithRetry(shardDir, defaultDir);
 
   try {
     await bundleServer(options, projectOptions);
   } finally {
-    await rename(defaultDir, shardDir);
-    await rename(parkedDefaultDir, defaultDir);
+    await renameWithRetry(defaultDir, shardDir);
+    await renameWithRetry(parkedDefaultDir, defaultDir);
   }
 }
