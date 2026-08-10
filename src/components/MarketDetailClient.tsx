@@ -4,10 +4,8 @@ import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
-import { MarketQualityPanel } from './MarketQualityPanel';
 import { Countdown } from './Countdown';
 import { AlertPrefsControl } from './AlertPrefsControl';
-import { AddUsdcDrawer } from './AddUsdcDrawer';
 import { BrandLoader } from './BrandLoader';
 
 // Heavy, below-the-fold pieces — lazy-load so the market page shell (title, odds, trade panel)
@@ -20,11 +18,26 @@ const MarketComments = dynamic(
   () => import('./MarketComments').then((m) => ({ default: m.MarketComments })),
   { ssr: false, loading: () => <div className="mt-8 h-40 rounded-[14px] bg-white/[0.02]" /> },
 );
+// Interaction-gated panels kept off the first-paint bundle: the funding drawer only mounts when
+// opened, the limit panel only on the Limit tab, and the quality panel sits below the chart. Each
+// is client-only (ssr:false) so it never blocks or bloats the server-rendered above-the-fold.
+const AddUsdcDrawer = dynamic(
+  () => import('./AddUsdcDrawer').then((m) => ({ default: m.AddUsdcDrawer })),
+  { ssr: false },
+);
+const LimitOrderPanel = dynamic(
+  () => import('./LimitOrderPanel').then((m) => ({ default: m.LimitOrderPanel })),
+  { ssr: false, loading: () => <div className="h-40 rounded-[14px] bg-white/[0.02]" /> },
+);
+const MarketQualityPanel = dynamic(
+  () => import('./MarketQualityPanel').then((m) => ({ default: m.MarketQualityPanel })),
+  { ssr: false, loading: () => <div className="mt-6 h-24 rounded-[14px] bg-white/[0.02]" /> },
+);
 import { ShareMarketButton } from './EmbedSnippetButton';
 import { WatchlistButton } from './WatchlistButton';
 import { readPayWith, writePayWith } from '@/lib/payWithStore';
 import type { StableSymbol } from '@/lib/walletBalance';
-import { formatUsd, useAppState } from '@/lib/appState';
+import { formatUsd, useAppState, type AppMarket } from '@/lib/appState';
 import { useTransactions } from '@/lib/transactions';
 import { agentResolutionGuardrails, buildAgentResolutionPrompt, buildAgentResolutionReport } from '@/lib/agentResolution';
 import type { MarketStatus } from '@/lib/markets';
@@ -35,7 +48,6 @@ import { buildResolutionTrustState } from '@/lib/resolutionTrust';
 import { disputeLiveResolution, buyLmsrShares, sellLmsrShares } from '@/lib/liveActions';
 import { createArcReadClient } from '@/lib/arcClient';
 import { prestoLmsrMarketAbi } from '@/lib/contracts';
-import { LimitOrderPanel } from './LimitOrderPanel';
 import { parseUnits, formatUnits, type Address } from 'viem';
 import { collateralUnit } from '@/lib/arcConfig';
 import { identifyAsset } from '@/lib/priceResolution';
@@ -178,10 +190,15 @@ function formatKickoffCountdown(kickoffMs: number, nowMs: number): string {
   return parts.join(' ');
 }
 
-export function MarketDetailClient({ marketId }: { marketId: string }) {
+export function MarketDetailClient({ marketId, initialMarket }: { marketId: string; initialMarket?: AppMarket }) {
   const { accountPreviews, connectedWallet, getMarket, isLoadingMarkets, placeTrade, addLiquidity, resolveMarket, cancelMarket, claimMarket, refundMarket, refreshMarket, refreshAccountPortfolio } = useAppState();
   const { track } = useTransactions();
-  const market = getMarket(marketId);
+  // Seed first paint from the server-fetched snapshot: on the server and on the pre-hydration client
+  // the app-state store is still empty (refreshMarkets runs in an effect), so without this the SSR'd
+  // render and the first client render would both fall into the "Loading market…" gate. Once the
+  // store hydrates, getMarket wins and takes over live updates. Both sides render initialMarket
+  // first, so hydration matches.
+  const market = getMarket(marketId) ?? initialMarket;
   const [selectedOutcome, setSelectedOutcome] = useState('YES');
   const [tradeMode, setTradeMode] = useState<'buy' | 'sell' | 'liquidity' | 'limit'>('buy');
   const [amount, setAmount] = useState('1');
