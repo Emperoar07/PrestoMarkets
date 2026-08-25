@@ -16,8 +16,10 @@ name: Agent tick
 # strict as a health signal.
 #
 # Required GitHub Actions secrets:
-#   APP_URL       - production base URL, e.g. https://presto-markets.vercel.app
-#   CRON_SECRET   - matches the CRON_SECRET env var set in Vercel
+#   APP_URL       - production base URL: https://presto-markets.pages.dev
+#                   (the app is on Cloudflare Pages + Workers, NOT Vercel — a vercel.app value here
+#                   points every cron at a dead host, and the curls just report that failure)
+#   CRON_SECRET   - matches the CRON_SECRET secret bound to the Cloudflare Workers
 
 on:
   schedule:
