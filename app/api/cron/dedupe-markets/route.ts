@@ -5,7 +5,8 @@ import { verifyBearer } from '@/lib/authCompare';
 import { fixturePairKey } from '@/lib/agentPipeline';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300;
+// No `maxDuration` — a Vercel route-segment directive, and a no-op under @opennextjs/cloudflare (see
+// scripts/prepare-cloudflare-workers.mjs for the real Workers CPU limit, which is what binds here).
 
 // Clean up duplicate active markets (same fixture, or an exact same-question repeat) that were
 // created before the agent's same-run dedup landed. Groups Open/Closing-soon markets by fixture

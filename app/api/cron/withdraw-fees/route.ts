@@ -5,7 +5,8 @@ import { agentReadLmsrAccruedFees, agentWithdrawLmsrFees, getAgentAddress } from
 import { verifyBearer } from '@/lib/authCompare';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300;
+// No `maxDuration` — a Vercel route-segment directive, and a no-op under @opennextjs/cloudflare (see
+// scripts/prepare-cloudflare-workers.mjs for the real Workers CPU limit, which is what binds here).
 
 // Sweep accrued V3 protocol fees to the treasury. Each LMSR market accrues fees into accruedFees6
 // on every buy/sell; withdrawFees() is permissionless and always pays the market's immutable

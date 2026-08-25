@@ -4,7 +4,8 @@ import { agentBuyShares, agentReadTotalShares, ensureAgentFunded, getAgentAddres
 import { verifyBearer } from '@/lib/authCompare';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300;
+// No `maxDuration` — a Vercel route-segment directive, and a no-op under @opennextjs/cloudflare (see
+// scripts/prepare-cloudflare-workers.mjs for the real Workers CPU limit, which is what binds here).
 
 // Total USDC seeded per market, split across its outcomes (capped at 1 USDC) — just enough to
 // put a non-zero share on every outcome so the market can settle.
@@ -32,8 +33,9 @@ export async function GET(req: NextRequest) {
     // remaining markets are picked up by the next tick (the loop is idempotent).
     const startedAt = Date.now();
     // 150s, NOT ~230s: responses that haven't started by ~180s get their connection reset by
-    // the platform proxy (observed repeatedly at exactly 181s), well before the 300s function
-    // maxDuration. Partial progress + next tick beats a dead connection.
+    // the platform proxy (observed repeatedly at exactly 181s). This in-handler budget is the ONLY
+    // real bound — the route-segment `maxDuration` that used to sit above never applied here.
+    // Partial progress + next tick beats a dead connection.
     const TIME_BUDGET_MS = 150_000;
 
     // Stage bisector (?stage=start|fund|list): returns early after the named phase, so a hang

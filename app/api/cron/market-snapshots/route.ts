@@ -4,7 +4,8 @@ import { recordMarketSnapshots, pruneOldSnapshots, countSnapshots } from '@/lib/
 import { verifyBearer } from '@/lib/authCompare';
 
 export const runtime = 'nodejs';
-export const maxDuration = 120;
+// No `maxDuration` — a Vercel route-segment directive, and a no-op under @opennextjs/cloudflare (see
+// scripts/prepare-cloudflare-workers.mjs for the real Workers CPU limit, which is what binds here).
 
 // Records one odds snapshot per active market so charts have dense, truthful history over
 // 1W/1M/All ranges (on-chain event reconstruction only covers a short recent block window).

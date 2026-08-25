@@ -14,7 +14,8 @@ import { getQueueMetrics, purgeCompleted } from '@/lib/agentQueue';
 import { logger } from '@/lib/logger';
 import { verifyBearer } from '@/lib/authCompare';
 
-export const maxDuration = 60; // 60 second timeout for cron job
+// No `maxDuration` — a Vercel route-segment directive, and a no-op under @opennextjs/cloudflare (see
+// scripts/prepare-cloudflare-workers.mjs for the real Workers CPU limit, which is what binds here).
 
 async function verifyCronSecret(req: NextRequest): Promise<boolean> {
   const cronSecret = process.env.CRON_SECRET;

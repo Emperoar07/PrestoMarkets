@@ -188,8 +188,9 @@ export async function POST(request: NextRequest) {
       const res = await fetch(`${origin}/api/cron/${route}`, {
         headers: { Authorization: `Bearer ${secret}` },
         // Bound BELOW the platform's ~180s edge-proxy reset. A long cron (market-factory,
-        // auto-resolve) keeps running server-side on its own maxDuration; we just stop waiting on
-        // it here and report "still running" so the client gets a clean response, not a timeout.
+        // auto-resolve) keeps running server-side under its own in-handler wall-clock budget; we just
+        // stop waiting on it here and report "still running" so the client gets a clean response,
+        // not a timeout.
         signal: AbortSignal.timeout(160_000),
       });
       const data = await res.json().catch(() => ({}));

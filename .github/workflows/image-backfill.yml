@@ -1,38 +1,63 @@
 name: Image backfill
 
-# Keeps every live market imaged. Agent-created and legacy markets that lack a real subject image
-# (or only have a branded fallback) get a resolved image within ~30 minutes, instead of waiting on
-# the 2-hour agent tick. User-created markets already require an image at creation, so this lane is
-# mostly about agent and legacy markets.
+# Keeps every live market imaged — and now does the work HERE rather than on the Worker.
 #
-# Required GitHub Actions secrets:
-#   APP_URL       - production base URL, e.g. https://presto-markets.vercel.app
-#   CRON_SECRET   - matches the CRON_SECRET env var set in Vercel
+# Image backfill probes candidate URLs, validates bytes, and generates AI illustrations across dozens
+# of markets. That exceeds the Cloudflare Workers FREE-plan CPU ceiling, and the resulting isolate
+# kill is uncatchable from JS, so the strict curl below used to turn every scheduled run red (~3/day)
+# while completing little real work. A GitHub Actions runner has no CPU ceiling, so
+# scripts/backfill-market-images.mjs runs the SAME src/lib/imageBackfill.ts implementation to
+# completion and writes market_metadata_overrides to D1 over REST.
+#
+# The on-Worker route still exists for manual dispatch and agent-tick's best-effort step, bounded
+# small so it does what it can within the ceiling instead of dying.
+#
+# Required repository secrets:
+#   DOTENV_LOCAL - contents of .env.local (CF_ACCOUNT_ID + CLOUDFLARE_API_TOKEN for the D1 REST
+#                  write, plus the image/RPC provider keys the pipeline uses). Written to disk at the
+#                  start of the job and never echoed.
 
 on:
   schedule:
-    # 3x/day (00:10, 08:10, 16:10 UTC). Images are attached at CREATION (agent pipeline resolves a
-    # team/subject image, else a branded banner), so this lane is now a periodic upgrade/repair pass
-    # for the rare miss — not a hot path. Running it every 30 min mostly re-scanned already-imaged
-    # markets and added load to the shared Neon/RPC free tiers for little gain.
+    # 3x/day (00:10, 08:10, 16:10 UTC). Images are attached at CREATION (the agent pipeline resolves a
+    # team/subject image, else a branded banner), so this lane is a periodic upgrade/repair pass for
+    # the rare miss — not a hot path.
     - cron: '10 0,8,16 * * *'
   workflow_dispatch:
+
+concurrency:
+  group: image-backfill
+  cancel-in-progress: false
 
 jobs:
   backfill:
     runs-on: ubuntu-latest
-    # Must exceed curl's worst case (290s + 10s retry delay + 290s ≈ 590s) plus runner setup,
-    # or the job kills itself mid-retry and turns red even though the endpoint resumes next tick.
-    timeout-minutes: 12
+    # The script budgets itself to 420s of processing plus a snapshot rebuild; this leaves headroom
+    # for install and the chain read.
+    timeout-minutes: 20
     steps:
-      # The endpoint self-limits to a ~220s work budget and returns partial progress, so a healthy
-      # run answers well inside --max-time (it used to run past Vercel's 300s kill, which timed out
-      # curl at 290s and turned EVERY scheduled run red). One retry covers a transient blip; the
-      # endpoint is idempotent, and the next 30-minute run resumes wherever this one stopped.
-      - name: Backfill missing market images
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Heredoc so no secret value is interpolated into a logged command line.
+      - name: Materialize environment
         run: |
-          curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/backfill-market-images" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -w "\nHTTP %{http_code}\n" \
-            --max-time 290 --retry 1 --retry-delay 10 --retry-all-errors \
-            --fail-with-body
+          cat > .env.local <<'PRESTO_ENV_EOF'
+          ${{ secrets.DOTENV_LOCAL }}
+          PRESTO_ENV_EOF
+
+      - name: Backfill missing market images
+        run: node scripts/backfill-market-images.mjs
+
+      - name: Remove environment file
+        if: ${{ always() }}
+        run: rm -f .env.local

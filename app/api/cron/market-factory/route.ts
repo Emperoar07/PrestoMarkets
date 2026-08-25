@@ -12,7 +12,8 @@ import { verifyBearer } from '@/lib/authCompare';
 import { runWithCronLease } from '@/lib/cronLease';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300;
+// No `maxDuration` — a Vercel route-segment directive, and a no-op under @opennextjs/cloudflare (see
+// scripts/prepare-cloudflare-workers.mjs for the real Workers CPU limit, which is what binds here).
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;

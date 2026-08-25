@@ -8,7 +8,8 @@ import {
 import { verifyBearer } from '@/lib/authCompare';
 
 export const runtime = 'nodejs';
-export const maxDuration = 120;
+// No `maxDuration` — a Vercel route-segment directive, and a no-op under @opennextjs/cloudflare (see
+// scripts/prepare-cloudflare-workers.mjs for the real Workers CPU limit, which is what binds here).
 
 // Makes newly-created markets VISIBLE on the grid. The market list snapshot only gains new markets
 // two ways: a full chain read (which resets the snapshot's age — impossible for days under RPC

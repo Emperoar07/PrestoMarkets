@@ -13,7 +13,8 @@ import { marketFlags } from '@/lib/db/schema';
 import type { AppMarket } from '@/lib/appState';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300;
+// No `maxDuration` — a Vercel route-segment directive, and a no-op under @opennextjs/cloudflare (see
+// scripts/prepare-cloudflare-workers.mjs for the real Workers CPU limit, which is what binds here).
 
 // Freeze trading on markets whose result is already decided BEFORE their close time, so the stale
 // price can't be exploited while they wait to resolve. Two sources of targets:

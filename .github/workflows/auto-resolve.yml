@@ -29,9 +29,16 @@ jobs:
     steps:
       # The endpoint self-limits to a ~170s work budget (notifications/reputation moved post-
       # response), so healthy runs answer well inside --max-time; one retry covers transient blips.
+      #
+      # --fail-with-body is REQUIRED for this step to mean anything. `curl -sS` exits 0 on an HTTP
+      # 500 — it only fails on transport errors — so for as long as it was missing here, this lane
+      # reported green 96x/day whether or not settlement actually ran. A silently-broken settlement
+      # cron is worse than a red one: nothing surfaced while markets went unresolved. With the flag,
+      # a 5xx fails the job and the response body lands in the log.
       - name: Trigger auto-resolve cron
         run: |
           curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/auto-resolve" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -w "\nHTTP %{http_code}\n" --max-time 290 \
-            --retry 1 --retry-delay 10 --retry-all-errors
+            --retry 1 --retry-delay 10 --retry-all-errors \
+            --fail-with-body

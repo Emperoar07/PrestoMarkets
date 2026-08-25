@@ -1,0 +1,62 @@
+name: Leaderboard refresh
+
+# The leaderboard is computed HERE, not on the Worker.
+#
+# getAllAccountStats() rebuilds every account's ledger from on-chain event logs. That exceeds the
+# Cloudflare Workers FREE-plan CPU ceiling, and the runtime kills the isolate in a way JS cannot
+# catch — so the old on-Worker endpoint's timeout/try-catch fallback never fired, it 500'd, and since
+# it was agent-tick's only step without continue-on-error it turned that whole job red ~12x/day (the
+# bulk of the daily failure emails). A GitHub Actions runner has no CPU ceiling, so the same app code
+# runs here to completion and writes leaderboard_cache to D1 over its REST API. The Worker then only
+# READS that table, which is cheap.
+#
+# Required repository secrets:
+#   DOTENV_LOCAL - contents of .env.local (CF_ACCOUNT_ID + CLOUDFLARE_API_TOKEN for the D1 REST
+#                  write, plus the NEXT_PUBLIC_* chain config the read needs). Written to disk at the
+#                  start of the job and never echoed.
+
+on:
+  schedule:
+    # Every 2 hours at :37 — deliberately offset from agent-tick (:00) and ingest (:*0) so the free
+    # RPC tier isn't hit by several lanes at the same instant.
+    - cron: '37 */2 * * *'
+  workflow_dispatch:
+
+# A slow ledger rebuild must not stack on the next schedule.
+concurrency:
+  group: leaderboard-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Written with a heredoc so no secret value is ever interpolated into a logged command line.
+      # GitHub masks registered secrets in logs, but not echoing them at all is the stronger habit.
+      - name: Materialize environment
+        run: |
+          cat > .env.local <<'PRESTO_ENV_EOF'
+          ${{ secrets.DOTENV_LOCAL }}
+          PRESTO_ENV_EOF
+
+      - name: Refresh leaderboard into D1
+        run: node scripts/refresh-leaderboard.mjs
+
+      # The env file holds every app credential; remove it even if the step above failed so it cannot
+      # survive into any later step or a cached workspace.
+      - name: Remove environment file
+        if: ${{ always() }}
+        run: rm -f .env.local

@@ -78,7 +78,13 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -w "\nHTTP %{http_code}\n" --max-time 290
 
-      - name: Refresh forecaster leaderboard
+      # Cheap CACHE READ, not a computation. The actual leaderboard rebuild moved off-Worker to
+      # .github/workflows/leaderboard.yml, because getAllAccountStats() blows the Workers Free-plan
+      # CPU ceiling and that kill is uncatchable — which is why this step, the only one here without
+      # continue-on-error, used to fail the whole job on every 2-hourly run. Now it just reads
+      # leaderboard_cache and reports row count + staleness, so it is safe to keep STRICT: if this
+      # goes red, something is genuinely wrong (bad deploy, D1 unreachable) and is worth an alert.
+      - name: Check forecaster leaderboard freshness
         if: ${{ always() }}
         run: |
           curl -sS -X GET "${{ secrets.APP_URL }}/api/cron/leaderboard" \

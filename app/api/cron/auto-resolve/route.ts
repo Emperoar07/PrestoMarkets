@@ -15,7 +15,8 @@ import { dispatchWebhookEvent } from '@/lib/webhooks';
 import type { AppMarket } from '@/lib/appState';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300;
+// No `maxDuration` — a Vercel route-segment directive, and a no-op under @opennextjs/cloudflare (see
+// scripts/prepare-cloudflare-workers.mjs for the real Workers CPU limit, which is what binds here).
 
 type ResolutionResult =
   | { ok: true; action: 'resolved'; marketId: string; title: string; outcome: string; txHash: string | Hex; confidence: number }
