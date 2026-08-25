@@ -349,21 +349,38 @@ export async function refreshLeaderboardCache(stats: AccountStats[], period: Lea
     updatedAt: new Date(),
   }));
 
-  return getDb()
-    .insert(leaderboardCache)
-    .values(rows)
-    .onConflictDoUpdate({
-      target: [leaderboardCache.address, leaderboardCache.period],
-      set: {
-        realizedPnl: sql`excluded.realized_pnl`,
-        marketsTraded: sql`excluded.markets_traded`,
-        resolvedCorrect: sql`excluded.resolved_correct`,
-        brier: sql`excluded.brier`,
-        accuracy: sql`excluded.accuracy`,
-        createdCount: sql`excluded.created_count`,
-        rank: sql`excluded.rank`,
-        updatedAt: sql`excluded.updated_at`,
-      },
-    })
-    .returning();
+  const db = getDb();
+  const upsert = (batch: typeof rows) =>
+    db
+      .insert(leaderboardCache)
+      .values(batch)
+      .onConflictDoUpdate({
+        target: [leaderboardCache.address, leaderboardCache.period],
+        set: {
+          realizedPnl: sql`excluded.realized_pnl`,
+          marketsTraded: sql`excluded.markets_traded`,
+          resolvedCorrect: sql`excluded.resolved_correct`,
+          brier: sql`excluded.brier`,
+          accuracy: sql`excluded.accuracy`,
+          createdCount: sql`excluded.created_count`,
+          rank: sql`excluded.rank`,
+          updatedAt: sql`excluded.updated_at`,
+        },
+      })
+      .returning();
+
+  // D1 caps a single query at 100 bound parameters and every row binds one value per column, so one
+  // multi-row insert dies with "too many SQL variables" past ~10 accounts. This used to look fine only
+  // because the on-Worker caller was killed on the free-plan CPU ceiling before it ever reached the
+  // write; moving the computation off-Worker is what surfaced it. Derive the batch size from the row
+  // shape so adding a column cannot silently reintroduce the overflow.
+  const batchSize = Math.max(1, Math.floor(100 / Object.keys(rows[0]).length));
+
+  // Sequential, not Promise.all: a large leaderboard would otherwise fire dozens of concurrent D1
+  // writes. The statement is an idempotent upsert, so a partial run is safe and the next one completes.
+  const written: Awaited<ReturnType<typeof upsert>> = [];
+  for (let i = 0; i < rows.length; i += batchSize) {
+    written.push(...(await upsert(rows.slice(i, i + batchSize))));
+  }
+  return written;
 }
