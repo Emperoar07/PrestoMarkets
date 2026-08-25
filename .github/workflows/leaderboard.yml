@@ -35,6 +35,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Fail FAST and with an ACTIONABLE message. Without this the missing secret surfaces as an
+      # opaque "Missing Cloudflare credentials" throw from installD1Shim, minutes in, after npm ci.
+      # Deliberately a hard failure rather than a silent skip: a leaderboard lane that quietly never
+      # runs is the same dangerous-silence bug as the auto-resolve curl that ignored HTTP 500.
+      - name: Check required secret
+        env:
+          DOTENV_LOCAL: ${{ secrets.DOTENV_LOCAL }}
+        run: |
+          if [ -z "$DOTENV_LOCAL" ]; then
+            echo "::error::DOTENV_LOCAL repository secret is not set, so this workflow cannot run."
+            echo "::error::Set it to the contents of .env.local under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
@@ -44,13 +58,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Written with a heredoc so no secret value is ever interpolated into a logged command line.
-      # GitHub masks registered secrets in logs, but not echoing them at all is the stronger habit.
+      # Passed through `env:` and written with printenv, so the value is never substituted into the
+      # run-script text (which Actions echoes into the log) and never appears on a command line.
+      # printenv rather than echo so backslashes in keys survive verbatim.
       - name: Materialize environment
-        run: |
-          cat > .env.local <<'PRESTO_ENV_EOF'
-          ${{ secrets.DOTENV_LOCAL }}
-          PRESTO_ENV_EOF
+        env:
+          DOTENV_LOCAL: ${{ secrets.DOTENV_LOCAL }}
+        run: printenv DOTENV_LOCAL > .env.local
 
       - name: Refresh leaderboard into D1
         run: node scripts/refresh-leaderboard.mjs

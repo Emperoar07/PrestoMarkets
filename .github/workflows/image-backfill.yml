@@ -39,6 +39,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Fail FAST and with an ACTIONABLE message rather than an opaque credentials throw minutes in.
+      - name: Check required secret
+        env:
+          DOTENV_LOCAL: ${{ secrets.DOTENV_LOCAL }}
+        run: |
+          if [ -z "$DOTENV_LOCAL" ]; then
+            echo "::error::DOTENV_LOCAL repository secret is not set, so this workflow cannot run."
+            echo "::error::Set it to the contents of .env.local under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
@@ -48,12 +59,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Heredoc so no secret value is interpolated into a logged command line.
+      # Passed through `env:` and written with printenv, so the value is never substituted into the
+      # run-script text (which Actions echoes into the log) and never appears on a command line.
       - name: Materialize environment
-        run: |
-          cat > .env.local <<'PRESTO_ENV_EOF'
-          ${{ secrets.DOTENV_LOCAL }}
-          PRESTO_ENV_EOF
+        env:
+          DOTENV_LOCAL: ${{ secrets.DOTENV_LOCAL }}
+        run: printenv DOTENV_LOCAL > .env.local
 
       - name: Backfill missing market images
         run: node scripts/backfill-market-images.mjs
